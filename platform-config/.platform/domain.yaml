@@ -1,0 +1,5 @@
+# Public DNS base for platform hostnames. Replace example.com before production.
+version: 1
+baseDomain: example.com
+authHostname: auth.example.com
+issuerURL: https://auth.example.com/realms/platform

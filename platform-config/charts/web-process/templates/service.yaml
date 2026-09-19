@@ -1,0 +1,17 @@
+{{- include "web-process.validateAccessPolicy" . -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "web-process.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "web-process.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "web-process.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.port }}
+      targetPort: http
+      protocol: TCP

@@ -1,0 +1,36 @@
+{{- include "web-process.validateAccessPolicy" . -}}
+{{- if .Values.hostname }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "web-process.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "web-process.labels" . | nindent 4 }}
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-production
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - {{ .Values.hostname | quote }}
+      secretName: {{ printf "%s-tls" (include "web-process.fullname" .) }}
+  rules:
+    - host: {{ .Values.hostname | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+{{- if eq .Values.accessPolicy "oidc-protected" }}
+                name: {{ include "web-process.fullname" . }}-oauth2-proxy
+                port:
+                  name: http
+{{- else }}
+                name: {{ include "web-process.fullname" . }}
+                port:
+                  name: http
+{{- end }}
+{{- end }}

@@ -1,0 +1,67 @@
+version: 1
+platform: linux/amd64
+binaries:
+  k3s:
+    version: v1.32.13+k3s1
+    url: https://github.com/k3s-io/k3s/releases/download/v1.32.13%2Bk3s1/k3s
+  flux:
+    version: v2.9.5
+    url: https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_linux_amd64.tar.gz
+  kustomize:
+    version: v5.6.0
+    url: https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.6.0/kustomize_v5.6.0_linux_amd64.tar.gz
+  helm:
+    version: v3.17.1
+    url: https://get.helm.sh/helm-v3.17.1-linux-amd64.tar.gz
+  sops:
+    version: v3.13.3
+    url: https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64
+fluxControllers:
+  source-controller:
+    image: ghcr.io/fluxcd/source-controller:v1.9.5
+    digest: sha256:b2ac269f9d13d82514bcbf0e7057a4ae1d98504058b9353cead7e2452a64384f
+  kustomize-controller:
+    image: ghcr.io/fluxcd/kustomize-controller:v1.9.5
+    digest: sha256:ed11ebded23c9e9fe475f7d54b08cc34697e8f01bcd5cfd144fd5aef7b5d8f0d
+  helm-controller:
+    image: ghcr.io/fluxcd/helm-controller:v1.6.4
+    digest: sha256:2ba739b5c0df833dcd463fc1984673f506a5fd0aff64c2f8b28d528b0796f066
+  notification-controller:
+    image: ghcr.io/fluxcd/notification-controller:v1.9.4
+    digest: sha256:69e484e937549694240d5754541feed0993a162000dbc07e7e262b9f41340348
+images:
+  ingress-nginx-controller:
+    image: registry.k8s.io/ingress-nginx/controller:v1.15.1
+    digest: sha256:de8fd8f1def14ed36f59c9838bd3c920ecb01754072e3e9f10832d62ef876cb8
+  cert-manager-controller:
+    image: quay.io/jetstack/cert-manager-controller:v1.21.2
+    digest: sha256:57bb397c639e0e94184ba67848e5dad04284f24645e521e764a0ee5f5002f286
+  cloudnative-pg:
+    image: ghcr.io/cloudnative-pg/cloudnative-pg:1.30.0
+    digest: sha256:091d306935cfdf646debfe78010d59ebfb572150eb6eb922b0203873c0c68841
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.7.4
+    digest: sha256:3d911baa186f352563854039b95f21a7e2c01c76b527fdc64f24a0885b927bdf
+  oauth2-proxy:
+    image: quay.io/oauth2-proxy/oauth2-proxy:v7.15.4
+    digest: sha256:97038fe4354e6ace6612f2f88dc7b332ae6916bddf89da9aea4f2064ea0c2071
+  forgejo:
+    image: code.forgejo.org/forgejo/forgejo:16.0.5
+    digest: sha256:523de0217475297d05786d7551c1c1d6b5c8b90d6fee7189e88a234260ec0e74
+  forgejo-runner:
+    image: code.forgejo.org/forgejo/runner:9.1.1
+    digest: sha256:6c812706727d1645d556a699265581b4abcbe3ba0a4c9ccf08172eaca76a0d19
+  buildkit:
+    image: docker.io/moby/buildkit:v0.33.0
+    digest: sha256:a461e7f0ce921972028acfbed628d45663d83e67ac1230722c2b34cf72760a0d
+  registry:
+    image: docker.io/registry:3.0.0
+    digest: sha256:5b12b22f21522fe69443079df04c0f3f42cb9977857f3c20404386652a6c6d8e
+  cnpg-postgresql:
+    image: ghcr.io/cloudnative-pg/postgresql:16.6
+    digest: sha256:c6ad138b07da00a189abcd381122f4c5c78a889bfc06367a001301e1768996e2
+platformWorkflow:
+  name: platform-build
+  version: 1
+  pin: platform-actions/platform-build@local
+  note: Local composite action path until published immutable release SHA exists.

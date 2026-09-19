@@ -1,0 +1,52 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: keycloak-db
+  namespace: identity-system
+  labels:
+    platform.processmanager.dev/component: identity-database
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql@sha256:c6ad138b07da00a189abcd381122f4c5c78a889bfc06367a001301e1768996e2
+  enableSuperuserAccess: false
+  primaryUpdateStrategy: unsupervised
+  storage:
+    size: 20Gi
+    storageClass: local-path-retain
+  resources:
+    requests:
+      cpu: 250m
+      memory: 1Gi
+    limits:
+      cpu: 750m
+      memory: 2Gi
+  bootstrap:
+    initdb:
+      database: keycloak
+      owner: keycloak
+  # CNPG generates TLS material and the Keycloak owner Secret
+  # `keycloak-db-app` for the bootstrap owner role.
+  postgresql:
+    parameters:
+      max_connections: "100"
+      shared_buffers: "256MB"
+  backup:
+    retentionPolicy: "30d"
+    barmanObjectStore:
+      destinationPath: s3://platform-identity-backups/keycloak-db
+      endpointURL: https://s3.example.internal
+      s3Credentials:
+        accessKeyId:
+          name: identity-backup-s3
+          key: ACCESS_KEY_ID
+        secretAccessKey:
+          name: identity-backup-s3
+          key: ACCESS_SECRET_KEY
+      wal:
+        compression: gzip
+        maxParallel: 2
+      data:
+        compression: gzip
+        jobs: 1
+  monitoring:
+    enablePodMonitor: false

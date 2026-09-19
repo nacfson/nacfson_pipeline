@@ -114,6 +114,29 @@ A committed project access policy SHALL be reconciled by Flux through the reusab
 - **WHEN** any required protected-access resource fails to reconcile or become healthy
 - **THEN** ProcessManager reports the project as failed or reconciling rather than successfully deployed
 
+### Requirement: Shared ProcessManager GitOps boundary
+ProcessManager SHALL implement exactly one versioned `ProjectDesiredStateStore` and one versioned `ProjectReconciliationObserver` shared by access-policy operations and project delivery. The store SHALL load the current remote deployment branch, condition each deterministic mutation on the expected project revision, restrict changes to that project's allowed path, run repository validation, sign the commit, and push without force. It MAY regenerate against an unrelated branch advance only while the target project's revision is unchanged; a same-project revision change SHALL return a conflict. The observer SHALL correlate an exact deployment revision with Flux and Kubernetes status through read-only clients. Feature-specific deployment-repository writers, write-capable Kubernetes clients, and duplicate reconciliation observers MUST NOT be introduced.
+
+#### Scenario: Access policy uses the shared store
+- **WHEN** ProcessManager commits a validated access-policy change
+- **THEN** it performs the mutation through `ProjectDesiredStateStore` and creates no feature-specific Git writer
+
+#### Scenario: Unrelated project advances the branch
+- **WHEN** another project advances the deployment branch while a transaction is pending
+- **THEN** the store reloads and revalidates the current branch, confirms the target project revision is unchanged, regenerates the project-scoped mutation, and pushes without force
+
+#### Scenario: Same project advances concurrently
+- **WHEN** the target project's revision differs from the transaction's expected revision
+- **THEN** the store returns a conflict and does not overwrite or regenerate from stale project state
+
+#### Scenario: Reconciliation status is observed
+- **WHEN** ProcessManager requests status for a committed project revision
+- **THEN** `ProjectReconciliationObserver` reports the correlated Flux and workload state without a Kubernetes mutation capability
+
+#### Scenario: Shared GitOps kernel is unavailable
+- **WHEN** project delivery is configured against a missing or incompatible GitOps contract version
+- **THEN** delivery remains disabled and no repository or Kubernetes mutation is attempted
+
 ### Requirement: Production custom authentication is removed
 The production request path for ProcessManager and protected projects MUST NOT use the legacy custom Go password and session service after migration.
 

@@ -1,0 +1,14 @@
+apiVersion: v2
+name: web-process
+description: Reusable platform chart for ProcessManager-managed web workloads
+type: application
+version: 0.1.0
+appVersion: "1.0.0"
+kubeVersion: ">=1.28.0-0"
+keywords:
+  - processmanager
+  - web
+  - gitops
+home: https://github.com/processmanager/platform-config
+maintainers:
+  - name: platform

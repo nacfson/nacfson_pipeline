@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft-07/schema#",
+  "$id": "https://platform.processmanager.dev/schemas/project-registration-v1.json",
+  "title": "ProjectRegistration",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "apiVersion",
+    "kind",
+    "metadata",
+    "spec"
+  ],
+  "properties": {
+    "apiVersion": {
+      "const": "platform.processmanager.dev/v1"
+    },
+    "kind": {
+      "const": "ProjectRegistration"
+    },
+    "metadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,61}[a-z0-9]$"
+        }
+      }
+    },
+    "spec": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "project",
+        "repository",
+        "buildContract",
+        "registryNamespace",
+        "platform",
+        "deploymentPath",
+        "runtimePolicy",
+        "automaticDelivery"
+      ],
+      "properties": {
+        "project": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9-]{0,61}[a-z0-9]$"
+        },
+        "repository": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "forgejoOwner",
+            "forgejoName",
+            "defaultBranch"
+          ],
+          "properties": {
+            "forgejoOwner": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$"
+            },
+            "forgejoName": {
+              "type": "string",
+              "minLength": 1,
+              "pattern": "^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$"
+            },
+            "defaultBranch": {
+              "type": "string",
+              "const": "main"
+            },
+            "instance": {
+              "type": "string",
+              "pattern": "^https://[^\\s]+$"
+            }
+          }
+        },
+        "buildContract": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "version"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "const": ".platform/build.yaml"
+            },
+            "version": {
+              "type": "integer",
+              "const": 1
+            }
+          }
+        },
+        "registryNamespace": {
+          "type": "string",
+          "pattern": "^projects/[a-z][a-z0-9-]{0,61}[a-z0-9]$"
+        },
+        "platform": {
+          "type": "string",
+          "enum": [
+            "linux/amd64"
+          ]
+        },
+        "deploymentPath": {
+          "type": "string",
+          "pattern": "^applications/[a-z][a-z0-9-]{0,61}[a-z0-9]$"
+        },
+        "runtimePolicy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "accessPolicy"
+          ],
+          "properties": {
+            "accessPolicy": {
+              "type": "string",
+              "enum": [
+                "public",
+                "oidc-protected",
+                "oidc-native"
+              ]
+            },
+            "hostname": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "automaticDelivery": {
+          "type": "boolean"
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "description": "metadata.name, spec.project, deploymentPath, and registryNamespace must align"
+    }
+  ]
+}

@@ -1,0 +1,38 @@
+name: validate-platform-config
+on:
+  push:
+    branches: [main]
+    paths:
+      - "platform-config/**"
+      - "scripts/validate-platform-config.py"
+      - "validation/**"
+      - "requirements-validation.txt"
+      - "docs/platform-config-validation.md"
+  pull_request:
+    paths:
+      - "platform-config/**"
+      - "scripts/validate-platform-config.py"
+      - "validation/**"
+      - "requirements-validation.txt"
+      - "docs/platform-config-validation.md"
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install kustomize
+        run: |
+          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv5.6.0/kustomize_v5.6.0_linux_amd64.tar.gz" | tar -xz
+          sudo mv kustomize /usr/local/bin/
+      - name: Install helm
+        run: |
+          curl -fsSL https://get.helm.sh/helm-v3.17.1-linux-amd64.tar.gz | tar -xz
+          sudo mv linux-amd64/helm /usr/local/bin/
+      - name: Install Python deps
+        run: pip install -r requirements-validation.txt
+      - name: Run platform-config validation gate
+        run: ./scripts/validate-platform-config.py

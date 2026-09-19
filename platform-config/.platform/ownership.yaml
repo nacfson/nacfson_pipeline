@@ -1,0 +1,83 @@
+# Platform ownership and write boundaries for platform-config.
+# ProcessManager and other project automation must load this file and reject
+# mutations that touch denied paths before signing a commit.
+
+version: 1
+
+gitRoot: platform-config
+
+writers:
+  flux:
+    description: Sole routine writer of Git-managed Kubernetes resources after bootstrap.
+    owns:
+      - clusters/**
+      - infrastructure/**
+      - applications/**
+      - charts/**
+
+  opentofu:
+    description: External provider resources only. Never writes Kubernetes manifests.
+    ownsResourceClasses:
+      - vps
+      - registry-server
+      - dns
+      - provider-firewall
+      - attached-disks
+      - backup-destinations
+
+  ansible:
+    description: Host policy and one-time k3s/Flux bootstrap. Stops applying manifests after Flux handover.
+    ownsResourceClasses:
+      - host-users
+      - ssh-policy
+      - host-packages
+      - host-firewall
+      - storage-mounts
+      - k3s-install
+      - flux-bootstrap-credentials
+      - host-backup-agents
+
+  processManagerProjectAutomation:
+    description: Signed, project-scoped Git mutations only.
+    allowGlobs:
+      - applications/*/namespace.yaml
+      - applications/*/kustomization.yaml
+      - applications/*/helmrelease.yaml
+      - applications/*/registration.yaml
+      - applications/*/values.yaml
+      - applications/*/*.sops.yaml
+    denyGlobs:
+      - clusters/**
+      - infrastructure/**
+      - charts/**
+      - .platform/**
+      - applications/kustomization.yaml
+      - applications/.project-template/**
+
+projectDirectory:
+  requiredFiles:
+    - namespace.yaml
+    - kustomization.yaml
+    - helmrelease.yaml
+    - registration.yaml
+  optionalFiles:
+    - values.yaml
+    - "*.sops.yaml"
+  namespaceRule: Project directory name MUST equal the Kubernetes namespace and DNS-safe project identifier.
+  chartReference: charts/web-process
+
+placement:
+  allow:
+    - architecture
+    - resource-requests-limits
+    - node-labels
+    - taints-tolerations
+    - storage-class
+  denyInProjectConfig:
+    - providerResourceId
+    - cloudInstanceId
+    - kubernetesnerServerId
+    - awsInstanceId
+    - nodeName
+    - kubernetesner.*
+    - kubernetesnerServerName

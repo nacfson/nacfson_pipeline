@@ -1,0 +1,6 @@
+version: 1
+ownershipMatrix:
+  - resourceClass: git-managed-kubernetes
+    writer: flux
+  - resourceClass: git-managed-kubernetes
+    writer: ansible

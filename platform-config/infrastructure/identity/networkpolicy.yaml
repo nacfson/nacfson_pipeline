@@ -1,0 +1,40 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keycloak-allow-ingress
+  namespace: identity-system
+  labels:
+    platform.processmanager.dev/component: keycloak
+spec:
+  podSelector:
+    matchLabels:
+      platform.processmanager.dev/component: keycloak
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: keycloak-allow-https-egress
+  namespace: identity-system
+  labels:
+    platform.processmanager.dev/component: keycloak
+spec:
+  podSelector:
+    matchLabels:
+      platform.processmanager.dev/component: keycloak
+  policyTypes:
+    - Egress
+  egress:
+    # Google OIDC broker and JWKS over HTTPS only.
+    - ports:
+        - protocol: TCP
+          port: 443

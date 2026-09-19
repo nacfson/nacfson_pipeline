@@ -1,0 +1,93 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: platform-realm-config
+  namespace: identity-system
+  labels:
+    platform.processmanager.dev/component: identity-config
+data:
+  realm.json: |
+    {
+      "realm": "platform",
+      "enabled": true,
+      "registrationAllowed": false,
+      "resetPasswordAllowed": false,
+      "editUsernameAllowed": false,
+      "loginWithEmailAllowed": true,
+      "duplicateEmailsAllowed": false,
+      "sslRequired": "external",
+      "accessTokenLifespan": 900,
+      "ssoSessionIdleTimeout": 28800,
+      "ssoSessionMaxLifespan": 28800,
+      "internationalizationEnabled": false,
+      "roles": {
+        "realm": [
+          {"name": "realm-admin"},
+          {"name": "identity-operator"},
+          {"name": "recovery-admin"}
+        ]
+      },
+      "groups": [
+        {"name": "processmanager:admins"},
+        {"name": "project:processmanager:users"},
+        {"name": "project:processmanager:admins"}
+      ],
+      "clients": [
+        {
+          "clientId": "processmanager",
+          "name": "ProcessManager",
+          "enabled": true,
+          "publicClient": false,
+          "standardFlowEnabled": true,
+          "directAccessGrantsEnabled": false,
+          "serviceAccountsEnabled": false,
+          "redirectUris": ["https://pm.example.com/oauth2/callback"],
+          "webOrigins": ["https://pm.example.com"],
+          "protocol": "openid-connect",
+          "attributes": {
+            "post.logout.redirect.uris": "https://pm.example.com/"
+          },
+          "protocolMappers": [
+            {
+              "name": "groups",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-group-membership-mapper",
+              "consentRequired": false,
+              "config": {
+                "full.path": "false",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "claim.name": "groups",
+                "userinfo.token.claim": "true"
+              }
+            }
+          ]
+        }
+      ],
+      "identityProviders": [
+        {
+          "alias": "google",
+          "providerId": "google",
+          "enabled": true,
+          "trustEmail": true,
+          "storeToken": false,
+          "linkOnly": false,
+          "firstBrokerLoginFlowAlias": "first broker login",
+          "config": {
+            "clientId": "${GOOGLE_CLIENT_ID}",
+            "clientSecret": "${GOOGLE_CLIENT_SECRET}",
+            "defaultScope": "openid email profile",
+            "syncMode": "IMPORT"
+          }
+        }
+      ],
+      "users": [
+        {
+          "username": "recovery-admin",
+          "enabled": true,
+          "emailVerified": true,
+          "requiredActions": ["CONFIGURE_TOTP"],
+          "realmRoles": ["recovery-admin"]
+        }
+      ]
+    }

@@ -1,0 +1,71 @@
+# Default values for web-process. Override every production field through the
+# project HelmRelease. Defaults are schema-valid fixture values only.
+
+project: web-process
+
+image:
+  repository: registry.example.internal/platform/web-process
+  digest: sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+port: 8080
+replicas: 1
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 200m
+    memory: 256Mi
+
+healthCheck:
+  path: /healthz
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+platform: linux/amd64
+
+# Exactly one of: public | oidc-protected | oidc-native
+accessPolicy: public
+
+# Required for oidc-protected and oidc-native
+oidc: {}
+
+oauth2Proxy:
+  image:
+    repository: quay.io/oauth2-proxy/oauth2-proxy
+    digest: sha256:97038fe4354e6ace6612f2f88dc7b332ae6916bddf89da9aea4f2064ea0c2071
+  port: 4180
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 200m
+      memory: 128Mi
+
+# Optional persistence. Disabled by default.
+persistence:
+  enabled: false
+
+serviceAccount:
+  create: true
+  automount: false
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  runAsGroup: 65532
+  fsGroup: 65532
+
+containerSecurityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+podLabels: {}
+podAnnotations: {}

@@ -1,0 +1,39 @@
+# Operating policy selections with owners and enforceable locations.
+version: 1
+
+backup:
+  objectStorage:
+    value: s3-compatible off-server bucket provisioned by OpenTofu
+    owner: platform-infrastructure
+    location: opentofu/backup_destination
+  retention:
+    baseBackupsDays: 30
+    walDays: 14
+    etcdSnapshotsDays: 14
+    owner: platform-infrastructure
+    location: infrastructure/cnpg + ansible backup agent
+  rpo: 15m
+  rto: 4h
+  owner: platform-infrastructure
+
+sessions:
+  accessTokenMinutes: 15
+  refreshTokenHours: 8
+  ssoHours: 8
+  cookieHours: 8
+  adminReauthMinutes: 30
+  owner: identity-admin
+  location: infrastructure/identity/realm
+
+delivery:
+  releaseReadinessTimeoutMinutes: 20
+  buildResultRetentionDays: 30
+  imageRetentionDays: 90
+  auditRetentionDays: 365
+  owner: platform-delivery
+  location: ProcessManager delivery config + registry retention
+
+owners:
+  platform-infrastructure: OpenTofu/Ansible operators
+  identity-admin: Keycloak administrators
+  platform-delivery: ProcessManager maintainers

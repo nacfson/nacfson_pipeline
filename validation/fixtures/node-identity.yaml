@@ -1,0 +1,14 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bad-placement
+  namespace: fixture
+spec:
+  template:
+    spec:
+      nodeName: app-vps-1
+      nodeSelector:
+        kubernetes.io/hostname: app-vps-1
+      containers:
+        - name: app
+          image: example@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa

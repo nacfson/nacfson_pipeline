@@ -1,0 +1,60 @@
+name: platform-build
+description: Validate .platform/build.yaml, run Dockerfile test target, build runtime target with rootless BuildKit, emit metadata.
+inputs:
+  contract-path:
+    description: Path to build contract
+    required: false
+    default: .platform/build.yaml
+  registry-namespace:
+    description: Assigned registry namespace (provided only after admission)
+    required: true
+outputs:
+  digest:
+    description: Published image digest
+    value: ${{ steps.build.outputs.digest }}
+  contract-version:
+    description: Build contract version
+    value: ${{ steps.validate.outputs.version }}
+runs:
+  using: composite
+  steps:
+    - name: Validate build contract
+      id: validate
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 "${{ github.action_path }}/validate_build_contract.py" "${{ inputs.contract-path }}"
+        version="$(python3 - <<'PY'
+        import yaml,sys
+        print(yaml.safe_load(open(sys.argv[1]))['version'])
+        PY
+        "${{ inputs.contract-path }}")"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+    - name: Run Dockerfile test target
+      shell: bash
+      run: |
+        set -euo pipefail
+        contract="${{ inputs.contract-path }}"
+        context="$(python3 -c "import yaml;print(yaml.safe_load(open('$contract'))['context'])")"
+        dockerfile="$(python3 -c "import yaml;print(yaml.safe_load(open('$contract'))['dockerfile'])")"
+        test_target="$(python3 -c "import yaml;print(yaml.safe_load(open('$contract'))['testTarget'])")"
+        docker buildx build --builder "${BUILDKIT_BUILDER:-platform-rootless}" --load=false --target "$test_target" -f "$dockerfile" "$context"
+    - name: Build runtime target
+      id: build
+      shell: bash
+      run: |
+        set -euo pipefail
+        contract="${{ inputs.contract-path }}"
+        context="$(python3 -c "import yaml;print(yaml.safe_load(open('$contract'))['context'])")"
+        dockerfile="$(python3 -c "import yaml;print(yaml.safe_load(open('$contract'))['dockerfile'])")"
+        runtime_target="$(python3 -c "import yaml;print(yaml.safe_load(open('$contract'))['runtimeTarget'])")"
+        platform="$(python3 -c "import yaml;print(yaml.safe_load(open('$contract'))['platforms'][0])")"
+        image="${{ inputs.registry-namespace }}/app"
+        digest="$(docker buildx build --builder "${BUILDKIT_BUILDER:-platform-rootless}" --platform "$platform" --target "$runtime_target" -f "$dockerfile" "$context" -t "$image" --push --metadata-file /tmp/build-meta.json >/dev/null
+          python3 - <<'PY'
+        import json
+        meta=json.load(open('/tmp/build-meta.json'))
+        print(meta['containerimage.digest'])
+        PY
+        )"
+        echo "digest=$digest" >> "$GITHUB_OUTPUT"

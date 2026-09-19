@@ -1,0 +1,14 @@
+apiVersion: postgresql.cnpg.io/v1
+kind: ScheduledBackup
+metadata:
+  name: keycloak-db
+  namespace: identity-system
+  labels:
+    platform.processmanager.dev/component: identity-database
+spec:
+  cluster:
+    name: keycloak-db
+  schedule: "0 0 2 * * *"
+  backupOwnerReference: self
+  immediate: true
+  target: primary

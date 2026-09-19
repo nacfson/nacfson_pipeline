@@ -1,0 +1,20 @@
+# Per-project directory contract.
+# Live projects live under applications/<project>/ and are listed from
+# applications/kustomization.yaml. This template is documentation-only and is
+# excluded from Flux reconciliation.
+
+version: 1
+path: applications/<project>/
+files:
+  namespace.yaml:
+    purpose: Namespace for the project; name equals <project>.
+  kustomization.yaml:
+    purpose: Project reconciliation entry point consumed by applications aggregation.
+  helmrelease.yaml:
+    purpose: Flux HelmRelease referencing charts/web-process.
+  registration.yaml:
+    purpose: Non-Kubernetes registration metadata; must not be listed as a Kustomize resource.
+  values.yaml:
+    purpose: Optional committed values overlay; may be inlined in helmrelease.yaml instead.
+  '*.sops.yaml':
+    purpose: Optional SOPS-encrypted Secret manifests referenced by name only elsewhere.

@@ -1,0 +1,19 @@
+apiVersion: platform.processmanager.dev/v1
+kind: ProjectRegistration
+metadata:
+  name: example-project
+spec:
+  project: example-project
+  repository:
+    forgejoOwner: example
+    forgejoName: example-project
+    defaultBranch: main
+  buildContract:
+    path: .platform/build.yaml
+    version: 1
+  registryNamespace: projects/example-project
+  platform: linux/amd64
+  deploymentPath: applications/example-project
+  runtimePolicy:
+    accessPolicy: public
+  automaticDelivery: true

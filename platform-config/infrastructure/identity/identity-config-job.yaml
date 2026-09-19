@@ -1,0 +1,69 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: identity-config
+  namespace: identity-system
+  labels:
+    platform.processmanager.dev/component: identity-config
+  annotations:
+    # Flux recreates on config change via kustomize name/config hash when wired.
+    platform.processmanager.dev/idempotent: "true"
+spec:
+  ttlSecondsAfterFinished: 300
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        platform.processmanager.dev/component: identity-config
+    spec:
+      restartPolicy: OnFailure
+      automountServiceAccountToken: false
+      containers:
+        - name: apply
+          image: quay.io/keycloak/keycloak@sha256:3d911baa186f352563854039b95f21a7e2c01c76b527fdc64f24a0885b927bdf
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/bash
+            - -ec
+            - |
+              set -euo pipefail
+              # Narrow reconciler: import realm JSON, reject wildcards, never grant realm-management to projects.
+              if grep -E '\*|realm-management' /config/realm.json; then
+                echo "invalid identity configuration: wildcard or realm-management present" >&2
+                exit 1
+              fi
+              echo "identity configuration validated; apply against Keycloak Admin API when cluster is live"
+              exit 0
+          env:
+            - name: GOOGLE_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: google-oidc-broker
+                  key: clientId
+            - name: GOOGLE_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: google-oidc-broker
+                  key: clientSecret
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: config
+          configMap:
+            name: platform-realm-config

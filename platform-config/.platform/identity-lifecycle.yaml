@@ -1,0 +1,34 @@
+# Google identity and project-group lifecycle policy.
+version: 1
+
+identityLifecycle:
+  suspension:
+    owner: identity-admin
+    effect: block authentication; preserve issuer/subject
+  unlinking:
+    owner: identity-admin
+    effect: remove Google federated link; keep platform subject tombstone until deletion policy
+  replacement:
+    owner: identity-admin
+    effect: new Google subject creates a new platform identity; no silent merge
+  duplicateAccount:
+    owner: identity-admin
+    effect: manual review; issuer/subject remains authoritative
+  changedClaims:
+    owner: system
+    effect: email/display updates do not change issuer/subject associations
+  deletion:
+    owner: identity-admin
+    tombstoneDays: 90
+    effect: soft-delete then hard-delete; applications retain local data keyed by issuer/subject
+  applicationDataRetention:
+    owner: project-admin
+    effect: application-owned; not stored in identity database
+
+projectGroups:
+  assignmentOwner: identity-admin
+  naming: "project:<id>:users" | "project:<id>:admins"
+  expiryOwner: identity-admin
+  revocationOwner: identity-admin
+  processManagerAdminGroup: processmanager:admins
+  defaultOnFirstLogin: none

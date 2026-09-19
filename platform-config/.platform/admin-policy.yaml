@@ -1,0 +1,35 @@
+# Administrator roles and recovery controls.
+version: 1
+
+roles:
+  - id: realm-admin
+    description: Day-to-day Keycloak administration after Google + TOTP step-up.
+    canGrantSelfBroaderPrivilege: false
+  - id: identity-operator
+    description: Manage clients, groups, and broker settings without realm-admin.
+    canGrantSelfBroaderPrivilege: false
+  - id: recovery-admin
+    description: Restricted local password+TOTP account for Google/broker outages only.
+    canGrantSelfBroaderPrivilege: false
+    networkRestriction: administrative path only
+    routineUseAlert: required
+
+totp:
+  enrollment: required before first admin action
+  resetOwner: recovery-admin or dual-control identity-operator pair
+  recoveryCodes:
+    custody: offline sealed store outside the cluster
+    copies: 2
+
+credentialCustody:
+  sopsAgeKey: offline recovery + in-cluster sops-age Secret only
+  googleBrokerSecret: SOPS-encrypted under infrastructure/identity
+  recoveryAdminPassword: offline sealed store; never in Git
+
+securityEventResponse:
+  - event: recovery-admin login
+    action: page on-call and open review issue within 24h
+  - event: admin role grant
+    action: dual approval and audit record
+  - event: broker secret rotation
+    action: staged commit + verification login

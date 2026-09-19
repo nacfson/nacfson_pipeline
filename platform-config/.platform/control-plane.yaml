@@ -1,0 +1,51 @@
+# Control-plane ownership matrix and capability-only placement contract.
+version: 1
+
+ownershipMatrix:
+  - resourceClass: provider-vps
+    writer: opentofu
+  - resourceClass: provider-dns
+    writer: opentofu
+  - resourceClass: provider-firewall
+    writer: opentofu
+  - resourceClass: provider-disk
+    writer: opentofu
+  - resourceClass: backup-destination
+    writer: opentofu
+  - resourceClass: host-os-policy
+    writer: ansible
+  - resourceClass: k3s-bootstrap
+    writer: ansible
+  - resourceClass: flux-bootstrap
+    writer: ansible
+  - resourceClass: git-managed-kubernetes
+    writer: flux
+  - resourceClass: project-desired-state-git
+    writer: processManagerProjectAutomation
+  - resourceClass: workload-scheduling
+    writer: kubernetes
+
+rules:
+  singleWriterPerResourceClass: true
+  bootstrapStopsAfterFluxHandover: true
+  processManagerKubernetesMutations: false
+
+placementContract:
+  mode: capability-only
+  requiredCapabilities:
+    - kubernetes.io/arch=amd64
+    - platform.processmanager.dev/workload=true
+  forbiddenProjectFields:
+    - spec.nodeName
+    - nodeSelector.kubernetes.io/hostname
+    - affinity.*.nodeHostname
+    - providerID
+    - hcloud/server-id
+    - instance-id
+  rejectionPatterns:
+    - '(?i)nodeName\s*:'
+    - '(?i)kubernetes\.io/hostname'
+    - '(?i)providerID\s*:'
+    - '(?i)hcloud/(server-id|instance-id)'
+    - '(?i)aws[:/].*instance'
+    - '(?i)hetzner.*server'

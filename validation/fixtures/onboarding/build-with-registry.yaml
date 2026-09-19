@@ -1,0 +1,9 @@
+version: 1
+builder: dockerfile
+context: .
+dockerfile: Dockerfile
+testTarget: test
+runtimeTarget: runtime
+platforms:
+  - linux/amd64
+registryNamespace: projects/evil

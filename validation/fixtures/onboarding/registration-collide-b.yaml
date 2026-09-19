@@ -1,0 +1,19 @@
+apiVersion: platform.processmanager.dev/v1
+kind: ProjectRegistration
+metadata:
+  name: beta
+spec:
+  project: beta
+  repository:
+    forgejoOwner: org
+    forgejoName: shared-repo
+    defaultBranch: main
+  buildContract:
+    path: .platform/build.yaml
+    version: 1
+  registryNamespace: projects/beta
+  platform: linux/amd64
+  deploymentPath: applications/beta
+  runtimePolicy:
+    accessPolicy: public
+  automaticDelivery: true

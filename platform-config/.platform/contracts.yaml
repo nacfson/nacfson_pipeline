@@ -1,0 +1,33 @@
+version: 1
+contracts:
+  webProcessValues:
+    id: web-process-values
+    version: 1
+    schema: charts/web-process/values.schema.json
+  trustedIdentityHeaders:
+    id: trusted-identity-headers
+    version: 1
+    headers:
+    - X-Platform-Issuer
+    - X-Platform-Subject
+    - X-Platform-Email
+    - X-Platform-Preferred-Username
+    - X-Platform-Groups
+  projectRegistration:
+    id: project-registration
+    version: 1
+    schema: .platform/schemas/project-registration-v1.json
+  sourceBuild:
+    id: source-build
+    version: 1
+    path: .platform/build.yaml
+    schema: .platform/schemas/source-build-v1.json
+  projectDesiredStateStore:
+    id: ProjectDesiredStateStore
+    version: 1
+  projectReconciliationObserver:
+    id: ProjectReconciliationObserver
+    version: 1
+compatibility:
+  failClosed: true
+  permissiveInterpretation: false

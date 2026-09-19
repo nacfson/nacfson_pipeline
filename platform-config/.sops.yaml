@@ -1,0 +1,8 @@
+# SOPS age configuration for platform-config.
+# The private decryption key MUST NOT be committed. Flux references the
+# in-cluster Secret name `sops-age` only.
+creation_rules:
+  - path_regex: .*\.sops\.ya?ml$
+    encrypted_regex: ^(data|stringData)$
+    # Replace with the platform age public key before encrypting production Secrets.
+    age: age1platformreplacementpubkeyplaceholder000000000000000000000000000
