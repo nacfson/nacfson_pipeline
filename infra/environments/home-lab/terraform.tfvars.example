@@ -1,0 +1,56 @@
+# Copy to terraform.tfvars and edit for your home-lab node.
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# This environment uses the external/home-lab backend: OpenTofu records the
+# node/DNS/firewall/backup contract and writes Ansible handoff files. It does
+# not create Kubernetes resources and does not install k3s.
+
+base_domain = "example.com"
+
+# Restrict SSH and Kubernetes API to your admin network / VPN.
+# Do not use 0.0.0.0/0 for production.
+admin_cidrs = [
+  "192.168.0.0/16",
+]
+
+application_node = {
+  name         = "app-1"
+  ipv4_address = "192.168.1.50"
+  ssh_user     = "ubuntu"
+  ssh_port     = 22
+  vcpus        = 4
+  memory_gb    = 16
+  root_disk_gb = 100
+  data_disk = {
+    enabled     = true
+    size_gb     = 200
+    device_hint = "/dev/sdb"
+    mount_path  = "/var/lib/rancher/k3s/storage"
+  }
+  labels = {
+    "topology.kubernetes.io/zone" = "home-lab"
+  }
+}
+
+# Optional separate registry host. Leave null to point registry DNS at the app node
+# temporarily (still a single failure domain — split when you can).
+# registry_node = {
+#   name         = "registry-1"
+#   ipv4_address = "192.168.1.51"
+#   ssh_user     = "ubuntu"
+# }
+
+backup = {
+  enabled        = true
+  kind           = "s3_compatible"
+  endpoint       = "https://s3.example.com"
+  bucket_or_path = "nacfson-backups"
+  region         = "auto"
+  retention_days = 30
+  encryption     = "client_side"
+}
+
+# Optional DNS overrides (short name or FQDN).
+# dns_records = {
+#   "pages" = { value = "192.168.1.50" }
+# }

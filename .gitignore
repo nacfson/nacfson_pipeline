@@ -2,3 +2,16 @@
 __pycache__/
 *.pyc
 .DS_Store
+.tools/
+
+# OpenTofu / Terraform
+**/.terraform/
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfvars
+!**/*.tfvars.example
+**/crash.log
+infra/handoff/*.json
+infra/handoff/*.yaml
+infra/handoff/*.yml
+!infra/handoff/.gitkeep
