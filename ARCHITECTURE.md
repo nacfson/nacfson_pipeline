@@ -14,9 +14,10 @@ This document is the source of truth for architecture decisions. Changes to an a
 
 | Area | Decision |
 |---|---|
-| Deployment source of truth | The `main` branch of a self-hosted Forgejo deployment repository on the VPS |
-| ProcessManager writes | Validated application configuration committed and pushed to `main` |
-| Cluster reconciliation | Flux watches `main` and applies the desired state |
+| Deployment source of truth | After bootstrap cutover, only the `main` branch of the self-hosted Forgejo `platform/platform-config` repository on the application VPS |
+| Bootstrap and recovery Git | A private off-server mirror MAY seed/recover Flux only while Forgejo is unavailable; it MUST NOT remain the steady-state production authority after cutover |
+| ProcessManager writes | Validated application configuration committed and pushed to Forgejo `main` |
+| Cluster reconciliation | Flux watches the active bootstrap/recovery source before cutover and Forgejo `main` afterward |
 | Kubernetes topology | One k3s server that is both control-plane and worker; embedded etcd; no HA claim |
 | Infrastructure dependency | The production platform has no dependency on the existing local cluster, workstation, or home network |
 | Personal-account authentication | Google OpenID Connect brokered through Keycloak; any Google account may create a fresh unprivileged platform identity; no ordinary-user local password flow |
@@ -399,7 +400,9 @@ Bootstrap order is fixed:
 1. OpenTofu creates the VPS, network rules, DNS, and backup destination.
 2. Ansible hardens the host, mounts storage, installs the pinned k3s version, initializes embedded etcd, enables Kubernetes secrets encryption, and installs the minimal Flux bootstrap credentials.
 3. Flux reconciles ingress-nginx, cert-manager, the CNPG operator, Keycloak and its database, Forgejo, oauth2-proxy, ProcessManager, CI, and applications in dependency order using health checks.
-4. After Forgejo is available, the deployment repository becomes Flux's steady-state source. An encrypted off-server mirror remains the recovery source so a lost cluster does not require the lost in-cluster Forgejo to recreate itself.
+4. After Forgejo is available, `platform/platform-config` in the local Forgejo instance MUST become Flux's steady-state source. The source cutover is complete only after the repository history is mirrored, the Flux read-only deploy key is registered, and the Flux `GitRepository` is Ready at the expected revision against Forgejo. A private encrypted off-server mirror MUST remain available for bootstrap and recovery so a lost cluster does not require the lost in-cluster Forgejo to recreate itself.
+
+The local Forgejo decision is normative: GitHub, GitLab, a workstation repository, or any other off-server Git host MAY be used only as the bootstrap/recovery source. Routine production reconciliation and ProcessManager writes MUST target the local Forgejo deployment repository after cutover. Operator documentation and automation MUST identify which stage is active and MUST NOT describe the off-server mirror as the final production source.
 
 k3s upgrades are explicit Ansible changes, one minor version at a time, after compatibility checks for Flux, ingress-nginx, cert-manager, CNPG, Keycloak, and the Kubernetes APIs used by the chart. Because there is one node, each upgrade has a declared maintenance window and expected outage. Flux-managed chart and application upgrades remain separate commits from k3s upgrades.
 

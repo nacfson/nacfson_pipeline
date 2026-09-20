@@ -98,6 +98,12 @@ Ansible does not install Forgejo. This avoids the bootstrap cycle
 | Bootstrap | private off-server mirror (`flux_git_url`) | Ansible `flux_bootstrap` |
 | Steady state | `ssh://git@forgejo.internal/platform/platform-config.git` | Flux reconciles Forgejo from the mirror, then source is cut over |
 
+**Source policy invariant:** local Forgejo is the only steady-state production Git
+authority. GitHub/GitLab is permitted only for bootstrap and disaster recovery.
+After cutover, routine Flux reconciliation and ProcessManager writes MUST target
+`platform/platform-config` in Forgejo; the off-server mirror remains read-only
+recovery material, not the normal deployment source.
+
 Ansible scope ends at stage 1: controllers, Git auth secret, root GitRepository,
 `kustomization flux-system`, `sops-age`. It must not create the Forgejo workload,
 the Forgejo repository, or the cutover — those are Flux/operator Git changes.

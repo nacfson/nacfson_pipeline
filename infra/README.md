@@ -79,6 +79,11 @@ python3 scripts/render-inventory.py --spawn -- --ask-vault-pass   # manual unloc
 4. Flux reconciles `platform-config/clusters/production`, including the Forgejo workload, from that seed source.
 5. After Forgejo is Ready, mirror `platform-config` into `platform/platform-config`, register the Flux public deploy key, and cut the `GitRepository` URL over to Forgejo. Keep the off-server mirror as the recovery source. See [`ansible/README.md`](../ansible/README.md) "Two-stage Git source".
 
+**Git source rule:** the off-server repository is bootstrap/recovery only. Local
+Forgejo `platform/platform-config` is mandatory as the steady-state source after
+the cutover gate succeeds; routine production reconciliation must not remain on
+GitHub/GitLab.
+
 ## Cloud later
 
 Implement `environments/cloud` with the same module outputs. Do not fork `platform-config` for cloud. Home-lab and cloud remain one portable production target with different OpenTofu backends.
