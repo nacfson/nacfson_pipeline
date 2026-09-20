@@ -14,9 +14,9 @@ bootstrap_admin_user: ""
 # Initially point this at the private off-server mirror. After Flux deploys
 # Forgejo and platform/platform-config is mirrored there, change it to the
 # Forgejo SSH URL as the explicit steady-state cutover.
-flux_git_url: "ssh://git@github.com/<owner>/platform-config.git"
+flux_git_url: "ssh://git@github.com/nacfson/nacfson_pipeline.git"
 flux_git_branch: "main"
-flux_git_path: "./clusters/production"
+flux_git_path: "./platform-config/clusters/production"
 flux_git_auth_mode: "ssh" # ssh | https
 flux_deploy_key_private_path: "{{ playbook_dir }}/../.secrets/flux-deploy-key"
 flux_https_username: "git"

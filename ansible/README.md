@@ -75,7 +75,7 @@ Defaults in `group_vars/all.yaml`:
 
 - `flux_git_url` — private **off-server seed/recovery** remote used for the first bootstrap
 - `flux_git_branch: main`
-- `flux_git_path: ./clusters/production`
+- `flux_git_path: ./platform-config/clusters/production` for the current monorepo seed
 - `flux_git_auth_mode: ssh` — set `https` + `flux_https_username` / `flux_https_password` for HTTPS remotes
 - `flux_skip_sops_secret: false` — fail if age key missing (infrastructure unit needs decrypt)
 

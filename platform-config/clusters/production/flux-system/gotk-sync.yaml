@@ -5,7 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1m
-  url: ssh://git@forgejo.internal/platform/platform-config.git
+  url: ssh://git@github.com/nacfson/nacfson_pipeline.git
   ref:
     branch: main
   secretRef:
@@ -18,7 +18,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./clusters/production
+  path: ./platform-config/clusters/production
   prune: true
   sourceRef:
     kind: GitRepository
