@@ -1,0 +1,11 @@
+---
+# Host prep only: harden, firewall, storage, backup stub.
+- name: Host preparation
+  hosts: application:registry
+  gather_facts: true
+  become: true
+  roles:
+    - role: common
+    - role: host_firewall
+    - role: storage
+    - role: backup_agent

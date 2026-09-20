@@ -1,0 +1,91 @@
+---
+- name: Ensure baseline packages
+  ansible.builtin.apt:
+    name: "{{ common_packages }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure optional packages (best-effort)
+  ansible.builtin.apt:
+    name: "{{ common_optional_packages }}"
+    state: present
+  failed_when: false
+
+- name: Set timezone via timedatectl
+  ansible.builtin.command:
+    cmd: "timedatectl set-timezone {{ host_timezone | default('UTC') }}"
+  register: timezone_set
+  changed_when: timezone_set.rc == 0
+  failed_when: false
+
+- name: Create bootstrap admin group when requested
+  ansible.builtin.group:
+    name: "{{ bootstrap_admin_user }}"
+    state: present
+  when: bootstrap_admin_user | default('') | length > 0
+
+- name: Create bootstrap admin user when requested
+  ansible.builtin.user:
+    name: "{{ bootstrap_admin_user }}"
+    group: "{{ bootstrap_admin_user }}"
+    groups: sudo
+    append: true
+    shell: /bin/bash
+    create_home: true
+  when: bootstrap_admin_user | default('') | length > 0
+
+- name: Install SSH hardening drop-in
+  ansible.builtin.copy:
+    dest: "{{ common_ssh_config_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+    content: |
+      # Managed by Ansible role common — platform host hardening
+      PasswordAuthentication no
+      PermitRootLogin no
+      KbdInteractiveAuthentication no
+  notify: Reload sshd
+
+- name: Disable swap on application hosts
+  when: node_role | default('') == 'application'
+  block:
+    - name: Swap off
+      ansible.builtin.command: swapoff -a
+      changed_when: false
+      failed_when: false
+
+    - name: Comment swap entries in fstab
+      ansible.builtin.replace:
+        path: /etc/fstab
+        regexp: '^([^#].*\s+swap\s+.*)$'
+        replace: '# \1  # disabled by ansible common for k3s'
+
+- name: Configure forwarding for application hosts
+  when: node_role | default('') == 'application'
+  block:
+    - name: Load br_netfilter
+      ansible.builtin.command: modprobe br_netfilter
+      changed_when: false
+      failed_when: false
+
+    - name: Persist br_netfilter
+      ansible.builtin.copy:
+        dest: /etc/modules-load.d/platform-br_netfilter.conf
+        mode: "0644"
+        content: |
+          br_netfilter
+
+    - name: Sysctl ip_forward and bridge netfilter
+      ansible.posix.sysctl:
+        name: "{{ item.name }}"
+        value: "{{ item.value }}"
+        sysctl_set: true
+        state: present
+        reload: true
+      loop:
+        - { name: net.ipv4.ip_forward, value: "1" }
+        - { name: net.bridge.bridge-nf-call-iptables, value: "1" }
+        - { name: net.bridge.bridge-nf-call-ip6tables, value: "1" }
+      failed_when: false

@@ -1,0 +1,19 @@
+---
+# Copy to vault.yml and encrypt with ansible-vault (password typed on this PC).
+#   cp vault.yml.example vault.yml
+#   # edit k3s_secrets_encryption_key, then:
+#   ansible-vault encrypt vault.yml
+#
+# Or: ./scripts/init-encryption-vault.sh
+#
+# Unlock is MANUAL on the local control PC every playbook run:
+#   ansible-playbook playbooks/site.yml --ask-vault-pass
+#   python3 scripts/render-inventory.py --spawn -- --ask-vault-pass
+#
+# Generate key:
+#   openssl rand -base64 32
+#
+# vault.yml is gitignored. Never commit plaintext. Do not rely on .vault_pass
+# unless you explicitly choose unattended decrypt (not the default).
+
+k3s_secrets_encryption_key: "REPLACE_WITH_openssl_rand_base64_32"

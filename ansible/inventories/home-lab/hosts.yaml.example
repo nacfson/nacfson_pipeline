@@ -1,0 +1,19 @@
+---
+# Example inventory shape matching OpenTofu handoff.
+# Regenerate the real file with: python3 scripts/render-inventory.py
+# (always refreshes from infra/handoff after tofu apply)
+all:
+  children:
+    application:
+      hosts:
+        app-node-01:
+          ansible_host: 192.0.2.10
+          ansible_user: ubuntu
+          ansible_port: 22
+          node_role: application
+          arch: amd64
+          data_disk_enabled: true
+          data_disk_device: /dev/sdb
+          data_disk_mount: /var/lib/rancher/k3s/storage
+    registry:
+      hosts: {}

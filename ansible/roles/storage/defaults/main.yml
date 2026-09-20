@@ -1,0 +1,5 @@
+---
+storage_fs_type: ext4
+storage_label_application: k3s-storage
+storage_label_registry: registry-storage
+storage_mount_mode: "0700"

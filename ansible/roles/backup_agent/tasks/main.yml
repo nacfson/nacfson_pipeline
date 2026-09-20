@@ -1,0 +1,62 @@
+---
+- name: Ensure /etc/platform directory
+  ansible.builtin.file:
+    path: /etc/platform
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Materialize OpenTofu backup contract env
+  ansible.builtin.copy:
+    dest: "{{ backup_agent_env_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+    content: |
+      # Managed by Ansible role backup_agent — OpenTofu backup contract
+      # Full encrypted etcd upload is NOT implemented yet.
+      BACKUP_ENABLED={{ (opentofu_backup.enabled | default(false)) | bool | ternary('true', 'false') }}
+      BACKUP_KIND={{ opentofu_backup.kind | default('none') }}
+      BACKUP_ENDPOINT={{ opentofu_backup.endpoint | default('') }}
+      BACKUP_BUCKET_OR_PATH={{ opentofu_backup.bucket_or_path | default('') }}
+      BACKUP_REGION={{ opentofu_backup.region | default('') }}
+      BACKUP_RETENTION_DAYS={{ opentofu_backup.retention_days | default('') }}
+      BACKUP_ENCRYPTION={{ opentofu_backup.encryption | default('') }}
+
+- name: Install stub backup systemd service
+  when: backup_agent_enable_stub_timer | default(false) | bool
+  block:
+    - name: Write stub service unit
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ backup_agent_unit_name }}.service"
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Platform backup agent stub (not fully implemented)
+          [Service]
+          Type=oneshot
+          EnvironmentFile=-{{ backup_agent_env_path }}
+          ExecStart=/bin/echo backup agent not fully implemented
+      notify: Reload systemd for backup stub
+
+    - name: Write stub timer unit
+      ansible.builtin.copy:
+        dest: "/etc/systemd/system/{{ backup_agent_unit_name }}.timer"
+        mode: "0644"
+        content: |
+          [Unit]
+          Description=Platform backup agent stub timer
+          [Timer]
+          OnCalendar=daily
+          Persistent=true
+          [Install]
+          WantedBy=timers.target
+      notify: Reload systemd for backup stub
+
+    - name: Enable stub timer
+      ansible.builtin.systemd:
+        name: "{{ backup_agent_unit_name }}.timer"
+        enabled: true
+        state: started
+        daemon_reload: true

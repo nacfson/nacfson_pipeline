@@ -1,0 +1,5 @@
+---
+host_firewall_table: platform_host_fw
+host_firewall_chain_input: input
+# Fail closed when applying application hosts without admin CIDRs
+host_firewall_require_admin_cidrs: true

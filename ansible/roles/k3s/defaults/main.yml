@@ -1,0 +1,10 @@
+---
+k3s_install_dir: /usr/local/bin
+k3s_binary_path: /usr/local/bin/k3s
+k3s_data_dir: /var/lib/rancher/k3s
+k3s_cred_dir: /var/lib/rancher/k3s/server/cred
+k3s_encryption_config_path: /var/lib/rancher/k3s/server/cred/encryption-config.json
+k3s_kubeconfig_src: /etc/rancher/k3s/k3s.yaml
+k3s_service_name: k3s
+k3s_node_ready_retries: 60
+k3s_node_ready_delay: 5

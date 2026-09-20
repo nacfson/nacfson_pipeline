@@ -1,0 +1,8 @@
+---
+- name: Apply platform nftables
+  ansible.builtin.shell: |
+    set -euo pipefail
+    nft list table inet {{ host_firewall_table }} >/dev/null 2>&1 && nft delete table inet {{ host_firewall_table }} || true
+    nft -f /etc/nftables.d/platform_host_fw.nft
+  args:
+    executable: /bin/bash

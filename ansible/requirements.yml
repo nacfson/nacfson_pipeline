@@ -1,0 +1,7 @@
+---
+# Collections required for sysctl/mount (posix) and filesystem (general).
+collections:
+  - name: ansible.posix
+    version: ">=1.5.0"
+  - name: community.general
+    version: ">=8.0.0"

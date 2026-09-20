@@ -1,0 +1,86 @@
+---
+- name: Skip storage when data disk disabled
+  ansible.builtin.debug:
+    msg: "data_disk_enabled is false — skipping storage role"
+  when: not (data_disk_enabled | default(false) | bool)
+
+- name: Configure data disk
+  when: data_disk_enabled | default(false) | bool
+  block:
+    - name: Assert data_disk_device is set
+      ansible.builtin.assert:
+        that:
+          - data_disk_device is defined
+          - data_disk_device | length > 0
+          - data_disk_mount is defined
+          - data_disk_mount | length > 0
+        fail_msg: >-
+          data_disk_enabled but data_disk_device/mount missing.
+          Fix OpenTofu/hardware contract — no silent fallback to root disk.
+
+    - name: Assert data disk device exists
+      ansible.builtin.stat:
+        path: "{{ data_disk_device }}"
+      register: data_disk_stat
+
+    - name: Fail if data disk device missing
+      ansible.builtin.fail:
+        msg: >-
+          Data disk device {{ data_disk_device }} does not exist.
+          Fix OpenTofu/hardware contract — refusing to use root filesystem
+          for {{ data_disk_mount }}.
+      when: not data_disk_stat.stat.exists
+
+    - name: Resolve filesystem label by role
+      ansible.builtin.set_fact:
+        _storage_label: "{{ storage_label_application if (node_role | default('')) == 'application' else storage_label_registry }}"
+
+    - name: Probe existing filesystem on data disk
+      ansible.builtin.command:
+        cmd: "blkid -o value -s TYPE {{ data_disk_device }}"
+      register: data_disk_fs
+      changed_when: false
+      failed_when: false
+
+    - name: Create ext4 filesystem when absent
+      community.general.filesystem:
+        fstype: "{{ storage_fs_type }}"
+        dev: "{{ data_disk_device }}"
+        opts: "-L {{ _storage_label }}"
+      when: data_disk_fs.rc != 0 or (data_disk_fs.stdout | trim | length == 0)
+
+    - name: Read filesystem UUID
+      ansible.builtin.command:
+        cmd: "blkid -o value -s UUID {{ data_disk_device }}"
+      register: data_disk_uuid
+      changed_when: false
+
+    - name: Assert UUID resolved
+      ansible.builtin.assert:
+        that:
+          - data_disk_uuid.stdout | trim | length > 0
+        fail_msg: "Could not read UUID for {{ data_disk_device }}"
+
+    - name: Ensure mount point directory
+      ansible.builtin.file:
+        path: "{{ data_disk_mount }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ storage_mount_mode }}"
+
+    - name: Mount data disk by UUID
+      ansible.posix.mount:
+        path: "{{ data_disk_mount }}"
+        src: "UUID={{ data_disk_uuid.stdout | trim }}"
+        fstype: "{{ storage_fs_type }}"
+        opts: defaults,nofail
+        state: mounted
+
+    - name: Enforce mount directory mode
+      ansible.builtin.file:
+        path: "{{ data_disk_mount }}"
+        state: directory
+        owner: root
+        group: root
+        mode: "{{ storage_mount_mode }}"

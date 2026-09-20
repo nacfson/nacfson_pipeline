@@ -1,0 +1,8 @@
+---
+flux_install_dir: /usr/local/bin
+flux_binary_path: /usr/local/bin/flux
+flux_namespace: flux-system
+flux_gitrepository_ready_retries: 36
+flux_gitrepository_ready_delay: 10
+k3s_kubeconfig_src: /etc/rancher/k3s/k3s.yaml
+k3s_binary_path: /usr/local/bin/k3s

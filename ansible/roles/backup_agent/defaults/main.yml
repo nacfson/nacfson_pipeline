@@ -1,0 +1,3 @@
+---
+backup_agent_env_path: /etc/platform/backup-target.env
+backup_agent_unit_name: platform-backup-agent

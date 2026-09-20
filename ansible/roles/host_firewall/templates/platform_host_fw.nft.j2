@@ -1,0 +1,19 @@
+#!/usr/sbin/nft -f
+# Managed by Ansible role host_firewall — OpenTofu firewall policy enforcement.
+# Flushes only table inet {{ host_firewall_table }}; does not wipe other nft tables.
+
+table inet {{ host_firewall_table }} {
+  chain {{ host_firewall_chain_input }} {
+    type filter hook input priority 0; policy drop;
+
+    iif "lo" accept
+    ct state established,related accept
+
+{% for rule in _fw_rules %}
+{% if rule.action | default('') == 'allow' and (rule.direction | default('ingress')) == 'ingress' %}
+    # {{ rule.name | default('rule') }} — {{ rule.purpose | default('') }}
+    ip saddr {{ rule.source_cidr }} {{ rule.protocol | default('tcp') }} dport {{ rule.port }} accept
+{% endif %}
+{% endfor %}
+  }
+}

@@ -15,3 +15,13 @@ infra/handoff/*.json
 infra/handoff/*.yaml
 infra/handoff/*.yml
 !infra/handoff/.gitkeep
+
+# Ansible generated inventory + secrets
+ansible/inventories/home-lab/hosts.yaml
+ansible/inventories/home-lab/group_vars/from_opentofu.yaml
+ansible/.vault_pass
+ansible/**/*.vault.yml
+ansible/**/group_vars/**/vault.yml
+ansible/.secrets/
+
+ansible/inventories/home-lab/.hosts.syntax-check.yaml

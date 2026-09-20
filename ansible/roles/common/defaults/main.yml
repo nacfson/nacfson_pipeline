@@ -1,0 +1,9 @@
+---
+common_packages:
+  - curl
+  - ca-certificates
+  - gnupg
+  - jq
+common_optional_packages:
+  - nfs-common
+common_ssh_config_path: /etc/ssh/sshd_config.d/99-platform.conf

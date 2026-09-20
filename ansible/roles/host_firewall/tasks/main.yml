@@ -1,0 +1,54 @@
+---
+- name: Ensure /etc/nftables.d directory
+  ansible.builtin.file:
+    path: /etc/nftables.d
+    state: directory
+    mode: "0755"
+
+- name: Resolve firewall policy from OpenTofu handoff
+  ansible.builtin.set_fact:
+    _fw_policy: "{{ opentofu_firewall_policy | default({}) }}"
+    _fw_rules: "{{ (opentofu_firewall_policy | default({})).rules | default([]) }}"
+    _fw_admin_cidrs: "{{ opentofu_admin_cidrs | default([]) }}"
+
+- name: Fail closed if application host has empty admin CIDRs
+  ansible.builtin.assert:
+    that:
+      - (_fw_admin_cidrs | length > 0) or (_fw_rules | selectattr('action', 'defined') | selectattr('action', 'equalto', 'allow') | list | length > 0)
+    fail_msg: >-
+      opentofu_firewall_policy has no allow rules / admin_cidrs.
+      Fix terraform.tfvars / tofu apply, then python3 scripts/render-inventory.py.
+  when:
+    - host_firewall_require_admin_cidrs | bool
+    - node_role | default('') == 'application'
+
+- name: Ensure nftables package
+  ansible.builtin.apt:
+    name: nftables
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Ensure nftables.d include exists in /etc/nftables.conf
+  ansible.builtin.lineinfile:
+    path: /etc/nftables.conf
+    line: 'include "/etc/nftables.d/*.nft"'
+    create: true
+    mode: "0644"
+
+- name: Render platform nftables ruleset
+  ansible.builtin.template:
+    src: platform_host_fw.nft.j2
+    dest: /etc/nftables.d/platform_host_fw.nft
+    owner: root
+    group: root
+    mode: "0644"
+
+- name: Flush and load only platform_host_fw table
+  ansible.builtin.shell: |
+    set -euo pipefail
+    nft list table inet {{ host_firewall_table }} >/dev/null 2>&1 && nft delete table inet {{ host_firewall_table }} || true
+    nft -f /etc/nftables.d/platform_host_fw.nft
+  args:
+    executable: /bin/bash
+  changed_when: true

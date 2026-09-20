@@ -1,0 +1,249 @@
+---
+- name: Assert application role and amd64 arch
+  ansible.builtin.assert:
+    that:
+      - node_role | default('') == 'application'
+      - (platform_arch | default('amd64')) == 'amd64'
+    fail_msg: "flux_bootstrap requires node_role=application and platform_arch=amd64"
+
+- name: Assert flux_git_url is configured
+  ansible.builtin.assert:
+    that:
+      - flux_git_url is defined
+      - "'<' not in flux_git_url"
+      - "'>' not in flux_git_url"
+      - flux_git_url | length > 0
+    fail_msg: >-
+      Set flux_git_url to the reachable private off-server seed/recovery
+      repository before Flux bootstrap; placeholder URLs are rejected.
+
+- name: Create temporary directory for flux tarball
+  ansible.builtin.tempfile:
+    state: directory
+    suffix: flux
+  register: flux_tmpdir
+
+- name: Download pinned flux CLI tarball
+  ansible.builtin.get_url:
+    url: "{{ flux_tarball_url }}"
+    dest: "{{ flux_tmpdir.path }}/flux.tar.gz"
+    mode: "0644"
+
+- name: Extract flux binary
+  ansible.builtin.unarchive:
+    src: "{{ flux_tmpdir.path }}/flux.tar.gz"
+    dest: "{{ flux_tmpdir.path }}"
+    remote_src: true
+
+- name: Install flux to /usr/local/bin
+  ansible.builtin.copy:
+    src: "{{ flux_tmpdir.path }}/flux"
+    dest: "{{ flux_binary_path }}"
+    remote_src: true
+    mode: "0755"
+    owner: root
+    group: root
+
+- name: Cleanup flux tempdir
+  ansible.builtin.file:
+    path: "{{ flux_tmpdir.path }}"
+    state: absent
+
+- name: Verify flux client version
+  ansible.builtin.command:
+    cmd: "{{ flux_binary_path }} version --client"
+  register: flux_version_out
+  changed_when: false
+
+- name: Assert flux version pin
+  ansible.builtin.assert:
+    that:
+      - flux_version in flux_version_out.stdout
+    fail_msg: >-
+      flux version mismatch: expected {{ flux_version }}, got {{ flux_version_out.stdout }}
+
+- name: Run flux check --pre
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export KUBECONFIG={{ k3s_kubeconfig_src }}
+    {{ flux_binary_path }} check --pre
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Install Flux controllers (pinned version)
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export KUBECONFIG={{ k3s_kubeconfig_src }}
+    {{ flux_binary_path }} install --version {{ flux_version }}
+  args:
+    executable: /bin/bash
+  register: flux_install
+  changed_when: "'installing' in (flux_install.stdout | lower) or flux_install.rc == 0"
+
+- name: Ensure flux-system namespace
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export KUBECONFIG={{ k3s_kubeconfig_src }}
+    {{ k3s_binary_path }} kubectl create namespace {{ flux_namespace }} --dry-run=client -o yaml \
+      | {{ k3s_binary_path }} kubectl apply -f -
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Bootstrap Git auth secret (SSH)
+  when: flux_git_auth_mode | default('ssh') == 'ssh'
+  block:
+    - name: Stat deploy key on control machine
+      ansible.builtin.stat:
+        path: "{{ flux_deploy_key_private_path }}"
+      register: flux_deploy_key_stat
+      delegate_to: localhost
+      become: false
+
+    - name: Fail if deploy key missing
+      ansible.builtin.fail:
+        msg: >-
+          flux_deploy_key_private_path missing: {{ flux_deploy_key_private_path }}.
+          Place an SSH deploy key there before flux_bootstrap.
+      when: not flux_deploy_key_stat.stat.exists
+
+    - name: Copy deploy key to node temp path
+      ansible.builtin.copy:
+        src: "{{ flux_deploy_key_private_path }}"
+        dest: /tmp/flux-deploy-key
+        mode: "0600"
+        owner: root
+        group: root
+
+    - name: Apply flux-system SSH secret from file
+      ansible.builtin.shell: |
+        set -euo pipefail
+        export KUBECONFIG={{ k3s_kubeconfig_src }}
+        {{ k3s_binary_path }} kubectl -n {{ flux_namespace }} create secret generic flux-system \
+          --from-file=identity=/tmp/flux-deploy-key \
+          --dry-run=client -o yaml \
+          | {{ k3s_binary_path }} kubectl apply -f -
+        rm -f /tmp/flux-deploy-key
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+- name: Bootstrap Git auth secret (HTTPS)
+  when: flux_git_auth_mode | default('ssh') == 'https'
+  block:
+    - name: Assert HTTPS credentials
+      ansible.builtin.assert:
+        that:
+          - flux_https_username | default('') | length > 0
+          - flux_https_password | default('') | length > 0
+        fail_msg: "flux_git_auth_mode=https requires flux_https_username and flux_https_password"
+
+    - name: Apply flux-system basic-auth secret
+      ansible.builtin.shell: |
+        set -euo pipefail
+        export KUBECONFIG={{ k3s_kubeconfig_src }}
+        {{ k3s_binary_path }} kubectl -n {{ flux_namespace }} create secret generic flux-system \
+          --from-literal=username='{{ flux_https_username }}' \
+          --from-literal=password='{{ flux_https_password }}' \
+          --dry-run=client -o yaml \
+          | {{ k3s_binary_path }} kubectl apply -f -
+      args:
+        executable: /bin/bash
+      no_log: true
+      changed_when: true
+
+- name: Stage gotk-sync manifest
+  ansible.builtin.template:
+    src: gotk-sync.yaml.j2
+    dest: /tmp/gotk-sync.yaml
+    mode: "0600"
+
+- name: Apply GitRepository and Kustomization
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export KUBECONFIG={{ k3s_kubeconfig_src }}
+    {{ k3s_binary_path }} kubectl apply -f /tmp/gotk-sync.yaml
+    rm -f /tmp/gotk-sync.yaml
+  args:
+    executable: /bin/bash
+  register: gotk_sync_apply
+  changed_when: "'created' in gotk_sync_apply.stdout or 'configured' in gotk_sync_apply.stdout"
+
+- name: Create sops-age secret
+  when: not (flux_skip_sops_secret | default(false) | bool)
+  block:
+    - name: Stat sops age key on control machine
+      ansible.builtin.stat:
+        path: "{{ sops_age_key_path }}"
+      register: sops_age_stat
+      delegate_to: localhost
+      become: false
+
+    - name: Fail if sops age key missing
+      ansible.builtin.fail:
+        msg: >-
+          sops_age_key_path missing: {{ sops_age_key_path }}.
+          Required because clusters/production/infrastructure.yaml uses decryption.secretRef sops-age.
+          Set flux_skip_sops_secret=true only for dry runs without decrypt.
+      when: not sops_age_stat.stat.exists
+
+    - name: Copy age key to node temp path
+      ansible.builtin.copy:
+        src: "{{ sops_age_key_path }}"
+        dest: /tmp/age.agekey
+        mode: "0600"
+        owner: root
+        group: root
+
+    - name: Apply sops-age secret
+      ansible.builtin.shell: |
+        set -euo pipefail
+        export KUBECONFIG={{ k3s_kubeconfig_src }}
+        {{ k3s_binary_path }} kubectl -n {{ flux_namespace }} create secret generic sops-age \
+          --from-file=age.agekey=/tmp/age.agekey \
+          --dry-run=client -o yaml \
+          | {{ k3s_binary_path }} kubectl apply -f -
+        rm -f /tmp/age.agekey
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+- name: Wait until GitRepository flux-system is Ready
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export KUBECONFIG={{ k3s_kubeconfig_src }}
+    ready=$({{ k3s_binary_path }} kubectl -n {{ flux_namespace }} get gitrepository flux-system \
+      -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+    test "$ready" = "True"
+  args:
+    executable: /bin/bash
+  register: gitrepo_ready
+  until: gitrepo_ready.rc == 0
+  retries: "{{ flux_gitrepository_ready_retries }}"
+  delay: "{{ flux_gitrepository_ready_delay }}"
+  changed_when: false
+  failed_when: false
+
+- name: Surface GitRepository failure details
+  when: gitrepo_ready.rc != 0
+  block:
+    - name: Collect GitRepository status
+      ansible.builtin.shell: |
+        set -euo pipefail
+        export KUBECONFIG={{ k3s_kubeconfig_src }}
+        {{ k3s_binary_path }} kubectl -n {{ flux_namespace }} get gitrepository flux-system -o yaml || true
+        {{ k3s_binary_path }} kubectl -n {{ flux_namespace }} describe gitrepository flux-system || true
+      args:
+        executable: /bin/bash
+      register: gitrepo_describe
+      changed_when: false
+      failed_when: false
+
+    - name: Fail with clear remote/auth message
+      ansible.builtin.fail:
+        msg: |+
+          GitRepository flux-system is not Ready against {{ flux_git_url }}.
+          Check deploy key / HTTPS credentials and remote reachability.
+          ---
+          {{ gitrepo_describe.stdout | default('') }}

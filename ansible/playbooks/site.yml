@@ -1,0 +1,23 @@
+---
+# Full bootstrap: host prep → k3s → Flux (application only for last two).
+# Ownership: host OS, mounts, firewall, k3s, one-time StorageClass retain,
+# Flux controllers + Git source + root sync + sops-age only.
+# Must not apply infrastructure HelmReleases or app manifests after handover.
+
+- name: Host preparation (all nodes)
+  hosts: application:registry
+  gather_facts: true
+  become: true
+  roles:
+    - role: common
+    - role: host_firewall
+    - role: storage
+    - role: backup_agent
+
+- name: Kubernetes and Flux bootstrap (application only)
+  hosts: application
+  gather_facts: true
+  become: true
+  roles:
+    - role: k3s
+    - role: flux_bootstrap

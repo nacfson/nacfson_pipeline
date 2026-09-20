@@ -1,0 +1,151 @@
+---
+- name: Assert application role and amd64 arch
+  ansible.builtin.assert:
+    that:
+      - node_role | default('') == 'application'
+      - (platform_arch | default('amd64')) == 'amd64'
+      - (arch | default('amd64')) == 'amd64'
+    fail_msg: "k3s role requires node_role=application and platform_arch/arch=amd64"
+
+- name: Resolve secrets encryption key
+  ansible.builtin.set_fact:
+    _k3s_encryption_key: "{{ k3s_secrets_encryption_key | default(lookup('env', 'K3S_SECRETS_ENCRYPTION_KEY')) | default('', true) }}"
+
+- name: Require k3s_secrets_encryption_key
+  ansible.builtin.assert:
+    that:
+      - _k3s_encryption_key | length > 0
+    fail_msg: >-
+      k3s_secrets_encryption_key missing.
+      Set in group_vars/application/vault.yml or export K3S_SECRETS_ENCRYPTION_KEY.
+      Generate with: openssl rand -base64 32
+
+- name: Create k3s credential directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  loop:
+    - "{{ k3s_data_dir }}"
+    - "{{ k3s_data_dir }}/server"
+    - "{{ k3s_cred_dir }}"
+
+- name: Download pinned k3s binary
+  ansible.builtin.get_url:
+    url: "{{ k3s_binary_url }}"
+    dest: "{{ k3s_binary_path }}"
+    mode: "0755"
+    owner: root
+    group: root
+    force: true
+
+- name: Verify k3s version string
+  ansible.builtin.command:
+    cmd: "{{ k3s_binary_path }} -v"
+  register: k3s_version_out
+  changed_when: false
+
+- name: Assert installed k3s version matches pin
+  ansible.builtin.assert:
+    that:
+      - k3s_version in k3s_version_out.stdout
+    fail_msg: >-
+      k3s version mismatch: expected {{ k3s_version }}, got {{ k3s_version_out.stdout }}
+
+- name: Install secrets encryption config
+  ansible.builtin.template:
+    src: encryption-config.json.j2
+    dest: "{{ k3s_encryption_config_path }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Install k3s systemd unit
+  ansible.builtin.template:
+    src: k3s.service.j2
+    dest: /etc/systemd/system/k3s.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Restart k3s
+
+- name: Enable and start k3s
+  ansible.builtin.systemd:
+    name: "{{ k3s_service_name }}"
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Wait until kubectl sees a Ready node
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export KUBECONFIG={{ k3s_kubeconfig_src }}
+    {{ k3s_binary_path }} kubectl get nodes --no-headers | grep -q ' Ready'
+  args:
+    executable: /bin/bash
+  register: k3s_node_ready
+  until: k3s_node_ready.rc == 0
+  retries: "{{ k3s_node_ready_retries }}"
+  delay: "{{ k3s_node_ready_delay }}"
+  changed_when: false
+
+- name: Ensure /root/.kube directory
+  ansible.builtin.file:
+    path: /root/.kube
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Copy kubeconfig for root
+  ansible.builtin.copy:
+    src: "{{ k3s_kubeconfig_src }}"
+    dest: /root/.kube/config
+    remote_src: true
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Ensure local secrets dir on control node
+  ansible.builtin.file:
+    path: "{{ k3s_local_kubeconfig_path | dirname }}"
+    state: directory
+    mode: "0700"
+  delegate_to: localhost
+  become: false
+  when: k3s_fetch_kubeconfig | default(true) | bool
+
+- name: Fetch kubeconfig to control node
+  ansible.builtin.fetch:
+    src: "{{ k3s_kubeconfig_src }}"
+    dest: "{{ k3s_local_kubeconfig_path }}"
+    flat: true
+  when: k3s_fetch_kubeconfig | default(true) | bool
+
+- name: Stage local-path-retain StorageClass
+  ansible.builtin.template:
+    src: local-path-retain-storageclass.yaml.j2
+    dest: /tmp/local-path-retain-storageclass.yaml
+    mode: "0644"
+
+- name: Apply local-path-retain StorageClass
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export KUBECONFIG={{ k3s_kubeconfig_src }}
+    {{ k3s_binary_path }} kubectl apply -f /tmp/local-path-retain-storageclass.yaml
+    rm -f /tmp/local-path-retain-storageclass.yaml
+  args:
+    executable: /bin/bash
+  register: sc_apply
+  changed_when: "'created' in sc_apply.stdout or 'configured' in sc_apply.stdout"
+
+- name: Verify local-path-retain StorageClass
+  ansible.builtin.shell: |
+    set -euo pipefail
+    export KUBECONFIG={{ k3s_kubeconfig_src }}
+    {{ k3s_binary_path }} kubectl get storageclass {{ k3s_storage_class_retain_name }}
+  args:
+    executable: /bin/bash
+  changed_when: false

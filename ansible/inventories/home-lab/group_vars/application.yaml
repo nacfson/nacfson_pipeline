@@ -1,0 +1,12 @@
+---
+# k3s + Flux only on application hosts
+# Preferred: inventories/home-lab/group_vars/application/vault.yml (ansible-vault)
+#   ./scripts/init-encryption-vault.sh
+# Unlock manually each run: ansible-playbook ... --ask-vault-pass
+# Fallback: export K3S_SECRETS_ENCRYPTION_KEY="$(openssl rand -base64 32)"
+#
+# vault.yml is gitignored. No auto vault_password_file in ansible.cfg.
+
+k3s_disable_traefik: true
+k3s_write_kubeconfig_mode: "644"
+k3s_storage_class_retain_name: "local-path-retain"

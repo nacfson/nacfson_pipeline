@@ -64,9 +64,20 @@ Outputs and files written under `infra/handoff/`:
 ## Next owner after apply
 
 1. Publish DNS from `home-lab.dns.yaml` (manual registrar or later DNS provider module).
-2. Feed `home-lab.inventory.yaml` into Ansible.
-3. Ansible: harden host, mount data disk, install pinned k3s, bootstrap Flux once.
-4. Flux reconciles `platform-config/` — resume live tasks from **4.2**.
+2. Render Ansible inventory from handoff and run the site playbook — see [`ansible/README.md`](../ansible/README.md):
+
+```bash
+cd ansible
+python3 scripts/render-inventory.py   # always refresh hosts.yaml + from_opentofu.yaml
+# set flux_git_url to the private off-server seed mirror + place .secrets/
+./scripts/init-encryption-vault.sh    # interactive vault password on this PC
+python3 scripts/render-inventory.py --check   # fail-closed preflight
+python3 scripts/render-inventory.py --spawn -- --ask-vault-pass   # manual unlock
+```
+
+3. Ansible: harden host, mount data disk, install pinned k3s, bootstrap Flux once against the private off-server seed mirror (stops writing Kubernetes after Flux Git source is Ready).
+4. Flux reconciles `platform-config/clusters/production`, including the Forgejo workload, from that seed source.
+5. After Forgejo is Ready, mirror `platform-config` into `platform/platform-config`, register the Flux public deploy key, and cut the `GitRepository` URL over to Forgejo. Keep the off-server mirror as the recovery source. See [`ansible/README.md`](../ansible/README.md) "Two-stage Git source".
 
 ## Cloud later
 

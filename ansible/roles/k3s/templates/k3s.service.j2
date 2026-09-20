@@ -1,0 +1,35 @@
+[Unit]
+Description=Lightweight Kubernetes (k3s) — platform pinned install
+Documentation=https://k3s.io
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=notify
+EnvironmentFile=-/etc/default/%N
+EnvironmentFile=-/etc/sysconfig/%N
+KillMode=process
+Delegate=yes
+# Having non-zero Limit*s causes performance problems due to accounting overhead
+# in the kernel. We recommend using cgroups to do container accounting.
+LimitNOFILE=1048576
+LimitNPROC=infinity
+LimitCORE=infinity
+TasksMax=infinity
+TimeoutStartSec=0
+Restart=always
+RestartSec=5s
+ExecStartPre=-/sbin/modprobe br_netfilter
+ExecStartPre=-/sbin/modprobe overlay
+ExecStart={{ k3s_binary_path }} server \
+  --disable traefik \
+  --write-kubeconfig-mode {{ k3s_write_kubeconfig_mode }} \
+  --secrets-encryption \
+  --kube-apiserver-arg=encryption-provider-config={{ k3s_encryption_config_path }} \
+  --node-label=kubernetes.io/arch=amd64 \
+  --node-label=platform.processmanager.dev/arch=amd64 \
+  --node-label=platform.processmanager.dev/workload=true \
+  --node-label=platform.processmanager.dev/role=application
+
+[Install]
+WantedBy=multi-user.target
