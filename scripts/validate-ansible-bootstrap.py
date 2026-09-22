@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
-"""Structural validation for ansible/ host + k3s + Flux bootstrap tree.
+"""Structural validation for the Ansible k3s + Forgejo + Flux bootstrap.
 
-Checks required role/playbook files, ownership guardrails (no apply of
-platform-config/infrastructure from Ansible), version pins vs
-platform-config/.platform/versions.yaml, and optionally
-ansible-playbook --syntax-check when ansible-playbook is on PATH.
+Checks required role/playbook files, local-first/idempotent Forgejo bootstrap,
+ownership guardrails, version pins, and optionally ansible-playbook
+--syntax-check when ansible-playbook is on PATH.
 """
 
 from __future__ import annotations
@@ -24,12 +23,15 @@ REQUIRED_PATHS = [
     "README.md",
     "requirements.yml",
     "inventories/home-lab/hosts.yaml.example",
-    "inventories/home-lab/group_vars/all.yaml",
-    "inventories/home-lab/group_vars/application.yaml",
+    "inventories/home-lab/group_vars/all/settings.yaml",
+    "inventories/home-lab/group_vars/application/settings.yaml",
     "inventories/home-lab/group_vars/registry.yaml",
     "playbooks/site.yml",
     "playbooks/host-prep.yml",
+    "playbooks/storage.yml",
+    "playbooks/firewall.yml",
     "playbooks/k3s.yml",
+    "playbooks/forgejo.yml",
     "playbooks/flux.yml",
     "scripts/render-inventory.py",
     "roles/common/tasks/main.yml",
@@ -40,6 +42,10 @@ REQUIRED_PATHS = [
     "roles/k3s/templates/k3s.service.j2",
     "roles/k3s/templates/encryption-config.json.j2",
     "roles/k3s/templates/local-path-retain-storageclass.yaml.j2",
+    "roles/forgejo_bootstrap/defaults/main.yml",
+    "roles/forgejo_bootstrap/tasks/main.yml",
+    "roles/forgejo_bootstrap/tasks/install.yml",
+    "roles/forgejo_bootstrap/templates/forgejo-bootstrap.yaml.j2",
     "roles/flux_bootstrap/tasks/main.yml",
     "roles/flux_bootstrap/templates/gotk-sync.yaml.j2",
     "roles/backup_agent/tasks/main.yml",
@@ -140,7 +146,7 @@ def check_version_pins() -> None:
     if not VERSIONS.is_file():
         fail("platform-config/.platform/versions.yaml missing")
     pinned = parse_versions_yaml(VERSIONS.read_text(encoding="utf-8"))
-    group_vars = ANSIBLE / "inventories" / "home-lab" / "group_vars" / "all.yaml"
+    group_vars = ANSIBLE / "inventories" / "home-lab" / "group_vars" / "all" / "settings.yaml"
     ansible_pins = parse_group_vars_pins(group_vars.read_text(encoding="utf-8"))
 
     expected = {
@@ -154,10 +160,50 @@ def check_version_pins() -> None:
             fail(f"could not parse {key} from versions.yaml")
         got = ansible_pins.get(key)
         if got != want:
-            fail(f"group_vars/all.yaml {key}={got!r} != versions.yaml {want!r}")
+            fail(f"group_vars/all/settings.yaml {key}={got!r} != versions.yaml {want!r}")
 
     if ansible_pins.get("platform_arch") != "amd64":
         fail("platform_arch must be amd64")
+
+
+def check_local_forgejo_bootstrap() -> None:
+    site = (ANSIBLE / "playbooks" / "site.yml").read_text(encoding="utf-8")
+    k3s_at = site.find("role: k3s")
+    forgejo_at = site.find("role: forgejo_bootstrap")
+    flux_at = site.find("role: flux_bootstrap")
+    if not (0 <= k3s_at < forgejo_at < flux_at):
+        fail("site.yml role order must be k3s -> forgejo_bootstrap -> flux_bootstrap")
+
+    tasks = (
+        ANSIBLE / "roles" / "forgejo_bootstrap" / "tasks" / "main.yml"
+    ).read_text(encoding="utf-8")
+    required = (
+        "Verify whether Forgejo is already installed",
+        "forgejo_already_installed",
+        "when: not forgejo_already_installed",
+        "Report existing Forgejo installation",
+        "bundle create",
+        "Register Flux read-only deploy key in Forgejo",
+        "Use local Forgejo as Flux Git source",
+    )
+    for token in required:
+        if token not in tasks:
+            fail(f"Forgejo bootstrap is missing required behavior: {token}")
+
+    group_vars = (
+        ANSIBLE / "inventories" / "home-lab" / "group_vars" / "all" / "settings.yaml"
+    ).read_text(encoding="utf-8")
+    url_match = re.search(r'^flux_git_url:\s*["\']?([^"\'\n]+)', group_vars, re.M)
+    if not url_match or "forgejo.forgejo.svc.cluster.local" not in url_match.group(1):
+        fail("flux_git_url must target the in-cluster Forgejo service")
+    if re.search(r"flux_git_url:.*(?:github\.com|gitlab\.com)", group_vars, re.I):
+        fail("flux_git_url must not require an external Git host")
+
+    flux_tasks = (
+        ANSIBLE / "roles" / "flux_bootstrap" / "tasks" / "main.yml"
+    ).read_text(encoding="utf-8")
+    if "--from-file=known_hosts=/tmp/flux-known-hosts" not in flux_tasks:
+        fail("Flux SSH secret must pin the local Forgejo host key")
 
 
 def check_readme_ownership() -> None:
@@ -209,6 +255,7 @@ def main() -> int:
         check_required_paths()
         check_no_forbidden_ownership()
         check_version_pins()
+        check_local_forgejo_bootstrap()
         check_readme_ownership()
         run_syntax_check()
     except ValidationError as exc:

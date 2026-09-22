@@ -5,4 +5,4 @@ creation_rules:
   - path_regex: .*\.sops\.ya?ml$
     encrypted_regex: ^(data|stringData)$
     # Replace with the platform age public key before encrypting production Secrets.
-    age: age1platformreplacementpubkeyplaceholder000000000000000000000000000
+    age: age1c47fy4esygealylpngzjnfr4hf48k6k2axre9jnnua3c0l8jdcsqkec4m6

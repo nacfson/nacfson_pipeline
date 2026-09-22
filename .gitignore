@@ -18,7 +18,7 @@ infra/handoff/*.yml
 
 # Ansible generated inventory + secrets
 ansible/inventories/home-lab/hosts.yaml
-ansible/inventories/home-lab/group_vars/from_opentofu.yaml
+ansible/inventories/home-lab/group_vars/all/from_opentofu.yaml
 ansible/.vault_pass
 ansible/**/*.vault.yml
 ansible/**/group_vars/**/vault.yml

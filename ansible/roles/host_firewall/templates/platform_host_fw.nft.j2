@@ -9,6 +9,23 @@ table inet {{ host_firewall_table }} {
     iif "lo" accept
     ct state established,related accept
 
+{% if node_role | default('') == 'application' %}
+    # k3s pod-to-host traffic, including the Kubernetes API ClusterIP
+    iifname { {% for interface in host_firewall_k3s_interfaces %}"{{ interface }}"{% if not loop.last %}, {% endif %}{% endfor %} } ip saddr {{ host_firewall_k3s_pod_cidr }} accept
+{% endif %}
+
+{% if host_firewall_wireguard_enabled | default(true) | bool %}
+    # wireguard-underlay — keep the tunnel reachable under default-drop
+{% set wg_sources = host_firewall_wireguard_source_cidrs | default([]) %}
+{% if wg_sources | length == 0 %}
+    udp dport {{ host_firewall_wireguard_port | default(51820) }} accept
+{% else %}
+{% for cidr in wg_sources %}
+    ip saddr {{ cidr }} udp dport {{ host_firewall_wireguard_port | default(51820) }} accept
+{% endfor %}
+{% endif %}
+{% endif %}
+
 {% for rule in _fw_rules %}
 {% if rule.action | default('') == 'allow' and (rule.direction | default('ingress')) == 'ingress' %}
     # {{ rule.name | default('rule') }} — {{ rule.purpose | default('') }}

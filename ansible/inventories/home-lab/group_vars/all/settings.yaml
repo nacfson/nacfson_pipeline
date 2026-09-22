@@ -1,0 +1,45 @@
+---
+# Shared pins — must match platform-config/.platform/versions.yaml
+k3s_version: "v1.34.11+k3s1"
+k3s_binary_url: "https://github.com/k3s-io/k3s/releases/download/v1.34.11%2Bk3s1/k3s"
+flux_version: "v2.9.5"
+flux_tarball_url: "https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_linux_amd64.tar.gz"
+platform_arch: "amd64"
+
+host_timezone: "UTC"
+# Set only to create an extra admin user; default reuses OpenTofu ansible_user.
+bootstrap_admin_user: ""
+# Ubuntu may expose sudo-rs as /usr/bin/sudo; Ansible's prompt protocol
+# requires the compatible classic sudo implementation.
+ansible_become_exe: /usr/bin/sudo.ws
+# Host firewall: allow WireGuard on the underlay (not tunnel admin CIDRs).
+host_firewall_wireguard_enabled: true
+host_firewall_wireguard_port: 51820
+# Empty = any source. Tighten to LAN underlay CIDRs if desired, e.g. ["192.168.219.0/24"].
+host_firewall_wireguard_source_cidrs: []
+# k3s pod networking. The firewall permits this CIDR only on k3s-owned interfaces.
+host_firewall_k3s_pod_cidr: "10.42.0.0/16"
+host_firewall_k3s_interfaces: ["cni0", "flannel.1"]
+
+# Forgejo is installed and seeded before Flux. Flux reconciles only from this
+# in-cluster repository; no external Git host is required for bootstrap.
+forgejo_owner: "platform"
+forgejo_repository: "nacfson_pipeline"
+forgejo_ssh_node_port: 30222
+forgejo_service_git_url: "ssh://git@forgejo.forgejo.svc.cluster.local:22/platform/nacfson_pipeline.git"
+flux_git_url: "ssh://git@forgejo.forgejo.svc.cluster.local:22/platform/nacfson_pipeline.git"
+flux_git_branch: "main"
+flux_git_path: "./platform-config/clusters/production"
+flux_git_auth_mode: "ssh" # ssh | https
+flux_deploy_key_private_path: "{{ playbook_dir }}/../.secrets/flux-deploy-key"
+flux_https_username: "git"
+flux_https_password: ""
+sops_age_key_path: "{{ playbook_dir }}/../.secrets/sops-age/age.key"
+flux_skip_sops_secret: false
+
+# Backup stub — full etcd upload is a follow-up
+backup_agent_enable_stub_timer: false
+
+# Optional: fetch kubeconfig to control node after k3s install
+k3s_fetch_kubeconfig: true
+k3s_local_kubeconfig_path: "{{ playbook_dir }}/../.secrets/kubeconfig"

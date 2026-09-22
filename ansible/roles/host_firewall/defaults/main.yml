@@ -3,3 +3,16 @@ host_firewall_table: platform_host_fw
 host_firewall_chain_input: input
 # Fail closed when applying application hosts without admin CIDRs
 host_firewall_require_admin_cidrs: true
+# WireGuard must be allowed on the underlay before default-drop. Do not scope
+# this to tunnel admin CIDRs (e.g. 10.0.0.2/32) — handshake packets arrive from
+# the peer's underlay address. Empty source list means any (0.0.0.0/0); WireGuard
+# authenticates peers cryptographically.
+host_firewall_wireguard_enabled: true
+host_firewall_wireguard_port: 51820
+host_firewall_wireguard_source_cidrs: []
+# k3s pods must reach host services after ClusterIP DNAT. Limit this exception
+# to traffic arriving on k3s-owned interfaces from the configured pod CIDR.
+host_firewall_k3s_pod_cidr: "10.42.0.0/16"
+host_firewall_k3s_interfaces:
+  - cni0
+  - flannel.1

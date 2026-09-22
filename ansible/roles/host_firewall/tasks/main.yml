@@ -44,9 +44,16 @@
     group: root
     mode: "0644"
 
+- name: Validate rendered nftables ruleset
+  ansible.builtin.command:
+    cmd: "nft -c -f /etc/nftables.d/platform_host_fw.nft"
+  changed_when: false
+
+
 - name: Flush and load only platform_host_fw table
   ansible.builtin.shell: |
     set -euo pipefail
+    nft -c -f /etc/nftables.d/platform_host_fw.nft
     nft list table inet {{ host_firewall_table }} >/dev/null 2>&1 && nft delete table inet {{ host_firewall_table }} || true
     nft -f /etc/nftables.d/platform_host_fw.nft
   args:

@@ -1,10 +1,10 @@
-# Spec Delta
+# Gitops Config Specification
 
 ## Purpose
 
 Defines the authoritative deployment configuration that carries production desired state: its reconciliation root, layout and ownership boundaries, project configuration contract, encrypted secret representation, and the validation gate that keeps invalid configuration out of the production branch.
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement: Production reconciliation root
 

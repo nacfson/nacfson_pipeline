@@ -1,0 +1,16 @@
+---
+forgejo_namespace: forgejo
+forgejo_deployment_name: forgejo
+forgejo_image: code.forgejo.org/forgejo/forgejo:16.0.5@sha256:523de0217475297d05786d7551c1c1d6b5c8b90d6fee7189e88a234260ec0e74
+forgejo_http_node_port: 30080
+forgejo_ssh_node_port: 30222
+forgejo_admin_user: platform-bootstrap
+forgejo_admin_email: platform-bootstrap@localhost
+forgejo_owner: platform
+forgejo_repository: nacfson_pipeline
+forgejo_seed_repo_path: "{{ playbook_dir }}/../.."
+forgejo_service_git_url: "ssh://git@forgejo.forgejo.svc.cluster.local:22/{{ forgejo_owner }}/{{ forgejo_repository }}.git"
+forgejo_ready_retries: 36
+forgejo_ready_delay: 5
+k3s_kubeconfig_src: /etc/rancher/k3s/k3s.yaml
+k3s_binary_path: /usr/local/bin/k3s

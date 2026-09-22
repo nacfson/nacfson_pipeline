@@ -26,6 +26,7 @@
 - [x] 3.3 Select and record off-server object storage, backup retention, RPO/RTO, token/session/cookie lifetimes, administrator reauthentication, release readiness timeout, and build/image/audit retention; verify each value has an operational owner and enforceable configuration location.
 - [x] 3.4 Define the administrator role matrix, TOTP enrollment/reset, recovery-code custody, recovery-account network restriction, credential custody, and security-event response; verify no role can silently grant itself broader privilege.
 - [x] 3.5 Define Google identity suspension, unlinking, replacement, duplicate-account, changed-claim, deletion/tombstone, application-data retention, and project-group assignment/expiry/revocation behavior; verify every lifecycle transition has an authorization owner and preserves issuer/subject semantics.
+- [x] 3.6 Add local-first bootstrap that verifies Forgejo, installs it only when absent, preserves existing data on rerun, seeds committed local history, registers Flux's read-only key, verifies the repository, and bootstraps Flux directly from Forgejo without external Git.
 
 ## 4. CloudNativePG identity storage
 

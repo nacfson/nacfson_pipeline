@@ -1,0 +1,7 @@
+---
+- name: Bootstrap local Forgejo on application nodes
+  hosts: application
+  gather_facts: true
+  become: true
+  roles:
+    - role: forgejo_bootstrap

@@ -42,6 +42,15 @@
       changed_when: false
       failed_when: false
 
+    - name: Refuse an unexpected existing filesystem type
+      ansible.builtin.assert:
+        that:
+          - data_disk_fs.rc != 0 or (data_disk_fs.stdout | trim | length == 0) or (data_disk_fs.stdout | trim == storage_fs_type)
+        fail_msg: >-
+          {{ data_disk_device }} contains {{ data_disk_fs.stdout | trim }}, not
+          {{ storage_fs_type }}. If this is an encrypted disk, configure the
+          unlocked /dev/mapper device. Refusing to format or mount the container.
+
     - name: Create ext4 filesystem when absent
       community.general.filesystem:
         fstype: "{{ storage_fs_type }}"
@@ -61,6 +70,13 @@
           - data_disk_uuid.stdout | trim | length > 0
         fail_msg: "Could not read UUID for {{ data_disk_device }}"
 
+    - name: Find an existing mount for the data filesystem
+      ansible.builtin.command:
+        cmd: "findmnt --noheadings --first-only --output TARGET --source {{ data_disk_device }}"
+      register: data_disk_existing_mount
+      changed_when: false
+      failed_when: false
+
     - name: Ensure mount point directory
       ansible.builtin.file:
         path: "{{ data_disk_mount }}"
@@ -69,13 +85,26 @@
         group: root
         mode: "{{ storage_mount_mode }}"
 
-    - name: Mount data disk by UUID
+    - name: Mount unmounted data filesystem by UUID
       ansible.posix.mount:
         path: "{{ data_disk_mount }}"
         src: "UUID={{ data_disk_uuid.stdout | trim }}"
         fstype: "{{ storage_fs_type }}"
         opts: defaults,nofail
         state: mounted
+      when: data_disk_existing_mount.rc != 0 or (data_disk_existing_mount.stdout | trim | length == 0)
+
+    - name: Bind an existing data filesystem mount
+      ansible.posix.mount:
+        path: "{{ data_disk_mount }}"
+        src: "{{ data_disk_existing_mount.stdout | trim }}"
+        fstype: none
+        opts: bind
+        state: mounted
+      when:
+        - data_disk_existing_mount.rc == 0
+        - data_disk_existing_mount.stdout | trim | length > 0
+        - data_disk_existing_mount.stdout | trim != data_disk_mount
 
     - name: Enforce mount directory mode
       ansible.builtin.file:

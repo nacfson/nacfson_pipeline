@@ -1,0 +1,8 @@
+---
+# Storage only: mount the data disk without re-applying host firewall.
+- name: Data disk storage
+  hosts: application:registry
+  gather_facts: true
+  become: true
+  roles:
+    - role: storage

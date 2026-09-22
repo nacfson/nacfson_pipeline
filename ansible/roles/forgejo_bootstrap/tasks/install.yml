@@ -1,0 +1,19 @@
+---
+- name: Stage Forgejo bootstrap manifest
+  ansible.builtin.template:
+    src: forgejo-bootstrap.yaml.j2
+    dest: /tmp/forgejo-bootstrap.yaml
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Install Forgejo bootstrap workload
+  ansible.builtin.command:
+    cmd: "{{ k3s_binary_path }} kubectl --kubeconfig {{ k3s_kubeconfig_src }} apply -f /tmp/forgejo-bootstrap.yaml"
+  register: forgejo_apply
+  changed_when: "'created' in forgejo_apply.stdout or 'configured' in forgejo_apply.stdout"
+
+- name: Remove staged Forgejo manifest
+  ansible.builtin.file:
+    path: /tmp/forgejo-bootstrap.yaml
+    state: absent

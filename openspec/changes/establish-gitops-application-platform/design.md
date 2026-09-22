@@ -40,9 +40,9 @@ The layout is hosting-independent so it can be published to the eventual Forgejo
 
 ### 3. Control planes have disjoint ownership
 
-OpenTofu owns provider resources such as VPS instances, networks, DNS, firewalls, disks, and backup destinations. Ansible owns host policy, mounts, and k3s plus the minimum Flux bootstrap. After handover, Flux owns every Git-managed Kubernetes resource; bootstrap automation no longer applies application or platform manifests. Kubernetes schedules workloads from stable capabilities such as architecture, capacity, labels, taints, and storage class. Provider identifiers and node names never enter project configuration.
+OpenTofu owns provider resources such as VPS instances, networks, DNS, firewalls, disks, and backup destinations. Ansible owns host policy, mounts, k3s, the minimal Forgejo bootstrap workload and repository, and Flux bootstrap. It first queries for the Forgejo Deployment: absence installs the pinned workload; presence skips installation and preserves data. Ansible then idempotently seeds committed local history, registers Flux's read-only key, verifies Forgejo over SSH, and points Flux directly at the in-cluster repository. No external Git host participates in bootstrap or reconciliation. After handover, Flux owns every other Git-managed Kubernetes resource; bootstrap automation no longer applies application or platform manifests.
 
-Managing Kubernetes resources with OpenTofu, continuing to apply manifests with Ansible, or retaining ProcessManager's direct mutations would create competing writers and is rejected.
+Managing Kubernetes resources with OpenTofu, continuing to apply manifests with Ansible after handover, retaining ProcessManager's direct mutations, or introducing an external Git bootstrap authority would create competing writers or unnecessary runtime dependencies and is rejected.
 
 ### 4. Validation, chart, and Secrets form one configuration boundary
 
@@ -135,7 +135,7 @@ Promotion records the previous `ready` digest and source metadata when one exist
 
 ```text
   OpenTofu                    Ansible
-  provider resources         host + k3s/Flux bootstrap
+  provider resources         host + k3s/Forgejo/Flux bootstrap
        |                           |
        +-------------+-------------+
                      |
@@ -189,7 +189,7 @@ Deployment configuration, charts, validation, platform services, and recovery co
 ## Migration Plan
 
 1. Add `platform-config`, reconciliation units, `web-process` base schema, encrypted-secret convention, ownership metadata, validation command, and negative fixtures; prove clean deterministic offline rendering.
-2. After OpenTofu and Ansible provide the required external and host capabilities, bootstrap Flux once and hand all Git-managed resources to reconciliation.
+2. After OpenTofu provides the required external capabilities, use Ansible to install k3s, verify-or-install Forgejo, seed the local repository, bootstrap Flux against Forgejo, and hand all remaining Git-managed resources to reconciliation.
 3. Pin and deploy ingress, certificates, SOPS decryption, CloudNativePG, the identity database, Keycloak, backups, and the identity-configuration job.
 4. Configure the realm, Google broker, day-to-day administrator TOTP, recovery administrator, distinct clients, groups, callbacks, and rotation procedures.
 5. Extend `web-process` for all access policies and prove redirect, allow, deny, header stripping, no-bypass networking, public independence, and native OIDC boundaries.

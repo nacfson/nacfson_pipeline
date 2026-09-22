@@ -1,10 +1,10 @@
-# Ansible host bootstrap (k3s + Flux)
+# Ansible host bootstrap (k3s + Forgejo + Flux)
 
 Ownership boundaries (Ansible **must not** manage routine cluster apps after Flux handover):
 
 | Owner | May | Must not |
 |---|---|---|
-| **Ansible** | Host OS harden, mounts, nftables firewall, pinned k3s, one-time `local-path-retain` StorageClass, Flux controllers + Git source secret + root GitRepository/Kustomization + `sops-age` secret | Apply CNPG/Keycloak/ingress HelmReleases, ProcessManager manifests, or project apps; install Docker as the process runtime; call ProcessManager `scripts/bootstrap-control-plane.sh` / `bootstrap-worker.sh`; `kubectl apply -k platform-config/infrastructure` |
+| **Ansible** | Host OS harden, mounts, nftables firewall, pinned k3s, one-time `local-path-retain` StorageClass, minimal Forgejo bootstrap workload/repository, Flux controllers + Git source secret + root GitRepository/Kustomization + `sops-age` secret | Apply CNPG/Keycloak/ingress HelmReleases, ProcessManager manifests, or project apps; install Docker as the process runtime; call ProcessManager bootstrap scripts; `kubectl apply -k platform-config/infrastructure` |
 | **Flux** | All routine Kubernetes resources from `platform-config` | — |
 | **OpenTofu** | Node/DNS/firewall/backup contracts → `infra/handoff/` | Kubernetes API objects |
 
@@ -15,7 +15,7 @@ Ownership boundaries (Ansible **must not** manage routine cluster apps after Flu
 3. Install collections: `ansible-galaxy collection install -r requirements.yml`
 4. Node arch **amd64**.
 5. Operator-supplied secrets on the control machine:
-   - `ansible/.secrets/flux-deploy-key` — SSH deploy key for `flux_git_url` (default auth mode `ssh`)
+   - `ansible/.secrets/flux-deploy-key` — SSH deploy key registered automatically as read-only in Forgejo
    - `ansible/.secrets/sops-age/age.key` — SOPS age private key (`age.agekey` secret)
    - `k3s_secrets_encryption_key` — vault or env (see below)
 
@@ -27,7 +27,6 @@ tofu apply
 cd ../../../ansible
 python3 scripts/render-inventory.py   # always refresh hosts.yaml + from_opentofu.yaml
 # place flux deploy key + sops age key under ansible/.secrets/
-# set flux_git_url in group_vars/all.yaml to the private off-server seed mirror
 ./scripts/init-encryption-vault.sh    # interactive vault password on this PC
 python3 scripts/render-inventory.py --check                        # fail-closed preflight
 python3 scripts/render-inventory.py --spawn -- --ask-vault-pass    # YOU type vault password
@@ -37,7 +36,10 @@ Partial re-runs:
 
 ```bash
 ansible-playbook playbooks/host-prep.yml
+ansible-playbook playbooks/storage.yml   # data disk only; skips host firewall
+ansible-playbook playbooks/firewall.yml  # host nftables only; skips storage/k3s
 ansible-playbook playbooks/k3s.yml
+ansible-playbook playbooks/forgejo.yml
 ansible-playbook playbooks/flux.yml
 ```
 
@@ -69,58 +71,64 @@ Missing key → role fails closed (no auto-generate). Never commit `*.vault.yml`
 | **Optional unattended override** | Explicit only: `ansible-playbook ... --vault-password-file /path` (do not put that path in `ansible.cfg` for the default operator flow). |
 | **Env export bypasses vault** | `K3S_SECRETS_ENCRYPTION_KEY` skips vault entirely for that shell — useful for break-glass, not the default. |
 
-## Flux Git source
+## Local Forgejo bootstrap and Flux source
 
-Defaults in `group_vars/all.yaml`:
+Ansible breaks the Git/Flux bootstrap cycle locally:
 
-- `flux_git_url` — private **off-server seed/recovery** remote used for the first bootstrap
+1. Query Kubernetes for the `forgejo/forgejo` Deployment.
+2. If absent, install the pinned minimal Forgejo workload with retained storage.
+3. If present, skip installation and preserve the existing workload and data.
+4. Wait for readiness, create the `platform` organization and
+   `nacfson_pipeline` repository when absent, and register the Flux public key
+   as read-only.
+5. If `main` is absent, bundle the committed local Git history and seed Forgejo.
+6. Verify the existing or newly seeded Forgejo `main` ref over SSH.
+7. Install Flux and point its `GitRepository` directly at
+   `ssh://git@forgejo.forgejo.svc.cluster.local:22/platform/nacfson_pipeline.git`.
+
+No GitHub or GitLab repository is required for bootstrap or reconciliation.
+The local working tree is not mounted into Flux: Ansible transfers committed
+Git history into Forgejo, and Forgejo remains the network Git authority.
+
+Defaults in `group_vars/all/settings.yaml`:
+
+- `flux_git_url` — in-cluster Forgejo SSH repository
 - `flux_git_branch: main`
-- `flux_git_path: ./platform-config/clusters/production` for the current monorepo seed
-- `flux_git_auth_mode: ssh` — set `https` + `flux_https_username` / `flux_https_password` for HTTPS remotes
-- `flux_skip_sops_secret: false` — fail if age key missing (infrastructure unit needs decrypt)
+- `flux_git_path: ./platform-config/clusters/production`
+- `flux_git_auth_mode: ssh`
+- `flux_skip_sops_secret: false`
 
-Placeholder URLs (`<owner>`, `<org>`, `example.com`) are rejected by both the role
-assertion and `render-inventory.py --check`.
-
-After GitRepository Ready, Ansible's Kubernetes write phase ends. Deeper units
-(`infrastructure`, apps) come from Git via Flux — live tasks **4.2+** start only
-after that sync works. Deeper Kustomizations may be NotReady until CNPG/images/DNS exist;
-Ansible still succeeds when GitRepository is Ready.
-
-### Two-stage Git source (seed → Forgejo)
-
-`ARCHITECTURE.md` section 4 specifies Forgejo **inside** the cluster, deployed by Flux.
-Ansible does not install Forgejo. This avoids the bootstrap cycle
-(Flux needs Git to install Forgejo; Forgejo must exist to host Git):
-
-| Stage | Flux source | Who acts |
-|---|---|---|
-| Bootstrap | private off-server mirror (`flux_git_url`) | Ansible `flux_bootstrap` |
-| Steady state | `ssh://git@forgejo.internal/platform/platform-config.git` | Flux reconciles Forgejo from the mirror, then source is cut over |
-
-**Source policy invariant:** local Forgejo is the only steady-state production Git
-authority. GitHub/GitLab is permitted only for bootstrap and disaster recovery.
-After cutover, routine Flux reconciliation and ProcessManager writes MUST target
-`platform/platform-config` in Forgejo; the off-server mirror remains read-only
-recovery material, not the normal deployment source.
-
-Ansible scope ends at stage 1: controllers, Git auth secret, root GitRepository,
-`kustomization flux-system`, `sops-age`. It must not create the Forgejo workload,
-the Forgejo repository, or the cutover — those are Flux/operator Git changes.
-
-Cutover (operator, after Forgejo is Ready) is Git work, not Ansible work:
-
-1. Create `platform/platform-config` in the Forgejo UI (empty, default branch `main`).
-2. Mirror the seed repository into it, preserving history.
-3. Register the Flux **public** deploy key (`ansible/.secrets/flux-deploy-key.pub`)
-   as a read-only deploy key on that repository.
-4. Commit the `GitRepository` URL change in `clusters/production/flux-system/gotk-sync.yaml`
-   to the Forgejo repository (or to the mirror and re-sync once).
-5. Verify `kubectl -n flux-system get gitrepository flux-system` becomes Ready against
-   `forgejo.internal`, then keep the off-server mirror as the recovery source.
-
-Do not point `flux_git_url` at `forgejo.internal` before Flux has created Forgejo:
-the first bootstrap would fail with no Git server reachable.
+After `GitRepository` becomes Ready, Ansible stops applying platform and
+application manifests. Flux owns routine reconciliation. Re-running
+`site.yml` reports the existing Forgejo installation, preserves an existing
+`main` branch, refreshes credentials idempotently, and verifies readiness
+before continuing.
+ 
+### Access Forgejo from the control Mac
+ 
+The host firewall intentionally does not expose Forgejo's NodePort. Forward it
+through the WireGuard-reachable SSH service and keep the tunnel terminal open:
+ 
+```bash
+ssh -L 30080:127.0.0.1:30080 nacfson@10.0.0.1
+```
+ 
+Open `http://127.0.0.1:30080` and sign in as `platform-bootstrap`. Retrieve the
+generated password without copying it into the repository:
+ 
+```bash
+ssh nacfson@10.0.0.1 \
+  "/usr/local/bin/k3s kubectl --kubeconfig /etc/rancher/k3s/k3s.yaml \
+  -n forgejo get secret forgejo-bootstrap-admin \
+  -o jsonpath='{.data.password}' | base64 -d; echo"
+```
+ 
+Flux has no built-in web UI. Inspect it through SSH:
+ 
+```bash
+ssh nacfson@10.0.0.1 \
+  'export KUBECONFIG=/etc/rancher/k3s/k3s.yaml; /usr/local/bin/flux get all'
+```
 
 ## Backup stub
 
@@ -140,12 +148,12 @@ python3 scripts/render-inventory.py --spawn -- --ask-vault-pass   # manual vault
 Always regenerated (gitignored) — change servers via `terraform.tfvars` + `tofu apply`:
 
 - `inventories/home-lab/hosts.yaml`
-- `inventories/home-lab/group_vars/from_opentofu.yaml`
+- `inventories/home-lab/group_vars/all/from_opentofu.yaml`
 
 `--force` is a deprecated no-op (refresh is always on).
 Use `--check` / `--spawn` for fail-closed gates (SSH TCP, `flux_git_url`,
 deploy/age keys, encryption key) before launching `ansible-playbook`.
-Never touches `group_vars/all.yaml`, `application.yaml`, `registry.yaml`, or `.secrets/`.
+Never touches `group_vars/all/settings.yaml`, `application/settings.yaml`, `registry.yaml`, or `.secrets/`.
 
 Tracked example: `inventories/home-lab/hosts.yaml.example`.
 
@@ -160,10 +168,10 @@ cd ansible && ansible-playbook playbooks/site.yml --syntax-check
 ## Live acceptance (application node)
 
 - `systemctl is-active k3s` → `active`
-- `k3s -v` contains `v1.32.13+k3s1`
+- `k3s -v` contains `v1.34.11+k3s1`
 - `kubectl get node -o wide` Ready; labels include `platform.processmanager.dev/workload=true`
 - `kubectl get sc local-path-retain` exists
 - `flux version --client` contains `v2.9.5`
 - `kubectl -n flux-system get gitrepository flux-system` Ready against configured `flux_git_url`
-- `kubectl -n flux-system get kustomization flux-system` progressing/Ready for `./clusters/production`
+- `kubectl -n flux-system get kustomization flux-system` progressing/Ready for `./platform-config/clusters/production`
 - Re-run `site.yml` stays idempotent; no Ansible apply under `platform-config/infrastructure/`

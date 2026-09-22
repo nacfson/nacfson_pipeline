@@ -14,8 +14,8 @@
       - "'>' not in flux_git_url"
       - flux_git_url | length > 0
     fail_msg: >-
-      Set flux_git_url to the reachable private off-server seed/recovery
-      repository before Flux bootstrap; placeholder URLs are rejected.
+      Set flux_git_url to the reachable Forgejo repository before Flux
+      bootstrap; placeholder URLs are rejected.
 
 - name: Create temporary directory for flux tarball
   ansible.builtin.tempfile:
@@ -116,15 +116,39 @@
         owner: root
         group: root
 
+    - name: Capture local Forgejo SSH host key
+      ansible.builtin.shell: |
+        set -euo pipefail
+        ssh-keyscan -p {{ forgejo_ssh_node_port }} 127.0.0.1 2>/dev/null \
+          | sed -E '/^#/d; s/^[^ ]+/forgejo.forgejo.svc.cluster.local/' \
+          > /tmp/flux-known-hosts
+        test -s /tmp/flux-known-hosts
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Require Forgejo SSH known-hosts file
+      ansible.builtin.stat:
+        path: /tmp/flux-known-hosts
+      register: flux_known_hosts_stat
+
+    - name: Fail if Forgejo host key is missing
+      ansible.builtin.fail:
+        msg: >-
+          /tmp/flux-known-hosts is missing. Run forgejo_bootstrap before
+          flux_bootstrap so the local Git host key can be pinned.
+      when: not flux_known_hosts_stat.stat.exists
+
     - name: Apply flux-system SSH secret from file
       ansible.builtin.shell: |
         set -euo pipefail
         export KUBECONFIG={{ k3s_kubeconfig_src }}
         {{ k3s_binary_path }} kubectl -n {{ flux_namespace }} create secret generic flux-system \
           --from-file=identity=/tmp/flux-deploy-key \
+          --from-file=known_hosts=/tmp/flux-known-hosts \
           --dry-run=client -o yaml \
           | {{ k3s_binary_path }} kubectl apply -f -
-        rm -f /tmp/flux-deploy-key
+        rm -f /tmp/flux-deploy-key /tmp/flux-known-hosts
       args:
         executable: /bin/bash
       changed_when: true

@@ -1,0 +1,665 @@
+{
+  "entries": [
+    {
+      "authority": "architecture",
+      "description": "ProcessManager is the administrative control plane for deploying and observing personal projects. It does not directly create or modify application workloads through the Kubernetes API. A successful mutation is a signed Git commit pushed directly to the `main` branch of the deployment repository. Flux then reconciles t",
+      "heading": "1. Purpose",
+      "id": "ARCH-0007",
+      "level": 2,
+      "lineEnd": 12,
+      "lineStart": 7,
+      "parentId": null,
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "1",
+        "purpose"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "2. Decisions",
+      "heading": "2. Decisions",
+      "id": "ARCH-0013",
+      "level": 2,
+      "lineEnd": 36,
+      "lineStart": 13,
+      "parentId": null,
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "2",
+        "decisions"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "k3s is Kubernetes, not an alternative orchestration API. It provides the standard APIs required by ProcessManager and Flux with less operational and memory overhead than a multi-node kubeadm stack.",
+      "heading": "3. Why k3s on an application VPS",
+      "id": "ARCH-0037",
+      "level": 2,
+      "lineEnd": 88,
+      "lineStart": 37,
+      "parentId": null,
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "3",
+        "an",
+        "application",
+        "k3s",
+        "on",
+        "vps",
+        "why"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "The application VPS and registry server are separate hosts and should use different failure domains where practical. Both remain non-HA in the first deployment, so their state must be reproducible and their backups must be stored outside both servers.",
+      "heading": "3.1 Server baseline",
+      "id": "ARCH-0056",
+      "level": 3,
+      "lineEnd": 88,
+      "lineStart": 56,
+      "parentId": "ARCH-0037",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "1",
+        "3",
+        "baseline",
+        "server"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "4. System Context",
+      "heading": "4. System Context",
+      "id": "ARCH-0089",
+      "level": 2,
+      "lineEnd": 412,
+      "lineStart": 89,
+      "parentId": null,
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "4",
+        "context",
+        "system"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "4.1 Kubernetes runtime specification",
+      "heading": "4.1 Kubernetes runtime specification",
+      "id": "ARCH-0166",
+      "level": 3,
+      "lineEnd": 412,
+      "lineStart": 166,
+      "parentId": "ARCH-0089",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "1",
+        "4",
+        "kubernetes",
+        "runtime",
+        "specification"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Production is one k3s server on the application VPS. The same node runs the Kubernetes API server, scheduler, controller manager, embedded etcd, kubelet, containerd, CoreDNS, ServiceLB, and application pods. It is intentionally a single failure and maintenance domain: a node or control-plane outage makes every in-clust",
+      "heading": "Node and control-plane topology",
+      "id": "ARCH-0168",
+      "level": 4,
+      "lineEnd": 184,
+      "lineStart": 168,
+      "parentId": "ARCH-0166",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "and",
+        "control",
+        "node",
+        "plane",
+        "topology"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Platform components use dedicated namespaces: Namespaces are isolation and ownership boundaries, not hostile multi-tenancy. A project release may create resources only in its own namespace. ProcessManager's Git writer validates this invariant before committing. Flux service accounts are scoped to the namespaces they re",
+      "heading": "Namespaces and tenancy",
+      "id": "ARCH-0185",
+      "level": 4,
+      "lineEnd": 206,
+      "lineStart": 185,
+      "parentId": "ARCH-0166",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "and",
+        "namespaces",
+        "tenancy"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "The provider firewall and host firewall expose only TCP 80 and 443 publicly. k3s ServiceLB binds those ports for the ingress-nginx `LoadBalancer` Service. That Service uses `externalTrafficPolicy: Local` so ingress-nginx receives the original client address on the single node. ingress-nginx is the only general public e",
+      "heading": "North-south and cluster networking",
+      "id": "ARCH-0207",
+      "level": 4,
+      "lineEnd": 341,
+      "lineStart": 207,
+      "parentId": "ARCH-0166",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "and",
+        "cluster",
+        "networking",
+        "north",
+        "south"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "The cluster uses the k3s local-path provisioner only; it does not introduce distributed storage on a single node. A dedicated filesystem mounted below `/var/lib/rancher/k3s/storage` holds local persistent volumes. The filesystem and the node root filesystem have separate usage and inode alerts.",
+      "heading": "Persistent storage",
+      "id": "ARCH-0342",
+      "level": 4,
+      "lineEnd": 352,
+      "lineStart": 342,
+      "parentId": "ARCH-0166",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "persistent",
+        "storage"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "All production images are Linux `amd64` and are referenced by OCI digest. Each workload defines CPU and memory requests and limits, a readiness probe, a liveness or startup probe appropriate to its boot behavior, a non-root security context, a read-only root filesystem where supported, and `automountServiceAccountToken",
+      "heading": "Workload placement and release behavior",
+      "id": "ARCH-0353",
+      "level": 4,
+      "lineEnd": 370,
+      "lineStart": 353,
+      "parentId": "ARCH-0166",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "and",
+        "behavior",
+        "placement",
+        "release",
+        "workload"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "The 4 vCPU and 16 GB baseline leaves capacity outside Kubernetes requests for the operating system, PostgreSQL maintenance, container builds, workload bursts, and recovery actions. Initial planning budgets are: The request envelopes total 3.75 vCPU and 10 GiB; the remaining memory and non-requested CPU are deliberately",
+      "heading": "Resource budget and admission",
+      "id": "ARCH-0371",
+      "level": 4,
+      "lineEnd": 387,
+      "lineStart": 371,
+      "parentId": "ARCH-0166",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "admission",
+        "and",
+        "budget",
+        "resource"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Every workload receives a dedicated ServiceAccount. Forgejo, the identity service, oauth2-proxy, the portfolio, demos, and CI jobs receive no Kubernetes API permissions. The CNPG operator, ingress-nginx, cert-manager, and Flux use the upstream least-privilege RBAC supplied by their pinned charts and versions.",
+      "heading": "Service accounts and API access",
+      "id": "ARCH-0388",
+      "level": 4,
+      "lineEnd": 395,
+      "lineStart": 388,
+      "parentId": "ARCH-0166",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "access",
+        "accounts",
+        "and",
+        "api",
+        "service"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Bootstrap order is fixed: OpenTofu creates the VPS, network rules, DNS, and backup destination; Ansible hardens the host, mounts storage, installs the pinned k3s version, initializes embedded etcd, enables Kubernetes secrets encryption, and installs the minimal Flux bootstrap credentials; Flux reconciles ingress-nginx,",
+      "heading": "Bootstrap, upgrades, backup, and recovery",
+      "id": "ARCH-0396",
+      "level": 4,
+      "lineEnd": 412,
+      "lineStart": 396,
+      "parentId": "ARCH-0166",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "and",
+        "backup",
+        "bootstrap",
+        "recovery",
+        "upgrades"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "5. Responsibility Boundaries",
+      "heading": "5. Responsibility Boundaries",
+      "id": "ARCH-0413",
+      "level": 2,
+      "lineEnd": 494,
+      "lineStart": 413,
+      "parentId": null,
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "5",
+        "boundaries",
+        "responsibility"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "ProcessManager owns: the administrator web UI and API; validation of project and process configuration; generation and deterministic editing of project `HelmRelease` values; signed commits and direct pushes to `main`; presentation of desired state from Git; presentation of observed state from the Kubernetes API",
+      "heading": "5.1 ProcessManager",
+      "id": "ARCH-0415",
+      "level": 3,
+      "lineEnd": 435,
+      "lineStart": 415,
+      "parentId": "ARCH-0413",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "1",
+        "5",
+        "processmanager"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Forgejo owns the durable history of desired state. The deployment repository is the only writable deployment source consumed by Flux.",
+      "heading": "5.2 Forgejo",
+      "id": "ARCH-0436",
+      "level": 3,
+      "lineEnd": 456,
+      "lineStart": 436,
+      "parentId": "ARCH-0413",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "2",
+        "5",
+        "forgejo"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Flux owns reconciliation from Git to Kubernetes. It installs or updates resources only after a commit reaches `main`.",
+      "heading": "5.3 Flux",
+      "id": "ARCH-0457",
+      "level": 3,
+      "lineEnd": 468,
+      "lineStart": 457,
+      "parentId": "ARCH-0413",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "3",
+        "5",
+        "flux"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "A reusable `web-process` Helm chart renders the standard application resources: Deployment; Service; Ingress; NetworkPolicy; resource requests and limits; readiness and liveness probes",
+      "heading": "5.4 Helm chart",
+      "id": "ARCH-0469",
+      "level": 3,
+      "lineEnd": 488,
+      "lineStart": 469,
+      "parentId": "ARCH-0413",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "4",
+        "5",
+        "chart",
+        "helm"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Google verifies ordinary-user primary credentials. Keycloak owns the resulting platform accounts, broker links, sessions, authorization groups, OIDC clients, consent, signing keys, token issuance, administrator TOTP step-up, and the restricted local recovery credential. It is the sole application owner of the identity",
+      "heading": "5.5 Identity service and CloudNativePG",
+      "id": "ARCH-0489",
+      "level": 3,
+      "lineEnd": 494,
+      "lineStart": 489,
+      "parentId": "ARCH-0413",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "5",
+        "and",
+        "cloudnativepg",
+        "identity",
+        "service"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Recommended repository layout: ProcessManager may modify only `applications/<project>/helmrelease.yaml` and, during explicit project creation or deletion, the corresponding project directory. Flux bootstrap files, infrastructure, shared charts, and other projects are outside its write boundary.",
+      "heading": "6. Deployment Repository Contract",
+      "id": "ARCH-0495",
+      "level": 2,
+      "lineEnd": 542,
+      "lineStart": 495,
+      "parentId": null,
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "6",
+        "contract",
+        "deployment",
+        "repository"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "The existing Go auth service implements custom password and session authentication; it is not OAuth or OIDC. The target removes that service from the production authentication path. Keycloak supplies OAuth 2.0 and OpenID Connect from `auth.<domain>`, brokers ordinary users and routine administrators to Google OpenID Co",
+      "heading": "7. Authentication and Authorization",
+      "id": "ARCH-0543",
+      "level": 2,
+      "lineEnd": 650,
+      "lineStart": 543,
+      "parentId": null,
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "7",
+        "and",
+        "authentication",
+        "authorization"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Keycloak uses one `platform` realm for portfolio and project identities. A shared realm provides one account and single sign-on while client boundaries keep redirect URIs, secrets, audiences, sessions, and authorization policies separate. A realm per project is not justified for this single-owner platform.",
+      "heading": "7.1 Realm and client model",
+      "id": "ARCH-0549",
+      "level": 3,
+      "lineEnd": 556,
+      "lineStart": 549,
+      "parentId": "ARCH-0543",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "1",
+        "7",
+        "and",
+        "client",
+        "model",
+        "realm"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Each project selects exactly one ingress policy: `private` is not used as a synonym for authenticated. A future VPN-only application would be a separate network exposure policy. ProcessManager itself uses `oidc-protected`.",
+      "heading": "7.2 Access policies",
+      "id": "ARCH-0557",
+      "level": 3,
+      "lineEnd": 570,
+      "lineStart": 557,
+      "parentId": "ARCH-0543",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "2",
+        "7",
+        "access",
+        "policies"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Keycloak is the only application allowed to connect to the identity CNPG read-write Service. CNPG creates a dedicated database, owner role, and generated credential Secret for Keycloak. The credential is mounted only into Keycloak pods. NetworkPolicy denies PostgreSQL traffic from project, ProcessManager, Forgejo, CI,",
+      "heading": "7.3 Identity and database boundary",
+      "id": "ARCH-0571",
+      "level": 3,
+      "lineEnd": 586,
+      "lineStart": 571,
+      "parentId": "ARCH-0543",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "3",
+        "7",
+        "and",
+        "boundary",
+        "database",
+        "identity"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Adding a project to the shared identity system is a two-part operation. Identity administration and application release remain separate privilege boundaries: An identity administrator registers one confidential OIDC client for the project using provider-supported declarative configuration or a dedicated identity-config",
+      "heading": "7.4 Protected-project onboarding",
+      "id": "ARCH-0587",
+      "level": 3,
+      "lineEnd": 637,
+      "lineStart": 587,
+      "parentId": "ARCH-0543",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "4",
+        "7",
+        "onboarding",
+        "project",
+        "protected"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "7.5 Trust and authorization invariants",
+      "heading": "7.5 Trust and authorization invariants",
+      "id": "ARCH-0638",
+      "level": 3,
+      "lineEnd": 650,
+      "lineStart": 638,
+      "parentId": "ARCH-0543",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "5",
+        "7",
+        "and",
+        "authorization",
+        "invariants",
+        "trust"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "ProcessManager receives read-only permissions for: Namespaces; Deployments, ReplicaSets, and Pods; Services and Ingresses; Events; Flux `Kustomization` and `HelmRelease` status; pod logs only when explicitly retained as an administrator feature",
+      "heading": "8. Kubernetes Access and Ownership",
+      "id": "ARCH-0651",
+      "level": 2,
+      "lineEnd": 672,
+      "lineStart": 651,
+      "parentId": null,
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "8",
+        "access",
+        "and",
+        "kubernetes",
+        "ownership"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Application secret values never pass through ProcessManager forms and never appear unencrypted in Git.",
+      "heading": "9. Secrets",
+      "id": "ARCH-0673",
+      "level": 2,
+      "lineEnd": 685,
+      "lineStart": 673,
+      "parentId": null,
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "9",
+        "secrets"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Application source repositories trigger CI independently of ProcessManager. CI must: build the required `amd64` and/or `arm64` image; run application verification; push the image to the dedicated OCI registry server; obtain the registry-confirmed immutable digest; request a ProcessManager configuration update using tha",
+      "heading": "10. Image Build and Registry Contract",
+      "id": "ARCH-0686",
+      "level": 2,
+      "lineEnd": 699,
+      "lineStart": 686,
+      "parentId": null,
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "10",
+        "and",
+        "build",
+        "contract",
+        "image",
+        "registry"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "11. Infrastructure Tool Boundaries",
+      "heading": "11. Infrastructure Tool Boundaries",
+      "id": "ARCH-0700",
+      "level": 2,
+      "lineEnd": 719,
+      "lineStart": 700,
+      "parentId": null,
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "11",
+        "boundaries",
+        "infrastructure",
+        "tool"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "OpenTofu owns the application VPS, registry server, DNS records, provider firewall rules, and off-server backup storage when supported by their providers. It does not manage routine Kubernetes application releases.",
+      "heading": "OpenTofu",
+      "id": "ARCH-0702",
+      "level": 3,
+      "lineEnd": 705,
+      "lineStart": 702,
+      "parentId": "ARCH-0700",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "opentofu"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Ansible owns host configuration: users, SSH, packages, firewall rules, storage mounts, k3s prerequisites, and backup agents.",
+      "heading": "Ansible",
+      "id": "ARCH-0706",
+      "level": 3,
+      "lineEnd": 709,
+      "lineStart": 706,
+      "parentId": "ARCH-0700",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "ansible"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "Flux owns cluster add-ons and application resources represented in the deployment repository.",
+      "heading": "Flux",
+      "id": "ARCH-0710",
+      "level": 3,
+      "lineEnd": 713,
+      "lineStart": 710,
+      "parentId": "ARCH-0700",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "flux"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "ProcessManager owns validated changes to application configuration in Git and read-only operational presentation.",
+      "heading": "ProcessManager",
+      "id": "ARCH-0714",
+      "level": 3,
+      "lineEnd": 719,
+      "lineStart": 714,
+      "parentId": "ARCH-0700",
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "processmanager"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "12. Failure Semantics",
+      "heading": "12. Failure Semantics",
+      "id": "ARCH-0720",
+      "level": 2,
+      "lineEnd": 739,
+      "lineStart": 720,
+      "parentId": null,
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "12",
+        "failure",
+        "semantics"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "The application VPS and registry server are built as new targets. The existing local cluster is not upgraded in place and is not part of the production dependency graph.",
+      "heading": "13. Migration Plan",
+      "id": "ARCH-0740",
+      "level": 2,
+      "lineEnd": 766,
+      "lineStart": 740,
+      "parentId": null,
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "13",
+        "migration",
+        "plan"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "The architecture is implemented when all statements below are true: creating, changing, scaling, or deleting a managed project produces a signed commit on `main`; ProcessManager performs no direct Kubernetes application mutation; Flux reconciles every managed application from the deployment repository; ProcessManager d",
+      "heading": "14. Acceptance Criteria",
+      "id": "ARCH-0767",
+      "level": 2,
+      "lineEnd": 804,
+      "lineStart": 767,
+      "parentId": null,
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "14",
+        "acceptance",
+        "criteria"
+      ]
+    },
+    {
+      "authority": "architecture",
+      "description": "The following are deliberately outside this baseline and require a later explicit decision: application VPS and registry server providers, regions, final sizes, and address families; OCI registry implementation, retention, and garbage-collection policy; public repository mirroring; automated per-project database provis",
+      "heading": "15. Deferred Decisions",
+      "id": "ARCH-0805",
+      "level": 2,
+      "lineEnd": 821,
+      "lineStart": 805,
+      "parentId": null,
+      "path": "ARCHITECTURE.md",
+      "tags": [
+        "15",
+        "decisions",
+        "deferred"
+      ]
+    }
+  ],
+  "purpose": "Candidate retrieval metadata. Read the source range before relying on an entry.",
+  "sources": [
+    {
+      "path": "ARCHITECTURE.md",
+      "sha256": "258c16a51e8952bcd0be558985a21da1026d927ac2062e16c63a012cdb1880a9"
+    }
+  ],
+  "version": 1
+}

@@ -1,0 +1,246 @@
+---
+- name: Verify whether Forgejo is already installed
+  ansible.builtin.command:
+    cmd: >-
+      {{ k3s_binary_path }} kubectl --kubeconfig {{ k3s_kubeconfig_src }}
+      -n {{ forgejo_namespace }} get deployment {{ forgejo_deployment_name }}
+  register: forgejo_install_check
+  changed_when: false
+  failed_when: false
+
+- name: Record Forgejo installation state
+  ansible.builtin.set_fact:
+    forgejo_already_installed: "{{ forgejo_install_check.rc == 0 }}"
+
+- name: Report existing Forgejo installation
+  ansible.builtin.debug:
+    msg: "Forgejo is already installed; skipping bootstrap workload installation."
+  when: forgejo_already_installed
+
+- name: Install Forgejo when absent
+  ansible.builtin.include_tasks: install.yml
+  when: not forgejo_already_installed
+
+- name: Wait for Forgejo deployment readiness
+  ansible.builtin.command:
+    cmd: >-
+      {{ k3s_binary_path }} kubectl --kubeconfig {{ k3s_kubeconfig_src }}
+      -n {{ forgejo_namespace }} rollout status deployment/{{ forgejo_deployment_name }}
+      --timeout=10s
+  register: forgejo_rollout
+  changed_when: false
+  until: forgejo_rollout.rc == 0
+  retries: "{{ forgejo_ready_retries }}"
+  delay: "{{ forgejo_ready_delay }}"
+
+- name: Read existing bootstrap credential Secret
+  ansible.builtin.command:
+    cmd: >-
+      {{ k3s_binary_path }} kubectl --kubeconfig {{ k3s_kubeconfig_src }}
+      -n {{ forgejo_namespace }} get secret forgejo-bootstrap-admin
+  register: forgejo_bootstrap_secret_check
+  changed_when: false
+  failed_when: false
+
+- name: Generate bootstrap administrator password
+  ansible.builtin.command: openssl rand -hex 24
+  register: forgejo_generated_password
+  changed_when: false
+  no_log: true
+  when: forgejo_bootstrap_secret_check.rc != 0
+
+- name: Store bootstrap administrator credential
+  ansible.builtin.shell: |
+    set -euo pipefail
+    {{ k3s_binary_path }} kubectl --kubeconfig {{ k3s_kubeconfig_src }} \
+      -n {{ forgejo_namespace }} create secret generic forgejo-bootstrap-admin \
+      --from-literal=username={{ forgejo_admin_user | quote }} \
+      --from-literal=password={{ forgejo_generated_password.stdout | quote }}
+  args:
+    executable: /bin/bash
+  no_log: true
+  when: forgejo_bootstrap_secret_check.rc != 0
+
+- name: Read bootstrap administrator password
+  ansible.builtin.shell: |
+    set -euo pipefail
+    {{ k3s_binary_path }} kubectl --kubeconfig {{ k3s_kubeconfig_src }} \
+      -n {{ forgejo_namespace }} get secret forgejo-bootstrap-admin \
+      -o jsonpath='{.data.password}' | base64 -d
+  args:
+    executable: /bin/bash
+  register: forgejo_admin_password_result
+  changed_when: false
+  no_log: true
+
+- name: Check Forgejo bootstrap administrator
+  ansible.builtin.shell: |
+    set -euo pipefail
+    pod=$({{ k3s_binary_path }} kubectl --kubeconfig {{ k3s_kubeconfig_src }} \
+      -n {{ forgejo_namespace }} get pod -l app.kubernetes.io/name=forgejo \
+      -o jsonpath='{.items[0].metadata.name}')
+    {{ k3s_binary_path }} kubectl --kubeconfig {{ k3s_kubeconfig_src }} \
+      -n {{ forgejo_namespace }} exec "$pod" -- su-exec git forgejo admin user list | grep -q {{ forgejo_admin_user | quote }}
+  args:
+    executable: /bin/bash
+  register: forgejo_admin_check
+  changed_when: false
+  failed_when: false
+
+- name: Create Forgejo bootstrap administrator
+  ansible.builtin.shell: |
+    set -euo pipefail
+    pod=$({{ k3s_binary_path }} kubectl --kubeconfig {{ k3s_kubeconfig_src }} \
+      -n {{ forgejo_namespace }} get pod -l app.kubernetes.io/name=forgejo \
+      -o jsonpath='{.items[0].metadata.name}')
+    {{ k3s_binary_path }} kubectl --kubeconfig {{ k3s_kubeconfig_src }} \
+      -n {{ forgejo_namespace }} exec "$pod" -- su-exec git forgejo admin user create \
+      --username {{ forgejo_admin_user | quote }} \
+      --password {{ forgejo_admin_password_result.stdout | quote }} \
+      --email {{ forgejo_admin_email | quote }} --admin --must-change-password=false
+  args:
+    executable: /bin/bash
+  no_log: true
+  when: forgejo_admin_check.rc != 0
+
+- name: Ensure Forgejo platform organization exists
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_node_port }}/api/v1/orgs"
+    method: POST
+    force_basic_auth: true
+    url_username: "{{ forgejo_admin_user }}"
+    url_password: "{{ forgejo_admin_password_result.stdout }}"
+    body_format: json
+    body:
+      username: "{{ forgejo_owner }}"
+      visibility: private
+    status_code: [201, 422]
+  register: forgejo_organization_create
+  changed_when: forgejo_organization_create.status == 201
+  no_log: true
+
+- name: Ensure local Forgejo repository exists
+  ansible.builtin.uri:
+    url: "http://127.0.0.1:{{ forgejo_http_node_port }}/api/v1/org/{{ forgejo_owner }}/repos"
+    method: POST
+    force_basic_auth: true
+    url_username: "{{ forgejo_admin_user }}"
+    url_password: "{{ forgejo_admin_password_result.stdout }}"
+    body_format: json
+    body:
+      name: "{{ forgejo_repository }}"
+      private: true
+      default_branch: "{{ flux_git_branch }}"
+    status_code: [201, 409, 422]
+  register: forgejo_repository_create
+  changed_when: forgejo_repository_create.status == 201
+  no_log: true
+
+- name: Register Flux read-only deploy key in Forgejo
+  ansible.builtin.uri:
+    url: >-
+      http://127.0.0.1:{{ forgejo_http_node_port }}/api/v1/repos/{{ forgejo_owner }}/{{ forgejo_repository }}/keys
+    method: POST
+    force_basic_auth: true
+    url_username: "{{ forgejo_admin_user }}"
+    url_password: "{{ forgejo_admin_password_result.stdout }}"
+    body_format: json
+    body:
+      title: flux-system
+      key: "{{ lookup('ansible.builtin.file', flux_deploy_key_private_path + '.pub') }}"
+      read_only: true
+    status_code: [201, 422]
+  register: forgejo_deploy_key_create
+  changed_when: forgejo_deploy_key_create.status == 201
+  no_log: true
+
+- name: Check whether Forgejo repository is already seeded
+  ansible.builtin.uri:
+    url: >-
+      http://127.0.0.1:{{ forgejo_http_node_port }}/api/v1/repos/{{ forgejo_owner }}/{{ forgejo_repository }}/branches/{{ flux_git_branch }}
+    force_basic_auth: true
+    url_username: "{{ forgejo_admin_user }}"
+    url_password: "{{ forgejo_admin_password_result.stdout }}"
+    status_code: [200, 404]
+  register: forgejo_seed_branch_check
+  changed_when: false
+  no_log: true
+
+- name: Create local Git bundle for Forgejo seed
+  ansible.builtin.command:
+    cmd: "git -C {{ forgejo_seed_repo_path }} bundle create /tmp/nacfson-pipeline-seed.bundle --all"
+  delegate_to: localhost
+  become: false
+  changed_when: false
+  when: forgejo_seed_branch_check.status == 404
+
+- name: Copy Git seed bundle to application node
+  ansible.builtin.copy:
+    src: /tmp/nacfson-pipeline-seed.bundle
+    dest: /tmp/nacfson-pipeline-seed.bundle
+    owner: root
+    group: root
+    mode: "0600"
+  when: forgejo_seed_branch_check.status == 404
+
+- name: Seed Forgejo repository from local Git history
+  ansible.builtin.shell: |
+    set -euo pipefail
+    rm -rf /tmp/nacfson-pipeline-seed.git
+    git clone --mirror /tmp/nacfson-pipeline-seed.bundle /tmp/nacfson-pipeline-seed.git
+    git -C /tmp/nacfson-pipeline-seed.git push --mirror \
+      http://{{ forgejo_admin_user }}:{{ forgejo_admin_password_result.stdout }}@127.0.0.1:{{ forgejo_http_node_port }}/{{ forgejo_owner }}/{{ forgejo_repository }}.git
+    rm -rf /tmp/nacfson-pipeline-seed.git /tmp/nacfson-pipeline-seed.bundle
+  args:
+    executable: /bin/bash
+  register: forgejo_seed_push
+  changed_when: "'new branch' in forgejo_seed_push.stderr or 'forced update' in forgejo_seed_push.stderr or '..' in forgejo_seed_push.stderr"
+  no_log: true
+  when: forgejo_seed_branch_check.status == 404
+
+- name: Remove local Git seed bundle
+  ansible.builtin.file:
+    path: /tmp/nacfson-pipeline-seed.bundle
+    state: absent
+  delegate_to: localhost
+  become: false
+  when: forgejo_seed_branch_check.status == 404
+
+- name: Copy Flux deploy key for Forgejo verification
+  ansible.builtin.copy:
+    src: "{{ flux_deploy_key_private_path }}"
+    dest: /tmp/flux-deploy-key-verify
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Capture Forgejo SSH host key for Flux
+  ansible.builtin.shell: |
+    set -euo pipefail
+    ssh-keyscan -p {{ forgejo_ssh_node_port }} 127.0.0.1 2>/dev/null \
+      | sed -E '/^#/d; s/^[^ ]+/forgejo.forgejo.svc.cluster.local/' \
+      > /tmp/flux-known-hosts
+    test -s /tmp/flux-known-hosts
+  args:
+    executable: /bin/bash
+  changed_when: false
+
+- name: Verify Forgejo repository is reachable over SSH
+  ansible.builtin.command:
+    cmd: >-
+      git -c core.sshCommand='ssh -i /tmp/flux-deploy-key-verify -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new'
+      ls-remote
+      ssh://git@127.0.0.1:{{ forgejo_ssh_node_port }}/{{ forgejo_owner }}/{{ forgejo_repository }}.git
+      refs/heads/{{ flux_git_branch }}
+  register: forgejo_git_verify
+  changed_when: false
+  failed_when: forgejo_git_verify.stdout | length == 0
+
+- name: Remove temporary Flux verification key
+  ansible.builtin.file:
+    path: /tmp/flux-deploy-key-verify
+    state: absent
+
+- name: Use local Forgejo as Flux Git source
+  ansible.builtin.set_fact:
+    flux_git_url: "{{ forgejo_service_git_url }}"

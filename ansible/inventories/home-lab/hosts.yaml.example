@@ -13,6 +13,8 @@ all:
           node_role: application
           arch: amd64
           data_disk_enabled: true
+          # Use the filesystem device (e.g. /dev/sdb1 or /dev/mapper/sdb_crypt),
+          # not a LUKS container path.
           data_disk_device: /dev/sdb
           data_disk_mount: /var/lib/rancher/k3s/storage
     registry:

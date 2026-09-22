@@ -24,6 +24,7 @@ application_node = {
   data_disk = {
     enabled     = true
     size_gb     = 200
+    # Filesystem device, not a LUKS container (use /dev/mapper/... when encrypted).
     device_hint = "/dev/sdb"
     mount_path  = "/var/lib/rancher/k3s/storage"
   }

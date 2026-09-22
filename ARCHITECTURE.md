@@ -14,10 +14,10 @@ This document is the source of truth for architecture decisions. Changes to an a
 
 | Area | Decision |
 |---|---|
-| Deployment source of truth | After bootstrap cutover, only the `main` branch of the self-hosted Forgejo `platform/platform-config` repository on the application VPS |
-| Bootstrap and recovery Git | A private off-server mirror MAY seed/recover Flux only while Forgejo is unavailable; it MUST NOT remain the steady-state production authority after cutover |
+| Deployment source of truth | The `main` branch of the self-hosted Forgejo `platform/nacfson_pipeline` repository on the application VPS |
+| Bootstrap and recovery Git | Ansible installs Forgejo before Flux, seeds it from committed local history, and verifies it; no external Git host is required |
 | ProcessManager writes | Validated application configuration committed and pushed to Forgejo `main` |
-| Cluster reconciliation | Flux watches the active bootstrap/recovery source before cutover and Forgejo `main` afterward |
+| Cluster reconciliation | Flux watches Forgejo `main` from its first reconciliation |
 | Kubernetes topology | One k3s server that is both control-plane and worker; embedded etcd; no HA claim |
 | Infrastructure dependency | The production platform has no dependency on the existing local cluster, workstation, or home network |
 | Personal-account authentication | Google OpenID Connect brokered through Keycloak; any Google account may create a fresh unprivileged platform identity; no ordinary-user local password flow |
@@ -31,7 +31,7 @@ This document is the source of truth for architecture decisions. Changes to an a
 | Image artifact storage | A dedicated OCI registry server outside the application VPS |
 | Continuous integration | One in-cluster Forgejo Actions runner using rootless BuildKit, concurrency one, trusted repositories only |
 | Secrets | SOPS-encrypted manifests; ProcessManager only references secret names |
-| Infrastructure provisioning | OpenTofu for external infrastructure; Ansible for machine configuration |
+| Infrastructure provisioning | OpenTofu for external infrastructure; Ansible for machine configuration plus the minimal k3s/Forgejo/Flux bootstrap |
 | Rollback | Revert a Git commit; never repair desired state with an imperative `kubectl` mutation |
 
 ## 3. Why k3s on an application VPS
@@ -40,7 +40,7 @@ k3s is Kubernetes, not an alternative orchestration API. It provides the standar
 
 The target starts with two independently replaceable servers:
 
-- an application VPS running k3s, Forgejo, Flux, ProcessManager, ingress, and the projects;
+- an application VPS running k3s, Ansible-bootstrapped Forgejo, Flux, ProcessManager, ingress, and the projects;
 - a registry server storing OCI images outside the application VPS failure domain.
 
 This separation ensures that rebuilding the application VPS does not remove the images needed for restoration. ProcessManager remains portable because it uses standard Kubernetes, Git, and OCI Distribution interfaces. Additional application nodes or registry storage can be introduced later without changing the release contract.
@@ -195,7 +195,7 @@ Platform components use dedicated namespaces:
 | `cnpg-system` | CloudNativePG operator | Flux |
 | `identity-system` | Keycloak and its dedicated CNPG database cluster | Flux and CNPG |
 | `auth-system` | ProcessManager oauth2-proxy | Flux |
-| `forgejo` | Forgejo and its persistent storage | Flux |
+| `forgejo` | Ansible creates the minimal bootstrap workload and repository before Flux; Flux owns subsequent declared configuration |
 | `process-manager` | ProcessManager | Flux |
 | `ci-system` | Forgejo Actions runner and rootless image builder | Flux |
 | one namespace per project | Project workload and, when protected, its dedicated oauth2-proxy | Flux from that project's directory |

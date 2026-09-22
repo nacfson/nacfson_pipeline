@@ -1,0 +1,80 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ forgejo_namespace }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: forgejo-data
+  namespace: {{ forgejo_namespace }}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path-retain
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ forgejo_deployment_name }}
+  namespace: {{ forgejo_namespace }}
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: forgejo
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: forgejo
+    spec:
+      containers:
+        - name: forgejo
+          image: {{ forgejo_image }}
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: FORGEJO__database__DB_TYPE
+              value: sqlite3
+            - name: FORGEJO__server__DOMAIN
+              value: forgejo.internal
+            - name: FORGEJO__server__ROOT_URL
+              value: http://forgejo.internal/
+            - name: FORGEJO__server__SSH_DOMAIN
+              value: forgejo.internal
+            - name: FORGEJO__server__SSH_PORT
+              value: "22"
+            - name: FORGEJO__security__INSTALL_LOCK
+              value: "true"
+            - name: FORGEJO__service__DISABLE_REGISTRATION
+              value: "true"
+          ports:
+            - { name: http, containerPort: 3000 }
+            - { name: ssh, containerPort: 22 }
+          readinessProbe:
+            httpGet: { path: /api/healthz, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits: { cpu: 1000m, memory: 1Gi }
+          volumeMounts:
+            - { name: data, mountPath: /data }
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: forgejo-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: forgejo
+  namespace: {{ forgejo_namespace }}
+spec:
+  type: NodePort
+  selector:
+    app.kubernetes.io/name: forgejo
+  ports:
+    - { name: http, port: 3000, targetPort: http, nodePort: {{ forgejo_http_node_port }} }
+    - { name: ssh, port: 22, targetPort: ssh, nodePort: {{ forgejo_ssh_node_port }} }

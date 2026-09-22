@@ -40,6 +40,7 @@
     owner: root
     group: root
     force: true
+  register: k3s_binary_download
 
 - name: Verify k3s version string
   ansible.builtin.command:
@@ -69,13 +70,13 @@
     owner: root
     group: root
     mode: "0644"
-  notify: Restart k3s
+  register: k3s_unit_template
 
 - name: Enable and start k3s
   ansible.builtin.systemd:
     name: "{{ k3s_service_name }}"
     enabled: true
-    state: started
+    state: "{{ 'restarted' if (k3s_binary_download.changed or k3s_unit_template.changed) else 'started' }}"
     daemon_reload: true
 
 - name: Wait until kubectl sees a Ready node
