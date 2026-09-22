@@ -2,8 +2,8 @@ version: 1
 platform: linux/amd64
 binaries:
   k3s:
-    version: v1.32.13+k3s1
-    url: https://github.com/k3s-io/k3s/releases/download/v1.32.13%2Bk3s1/k3s
+    version: v1.34.11+k3s1
+    url: https://github.com/k3s-io/k3s/releases/download/v1.34.11%2Bk3s1/k3s
   flux:
     version: v2.9.5
     url: https://github.com/fluxcd/flux2/releases/download/v2.9.5/flux_2.9.5_linux_amd64.tar.gz

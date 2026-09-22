@@ -5,7 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 1m
-  url: ssh://git@github.com/nacfson/nacfson_pipeline.git
+  url: ssh://git@forgejo.forgejo.svc.cluster.local:22/platform/nacfson_pipeline.git
   ref:
     branch: main
   secretRef:

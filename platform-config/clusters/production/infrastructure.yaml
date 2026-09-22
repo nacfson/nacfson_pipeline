@@ -9,7 +9,7 @@ spec:
   interval: 30m
   retryInterval: 2m
   timeout: 10m
-  path: ./infrastructure
+  path: ./platform-config/infrastructure
   prune: true
   wait: true
   sourceRef:

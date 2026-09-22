@@ -11,7 +11,7 @@ spec:
   interval: 10m
   retryInterval: 1m
   timeout: 10m
-  path: ./applications
+  path: ./platform-config/applications
   prune: true
   wait: true
   sourceRef:
