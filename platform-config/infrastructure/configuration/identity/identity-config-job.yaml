@@ -6,8 +6,9 @@ metadata:
   labels:
     platform.processmanager.dev/component: identity-config
   annotations:
-    # Flux recreates on config change via kustomize name/config hash when wired.
+    # A Job pod template is immutable; replace this idempotent Job when it changes.
     platform.processmanager.dev/idempotent: "true"
+    kustomize.toolkit.fluxcd.io/force: enabled
 spec:
   ttlSecondsAfterFinished: 300
   backoffLimit: 3
@@ -18,6 +19,9 @@ spec:
     spec:
       restartPolicy: OnFailure
       automountServiceAccountToken: false
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: apply
           image: quay.io/keycloak/keycloak@sha256:3d911baa186f352563854039b95f21a7e2c01c76b527fdc64f24a0885b927bdf
