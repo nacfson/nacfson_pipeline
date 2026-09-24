@@ -7,7 +7,7 @@ metadata:
     platform.processmanager.dev/component: identity-database
 spec:
   instances: 1
-  imageName: ghcr.io/cloudnative-pg/postgresql@sha256:c6ad138b07da00a189abcd381122f4c5c78a889bfc06367a001301e1768996e2
+  imageName:ghcr.io/cloudnative-pg/postgresql:16.6@sha256:c6ad138b07da00a189abcd381122f4c5c78a889bfc06367a001301e1768996e2 
   enableSuperuserAccess: false
   primaryUpdateStrategy: unsupervised
   storage:
