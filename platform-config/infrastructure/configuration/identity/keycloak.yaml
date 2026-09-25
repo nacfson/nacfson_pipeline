@@ -42,7 +42,6 @@ spec:
           imagePullPolicy: IfNotPresent
           args:
             - start
-            - --optimized
             - --http-enabled=true
             - --hostname=auth.example.com
             - --hostname-strict=true
