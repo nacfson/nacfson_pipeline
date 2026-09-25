@@ -116,9 +116,10 @@ def ensure_paths_exist() -> None:
 def validate_flux_dependencies() -> None:
     apps = load_yaml(PLATFORM / "clusters" / "production" / "applications.yaml")
     infra = load_yaml(PLATFORM / "clusters" / "production" / "infrastructure.yaml")
-    for doc, name in ((apps, "applications"), (infra, "infrastructure")):
+    configuration = load_yaml(PLATFORM / "clusters" / "production" / "infrastructure-configuration.yaml")
+    for doc, name in ((apps, "applications"), (infra, "infrastructure"), (configuration, "infrastructure-configuration")):
         path = doc["spec"]["path"].lstrip("./")
-        target = PLATFORM / path
+        target = ROOT / path
         if not target.exists():
             raise ValidationError("unresolved_reference", f"{name} path does not exist", path)
         decryption = doc["spec"].get("decryption") or {}
@@ -134,13 +135,22 @@ def validate_flux_dependencies() -> None:
         if "age" in json.dumps(doc).lower() and "AGE-SECRET-KEY" in json.dumps(doc):
             raise ValidationError("secret_key_in_repo", "decryption private key material present", name)
 
+    configuration_depends = {d["name"] for d in configuration["spec"].get("dependsOn", [])}
     depends = {d["name"] for d in apps["spec"].get("dependsOn", [])}
-    if "infrastructure" not in depends:
+    if "infrastructure" not in configuration_depends or "infrastructure-configuration" not in depends:
         raise ValidationError(
             "dependency_order",
-            "applications must depend on infrastructure",
+            "infrastructure-configuration must depend on infrastructure, and applications on infrastructure-configuration",
             "clusters/production/applications.yaml",
         )
+
+    operator_manifests = kustomize_build(PLATFORM / "infrastructure")
+    for doc in iter_yaml_docs(operator_manifests):
+        if doc.get("kind") in {"ClusterIssuer", "Cluster", "ScheduledBackup"}:
+            raise ValidationError("dependency_order", "operator-dependent resource in operator stage", "infrastructure")
+    configuration_kinds = {doc.get("kind") for doc in iter_yaml_docs(kustomize_build(PLATFORM / "infrastructure" / "configuration"))}
+    if not {"ClusterIssuer", "Cluster", "ScheduledBackup"}.issubset(configuration_kinds):
+        raise ValidationError("dependency_order", "operator-dependent resources missing from configuration stage", "infrastructure/configuration")
 
 
 def iter_yaml_docs(text: str) -> list[dict[str, Any]]:
@@ -597,13 +607,13 @@ def run_negative_fixtures() -> None:
         "kind": "Kustomization",
         "metadata": {"name": "applications", "namespace": "flux-system"},
         "spec": {
-            "path": "./applications-does-not-exist",
+            "path": "./platform-config/applications-does-not-exist",
             "sourceRef": {"kind": "GitRepository", "name": "flux-system"},
             "decryption": {"provider": "sops", "secretRef": {"name": "sops-age"}},
             "dependsOn": [{"name": "infrastructure"}],
         },
     }
-    if Path(bad_apps["spec"]["path"].lstrip("./")).exists():
+    if (ROOT / bad_apps["spec"]["path"].lstrip("./")).exists():
         raise ValidationError("fixture_failed", "unresolved path unexpectedly exists")
 
     # chart boundary rejection
