@@ -4,4 +4,6 @@ resources:
   - keycloak.yaml
   - networkpolicy.yaml
   - realm-config.yaml
+  - keycloak-bootstrap-admin.sops.yaml
+  - google-oidc-broker.sops.yaml
   - identity-config-job.yaml

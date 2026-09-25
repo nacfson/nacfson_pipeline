@@ -25,3 +25,6 @@ ansible/**/group_vars/**/vault.yml
 ansible/.secrets/
 
 ansible/inventories/home-lab/.hosts.syntax-check.yaml
+
+# Local plaintext input for the Google OIDC broker Secret (never commit).
+/platform-config/infrastructure/identity/google-oidc-broker.plaintext.yaml
