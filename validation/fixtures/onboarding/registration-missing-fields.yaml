@@ -1,6 +1,0 @@
-apiVersion: platform.processmanager.dev/v1
-kind: ProjectRegistration
-metadata:
-  name: incomplete
-spec:
-  project: incomplete

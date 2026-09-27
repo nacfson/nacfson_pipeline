@@ -1,3 +1,0 @@
----
-# Registry hosts: host-prep only (common, firewall, storage, backup stub).
-# k3s and flux_bootstrap are skipped for this group.
