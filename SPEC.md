@@ -18,23 +18,24 @@ In this document, MUST identifies a required behavior, SHOULD identifies a recom
 | --- | --- |
 | Kubernetes | Native k3s locally and on one production VPS; EKS/GKE deployment compatibility |
 | Application packaging | Helm charts |
-| Deployment reconciliation | FluxCD reading GitHub repositories |
+| Deployment reconciliation | Initial: Operator-applied Git-versioned manifests; Future: Automated FluxCD reconciliation and platform-preflight promotion |
 | Application image delivery | GitHub Actions and GHCR; immutable deployment references |
 | Ingress | Traefik; Cilium is not part of the initial design |
 | Authentication gateway | Custom Go service using the standard library, without third-party Go modules at runtime |
 | Identity provider | Keycloak with Google identity brokering |
 | Registration | Any Google account may register; no administrator approval |
-| Project access | Every registered account can access every protected project |
+| Project access | Ordinary-user entry for every registered identity; business permissions come from the project declaration |
 | Project credential verification | Projects independently verify the credential forwarded by the gateway |
-| Database | PostgreSQL operated by CloudNativePG (CNPG) |
+| Database | Standard PostgreSQL (StatefulSet backed by persistent disk volume) |
 | Database isolation | One initial PostgreSQL instance, separate databases and restricted roles |
 | Persistent storage | Disk-backed persistent volumes on the VPS |
 | Secrets | Operator-provided Kubernetes Secrets; no initial Vault deployment |
-| Resource policy | Explicit CPU requests and limits, bounded memory, with a per-project 1/n allocation model |
-| User-requested revocation | Current platform session only |
+| Resource policy | Explicit CPU requests and limits, bounded memory, 1/n slices, preflight rejection, and namespace ResourceQuota |
+| Workload boundary | Restricted Pod Security in project namespaces; platform-owned ServiceAccounts, quotas, and network policy |
+| User-requested revocation | Current platform session only; authenticated gateway route |
 | Backups | Optional; when enabled, daily at 00:00 UTC with seven-day retention |
 
-Keycloak, PostgreSQL, Traefik, the gateway, Flux, and project workloads initially reside on the same VPS. Separate infrastructure hosts, a second production server, and HA replicas are not initial requirements.
+Keycloak, PostgreSQL, Traefik, the gateway, and project workloads initially reside on the same VPS. In-cluster continuous GitOps controllers (FluxCD), separate infrastructure hosts, a second production server, and HA replicas are not initial requirements.
 
 ## 3. Traffic and trust boundaries
 
@@ -47,7 +48,8 @@ Browser --> project.example.com --> Traefik --> Project workload
                                                    |
                                                  Google
 
-GitHub configuration --> FluxCD --> Helm / Kubernetes resources
+GitHub candidate revision --> Operator verification & manual deployment (Initial)
+                             [Future: platform-preflight --> protected branch --> FluxCD]
 GitHub Actions --> GHCR --> Kubernetes image pulls
 ```
 
@@ -57,15 +59,35 @@ The existing hostname pattern MUST be preserved: a central identity hostname suc
 
 Keycloak's login and callback routes MUST remain reachable without an already authenticated platform session. Protected workloads MUST NOT have an alternative externally accessible route that bypasses the gateway. Workload traffic isolation MUST be enforced using network policy, not an assumption that ClusterIP services are inherently inaccessible to other pods.
 
+### ISOLATE-01: Project workload and administrative boundaries
+
+Project namespaces MUST enforce the Kubernetes Restricted Pod Security profile through Pod Security Admission. Audit and warn modes MUST NOT satisfy this requirement. Enforcement covers privileged containers, host namespaces, hostPath, host ports, privilege escalation, non-root execution, capabilities, and seccomp, as defined by that profile.
+
+Under Restricted, a container MUST drop all capabilities and MAY add back only `NET_BIND_SERVICE`. An image that cannot run as non-root within that rule MUST be adapted. Project-namespace enforcement MUST NOT be relaxed to admit an image.
+
+Each project MUST run its pods as a dedicated platform-provisioned ServiceAccount. That account MUST NOT receive application-granted Kubernetes API permissions. Automatic ServiceAccount token mounting MUST be disabled on both the ServiceAccount and the pod. Project pods MUST NOT mount a projected service-account token and MUST NOT select or create a different ServiceAccount. Pod Security Admission does not evaluate these token settings, so a platform admission control MUST reject them.
+
+Namespace Pod Security labels, ResourceQuota, NetworkPolicy, and the project ServiceAccount MUST be reconciled only by the platform identity. The project reconciliation identity MAY create and update project workload objects. It MUST NOT be able to create or modify Namespace objects, ResourceQuota, NetworkPolicy, ServiceAccounts, Roles, RoleBindings, ClusterRoles, or ClusterRoleBindings. Project Services MUST be ClusterIP; NodePort and LoadBalancer Services are bypass routes and MUST be rejected. A project Ingress for a protected HTTP workload MUST use the gateway authentication check.
+
+Restricted enforcement in this requirement applies to project namespaces. It does not select a Pod Security profile for Keycloak, PostgreSQL, Traefik, Flux (when deployed), or the gateway.
+
+Public ingress MUST expose only the browser-facing routes required to sign in and to revoke the current session:
+
+- The application realm's login and OIDC routes the browser follows, including login-actions and the Google identity-broker callback.
+- Assets required by those pages.
+- The gateway's current-session revocation route from AUTH-05.
+
+That allowlist is narrower than exposing every `/realms/` path. Public ingress MUST NOT expose the Keycloak account console, `/admin/`, the administrative realm including `/realms/master/`, health, metrics, or management port `9000`. A separate administrative hostname is not sufficient access control. Operators MUST reach administrative, health, and metrics endpoints through an authenticated private path, such as port-forwarding. Token, introspection, and JWKS requests from the gateway and from projects MUST stay on the cluster network.
+
 ## 4. Identity and authentication requirements
 
 ### AUTH-01: Automatic Google registration
 
 Keycloak MUST authenticate users through Google and register a platform identity on first successful sign-in. Registration MUST NOT require administrator approval, an account allowlist, or a domain allowlist.
 
-An ordinary registered account MUST be able to enter every protected project, including projects added after the account was registered. No per-project approval or membership grant is required.
+An ordinary registered account MUST be able to enter every protected project, including projects added after the account was registered. No per-project approval or membership grant is required for that entry. Business permissions are specified in AUTH-06.
 
-Registration MUST NOT grant Keycloak administration, Kubernetes access, or application administrator privileges. A project MAY distinguish business permissions such as read, edit, or administer without introducing separate project registration.
+Registration MUST NOT grant Keycloak administration, Kubernetes access, or application administrator privileges. Keycloak administration and Kubernetes administration MUST remain separate operator-controlled bootstrap paths.
 
 The platform MUST use a stable identity derived from Keycloak's issuer and subject. An email address MUST NOT be treated as a permanent unique identifier or sufficient evidence for linking an existing account.
 
@@ -95,7 +117,7 @@ Session state MUST NOT rely exclusively on one gateway process's memory. Prefer 
 
 ### AUTH-04: Project-side verification
 
-Projects MUST trust the gateway's authentication decision while independently verifying the forwarded credential. Project verification MUST check:
+Projects MUST accept only requests the gateway has authenticated, and they MUST independently verify the forwarded credential. Successful verification establishes the platform identity in AUTH-06 and does not grant business permissions. Project verification MUST check:
 
 - A signature using the configured Keycloak realm's published verification keys and an explicitly allowed algorithm.
 - The expected issuer and target-project audience.
@@ -116,11 +138,29 @@ Signature verification alone is insufficient. The gateway MUST perform an online
 
 This requirement does not revoke the user's Google account or prohibit a subsequent new sign-in. It does not retroactively cancel requests already in progress. The selected Keycloak APIs and behavior for terminating one SSO session and checking already-issued tokens MUST be demonstrated before this integration is accepted.
 
+The user-facing revocation control MUST be a gateway route. It MUST authenticate the current platform session and MUST protect the browser request against cross-site request forgery. A request that does not present that session MUST NOT revoke anything. Public reachability is not anonymous permission to execute revocation.
+
+The gateway's call to terminate the Keycloak session MUST be a private cluster-network request. It MUST use a credential authorized only for that session operation, distinct from the credential used to provision Keycloak clients. That call MUST NOT be exposed through public ingress.
+
+### AUTH-06: Platform identity and project authorization
+
+A valid gateway credential establishes platform identity only. That identity MUST be the pair of Keycloak issuer and subject. The credential MUST NOT itself grant business permissions.
+
+A new identity MUST receive ordinary-user access automatically in every protected project that serves HTTP: entry to the application and its ordinary-user landing page. The landing page MUST NOT reveal other users' private data. A worker or scheduled job that does not serve HTTP has no landing page; its ordinary-role declaration still applies to any operation it exposes.
+
+Each project MUST explicitly declare the ordinary role's business capabilities. A project whose declaration is missing MUST be rejected. A missing declaration MUST NOT be treated as granting every operation to any valid token. Undeclared operations MUST be denied.
+
+The ordinary role MUST NOT include other users' private data or administrative operations, including when a project author writes those capabilities into the ordinary-role declaration. Access to the signed-in user's own data, and modification of shared project data, MUST be denied unless that project's declaration names those capabilities.
+
+Application administrator rights MUST come from explicit operator provisioning of a project-scoped role binding to a verified issuer and subject. Administration MUST NOT be inferred from an email address, from being the first registered account, or from possession of a valid token. A binding MUST affect only the named identity and project.
+
+The project MUST store and enforce these bindings. The gateway MUST forward issuer and subject only and MUST NOT mint a business-role claim. Satisfying this requirement MUST NOT add a platform authorization database, dashboard, or continuously running authorization controller.
+
 ## 5. Project management and deployment
 
 ### DEPLOY-01: Git is the desired-state source
 
-Project declarations and environment-specific configuration MUST reside in GitHub. FluxCD MUST reconcile Helm releases and Kubernetes resources from that desired state.
+Project declarations and environment-specific configuration MUST reside in GitHub. In the initial design, the operator reviews and applies manifests in ordered sequence; automated continuous reconciliation via FluxCD is deferred to future platform expansion.
 
 A separate runtime management database, dashboard, imperative deployment service, or continuously running resource-allocation controller is not required for the initial platform.
 
@@ -133,8 +173,9 @@ The project configuration contract MUST cover:
 - References to Kubernetes Secrets.
 - PostgreSQL database/role requirements and persistent volumes when needed.
 - CPU and memory requests/limits and project-level aggregate budgets.
+- The ordinary-role declaration required by AUTH-06.
 
-Adding a project MUST configure its deployment, protected routes, and identity client without changing the gateway's source code. Automated Keycloak client provisioning MUST be idempotent and MUST NOT overwrite operator-created secrets or grant administrator privileges to users.
+Adding a project MUST configure its deployment, protected routes, and identity client without changing the gateway's source code. Automated Keycloak client provisioning MUST be idempotent and MUST NOT overwrite operator-created secrets or grant administrator privileges to users. Operator-provisioned application role bindings are project data enforced by the application; client provisioning MUST NOT create them.
 
 ### DEPLOY-02: Images and reconciliation
 
@@ -152,9 +193,21 @@ Storage classes, ingress exposure, certificates, image-pull credentials, and dat
 
 The initial ingress integration uses Traefik and the Go gateway. Cloud load balancers MAY expose that ingress; provider-specific ingress authentication implementations are not required.
 
-EKS/GKE deployment profiles MUST support an external PostgreSQL endpoint so RDS PostgreSQL or Cloud SQL can replace CNPG-managed PostgreSQL without changing application code. CNPG-managed PostgreSQL MUST remain a supported self-hosted option.
+EKS/GKE deployment profiles MUST support an external PostgreSQL endpoint so RDS PostgreSQL or Cloud SQL can replace the self-hosted PostgreSQL StatefulSet without changing application code. The self-hosted PostgreSQL StatefulSet MUST remain a supported self-hosted option.
 
 Supporting these environments means portable deployment, not one live database stretched across cloud providers or simultaneous active-active platform operation.
+
+### DEPLOY-04: Deployment verification and future protected promotion
+
+In the initial design, candidate manifests and resource budgets reside in Git. The operator manually verifies that candidate revisions comply with RESOURCE-02 and ISOLATE-01 controls against measured capacity before applying manifests to the cluster in ordered sequence.
+
+For future automated GitOps expansion, GitHub Actions MUST run a required check named `platform-preflight` on the exact candidate revision. The check will run separately for each environment, using that environment's committed capacity, platform reservations, project count, calculated slices, and rendered workload resources. Rendering will use the same Helm and Kustomize versions and the same values Flux will apply for that environment.
+
+The rendered aggregate MUST use peak concurrent resources: every container, rollout surge above steady-state replicas, Job parallelism, and CronJobs that the concurrency policy can run at the same time. Completed pods MUST NOT be counted. A zero-project revision MUST be accepted and MUST NOT divide by zero.
+
+`platform-preflight` MUST reject a revision that violates RESOURCE-02 or that renders manifests weakening the ISOLATE-01 controls. It MUST also fail closed when the environment has no node-allocatable measurement, or when the revision's committed allocatable capacity is greater than the newest measurement for that environment. The measurement MUST be produced by observing that node. Setting the measurement equal to the desired committed figure is not an observation.
+
+When automated GitOps is enabled in future phases, each environment will have a protected deployment branch tracked by Flux. Only a revision that passes `platform-preflight` for that environment MAY be promoted onto that branch. While operating under manual deployment ordering in the initial phase, the operator MUST NOT apply an over-budget revision to the cluster.
 
 ## 6. Resource allocation
 
@@ -177,21 +230,25 @@ Per-project budget = application capacity / deployed project count
 
 All workloads, containers, and replicas belonging to one project MUST fit inside its aggregate project budget. A frontend and backend in one project MUST NOT count as two projects merely because they occupy separate pods.
 
-The platform MUST NOT schedule aggregate requested resources beyond available capacity or deliberately configure aggregate project memory limits above the application memory budget. Platform service budgets require measurement; this specification does not invent CPU or RAM amounts for Keycloak or PostgreSQL.
+The formula applies separately to CPU and to memory. The aggregate that MUST fit is the peak defined in DEPLOY-04. For each resource, the peak request total and the peak limit total MUST fit inside that resource's project slice. The platform MUST NOT schedule aggregate requested resources beyond available capacity or configure aggregate project memory limits above the application memory budget. Platform service budgets require measurement; this specification does not invent CPU or RAM amounts for Keycloak or PostgreSQL.
 
-A zero-project deployment MUST still be valid and MUST NOT divide by zero. A project that cannot fit its workloads into its allocation MUST be reported as a capacity conflict rather than silently removing limits.
+A zero-project deployment MUST still be valid and MUST NOT divide by zero. A project that cannot fit its workloads into its allocation MUST be rejected by `platform-preflight` rather than silently removing limits or leaving an over-budget revision for Flux to apply.
 
-Recommended default: requests equal limits for strict slices. Whether requests may be lower than limits, how the deployed project count is determined during changes, and when reallocations are applied remain open decisions. Adding/removing a project MUST NOT silently hot-shrink running memory limits before that lifecycle policy is agreed.
+The deployed peak memory envelope is the peak concurrent memory-limit total of the revision currently on that environment's protected branch. Until section 12 item 1 is resolved, a workload present in both that revision and the candidate MUST keep a memory limit at least as high as the deployed limit. Removing a workload is allowed. Any other decrease in a project's peak memory-limit total MUST be rejected, including a replacement introduced under a new name with a smaller limit. The candidate MUST also be rejected when a project's recalculated memory slice is below the deployed peak of the workloads that candidate still contains. Adding a project is rejected when that comparison fails for any existing project. Restarting workloads MUST NOT bypass the rejection. CPU limit changes are outside this freeze. While the candidate is rejected, the protected branch stays unchanged.
+
+Each project namespace MUST carry a platform-owned ResourceQuota for `requests.cpu`, `requests.memory`, `limits.cpu`, and `limits.memory`, set to that project's accepted slice. Because the promoted revision's peak already fits the slice, rollout surge included in that peak remains admissible. Quota is an admission backstop. An oversized Deployment can be stored while its pods are rejected, and lowering quota does not resize existing workloads, so quota MUST NOT substitute for rejecting the revision before promotion.
+
+Recommended default: requests equal limits for strict slices. Whether requests may be lower than limits, and the future policy for applying a smaller slice to an existing project, remain open in section 12. Those open decisions MUST NOT be used to promote a shrinking revision.
 
 ## 7. PostgreSQL and persistence
 
-### DATA-01: CNPG-managed PostgreSQL
+### DATA-01: Standard PostgreSQL StatefulSet
 
-The initial deployment MUST use one CNPG-managed PostgreSQL instance backed by persistent storage. PostgreSQL replicas and a multi-node CNPG topology are not initial requirements.
+The initial deployment MUST use one standard PostgreSQL instance (deployed via a Kubernetes StatefulSet) backed by persistent storage. A complex operator (such as CNPG), PostgreSQL replicas, and multi-node clustering are not initial requirements.
 
 Keycloak and each database-using project MUST have separate databases and restricted roles. Project roles MUST NOT access Keycloak data, another project's database, or PostgreSQL administration capabilities. Cross-database access MUST be restricted explicitly; creating separate databases alone is insufficient.
 
-Applications MUST connect using configurable endpoints and Secret references rather than depending on CNPG's internal implementation. CNPG MUST be operated as shared infrastructure, not installed separately by every application chart.
+Applications MUST connect using configurable endpoints and Secret references rather than depending on internal container implementation details. PostgreSQL MUST be operated as shared platform infrastructure, not installed separately by every application chart.
 
 ### DATA-02: VPS persistence
 
@@ -211,15 +268,15 @@ When enabled, backups MUST run every day at 00:00 UTC and retain restorable reco
 
 The backup destination, credentials, encryption, and restore process MUST be configured before enabling this feature. Copying a running PostgreSQL data directory without a PostgreSQL-consistent backup procedure MUST NOT be used.
 
-A provider-independent logical backup path MUST include each required database and the roles needed to restore it. Logical backups do not provide recovery between backup times or a single atomic snapshot across separate databases. SSH delivery would require its own backup job; it is not CNPG's object-store backup integration.
+A provider-independent logical backup path MUST include each required database and the roles needed to restore it. Logical backups do not provide recovery between backup times or a single atomic snapshot across separate databases. A scheduled CronJob executes the backup process, uploading database dumps to the configured destination.
 
 Physical backups or continuous WAL archiving MAY be chosen later, but a usable backup chain MUST remain complete throughout retention. The backup format is not selected by this specification. Any enabled backup mode MUST pass an actual restore exercise.
 
 ### EXPAND-01: Simple now, expandable later
 
-The initial deployment MUST remain colocated and MUST NOT require an HA topology, Vault, a dedicated PostgreSQL node, or separate identity infrastructure.
+The initial deployment MUST remain colocated and MUST NOT require an HA topology, Vault, a dedicated PostgreSQL node, separate identity infrastructure, or an in-cluster automated GitOps reconciliation controller (FluxCD).
 
-Configuration SHOULD permit later additional application/Keycloak replicas and independent PostgreSQL standby nodes. This is a migration path, not an initial availability guarantee. Single-host volumes may need migration, and applications may need appropriate connection recovery behavior when HA is introduced.
+Configuration SHOULD permit later additional application/Keycloak replicas, independent PostgreSQL standby nodes, and the introduction of automated GitOps reconciliation via FluxCD and `platform-preflight`. This is a migration path, not an initial availability guarantee. Single-host volumes may need migration, and applications may need appropriate connection recovery behavior when HA is introduced.
 
 There is no current downtime SLO. Future HA can reduce downtime; the platform MUST NOT promise that scaling replicas eliminates every outage.
 
@@ -227,7 +284,7 @@ There is no current downtime SLO. Future HA can reduce downtime; the platform MU
 
 Secret values MUST NOT be committed as plaintext to GitHub, placed in Helm values stored in Git, printed in logs, or supplied in chat.
 
-The operator MUST provide Kubernetes Secrets for Google broker credentials, Keycloak administration/client credentials, database credentials, GHCR pulls, and optional backup access. Workloads and Flux-managed configuration MUST reference those Secrets by name.
+The operator MUST provide Kubernetes Secrets for Google broker credentials, Keycloak client-provisioning credentials, the gateway's session-termination credential, database credentials, GHCR pulls, and optional backup access. The session-termination credential MUST be limited to that operation and MUST be distinct from the client-provisioning credential. Workloads and Flux-managed configuration MUST reference those Secrets by name.
 
 Flux MUST NOT prune or overwrite externally supplied Secret contents. Development and production MUST use separate secret material and identity client configurations.
 
@@ -248,7 +305,9 @@ Authenticated GHCR inspection confirmed these tags and OCI indexes:
 
 The ARM64 backend config declares command `./api`, working directory `/app`, port `8080/tcp`, and an `APP_ADDR` environment-variable name. The frontend config declares Nginx through `/docker-entrypoint.sh`, port `80/tcp`, and no application-specific environment-variable names in the inspected defaults. Neither inspected config declares volumes.
 
-These are metadata observations, not startup verification. They do not establish required database variables, health endpoints, frontend API routing, browser-baked configuration, storage requirements, or existing authentication support. Application layers were not downloaded or executed during specification drafting.
+These are metadata observations, not startup verification. They do not establish required database variables, health endpoints, frontend API routing, browser-baked configuration, storage requirements, existing authentication support, or compatibility with the Restricted profile. Application layers were not downloaded or executed during specification drafting.
+
+The frontend image listens on port `80` and starts through Nginx's entrypoint. Restricted permits a non-root user and at most the `NET_BIND_SERVICE` capability. If either supplied image cannot run under ISOLATE-01, that image MUST be adapted. Project-namespace enforcement MUST NOT be relaxed to admit it.
 
 Treat the frontend/backend pair as one candidate Project PN integration, not evidence of two independent projects. The second project for cross-project SSO remains deferred and MUST NOT block architecture planning.
 
@@ -256,7 +315,7 @@ Treat the frontend/backend pair as one candidate Project PN integration, not evi
 
 The current official Oracle documentation lists an aggregate A1 allowance equivalent to 2 OCPUs and 12 GB RAM, and 200 GB combined boot/block storage. AMD micro instances have 1 GB RAM each. These are published allowance figures, not measurements of an already provisioned VM or guaranteed capacity availability.
 
-The deployment MUST discover actual node architecture and allocatable resources. It MUST NOT hard-code an assumed free-tier size into portable application charts.
+The deployment MUST discover actual node architecture and allocatable resources. It MUST NOT hard-code an assumed free-tier size into portable application charts. `platform-preflight` MUST compare the revision's committed allocatable capacity with a measurement taken from that node, as required by DEPLOY-04.
 
 Oracle documents capacity shortages and possible reclamation of idle free instances. Optional backups and a single VPS mean the initial platform may lose availability and data after host/disk loss. No backup durability or production HA claim is made.
 
@@ -264,7 +323,7 @@ Oracle documents capacity shortages and possible reclamation of idle free instan
 
 ### AC-01: First sign-in
 
-Given a Google account with no platform account, signing into a protected project creates an ordinary Keycloak identity and permits entry without administrator approval. The account receives no infrastructure or application administrator rights merely by registering.
+Given a Google account with no platform account, signing into a protected project creates an ordinary Keycloak identity and opens that project's ordinary-user landing page without administrator approval. The account receives no infrastructure administrator rights, no application administrator rights, and no access to other users' private data merely by registering.
 
 ### AC-02: Cross-project SSO
 
@@ -280,11 +339,15 @@ A target-project access token with valid identity and signature is accepted. Inv
 
 ### AC-05: Current-session revocation
 
-Create two independent sessions for one account. Revoke the current session and demonstrate that its next protected request to either project is rejected, including with a previously issued unexpired access token. The other session remains usable. Refresh cannot resurrect the revoked session; a deliberate new sign-in is allowed.
+Create two independent sessions for one account. Revoke the current session through the authenticated gateway route and demonstrate that its next protected request to either project is rejected, including with a previously issued unexpired access token. The other session remains usable. Refresh cannot resurrect the revoked session; a deliberate new sign-in is allowed. A cross-site request, and a request without the current session, do not revoke anything.
 
 ### AC-06: Resource bounds
 
-Deploy a multi-workload project and verify that aggregate requests/limits fit its allocation. Exercise CPU load and memory exhaustion in an isolated environment to observe configured enforcement. Reject configurations that exceed available project capacity, and handle zero deployed projects safely. No unsafe automatic resizing behavior is implied by these checks.
+For one environment, demonstrate that `platform-preflight` accepts a revision whose peak aggregate fits the project slices and that only the promoted revision is reconciled by Flux. Demonstrate that an over-budget revision is not promoted and that the protected branch is unchanged. Demonstrate that a zero-project revision is accepted and does not divide by zero.
+
+While section 12 item 1 remains unresolved, demonstrate that a revision which lowers an existing workload's memory limit is rejected, and that a revision which adds a project so an existing slice falls below its deployed peak memory envelope is rejected. In both cases the protected branch is unchanged.
+
+Exercise CPU load and memory exhaustion in an isolated environment to observe configured enforcement. Those load tests MUST stay off a shared production node.
 
 ### AC-07: Persistence and isolation
 
@@ -294,9 +357,9 @@ Replace the PostgreSQL pod and verify retained data. Demonstrate that one projec
 
 Use an operator-provided namespace image-pull Secret to deploy both supplied ARM64 image variants. Confirm actual startup and serving behavior after supplying documented application configuration. Missing or insufficient registry credentials must remain observable, not be bypassed by making packages public.
 
-### AC-09: GitOps delivery
+### AC-09: Deployment delivery and future GitOps
 
-Build/publish an immutable image, update the Git deployment reference, and observe Flux reconcile the intended version. Demonstrate that manually supplied Secrets are not committed, overwritten, or pruned. Redeploying the same desired state is idempotent.
+Build/publish an immutable image, update the Git deployment reference, and manually apply manifests in order (Initial). Verify that manually supplied Secrets are not committed, overwritten, or pruned, and that redeploying the same desired state is idempotent. For future automated GitOps: observe Flux reconcile the promoted version from the protected branch after passing `platform-preflight`.
 
 ### AC-10: Optional backup
 
@@ -304,17 +367,29 @@ With backup disabled, no backup job or storage credentials are required. With it
 
 ### AC-11: Deployment target compatibility
 
-Exercise the same application/authentication contract on local k3s and VPS k3s, then on EKS and GKE using target-specific ingress exposure, storage, credentials, and database settings. Each target remains unverified until exercised; rendered manifests alone are not cloud deployment proof.
+Exercise the same application/authentication contract on local k3s and VPS k3s, then on EKS and GKE using target-specific ingress exposure, storage, credentials, and database settings. Each target remains unverified until exercised; rendered manifests alone are not cloud deployment proof. Each target's `platform-preflight` uses that target's measured allocatable capacity.
+
+### AC-12: Ordinary authorization
+
+Using an application that enforces AUTH-06, demonstrate ordinary-user entry to the landing page. Demonstrate that undeclared operations, administrative operations, and other users' private data are denied. Demonstrate that an operator-provisioned administrator binding grants administrative operations only to the named issuer and subject.
+
+A second protected project is required to demonstrate that the same binding grants no administration there. That half waits on section 12 item 3. The single-project checks do not. A gateway that forwards a valid token is not sufficient evidence for this scenario.
+
+### AC-13: Workload and Keycloak boundary
+
+Demonstrate that a project namespace rejects a privileged pod, a pod using hostPath or a host namespace, a pod running as root, a pod mounting a service-account token, and a project Service that is not ClusterIP. Demonstrate that the project reconciliation identity cannot remove Restricted enforcement, ResourceQuota, or NetworkPolicy.
+
+Demonstrate that public ingress does not serve Keycloak `/admin/`, the administrative realm, the account console, health, or metrics. Demonstrate that the revocation route does nothing without the current session.
 
 ## 12. Unresolved details and implementation prerequisites
 
 These items are not reasons to ask for project images again or to delay the architecture specification. They are details to resolve before their affected implementation paths are accepted:
 
-1. **Resource allocation lifecycle:** whether requests equal limits; project-count semantics during deployment changes; when recalculated budgets are applied; and how to handle an application's minimum memory exceeding its slice. Continuous live resizing is not selected.
-2. **Application runtime contract:** Project PN's required configuration, database schema/migrations, health checks, frontend API routing, persistent files, and token-verification integration. Metadata inspection alone does not resolve these.
-3. **Second independent project:** supplied later for AC-02 and AC-05; not an architecture prerequisite.
-4. **Deployment inputs:** actual hostnames, Google OAuth registration, Secret names/contents, GitHub repository layout, OCI VM details, and selected k3s/Traefik/Keycloak/CNPG/Flux versions. Actual node capacity must be measured.
-5. **Current-session enforcement mechanics:** browser cookie boundaries, per-project token acquisition/audience handling, and Keycloak session termination/introspection behavior satisfying AC-05 without third-party gateway modules.
+1. **Resource allocation lifecycle:** whether requests equal limits, and the future policy for applying a smaller slice to an existing project, including an application whose minimum memory cannot fit that slice. Until that policy is accepted, DEPLOY-04 rejects memory-limit shrinks and project additions that would put an existing project's memory slice below its deployed peak memory envelope. Continuous live resizing is not selected.
+2. **Application runtime contract:** Project PN's required configuration, database schema/migrations, health checks, frontend API routing, persistent files, token-verification integration, ordinary-role declaration, and where that project stores AUTH-06 role bindings. AC-12 waits on an application that enforces those rules. Metadata inspection does not establish Restricted-profile compatibility.
+3. **Second independent project:** supplied later for AC-02, AC-05, and the cross-project half of AC-12; not an architecture prerequisite.
+4. **Deployment inputs:** actual hostnames, Google OAuth registration, Secret names/contents, GitHub repository layout, OCI VM details, and selected k3s/Traefik/Keycloak/PostgreSQL/Flux versions. Actual node capacity must be measured before `platform-preflight` can pass.
+5. **Current-session enforcement mechanics:** browser cookie boundaries, per-project token acquisition/audience handling, and Keycloak session termination/introspection behavior satisfying AC-05 without third-party gateway modules. AUTH-05 already specifies the public revocation route, cross-site request protection, and the private session-termination call.
 6. **Optional backup configuration:** backup format and destination are required only when backups are enabled.
 
 No application code, Helm chart, controller, cluster, or secret is implemented by this document.
@@ -323,10 +398,14 @@ No application code, Helm chart, controller, cluster, or secret is implemented b
 
 - [Traefik ForwardAuth](https://doc.traefik.io/traefik/reference/routing-configuration/http/middlewares/forwardauth/)
 - [Keycloak OIDC endpoints](https://www.keycloak.org/securing-apps/oidc-layers)
-- [CloudNativePG architecture](https://cloudnative-pg.io/docs/1.30/architecture/)
-- [CloudNativePG backups](https://cloudnative-pg.io/docs/1.30/backup/)
+- [Keycloak exposed paths](https://www.keycloak.org/server/reverseproxy#_exposed_path_recommendations)
+- [PostgreSQL Documentation](https://www.postgresql.org/docs/16/)
+- [Kubernetes StatefulSet](https://kubernetes.io/docs/concepts/workloads/controllers/statefulset/)
 - [K3s persistent storage](https://docs.k3s.io/storage/)
 - [Kubernetes resource requests and limits](https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/)
+- [Kubernetes Restricted Pod Security](https://kubernetes.io/docs/concepts/security/pod-security-standards/#restricted)
+- [Kubernetes resource quotas](https://kubernetes.io/docs/concepts/policy/resource-quotas/#how-kubernetes-resourcequotas-work)
 - [Flux GitHub bootstrap](https://fluxcd.io/flux/installation/bootstrap/github/)
+- [Flux GitRepository](https://fluxcd.io/flux/components/source/gitrepositories/)
 - [GHCR authentication](https://docs.github.com/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
 - [Oracle Always Free resources](https://docs.oracle.com/en-us/iaas/Content/FreeTier/freetier_topic-Always_Free_Resources.htm)

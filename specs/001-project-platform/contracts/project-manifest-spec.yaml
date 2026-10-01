@@ -1,0 +1,124 @@
+# Schema Contract: Project Onboarding Declaration
+# Defines the required declarative structure for any project hosted on the platform.
+
+$schema: "http://json-schema.org/draft-07/schema#"
+title: ProjectManifestDeclaration
+type: object
+required:
+  - projectId
+  - workloadType
+  - image
+  - resources
+  - ordinaryRole
+properties:
+  projectId:
+    type: string
+    pattern: "^[a-z0-9]([-a-z0-9]*[a-z0-9])?$"
+    maxLength: 32
+    description: "Unique identifier for the project, used for namespace naming (proj-<id>) and subdomain routing."
+
+  workloadType:
+    type: string
+    enum:
+      - HTTP_SERVICE
+      - BACKGROUND_WORKER
+      - SCHEDULED_JOB
+    description: "Type of workload. HTTP services receive Traefik IngressRoute and ForwardAuth integration."
+
+  image:
+    type: object
+    required:
+      - repository
+      - digest
+    properties:
+      repository:
+        type: string
+        example: "ghcr.io/nacfson/project-pn-backend"
+      digest:
+        type: string
+        pattern: "^sha256:[a-f0-9]{64}$"
+        description: "Immutable image digest. Mutable tags like 'latest' are strictly rejected."
+
+  http:
+    type: object
+    required:
+      - port
+      - healthPath
+    properties:
+      port:
+        type: integer
+        minimum: 1024
+        maximum: 65535
+        description: "Container listen port. Unprivileged non-root ports required under Restricted PSA."
+      healthPath:
+        type: string
+        default: "/healthz"
+      ingressSubdomain:
+        type: string
+        description: "Subdomain prefix for public routing (e.g. 'pn' -> pn.example.com)."
+
+  resources:
+    type: object
+    required:
+      - cpu
+      - memory
+    properties:
+      cpu:
+        type: string
+        pattern: "^[0-9]+m$"
+        example: "250m"
+        description: "CPU request and limit. Enforces requests == limits."
+      memory:
+        type: string
+        pattern: "^[0-9]+Mi$"
+        example: "512Mi"
+        description: "Memory request and limit. Enforces requests == limits."
+      replicas:
+        type: integer
+        minimum: 1
+        default: 1
+      rolloutSurge:
+        type: integer
+        default: 0
+        description: "Max surge replicas above steady-state for rolling updates."
+
+  networkPolicy:
+    type: object
+    properties:
+      allowEgress:
+        type: array
+        description: "Explicit external API allowlists (IP blocks or DNS selectors). DNS and PostgreSQL are auto-allowed."
+        items:
+          type: object
+          required:
+            - destination
+            - port
+          properties:
+            destination:
+              type: string
+              example: "api.github.com"
+            port:
+              type: integer
+
+  database:
+    type: object
+    properties:
+      enabled:
+        type: boolean
+        default: false
+      storageSize:
+        type: string
+        default: "1Gi"
+        pattern: "^[0-9]+Gi$"
+
+  ordinaryRole:
+    type: object
+    required:
+      - capabilities
+    properties:
+      capabilities:
+        type: array
+        minItems: 1
+        items:
+          type: string
+        description: "Explicitly declared business permissions granted to ordinary registered users upon login."

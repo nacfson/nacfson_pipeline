@@ -1,0 +1,64 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "PreflightBudgetValidationPayload",
+  "type": "object",
+  "required": [
+    "environment",
+    "measuredAllocatable",
+    "platformReservations",
+    "projectCount",
+    "calculatedPerProjectBudget",
+    "candidatePeakFootprint",
+    "validationStatus"
+  ],
+  "properties": {
+    "environment": {
+      "type": "string",
+      "enum": ["local-k3s", "vps-k3s", "eks", "gke"]
+    },
+    "measuredAllocatable": {
+      "type": "object",
+      "required": ["cpuMillicores", "memoryMib"],
+      "properties": {
+        "cpuMillicores": { "type": "integer", "minimum": 100 },
+        "memoryMib": { "type": "integer", "minimum": 512 }
+      }
+    },
+    "platformReservations": {
+      "type": "object",
+      "required": ["cpuMillicores", "memoryMib"],
+      "properties": {
+        "cpuMillicores": { "type": "integer" },
+        "memoryMib": { "type": "integer" }
+      }
+    },
+    "projectCount": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "calculatedPerProjectBudget": {
+      "type": "object",
+      "required": ["cpuMillicores", "memoryMib", "strictQoS"],
+      "properties": {
+        "cpuMillicores": { "type": "integer" },
+        "memoryMib": { "type": "integer" },
+        "strictQoS": { "type": "boolean", "const": true }
+      }
+    },
+    "candidatePeakFootprint": {
+      "type": "object",
+      "required": ["cpuMillicores", "memoryMib"],
+      "properties": {
+        "cpuMillicores": { "type": "integer" },
+        "memoryMib": { "type": "integer" }
+      }
+    },
+    "validationStatus": {
+      "type": "string",
+      "enum": ["PASSED", "REJECTED_OVER_BUDGET", "REJECTED_NO_MEASUREMENT", "REJECTED_MEMORY_SHRINK"]
+    },
+    "rejectionReason": {
+      "type": "string"
+    }
+  }
+}
