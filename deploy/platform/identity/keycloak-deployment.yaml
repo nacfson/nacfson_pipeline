@@ -58,6 +58,8 @@ spec:
               value: "true"
             - name: KC_HOSTNAME_STRICT
               value: "false"
+            - name: JAVA_OPTS_APPEND
+              value: "-Xms256m -Xmx1200m -XX:MaxRAMPercentage=75"
           ports:
             - name: http
               containerPort: 8080
@@ -68,10 +70,10 @@ spec:
           resources:
             requests:
               cpu: 500m
-              memory: 1024Mi
+              memory: 1536Mi
             limits:
               cpu: 500m
-              memory: 1024Mi
+              memory: 1536Mi
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

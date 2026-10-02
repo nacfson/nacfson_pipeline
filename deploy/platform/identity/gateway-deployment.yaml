@@ -17,6 +17,8 @@ spec:
         app.kubernetes.io/name: gateway
         app.kubernetes.io/part-of: platform
     spec:
+      imagePullSecrets:
+        - name: ghcr-creds
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532

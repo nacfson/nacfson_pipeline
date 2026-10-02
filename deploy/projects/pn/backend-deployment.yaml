@@ -39,6 +39,13 @@ spec:
           envFrom:
             - secretRef:
                 name: pn-database-credentials
+          env:
+            - name: CENTRAL_AUTH_INTERNAL_URL
+              value: "http://keycloak-service.identity.svc:8080/realms/platform"
+            - name: CENTRAL_AUTH_URL
+              value: "https://auth.example.com/realms/platform"
+            - name: PORT
+              value: "8080"
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
@@ -55,6 +62,8 @@ spec:
           volumeMounts:
             - name: tmp
               mountPath: /tmp
+            - name: logs
+              mountPath: /var/log/project-pn
           livenessProbe:
             httpGet:
               path: /healthz
@@ -69,4 +78,6 @@ spec:
             periodSeconds: 5
       volumes:
         - name: tmp
+          emptyDir: {}
+        - name: logs
           emptyDir: {}
