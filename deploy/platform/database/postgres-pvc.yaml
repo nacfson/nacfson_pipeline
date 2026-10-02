@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data-postgres-0
+  namespace: identity
+  labels:
+    app.kubernetes.io/name: postgres
+    app.kubernetes.io/part-of: platform
+    # Protected reclaim flag to prevent unintended volume pruning
+    platform.nacfson.io/protection: retain-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi

@@ -1,0 +1,96 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-daily-backup
+  namespace: identity
+  labels:
+    app.kubernetes.io/name: postgres-backup
+    app.kubernetes.io/part-of: platform-identity
+    platform.nacfson.io/managed-by: platform
+spec:
+  schedule: "0 0 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: postgres-backup
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            runAsGroup: 999
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: pg-backup
+              image: postgres:16-alpine
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+                  TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+                  BACKUP_FILE="/backups/pg_dumpall_${TIMESTAMP}.sql.gz"
+                  echo "Starting logical cluster backup to ${BACKUP_FILE}..."
+                  pg_dumpall -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" | gzip > "${BACKUP_FILE}"
+                  echo "Backup completed successfully."
+                  echo "Pruning archives older than 7 days..."
+                  find /backups -name "pg_dumpall_*.sql.gz" -type f -mtime +7 -delete
+                  echo "Retention enforcement complete."
+              env:
+                - name: PGHOST
+                  value: "postgres-service.identity.svc"
+                - name: PGPORT
+                  value: "5432"
+                - name: PGUSER
+                  value: "postgres"
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: postgres-credentials
+                      key: POSTGRES_PASSWORD
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "100m"
+                  memory: "128Mi"
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backups
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: postgres-backup-pvc
+            - name: tmp
+              emptyDir: {}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-backup-pvc
+  namespace: identity
+  labels:
+    app.kubernetes.io/name: postgres-backup
+    app.kubernetes.io/part-of: platform-identity
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 2Gi

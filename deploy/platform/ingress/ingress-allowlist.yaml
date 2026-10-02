@@ -1,0 +1,39 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: public-auth-allowlist
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: ingress-allowlist
+    app.kubernetes.io/part-of: platform
+spec:
+  entryPoints:
+    - web
+    - websecure
+  routes:
+    # 1. Keycloak Browser OIDC Login & Broker Callbacks
+    - match: Host(`auth.example.com`) && (PathPrefix(`/realms/platform/protocol/openid-connect/auth`) || PathPrefix(`/realms/platform/login-actions`) || PathPrefix(`/realms/platform/broker/google/endpoint`) || PathPrefix(`/resources`))
+      kind: Rule
+      services:
+        - name: keycloak-service
+          namespace: identity
+          port: 8080
+
+    # 2. Gateway OIDC Callback
+    - match: Host(`auth.example.com`) && PathPrefix(`/oauth/callback`)
+      kind: Rule
+      services:
+        - name: gateway
+          namespace: identity
+          port: 8080
+
+    # 3. Gateway Synchronous Session Revocation
+    - match: Host(`auth.example.com`) && PathPrefix(`/auth/logout`)
+      kind: Rule
+      services:
+        - name: gateway
+          namespace: identity
+          port: 8080
+
+# NOTE: Administrative paths (/admin/), master realm (/realms/master/), health checks,
+# and metrics port 9000 are omitted from this allowlist and will return 404 from Traefik.

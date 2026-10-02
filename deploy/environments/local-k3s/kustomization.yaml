@@ -1,0 +1,38 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: local-k3s-environment
+
+labels:
+  - pairs:
+      platform.nacfson.io/environment: local-k3s
+
+resources:
+  # Platform Governance & Core Infrastructure
+  - ../../platform/governance/namespaces.yaml
+  - ../../platform/governance/base-network-policy.yaml
+  - ../../platform/governance/service-account-template.yaml
+  # Persistent Database
+  - ../../platform/database/postgres-pvc.yaml
+  - ../../platform/database/postgres-statefulset.yaml
+  - ../../platform/database/postgres-service.yaml
+  - ../../platform/database/postgres-init-job.yaml
+  # Identity & Gateway
+  - ../../platform/identity/keycloak-realm-config.yaml
+  - ../../platform/identity/keycloak-deployment.yaml
+  - ../../platform/identity/gateway-deployment.yaml
+  # Ingress & Security Middleware
+  - ../../platform/ingress/traefik-middleware.yaml
+  - ../../platform/ingress/ingress-allowlist.yaml
+  # Project PN Workloads
+  - ../../projects/pn/namespace.yaml
+  - ../../projects/pn/service-account.yaml
+  - ../../projects/pn/resource-quota.yaml
+  - ../../projects/pn/network-policy.yaml
+  - ../../projects/pn/database-secret.yaml
+  - ../../projects/pn/backend-service.yaml
+  - ../../projects/pn/backend-deployment.yaml
+  - ../../projects/pn/frontend-deployment.yaml
+  - ../../projects/pn/image-pull-secret.yaml
+  - ../../projects/pn/ingress-route.yaml

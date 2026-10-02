@@ -28,3 +28,37 @@ ansible/inventories/home-lab/.hosts.syntax-check.yaml
 
 # Local plaintext input for the Google OIDC broker Secret (never commit).
 /platform-config/infrastructure/identity/google-oidc-broker.plaintext.yaml
+
+# Go build artifacts & tests
+*.exe
+*.test
+*.out
+vendor/
+coverage.out
+coverage.html
+
+# Kubernetes secrets & local credentials
+*.secret.yaml
+*.credentials.yaml
+!*.example.yaml
+!*.template.yaml
+secrets/
+*.key
+*.crt
+*.pem
+*.p12
+*.pfx
+id_rsa*
+id_ed25519*
+*.kubeconfig
+kubeconfig*
+k3s.yaml
+.env
+.env.*
+*.secret.env
+secrets.env
+!*.env.example
+.deploy-baseline
+
+*-secret.yaml
+image-pull-secret.yaml

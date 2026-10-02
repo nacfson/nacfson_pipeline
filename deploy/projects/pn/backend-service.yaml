@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pn-backend
+  namespace: proj-pn
+  labels:
+    app.kubernetes.io/name: pn-backend
+    app.kubernetes.io/part-of: project-pn
+spec:
+  # Strictly ClusterIP: NodePort and LoadBalancer are perimeter bypasses and strictly rejected
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: pn-backend
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pn-frontend
+  namespace: proj-pn
+  labels:
+    app.kubernetes.io/name: pn-frontend
+    app.kubernetes.io/part-of: project-pn
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: pn-frontend

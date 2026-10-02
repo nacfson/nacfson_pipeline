@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Git Pre-Commit Secret Scanner Hook
+# Prevents accidental commits of passwords, tokens, private keys, and API secrets.
+# ==============================================================================
+
+set -euo pipefail
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+NC='\033[0m' # No Color
+
+echo "==> Running pre-commit secret leak scan..."
+
+# Get all staged changes (diff of added/modified lines only)
+STAGED_DIFF=$(git diff --cached --unified=0)
+
+if [ -z "$STAGED_DIFF" ]; then
+  exit 0
+fi
+
+LEAKS_FOUND=0
+
+# Define secret patterns to block
+check_pattern() {
+  local name="$1"
+  local regex="$2"
+
+  local matches
+  matches=$(echo "$STAGED_DIFF" | grep -E "^\+" | grep -Ev "^\+\+\+" | grep -E -e "$regex" || true)
+
+  if [ -n "$matches" ]; then
+    echo -e "${RED}[BLOCKED] Potential $name detected in staged changes:${NC}" >&2
+    echo "$matches" | head -n 5 >&2
+    LEAKS_FOUND=1
+  fi
+}
+
+# 1. GitHub Tokens (Personal Access Tokens, Fine-Grained Tokens, OAuth)
+check_pattern "GitHub Personal Access Token (Classic)" "ghp_[a-zA-Z0-9]{36}"
+check_pattern "GitHub Fine-Grained PAT" "github_pat_[a-zA-Z0-9_]{82}"
+check_pattern "GitHub OAuth Access Token" "gho_[a-zA-Z0-9]{36}"
+
+# 2. Private Keys
+check_pattern "Cryptographic Private Key" "-----BEGIN (RSA|EC|DSA|OPENSSH|PGP|ENCRYPTED)? ?PRIVATE KEY-----"
+
+# 3. Google API Keys / OAuth Secrets
+check_pattern "Google API Key" "AIza[-0-9A-Za-z_]{35}"
+
+# 4. AWS Access Keys
+check_pattern "AWS Access Key ID" "AKIA[0-9A-Z]{16}"
+
+# 5. Generic JWT Tokens with real signatures (excluding mock/test examples)
+check_pattern "Raw JWT Token" "eyJ[-A-Za-z0-9_]{10,}\.eyJ[-A-Za-z0-9_]{10,}\.[-A-Za-z0-9_]{10,}"
+
+# 6. Unsanitized dockerconfigjson base64 containing non-placeholder auth
+if echo "$STAGED_DIFF" | grep -E "^\+" | grep -q "\"auth\":"; then
+  if echo "$STAGED_DIFF" | grep -E "^\+" | grep -q "\"auth\":" | grep -Ev "CHANGE_ME|PLACEHOLDER|example"; then
+    echo -e "${RED}[BLOCKED] Unsanitized Docker registry auth token found in staged changes!${NC}" >&2
+    LEAKS_FOUND=1
+  fi
+fi
+
+if [ "$LEAKS_FOUND" -ne 0 ]; then
+  echo "" >&2
+  echo -e "${RED}================================================================================${NC}" >&2
+  echo -e "${RED}COMMIT REJECTED: Secrets or credentials were detected in your staged changes!${NC}" >&2
+  echo -e "${YELLOW}Please remove the sensitive data before committing.${NC}" >&2
+  echo -e "${YELLOW}Use environment variables, Kubernetes Secrets, or template files (.example) instead.${NC}" >&2
+  echo -e "${RED}================================================================================${NC}" >&2
+  exit 1
+fi
+
+echo -e "${GREEN}✓ Secret scan passed: No leaked credentials found.${NC}"
+exit 0

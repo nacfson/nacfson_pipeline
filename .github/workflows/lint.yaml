@@ -1,0 +1,41 @@
+name: Lint & Validation
+
+on:
+  push:
+    branches: ["*"]
+  pull_request:
+    branches: ["*"]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Verify Go Gateway builds and tests pass
+        run: |
+          cd gateway
+          go test -v ./...
+          go vet ./...
+
+      - name: ShellCheck linting
+        uses: ludeeus/action-shellcheck@master
+        with:
+          scandir: './scripts'
+
+      - name: Validate Kubernetes Manifests YAML
+        uses: ibiqlik/action-yamllint@v3
+        with:
+          file_or_dir: 'deploy/'
+          config_data: |
+            extends: default
+            rules:
+              line-length: disable
+              truthy: disable
+              document-start: disable

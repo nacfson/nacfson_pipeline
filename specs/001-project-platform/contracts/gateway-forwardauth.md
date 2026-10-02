@@ -78,3 +78,33 @@ Content-Type: application/json
 {"error": "service_unavailable", "message": "Authentication service is temporarily unavailable."}
 ```
 **Invariant**: Fail-closed strictly enforced. The gateway MUST NEVER allow an unverified request through when Keycloak is down.
+
+---
+
+## 3. Authentication Lifecycle & Cross-Project SSO Mechanics
+
+### 3.1 Return Destination Tracking
+1. When unauthenticated traffic hits `https://<project>.example.com/<path>`, the gateway encodes the target destination into an HMAC-SHA256 signed `state` query parameter.
+2. Google redirects to Keycloak broker endpoint (`/realms/platform/broker/google/endpoint`).
+3. Keycloak creates the session and redirects to the gateway callback: `https://auth.example.com/oauth/callback?code=...&state=...`.
+4. The gateway verifies the state signature, exchanges the code for tokens, sets the `PLATFORM_SESSION` cookie (`Domain=.example.com`), and redirects to the exact saved destination URL.
+
+### 3.2 Login Initiation Verification (PKCE & State Integrity)
+1. The gateway generates a cryptographic 32-byte `code_verifier`, computes `code_challenge = BASE64URL(SHA256(code_verifier))`, and generates a unique `nonce`.
+2. State payload `{target_url, nonce, timestamp, hash(code_verifier)}` is signed using the gateway's private HMAC secret.
+3. `code_verifier` is stored in a temporary 5-minute `HttpOnly` cookie (`OIDC_AUTH_STATE`).
+4. At `/oauth/callback`, the gateway asserts HMAC signature validity, enforces timestamp freshness (rejecting requests older than 300 seconds), and passes `code_verifier` to Keycloak to complete token exchange.
+
+### 3.3 Token Expiration & Refresh Flow
+1. User SSO Sessions have a typical lifespan of 8–12 hours; project access JWTs are short-lived (5–15 minutes).
+2. On every ForwardAuth check, if the project access token is near expiry but the Keycloak session is valid, the gateway uses the session refresh token to synchronously fetch a new project access token from Keycloak over the internal cluster network.
+3. If the user session itself is expired or revoked, the gateway fails closed (HTTP 302 redirecting to login).
+
+### 3.4 Cross-Project Token Acquisition (Project A to Project B)
+1. Each project has a distinct Keycloak client and audience (`aud: project-a`, `aud: project-b`). Sharing generic tokens across projects is prohibited.
+2. When a user with an active session on Project A visits Project B (`https://project-b.example.com`):
+   - The gateway recognizes the valid `PLATFORM_SESSION` cookie.
+   - If a token for `project-b` is not yet cached in the session, the gateway requests a project-b scoped token from Keycloak using OAuth 2.0 Token Exchange or promptless SSO redirect.
+   - The gateway injects `Authorization: Bearer <token_b>` upstream to Project B.
+   - Project B independently validates token signatures and confirms `aud == "project-b"`.
+

@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: identity
+  labels:
+    app.kubernetes.io/part-of: platform
+    name: identity
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: platform
+  labels:
+    app.kubernetes.io/part-of: platform
+    name: platform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: governance
+  labels:
+    app.kubernetes.io/part-of: platform
+    name: governance

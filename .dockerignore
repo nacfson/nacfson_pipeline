@@ -1,0 +1,15 @@
+.git
+.gitignore
+.dockerignore
+*.md
+specs/
+deploy/
+scripts/
+docs/
+.agents/
+.cursor/
+.specify/
+.omp/
+*.log
+.env*
+coverage.*

@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: project-pn-quota
+  namespace: proj-pn
+  labels:
+    app.kubernetes.io/name: project-pn
+    app.kubernetes.io/part-of: project-pn
+    platform.nacfson.io/managed-by: platform
+spec:
+  hard:
+    requests.cpu: "550m"
+    limits.cpu: "550m"
+    requests.memory: "1024Mi"
+    limits.memory: "1024Mi"
+    pods: "10"
+    # Strict perimeter backstops: Reject bypass service types at quota admission level
+    services.nodeports: "0"
+    services.loadbalancers: "0"

@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: proj-pn
+  labels:
+    app.kubernetes.io/part-of: project-pn
+    name: proj-pn
+    platform.nacfson.io/project-id: pn
+    # Enforce Restricted Pod Security Standard strictly (warn & audit alone are prohibited)
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
+    pod-security.kubernetes.io/audit: restricted
+    pod-security.kubernetes.io/audit-version: latest

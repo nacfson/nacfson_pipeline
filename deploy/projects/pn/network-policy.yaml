@@ -1,0 +1,60 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: project-pn-isolation
+  namespace: proj-pn
+  labels:
+    app.kubernetes.io/name: project-pn
+    app.kubernetes.io/part-of: project-pn
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # 1. Allow traffic from Traefik Ingress Controller (platform namespace)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: platform
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+
+    # 2. Allow intra-namespace traffic between project pods (frontend -> backend)
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+
+  egress:
+    # 1. Allow internal cluster DNS (kube-dns)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # 2. Allow connection to shared platform PostgreSQL (port 5432) in identity namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: identity
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+
+    # 3. Explicit external API egress allowlist (empty by default; declared per project contract)
