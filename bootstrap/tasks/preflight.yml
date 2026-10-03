@@ -1,0 +1,264 @@
+---
+# Preflight tasks: Inspections, capacity validation, and 3-way state classification
+# Scope: Read-only host evaluation; stops before any persistent changes.
+
+- name: Set current stage tracking to preflight
+  ansible.builtin.set_fact:
+    current_stage: "preflight"
+    stage_failure_remediation: "Verify target VM matches supported Ubuntu 24.04 ARM64 profile, minimum capacity, and fresh/compatible-managed status."
+
+- name: Gather minimal system facts with 60-second limit
+  ansible.builtin.setup:
+    gather_subset:
+      - "min"
+      - "network"
+      - "hardware"
+  async: 60
+  poll: 2
+
+- name: Verify noninteractive sudo privilege
+  ansible.builtin.command:
+    cmd: "sudo -n true"
+  changed_when: false
+  register: sudo_check
+  failed_when: sudo_check.rc != 0
+
+- name: Assert supported OS distribution is Ubuntu 24.04 LTS
+  ansible.builtin.assert:
+    that:
+      - ansible_distribution == 'Ubuntu'
+      - ansible_distribution_version == '24.04'
+    fail_msg: >-
+      Unsupported OS: Bootstrap requires Ubuntu Server 24.04 LTS.
+      Observed: {{ ansible_distribution | default('unknown') }} {{ ansible_distribution_version | default('unknown') }}.
+
+- name: Assert supported CPU architecture is ARM64
+  ansible.builtin.assert:
+    that:
+      - ansible_architecture in ['aarch64', 'arm64']
+    fail_msg: >-
+      Unsupported CPU architecture: Bootstrap requires ARM64 (aarch64).
+      Observed: {{ ansible_architecture | default('unknown') }}.
+
+- name: Assert target Python version is 3.12
+  ansible.builtin.assert:
+    that:
+      - ansible_python_version is version('3.12', '>=')
+      - ansible_python_version is version('3.13', '<')
+    fail_msg: >-
+      Unsupported target Python: Bootstrap requires Python 3.12.
+      Observed: {{ ansible_python_version | default('unknown') }}.
+
+- name: Assert service manager is systemd
+  ansible.builtin.assert:
+    that:
+      - ansible_service_mgr == 'systemd'
+    fail_msg: >-
+      Unsupported service manager: Bootstrap requires systemd.
+      Observed: {{ ansible_service_mgr | default('unknown') }}.
+
+- name: Assert minimum visible CPU count (>= 2 vCPUs)
+  ansible.builtin.assert:
+    that:
+      - ansible_processor_vcpus >= 2
+    fail_msg: >-
+      Insufficient compute capacity: At least 2 vCPUs required.
+      Observed: {{ ansible_processor_vcpus | default(0) }} vCPUs.
+
+- name: Assert minimum reported total RAM (>= 1,900 MiB)
+  ansible.builtin.assert:
+    that:
+      - ansible_memtotal_mb >= 1900
+    fail_msg: >-
+      Insufficient memory: At least 1,900 MiB total reported RAM required.
+      Observed: {{ ansible_memtotal_mb | default(0) }} MiB.
+
+- name: Assert swap is disabled
+  ansible.builtin.assert:
+    that:
+      - ansible_swaptotal_mb == 0
+    fail_msg: >-
+      Swap enabled: K3s requires swap to be disabled on the host.
+      Observed: {{ ansible_swaptotal_mb | default(0) }} MiB swap active.
+
+- name: Check free disk space on filesystem backing /var/lib/rancher (or nearest ancestor)
+  ansible.builtin.shell:
+    cmd: |
+      target="/var/lib/rancher"
+      while [ ! -d "$target" ] && [ "$target" != "/" ]; do
+        target=$(dirname "$target")
+      done
+      df -k "$target" | tail -1 | awk '{print $4}'
+  changed_when: false
+  register: disk_free_check
+
+- name: Assert minimum free disk space (>= 10 GiB / 10,485,760 KiB)
+  ansible.builtin.assert:
+    that:
+      - (disk_free_check.stdout | int) >= 10485760
+    fail_msg: >-
+      Insufficient storage: At least 10 GiB free space required on filesystem backing /var/lib/rancher.
+      Observed: {{ ((disk_free_check.stdout | int) / 1024 / 1024) | round(2) }} GiB free.
+
+- name: Verify cgroups filesystem availability
+  ansible.builtin.stat:
+    path: "/sys/fs/cgroup"
+  register: cgroups_stat
+  failed_when: not cgroups_stat.stat.exists or not cgroups_stat.stat.isdir
+
+- name: Check required kernel modules support (overlay and br_netfilter)
+  ansible.builtin.command:
+    cmd: "modprobe -n {{ item }}"
+  loop:
+    - overlay
+    - br_netfilter
+  changed_when: false
+  register: kernel_module_check
+  failed_when: kernel_module_check.rc != 0
+
+- name: Verify standard host utility availability
+  ansible.builtin.command:
+    cmd: "which {{ item }}"
+  loop:
+    - curl
+    - tar
+    - systemctl
+    - ip
+    - ss
+  changed_when: false
+  register: host_tools_check
+  failed_when: host_tools_check.rc != 0
+
+- name: Assert default IPv4 network route exists
+  ansible.builtin.assert:
+    that:
+      - ansible_default_ipv4.gateway is defined
+      - ansible_default_ipv4.gateway | length > 0
+    fail_msg: "Network route failure: No default IPv4 gateway observed."
+
+- name: Verify public host DNS resolution
+  ansible.builtin.command:
+    cmd: "getent hosts github.com"
+  changed_when: false
+  register: dns_check
+  failed_when: dns_check.rc != 0
+
+- name: Verify outbound HTTPS CA trust
+  ansible.builtin.command:
+    cmd: "curl -sI --connect-timeout 10 https://github.com"
+  changed_when: false
+  register: https_trust_check
+  failed_when: https_trust_check.rc != 0
+
+- name: Verify release download artifact reachability
+  ansible.builtin.command:
+    cmd: "curl -sI --connect-timeout 15 https://github.com/k3s-io/k3s/releases/download/{{ k3s_version }}/sha256sum-arm64.txt"
+  changed_when: false
+  register: release_artifact_check
+  failed_when: release_artifact_check.rc != 0
+
+# T018: Host state inspection & 3-way classification
+- name: Stat existing cluster artifacts and receipts
+  ansible.builtin.stat:
+    path: "{{ item }}"
+    checksum_algorithm: sha256
+  loop:
+    - "/var/lib/nacfson-bootstrap/installation.json"
+    - "/usr/local/bin/k3s"
+    - "/etc/systemd/system/k3s.service"
+    - "/var/lib/rancher/k3s"
+    - "/etc/rancher/k3s"
+    - "/etc/systemd/system/k3s.service.d"
+    - "/etc/systemd/system/k3s.service.env"
+    - "/etc/default/k3s"
+    - "/etc/sysconfig/k3s"
+    - "/usr/local/bin/rke2"
+    - "/usr/bin/kubeadm"
+  register: state_stats
+
+- name: Read receipt content if receipt exists
+  ansible.builtin.slurp:
+    path: "/var/lib/nacfson-bootstrap/installation.json"
+  register: receipt_slurp
+  when: (state_stats.results | selectattr('item', 'equalto', '/var/lib/nacfson-bootstrap/installation.json') | first).stat.exists | default(false)
+  failed_when: false
+
+- name: Parse receipt JSON data
+  ansible.builtin.set_fact:
+    receipt_data: "{{ (receipt_slurp.content | b64decode | from_json) if (receipt_slurp is defined and receipt_slurp.content is defined) else {} }}"
+
+- name: Classify target host state
+  ansible.builtin.set_fact:
+    host_state: >-
+      {%- set r_stat = (state_stats.results | selectattr('item', 'equalto', '/var/lib/nacfson-bootstrap/installation.json') | first).stat -%}
+      {%- set b_stat = (state_stats.results | selectattr('item', 'equalto', '/usr/local/bin/k3s') | first).stat -%}
+      {%- set u_stat = (state_stats.results | selectattr('item', 'equalto', '/etc/systemd/system/k3s.service') | first).stat -%}
+      {%- set d_dropin = (state_stats.results | selectattr('item', 'equalto', '/etc/systemd/system/k3s.service.d') | first).stat -%}
+      {%- set f_env1 = (state_stats.results | selectattr('item', 'equalto', '/etc/systemd/system/k3s.service.env') | first).stat -%}
+      {%- set f_env2 = (state_stats.results | selectattr('item', 'equalto', '/etc/default/k3s') | first).stat -%}
+      {%- set f_env3 = (state_stats.results | selectattr('item', 'equalto', '/etc/sysconfig/k3s') | first).stat -%}
+      {%- set foreign1 = (state_stats.results | selectattr('item', 'equalto', '/usr/local/bin/rke2') | first).stat -%}
+      {%- set foreign2 = (state_stats.results | selectattr('item', 'equalto', '/usr/bin/kubeadm') | first).stat -%}
+      {%- set foreign3 = (state_stats.results | selectattr('item', 'equalto', '/etc/rancher/k3s') | first).stat -%}
+      {%- set any_cluster_exists = r_stat.exists or b_stat.exists or u_stat.exists or d_dropin.exists or f_env1.exists or f_env2.exists or f_env3.exists or foreign1.exists or foreign2 or foreign3.exists -%}
+      {%- if not any_cluster_exists -%}
+        fresh
+      {%- elif r_stat.exists and r_stat.pw_name == 'root' and (r_stat.mode in ['0600', '00600']) and
+               b_stat.exists and u_stat.exists and
+               (not d_dropin.exists) and (not f_env1.exists) and (not f_env2.exists) and (not f_env3.exists) and
+               (not foreign1.exists) and (not foreign2.exists) and (not foreign3.exists) and
+               receipt_data.get('profile_revision') == 1 and
+               receipt_data.get('k3s_version') == k3s_version and
+               receipt_data.get('binary_sha256') == b_stat.checksum and
+               receipt_data.get('unit_sha256') == u_stat.checksum -%}
+        managed_compatible
+      {%- else -%}
+        conflicting_or_unknown
+      {%- endif -%}
+
+- name: Fail on conflicting or unknown existing host state
+  ansible.builtin.assert:
+    that:
+      - host_state in ['fresh', 'managed_compatible']
+    fail_msg: >-
+      Conflict or unverified host state detected (classified: '{{ host_state }}').
+      Existing cluster files, conflicting versions, or unmanaged configuration overrides were found without a matching valid receipt.
+      Bootstrap will not overwrite, upgrade, downgrade, or silently adopt this host. Manual operator recovery is required.
+
+# Network route overlap checks (executed on fresh hosts only)
+- name: Check for CIDR conflicts on fresh target
+  when: host_state == 'fresh'
+  block:
+    - name: Inspect existing routes overlapping default cluster ranges (10.42.0.0/16 and 10.43.0.0/16)
+      ansible.builtin.shell:
+        cmd: |
+          ip route show | grep -E '^10\.(42|43)\.' || true
+      changed_when: false
+      register: cidr_check
+
+    - name: Assert no CIDR overlap with default cluster ranges
+      ansible.builtin.assert:
+        that:
+          - cidr_check.stdout | length == 0
+        fail_msg: >-
+          Network conflict: Existing host routes overlap with default K3s cluster ranges (10.42.0.0/16 or 10.43.0.0/16).
+          Observed routes: {{ cidr_check.stdout }}.
+
+# Port conflict checks (executed on fresh hosts only)
+- name: Check for listening port conflicts on fresh target
+  when: host_state == 'fresh'
+  block:
+    - name: Inspect listening ports on fresh target (6443, 10250, 80, 443)
+      ansible.builtin.shell:
+        cmd: |
+          ss -tulpn | grep -E ':(6443|10250|80|443)\s' || true
+      changed_when: false
+      register: port_conflict_check
+
+    - name: Assert required cluster ports are not in use
+      ansible.builtin.assert:
+        that:
+          - port_conflict_check.stdout | length == 0
+        fail_msg: >-
+          Port conflict: Ports required by K3s (6443, 10250, 80, 443) are already in use.
+          Observed listeners: {{ port_conflict_check.stdout }}.

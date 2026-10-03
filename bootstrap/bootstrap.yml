@@ -1,0 +1,154 @@
+---
+# Minimal VM Bootstrap Playbook
+# Scope: Prepare an existing VM for a single K3s server using three settings:
+# target host address, SSH user, and pinned k3s_version.
+
+- name: Controller request validation
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    accepted_k3s_versions:
+      - "v1.35.9+k3s1"
+  tasks:
+    - name: Validate inventory contains exactly one target host
+      ansible.builtin.assert:
+        that:
+          - groups['all'] is defined
+          - groups['all'] | length == 1
+        fail_msg: >-
+          Validation failed: Exactly one inventory host required, but found {{ groups['all'] | default([]) | length }} host(s).
+          Target VM must be specified as a single host (e.g. -i 'VM_ADDRESS,').
+
+    - name: Set target host variable
+      ansible.builtin.set_fact:
+        target_inventory_host: "{{ groups['all'][0] }}"
+
+    - name: Validate target address or alias is non-empty
+      ansible.builtin.assert:
+        that:
+          - target_inventory_host is defined
+          - target_inventory_host | trim | length > 0
+        fail_msg: "Validation failed: Target host address or SSH alias must be non-empty."
+
+    - name: Validate explicit remote SSH user is provided and non-empty
+      ansible.builtin.assert:
+        that:
+          - (ansible_user is defined and (ansible_user | trim | length > 0)) or
+            (hostvars[target_inventory_host].ansible_user is defined and (hostvars[target_inventory_host].ansible_user | trim | length > 0)) or
+            (hostvars[target_inventory_host].ansible_ssh_user is defined and (hostvars[target_inventory_host].ansible_ssh_user | trim | length > 0))
+        fail_msg: "Validation failed: Explicit non-empty remote SSH user must be provided (e.g. -u SSH_USER)."
+
+    - name: Validate k3s_version is provided and accepted
+      ansible.builtin.assert:
+        that:
+          - k3s_version is defined
+          - k3s_version | trim | length > 0
+          - k3s_version in accepted_k3s_versions
+        fail_msg: >-
+          Validation failed: Invalid or missing k3s_version '{{ k3s_version | default('NOT_SET') }}'.
+          Supported version allowlist: {{ accepted_k3s_versions | join(', ') }}.
+
+
+- name: Bootstrap target VM
+  hosts: all
+  gather_facts: false
+  become: true
+  vars:
+    accepted_k3s_versions:
+      - "v1.35.9+k3s1"
+  tasks:
+    - name: Execute bootstrap workflow
+      block:
+        - name: Initialize bootstrap result structure
+          ansible.builtin.set_fact:
+            current_stage: "request_validation"
+            bootstrap_result:
+              target: "{{ inventory_hostname }}"
+              requested_version: "{{ k3s_version }}"
+              observed_version: null
+              completed_stages:
+                - "request_validation"
+              readiness_outcomes:
+                service_active_and_enabled: false
+                management_api_ready: false
+                node_ready: false
+                coredns_ready: false
+              status: "failed"
+              failed_stage: null
+              next_action: "Review preflight diagnostics and ensure host meets support profile."
+
+        # Stage 1: Preflight
+        - name: Execute preflight inspections
+          ansible.builtin.include_tasks: tasks/preflight.yml
+
+        - name: Record preflight completion
+          ansible.builtin.set_fact:
+            bootstrap_result: "{{ bootstrap_result | combine({'completed_stages': bootstrap_result.completed_stages + ['preflight']}) }}"
+
+        # Check-mode short-circuit
+        - name: Handle check-mode validation only
+          when: ansible_check_mode
+          block:
+            - name: Set validation-only result
+              ansible.builtin.set_fact:
+                bootstrap_result: "{{ bootstrap_result | combine({
+                  'status': 'validation_only',
+                  'failed_stage': null,
+                  'next_action': 'Check mode completed read-only validation. Zero changes made. Run without --check to perform live installation.'
+                }) }}"
+
+            - name: Display validation summary
+              ansible.builtin.debug:
+                var: bootstrap_result
+
+            - name: Stop execution in check mode
+              ansible.builtin.meta: end_play
+
+        # Stage 2: Installation
+        - name: Execute cluster installation
+          ansible.builtin.include_tasks: tasks/install.yml
+
+        - name: Record installation completion
+          ansible.builtin.set_fact:
+            bootstrap_result: "{{ bootstrap_result | combine({'completed_stages': bootstrap_result.completed_stages + ['install']}) }}"
+
+        # Stage 3: Verification
+        - name: Execute cluster readiness verification
+          ansible.builtin.include_tasks: tasks/verify.yml
+
+        - name: Record verification completion
+          ansible.builtin.set_fact:
+            bootstrap_result: "{{ bootstrap_result | combine({'completed_stages': bootstrap_result.completed_stages + ['verify']}) }}"
+
+        # Final Success
+        - name: Finalize successful bootstrap result
+          ansible.builtin.set_fact:
+            bootstrap_result: "{{ bootstrap_result | combine({
+              'status': 'ready',
+              'failed_stage': null,
+              'next_action': 'Base cluster bootstrap ready. Proceed to separate platform deployment.'
+            }) }}"
+
+        - name: Display final bootstrap summary
+          ansible.builtin.debug:
+            var: bootstrap_result
+
+      rescue:
+        - name: Record failure details in bootstrap result
+          ansible.builtin.set_fact:
+            bootstrap_result: "{{ bootstrap_result | combine({
+              'status': 'failed',
+              'failed_stage': current_stage | default('unknown'),
+              'next_action': stage_failure_remediation | default('Address failed conditions before retrying bootstrap.')
+            }) }}"
+
+        - name: Display failure summary
+          ansible.builtin.debug:
+            var: bootstrap_result
+
+        - name: Fail with actionable message
+          ansible.builtin.fail:
+            msg: >-
+              Bootstrap failed during stage '{{ current_stage | default('unknown') }}' on target '{{ inventory_hostname }}'.
+              Remediation: {{ stage_failure_remediation | default('Address failed conditions before retrying bootstrap.') }}

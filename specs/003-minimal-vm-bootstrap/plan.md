@@ -1,0 +1,103 @@
+# Implementation Plan: Minimal VM Bootstrap
+
+**Branch**: `main` | **Date**: 2026-10-03 | **Spec**: [spec.md](spec.md)
+
+**Input**: Feature specification in `specs/003-minimal-vm-bootstrap/spec.md`.
+
+The setup script reports the feature identifier `003-minimal-vm-bootstrap` as its branch field; the actual Git branch remains `main`. No branch-creation hook is configured.
+
+## Summary
+
+Implement one small Ansible playbook that prepares an existing, compatible VM to run a single K3s server. Require only the VM address, SSH user, and exact K3s version. Validate prerequisites, install a checksum-verified binary with a minimal service definition, enable/start it, and verify host-level cluster readiness. Keep application deployment, Vault, credentials for upstream services, cloud provisioning, and recovery outside this implementation.
+
+Healthy reruns perform verification without reinstalling or restarting. Unrecognized or conflicting existing state stops with a useful explanation. Use a small non-secret receipt to identify this bootstrap's installed files; it is not a backup or a recovery journal.
+
+## Technical Context
+
+**Language/Version**: Ansible YAML; controller Python 3.12 and `ansible-core==2.21.4`; target Ubuntu Python 3.12.
+
+**Primary Dependencies**: Built-in Ansible modules, OpenSSH, sudo, systemd, and K3s `v1.35.9+k3s1` as the initial accepted release. No external collections, cloud SDK, separate Docker installation, or in-cluster automation controller.
+
+**Storage**: Existing host filesystem; normal K3s data under `/var/lib/rancher/k3s`; root-owned non-secret receipt at `/var/lib/nacfson-bootstrap/installation.json`. No formatting, new disks, database, or custom volume provisioning.
+
+**Testing**: Ansible syntax and check-mode validation; acceptance runs on two clean Ubuntu ARM64 VM installations; separate disposable-host negative and rerun tests. Existing application tests are unaffected.
+
+**Target Platform**: Ubuntu Server 24.04 LTS ARM64, systemd, one existing Oracle Cloud VM per invocation. Controller: Linux or macOS with supported Python and OpenSSH.
+
+**Project Type**: Operator-run host bootstrap automation.
+
+**Performance Goals**: Finite deadlines per remote task/download/readiness stage; no unsupported end-to-end latency promise. Exact limits are defined in [the invocation contract](contracts/bootstrap.md).
+
+**Constraints**: Three operator settings; existing verified SSH/noninteractive sudo; public bootstrap-artifact access; no application/backend credential retrieval; no silent upgrades, reset, broad host repair, or kubeconfig export. Minimum 2 CPUs, 1,900 MiB reported RAM, and 10 GiB free host storage are bootstrap admission checks, not workload sizing.
+
+**Scale/Scope**: One host, one server, one support profile, default SQLite datastore and bundled components. No node joining, HA, custom networking, or registry proxy integration.
+
+## Constitution Check
+
+**Pre-research gate: PASS for this host-only scope.** No application manifests, access model, resource allocations, or persistence contract are being changed.
+
+| Principle | Design treatment | Result |
+| --- | --- | --- |
+| I. Declarative configuration | Version bootstrap files and accepted release in Git; no application reconciliation added | Pass |
+| II. Workload isolation | Preserve default cluster networking; deploy no project namespaces or workloads; do not weaken existing policies | Pass within scope |
+| III. Identity | No identity endpoints, authentication flows, or public admin exposure changes; operator uses existing private administrative access | Pass |
+| IV. Resource budgets | Validate host baseline only; application admission and measured 1/n budgets remain separate deployment gates | Pass within scope |
+| V. Persistence/secrets | Do not change storage or distribute backend secrets; preserve existing cluster data; no claim of backup restoration | Pass |
+| VI. Portability | Initial host support is deliberately narrow; application contracts remain unchanged and other environment support is not claimed | Pass within scope |
+
+**Post-design gate: PASS for the same scope.** K3s's bundled components are the base cluster permitted by FR-008, not a release of project workloads. This bootstrap does not certify that bundled or future workloads satisfy all platform deployment gates; the later platform release must apply those gates. Runtime-generated networking rules are required cluster behavior, not permission to disable host/cloud firewall policy. The separate Vault specification's conflict with existing credential-delivery governance remains outside this feature; no conflicting integration is implemented here.
+
+## Project Structure
+
+### Documentation (this feature)
+
+```text
+specs/003-minimal-vm-bootstrap/
+├── spec.md
+├── plan.md
+├── research.md
+├── data-model.md
+├── quickstart.md
+├── contracts/bootstrap.md
+└── checklists/requirements.md
+```
+
+`tasks.md` is generated by the next workflow, not this planning phase.
+
+### Source Code (repository root, proposed)
+
+```text
+bootstrap/
+├── ansible.cfg                 # Bounded connections; verified host keys
+├── requirements.txt            # Pinned ansible-core controller dependency
+├── bootstrap.yml               # Single entry point and outcome reporting
+├── tasks/
+│   ├── preflight.yml           # Inputs, facts, prerequisites, state classification
+│   ├── install.yml             # Fresh-only artifacts/unit/receipt, then start
+│   └── verify.yml              # Four bounded readiness checks
+└── templates/k3s.service.j2     # Small, reviewed systemd server unit
+```
+
+**Structure Decision**: One playbook with three task files keeps phases readable without a role framework, custom CLI, generated inventory, or plugins. The service template is internal configuration, not another operator setting. Extend the existing lint workflow with a syntax check for this playbook only; no automatic remote deployment job.
+
+## Execution Design
+
+1. **Validate request locally.** Require exactly one target, user, and an accepted full release tag. Initial allowlist contains only `v1.35.9+k3s1`; no fallback channel. Existing SSH configuration supplies authentication. Reject multiple hosts before remote mutation.
+2. **Inspect host read-only.** Check Ubuntu release/architecture, privilege, systemd, Python, CPU/RAM/free space, swap, cgroups, kernel support, existing configuration and routes. Check fresh-host required ports against the selected K3s release. In particular, existing listeners must not conflict with API/kubelet or bundled ingress ports. Check accessible public release artifacts and base-image registry endpoints; endpoint reachability is only preflight evidence, actual pulls are proven at readiness. Do not install missing OS packages or rewrite network/firewall policy.
+3. **Classify installation.** Absence of K3s/RKE2/kubeadm artifacts, existing cluster data, managed paths, and conflicting services is required for fresh installation. For a managed host, compare the root-owned receipt, binary digest, unit digest, effective systemd unit/drop-ins/environment, and absence of unexpected K3s config sources. Exclude recognized K3s-generated interfaces/routes from overlap checks on reruns. Other states stop unchanged. Do not execute an unknown binary merely to inspect its version.
+4. **Install only when fresh.** Fetch the release SHA-256 manifest and ARM64 binary through verified HTTPS into temporary staging. Verify the exact named artifact and atomically place the executable. Render the root-owned service and validate it with `systemd-analyze verify`. Write the non-secret receipt only after both files are complete. Use `k3s server`, no external datastore/token/registry options. The unit follows K3s service requirements: root execution, `Type=notify`, `Delegate=yes`, `KillMode=process`, restart-on-failure behavior, and kernel module loading for overlay/bridge support. Set a finite startup limit; it is not a kubeconfig or secret store. Retain default restrictive kubeconfig permissions.
+5. **Enable/start.** Only fresh or fully verified managed-compatible installations reach this step. A stopped compatible service may be started; an already enabled/running service is untouched. Request activation without waiting indefinitely, then use the readiness phase. A readiness failure does not uninstall or reset anything.
+6. **Verify and report.** Check service active/enabled; run local privileged `k3s kubectl` through SSH to verify `/readyz`, exactly one expected node Ready, and `kube-system` CoreDNS deployment readiness. Verify observed binary/server versions match the selected version. Record sanitized stage outcomes and exit success only when all checks pass. Do not export kubeconfig, dump logs/environments, or call the existing application release script.
+
+## Verification Strategy
+
+- Syntax-check the playbook with its pinned controller dependency. Check mode performs read-only validation and reports `validation_only`; it skips installation and never implies a fresh node is ready.
+- Execute [quickstart.md](quickstart.md) on clean disposable hosts for SC-001/002. Inspect namespaces, installed services, and repository changes for SC-005.
+- For SC-003, capture node UID, service restart count/start time, and a disposable persistent-data sentinel before two normal reruns; assert no reinstall, restart, identity change, or sentinel change.
+- For SC-004, cover invalid/missing inputs, multiple targets, bad SSH/sudo, unsupported profile, insufficient capacity, conflicting version/unit/drop-in/config, unavailable downloads, checksum mismatch, partial files without receipt, stopped compatible service, and failed API/node/DNS readiness. Run disruptive cases only on disposable hosts.
+- Verify deadlines and nonzero failures directly. No simulation fallback, `ignore_errors`, or mock cluster evidence qualifies as successful bootstrap.
+- Planning checks only document consistency and source compatibility; live acceptance remains unexecuted until implementation and an authorized test VM exist.
+
+## Complexity Tracking
+
+No constitution exceptions are requested. The only persistent metadata added by this feature is a non-secret installation receipt needed to distinguish a safe rerun from an unrecognized installation. No general host-management or recovery framework is introduced.

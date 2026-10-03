@@ -1,0 +1,147 @@
+---
+# Install tasks: Fetch verified release artifacts, render unit, write receipt, enable/start service
+# Scope: Only mutates host when classified as fresh or compatible-stopped.
+
+- name: Set current stage tracking to install
+  ansible.builtin.set_fact:
+    current_stage: "install"
+    stage_failure_remediation: "Verify release artifact reachability, checksum integrity, and systemd service startup."
+
+- name: Check if installation should be skipped on managed-compatible rerun
+  ansible.builtin.set_fact:
+    skip_artifact_install: "{{ host_state | default('fresh') == 'managed_compatible' }}"
+
+- name: Execute fresh-only artifact download and placement
+  when: not skip_artifact_install
+  block:
+    - name: Ensure bootstrap staging directory exists
+      ansible.builtin.file:
+        path: "/var/lib/nacfson-bootstrap/staging"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Download release SHA-256 manifest
+      ansible.builtin.get_url:
+        url: "https://github.com/k3s-io/k3s/releases/download/{{ k3s_version }}/sha256sum-arm64.txt"
+        dest: "/var/lib/nacfson-bootstrap/staging/sha256sum-arm64.txt"
+        mode: "0600"
+        owner: root
+        group: root
+        timeout: 30
+      register: manifest_download
+      until: manifest_download is not failed
+      retries: 2
+      delay: 5
+
+    - name: Parse expected ARM64 binary SHA-256 digest
+      ansible.builtin.shell:
+        cmd: "grep 'k3s-arm64$' /var/lib/nacfson-bootstrap/staging/sha256sum-arm64.txt | awk '{print $1}'"
+      changed_when: false
+      register: parsed_checksum
+
+    - name: Assert valid expected checksum was parsed
+      ansible.builtin.assert:
+        that:
+          - parsed_checksum.stdout is defined
+          - parsed_checksum.stdout | length == 64
+        fail_msg: "Failed to extract valid SHA-256 digest for k3s-arm64 from release manifest."
+
+    - name: Set expected binary digest fact
+      ansible.builtin.set_fact:
+        expected_binary_sha256: "{{ parsed_checksum.stdout | trim }}"
+
+    - name: Download k3s ARM64 binary with verified HTTPS and timeout bounds
+      ansible.builtin.get_url:
+        url: "https://github.com/k3s-io/k3s/releases/download/{{ k3s_version }}/k3s-arm64"
+        dest: "/var/lib/nacfson-bootstrap/staging/k3s-arm64"
+        checksum: "sha256:{{ expected_binary_sha256 }}"
+        mode: "0755"
+        owner: root
+        group: root
+        timeout: 30
+      async: 600
+      poll: 5
+
+    - name: Atomically install verified binary to /usr/local/bin/k3s
+      ansible.builtin.copy:
+        src: "/var/lib/nacfson-bootstrap/staging/k3s-arm64"
+        dest: "/usr/local/bin/k3s"
+        remote_src: true
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: Render systemd service unit template
+      ansible.builtin.template:
+        src: "templates/k3s.service.j2"
+        dest: "/etc/systemd/system/k3s.service"
+        owner: root
+        group: root
+        mode: "0644"
+
+    - name: Validate systemd unit syntax with systemd-analyze
+      ansible.builtin.command:
+        cmd: "systemd-analyze verify /etc/systemd/system/k3s.service"
+      changed_when: false
+      register: systemd_verify
+      failed_when: systemd_verify.rc != 0
+
+    - name: Compute binary SHA-256 digest
+      ansible.builtin.stat:
+        path: "/usr/local/bin/k3s"
+        checksum_algorithm: sha256
+      register: installed_binary_stat
+
+    - name: Compute unit SHA-256 digest
+      ansible.builtin.stat:
+        path: "/etc/systemd/system/k3s.service"
+        checksum_algorithm: sha256
+      register: installed_unit_stat
+
+    - name: Atomically write non-secret installation receipt
+      ansible.builtin.copy:
+        dest: "/var/lib/nacfson-bootstrap/installation.json"
+        content: |
+          {
+            "profile_revision": 1,
+            "k3s_version": "{{ k3s_version }}",
+            "binary_sha256": "{{ installed_binary_stat.stat.checksum }}",
+            "unit_sha256": "{{ installed_unit_stat.stat.checksum }}"
+          }
+        owner: root
+        group: root
+        mode: "0600"
+
+  always:
+    - name: Clean temporary bootstrap staging files
+      ansible.builtin.file:
+        path: "/var/lib/nacfson-bootstrap/staging"
+        state: absent
+      when: not skip_artifact_install
+
+# Service activation (for fresh or stopped managed-compatible host)
+- name: Reload systemd daemon
+  ansible.builtin.systemd:
+    daemon_reload: true
+
+- name: Enable k3s service to start on boot
+  ansible.builtin.systemd:
+    name: k3s
+    enabled: true
+
+- name: Check current k3s service active status
+  ansible.builtin.command:
+    cmd: "systemctl is-active k3s"
+  register: k3s_active_check
+  changed_when: false
+  failed_when: false
+
+- name: Start k3s service if not active
+  when: k3s_active_check.stdout != 'active'
+  ansible.builtin.systemd:
+    name: k3s
+    state: started
+  async: 60
+  poll: 2
