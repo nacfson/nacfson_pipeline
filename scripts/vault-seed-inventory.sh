@@ -14,7 +14,6 @@ echo "=== Seeding the 11 Mandatory Managed Credentials into OpenBao KV v2 ==="
 seed_secret() {
   local path="$1"
   shift
-  local data="$*"
   echo "Seeding ${path}..."
   if [ "${VAULT_MOCK_MODE:-false}" != "true" ] && kubectl --request-timeout=1s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
     kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_TOKEN="${VAULT_TOKEN:-root}" \
