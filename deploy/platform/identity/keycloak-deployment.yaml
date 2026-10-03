@@ -25,7 +25,7 @@ spec:
       containers:
         - name: keycloak
           image: quay.io/keycloak/keycloak:24.0
-          args: ["start"]
+          args: ["start", "--vault=file", "--vault-dir=/opt/keycloak/conf/secrets"]
           env:
             - name: KC_DB
               value: postgres
@@ -34,20 +34,7 @@ spec:
             - name: KC_DB_USERNAME
               value: keycloak_user
             - name: KC_DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-credentials
-                  key: KEYCLOAK_DB_PASSWORD
-            - name: KEYCLOAK_ADMIN
-              valueFrom:
-                secretKeyRef:
-                  name: keycloak-admin-credentials
-                  key: KEYCLOAK_ADMIN_USER
-            - name: KEYCLOAK_ADMIN_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: keycloak-admin-credentials
-                  key: KEYCLOAK_ADMIN_PASSWORD
+              value: "${VAULT:keycloak_db_password}"
             - name: KC_PROXY_HEADERS
               value: xforwarded
             - name: KC_HTTP_ENABLED
@@ -91,6 +78,15 @@ spec:
               port: 9000
             initialDelaySeconds: 60
             periodSeconds: 15
+          volumeMounts:
+            - name: keycloak-secrets
+              mountPath: /opt/keycloak/conf/secrets
+              readOnly: true
+      volumes:
+        - name: keycloak-secrets
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
 ---
 apiVersion: v1
 kind: Service

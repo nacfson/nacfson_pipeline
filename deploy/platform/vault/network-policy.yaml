@@ -1,0 +1,163 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: vault-default-deny
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: vault-network-policy
+    app.kubernetes.io/part-of: platform-vault
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    # Allow DNS resolution
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: openbao-ingress-policy
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: openbao-policy
+    app.kubernetes.io/part-of: platform-vault
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: openbao
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow intra-vault cluster traffic (Raft :8201 and API :8200)
+    - from:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8200
+        - protocol: TCP
+          port: 8201
+    # Allow authorized platform services (e.g. identity namespace, provisioning jobs)
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: identity
+      ports:
+        - protocol: TCP
+          port: 8200
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: platform
+      ports:
+        - protocol: TCP
+          port: 8200
+  egress:
+    # Intra-vault clustering & Raft sync
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: openbao
+      ports:
+        - protocol: TCP
+          port: 8201
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: db-proxy-policy
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: db-proxy-policy
+    app.kubernetes.io/part-of: platform-vault
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vault-db-proxy
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow project pods (e.g. proj-pn) to connect on Postgres port 5432
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: project-pn
+      ports:
+        - protocol: TCP
+          port: 5432
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: proj-pn
+      ports:
+        - protocol: TCP
+          port: 5432
+  egress:
+    # Allow connection to OpenBao API
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: openbao
+      ports:
+        - protocol: TCP
+          port: 8200
+    # Allow connection to PostgreSQL in identity namespace
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: identity
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: postgres
+      ports:
+        - protocol: TCP
+          port: 5432
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: registry-proxy-policy
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: registry-proxy-policy
+    app.kubernetes.io/part-of: platform-vault
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vault-registry-proxy
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow local node / containerd to pull images on port 5000
+    - ports:
+        - protocol: TCP
+          port: 5000
+  egress:
+    # Allow connection to OpenBao API
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: openbao
+      ports:
+        - protocol: TCP
+          port: 8200
+    # Allow outbound HTTPS to GHCR for image manifests and layer blobs
+    - ports:
+        - protocol: TCP
+          port: 443

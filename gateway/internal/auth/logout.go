@@ -26,6 +26,14 @@ func (h *Handler) ValidateCSRF(r *http.Request, sessionID string) bool {
 		if hmac.Equal([]byte(csrfHeader), []byte(expected)) {
 			return true
 		}
+		if len(h.Config.HMACSecretPrevious) > 0 {
+			prevMac := hmac.New(sha256.New, h.Config.HMACSecretPrevious)
+			prevMac.Write([]byte("csrf:" + sessionID))
+			prevExpected := hex.EncodeToString(prevMac.Sum(nil))
+			if hmac.Equal([]byte(csrfHeader), []byte(prevExpected)) {
+				return true
+			}
+		}
 	}
 
 	// Check 2: Origin or Referer domain validation

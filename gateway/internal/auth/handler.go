@@ -215,8 +215,18 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	mac.Write(payloadBytes)
 	expectedSig := mac.Sum(nil)
 	if !hmac.Equal(sigBytes, expectedSig) {
-		http.Error(w, "tampered state signature", http.StatusBadRequest)
-		return
+		valid := false
+		if len(h.Config.HMACSecretPrevious) > 0 {
+			prevMac := hmac.New(sha256.New, h.Config.HMACSecretPrevious)
+			prevMac.Write(payloadBytes)
+			if hmac.Equal(sigBytes, prevMac.Sum(nil)) {
+				valid = true
+			}
+		}
+		if !valid {
+			http.Error(w, "tampered state signature", http.StatusBadRequest)
+			return
+		}
 	}
 
 	var state StatePayload
@@ -318,7 +328,17 @@ func (h *Handler) decodeSessionCookie(raw string) (*SessionCookieData, error) {
 	mac := hmac.New(sha256.New, h.Config.HMACSecret)
 	mac.Write(b)
 	if !hmac.Equal(sig, mac.Sum(nil)) {
-		return nil, fmt.Errorf("invalid cookie signature")
+		valid := false
+		if len(h.Config.HMACSecretPrevious) > 0 {
+			prevMac := hmac.New(sha256.New, h.Config.HMACSecretPrevious)
+			prevMac.Write(b)
+			if hmac.Equal(sig, prevMac.Sum(nil)) {
+				valid = true
+			}
+		}
+		if !valid {
+			return nil, fmt.Errorf("invalid cookie signature")
+		}
 	}
 
 	var data SessionCookieData

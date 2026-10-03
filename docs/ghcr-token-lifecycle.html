@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Architecture Diagram: GHCR Directional Protocol Flow (Spec 002)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    code, pre, .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+    /* Animated traveling packet dots along SVG paths */
+    @keyframes travelRight {
+      0% { stroke-dashoffset: 100; }
+      100% { stroke-dashoffset: 0; }
+    }
+    @keyframes travelLeft {
+      0% { stroke-dashoffset: 0; }
+      100% { stroke-dashoffset: 100; }
+    }
+    
+    .anim-packet-forward {
+      stroke-dasharray: 8 16;
+      animation: travelRight 1.2s linear infinite;
+    }
+    .anim-packet-return {
+      stroke-dasharray: 8 16;
+      animation: travelLeft 1.2s linear infinite;
+    }
+
+    .arrow-hover:hover {
+      filter: drop-shadow(0 0 6px rgba(6, 182, 212, 0.8));
+    }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen flex flex-col items-center p-4 md:p-8">
+
+  <!-- Diagram Header -->
+  <header class="w-full max-w-6xl flex flex-col md:flex-row items-start md:items-center justify-between pb-6 mb-6 border-b border-slate-800 gap-4">
+    <div>
+      <div class="flex items-center gap-2 mb-1">
+        <span class="px-2 py-0.5 text-xs font-bold rounded bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">Architecture Diagram</span>
+        <span class="px-2 py-0.5 text-xs font-bold rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">Spec 002 Protocol</span>
+      </div>
+      <h1 class="text-2xl font-bold text-white tracking-tight">Directional Data & Token Flow Diagram</h1>
+      <p class="text-xs text-slate-400 mt-0.5">Visual representation of directional requests, secret injection, result extraction, and rotation lifecycle.</p>
+    </div>
+
+    <!-- Toggle Diagram Mode -->
+    <div class="flex items-center gap-2 bg-slate-900 p-1.5 rounded-xl border border-slate-800">
+      <button id="btn-diag-pull" onclick="showDiagram('pull')" class="px-4 py-2 rounded-lg text-xs font-bold transition bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/30">
+        📦 Diagram 1: Image Pull (Send & Receive)
+      </button>
+      <button id="btn-diag-rotate" onclick="showDiagram('rotate')" class="px-4 py-2 rounded-lg text-xs font-bold transition text-slate-400 hover:text-slate-200">
+        🔄 Diagram 2: Roll-out & Revocation
+      </button>
+    </div>
+  </header>
+
+  <!-- DIAGRAM 1: IMAGE PULL (DIRECTIONAL SEND & RECEIVE) -->
+  <div id="diagram-pull-container" class="w-full max-w-6xl bg-slate-900/40 border border-slate-800 rounded-2xl p-6 shadow-2xl relative">
+    
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-cyan-400 animate-pulse"></span>
+        <h2 class="text-sm font-bold text-slate-200 uppercase tracking-wider">Directional Image Pull: Request ➔ Injection ➔ Upstream ➔ Clean Result</h2>
+      </div>
+      <div class="flex items-center gap-4 text-xs font-mono text-slate-400">
+        <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-cyan-400 inline-block"></span> ➔ Request Flow</span>
+        <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-emerald-400 inline-block"></span> ⬅ Result Payload</span>
+      </div>
+    </div>
+
+    <!-- SVG Directional Flow Diagram -->
+    <svg viewBox="0 0 1000 480" class="w-full h-auto select-none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <!-- Arrowhead Markers -->
+        <marker id="arrow-cyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 10 5 L 0 9 z" fill="#22d3ee" />
+        </marker>
+        <marker id="arrow-emerald" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 10 5 L 0 9 z" fill="#34d399" />
+        </marker>
+        <marker id="arrow-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 10 5 L 0 9 z" fill="#fbbf24" />
+        </marker>
+
+        <!-- Gradient for Boundary -->
+        <linearGradient id="vault-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#064e3b" stop-opacity="0.3" />
+          <stop offset="100%" stop-color="#022c22" stop-opacity="0.5" />
+        </linearGradient>
+      </defs>
+
+      <!-- BOUNDARY: Trusted Execution Boundary (Vault) -->
+      <rect x="360" y="30" width="280" height="420" rx="16" fill="url(#vault-grad)" stroke="#10b981" stroke-width="2" stroke-dasharray="6 4" />
+      <text x="500" y="55" text-anchor="middle" fill="#34d399" font-family="'JetBrains Mono'" font-size="11" font-weight="700" letter-spacing="1">TRUSTED EXECUTION BOUNDARY</text>
+      <text x="500" y="72" text-anchor="middle" fill="#6ee7b7" font-size="9" opacity="0.8">(Credentials strictly isolated inside)</text>
+
+      <!-- ACTOR 1: K3s Node (Worker) -->
+      <g transform="translate(40, 150)">
+        <rect width="240" height="180" rx="12" fill="#0f172a" stroke="#334155" stroke-width="2" />
+        <rect width="240" height="36" rx="12" fill="#1e293b" />
+        <text x="12" y="23" font-size="16">📦</text>
+        <text x="36" y="23" fill="#f8fafc" font-size="12" font-weight="700">K3s Worker Node</text>
+        <text x="228" y="23" text-anchor="end" fill="#94a3b8" font-size="10" font-family="'JetBrains Mono'">containerd</text>
+
+        <!-- Content -->
+        <text x="16" y="62" fill="#94a3b8" font-size="10">Target image:</text>
+        <text x="16" y="78" fill="#e2e8f0" font-size="10" font-family="'JetBrains Mono'" font-weight="600">pn-backend@sha256:7f...</text>
+
+        <rect x="16" y="94" width="208" height="34" rx="6" fill="#020617" stroke="#1e293b" />
+        <text x="24" y="108" fill="#94a3b8" font-size="9">Memory & Disk Credential State:</text>
+        <text x="24" y="122" fill="#34d399" font-size="10" font-family="'JetBrains Mono'" font-weight="700">✓ ZERO TOKENS HELD</text>
+
+        <text x="16" y="148" fill="#64748b" font-size="9">Configured registry endpoint: localhost:5000</text>
+      </g>
+
+      <!-- ACTOR 2: Internal Cluster Vault Service -->
+      <g transform="translate(380, 110)">
+        <rect width="240" height="260" rx="12" fill="#022c22" stroke="#059669" stroke-width="2" />
+        <rect width="240" height="36" rx="12" fill="#064e3b" />
+        <text x="12" y="23" font-size="16">🛡️</text>
+        <text x="36" y="23" fill="#ecfdf5" font-size="12" font-weight="700">Internal Cluster Vault</text>
+        <text x="228" y="23" text-anchor="end" fill="#6ee7b7" font-size="10" font-family="'JetBrains Mono'">Proxy Engine</text>
+
+        <!-- Stored Secret Box -->
+        <rect x="16" y="52" width="208" height="54" rx="6" fill="#062e24" stroke="#047857" />
+        <text x="24" y="68" fill="#a7f3d0" font-size="10" font-weight="700">Enclosed Secret Store:</text>
+        <text x="24" y="84" fill="#fbbf24" font-size="10" font-family="'JetBrains Mono'">ghcr-token: ghp_***_v1</text>
+        <text x="24" y="98" fill="#34d399" font-size="9">(Scope: read:packages only)</text>
+
+        <!-- Actions Inside Vault -->
+        <text x="16" y="128" fill="#94a3b8" font-size="10">Internal Functions:</text>
+        <text x="16" y="146" fill="#e2e8f0" font-size="9.5">• Intercepts node pull requests</text>
+        <text x="16" y="164" fill="#e2e8f0" font-size="9.5">• Injects upstream Bearer PAT</text>
+        <text x="16" y="182" fill="#e2e8f0" font-size="9.5">• Strips auth headers from response</text>
+        <text x="16" y="200" fill="#e2e8f0" font-size="9.5">• Streams pure OCI tarball layers</text>
+
+        <rect x="16" y="214" width="208" height="32" rx="6" fill="#021c15" />
+        <text x="120" y="234" text-anchor="middle" fill="#34d399" font-size="10" font-family="'JetBrains Mono'" font-weight="600">Active State: v1 (Verified)</text>
+      </g>
+
+      <!-- ACTOR 3: Upstream GitHub (ghcr.io) -->
+      <g transform="translate(720, 150)">
+        <rect width="240" height="180" rx="12" fill="#0f172a" stroke="#334155" stroke-width="2" />
+        <rect width="240" height="36" rx="12" fill="#1e293b" />
+        <text x="12" y="23" font-size="16">🐙</text>
+        <text x="36" y="23" fill="#f8fafc" font-size="12" font-weight="700">GitHub (ghcr.io)</text>
+        <text x="228" y="23" text-anchor="end" fill="#fbbf24" font-size="10" font-family="'JetBrains Mono'">Registry</text>
+
+        <!-- Content -->
+        <text x="16" y="62" fill="#94a3b8" font-size="10">Authentication Engine:</text>
+        <text x="16" y="78" fill="#fbbf24" font-size="10" font-family="'JetBrains Mono'">Requires Bearer PAT</text>
+
+        <rect x="16" y="94" width="208" height="34" rx="6" fill="#020617" stroke="#1e293b" />
+        <text x="24" y="108" fill="#94a3b8" font-size="9">Package Storage & OCI:</text>
+        <text x="24" y="122" fill="#f8fafc" font-size="10" font-family="'JetBrains Mono'">Manifests + Layer Blobs</text>
+
+        <text x="16" y="148" fill="#ef4444" font-size="9" font-weight="600">Token creation/deletion: FORBIDDEN</text>
+      </g>
+
+      <!-- DIRECTIONAL FLOW ARROWS -->
+
+      <!-- 1. ARROW: Node -> Vault (Request without Secret) -->
+      <g class="arrow-hover cursor-pointer" onclick="inspectStep(1)">
+        <path d="M 280 180 L 380 180" stroke="#22d3ee" stroke-width="3" marker-end="url(#arrow-cyan)" />
+        <path d="M 280 180 L 380 180" stroke="#ffffff" stroke-width="3" class="anim-packet-forward" />
+        <!-- Callout Badge -->
+        <rect x="282" y="142" width="96" height="30" rx="6" fill="#082f49" stroke="#0284c7" stroke-width="1.5" />
+        <text x="330" y="156" text-anchor="middle" fill="#38bdf8" font-size="9" font-weight="700">1. GET Manifest</text>
+        <text x="330" y="167" text-anchor="middle" fill="#bae6fd" font-size="7.5" font-family="'JetBrains Mono'">(NO SECRET)</text>
+      </g>
+
+      <!-- 2. ARROW: Vault -> GitHub (Request WITH Injected Secret) -->
+      <g class="arrow-hover cursor-pointer" onclick="inspectStep(2)">
+        <path d="M 620 180 L 720 180" stroke="#fbbf24" stroke-width="3" marker-end="url(#arrow-amber)" />
+        <path d="M 620 180 L 720 180" stroke="#ffffff" stroke-width="3" class="anim-packet-forward" />
+        <!-- Callout Badge -->
+        <rect x="622" y="142" width="96" height="30" rx="6" fill="#451a03" stroke="#d97706" stroke-width="1.5" />
+        <text x="670" y="156" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="700">2. Forward + Auth</text>
+        <text x="670" y="167" text-anchor="middle" fill="#fde68a" font-size="7.5" font-family="'JetBrains Mono'">Bearer ghp_***</text>
+      </g>
+
+      <!-- 3. ARROW: GitHub -> Vault (Raw Image Layers Return) -->
+      <g class="arrow-hover cursor-pointer" onclick="inspectStep(3)">
+        <path d="M 720 280 L 620 280" stroke="#34d399" stroke-width="3" marker-end="url(#arrow-emerald)" />
+        <path d="M 720 280 L 620 280" stroke="#ffffff" stroke-width="3" class="anim-packet-return" />
+        <!-- Callout Badge -->
+        <rect x="622" y="242" width="96" height="30" rx="6" fill="#064e3b" stroke="#059669" stroke-width="1.5" />
+        <text x="670" y="256" text-anchor="middle" fill="#34d399" font-size="9" font-weight="700">3. 200 OK Blobs</text>
+        <text x="670" y="267" text-anchor="middle" fill="#a7f3d0" font-size="7.5" font-family="'JetBrains Mono'">OCI Tar Layers</text>
+      </g>
+
+      <!-- 4. ARROW: Vault -> Node (Clean Payload Stream, No Auth Headers) -->
+      <g class="arrow-hover cursor-pointer" onclick="inspectStep(4)">
+        <path d="M 380 280 L 280 280" stroke="#34d399" stroke-width="3" marker-end="url(#arrow-emerald)" />
+        <path d="M 380 280 L 280 280" stroke="#ffffff" stroke-width="3" class="anim-packet-return" />
+        <!-- Callout Badge -->
+        <rect x="282" y="242" width="96" height="30" rx="6" fill="#064e3b" stroke="#059669" stroke-width="1.5" />
+        <text x="330" y="256" text-anchor="middle" fill="#34d399" font-size="9" font-weight="700">4. Stream Layers</text>
+        <text x="330" y="267" text-anchor="middle" fill="#a7f3d0" font-size="7.5" font-family="'JetBrains Mono'">STRIPPED HEADERS</text>
+      </g>
+    </svg>
+
+    <!-- Detailed Directional Explainer Box under the diagram -->
+    <div id="pull-detail-box" class="mt-4 p-4 rounded-xl border border-slate-800 bg-slate-950/80 font-mono text-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div>
+        <div class="text-cyan-400 font-bold mb-1 flex items-center gap-2">
+          <span>🔍 Packet Inspection Detail (Click any numbered arrow above to inspect):</span>
+        </div>
+        <p id="pull-detail-text" class="text-slate-300">
+          <strong>Direction (1):</strong> <code class="text-cyan-300">K3s Node ➔ Vault</code>. containerd issues a plain image pull request. Headers contain no tokens or authentication keys.
+        </p>
+      </div>
+      <div class="shrink-0 flex gap-2">
+        <button onclick="inspectStep(1)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold">1</button>
+        <button onclick="inspectStep(2)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold">2</button>
+        <button onclick="inspectStep(3)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold">3</button>
+        <button onclick="inspectStep(4)" class="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold">4</button>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- DIAGRAM 2: TOKEN ROLL-OUT & REVOCATION (LIFECYCLE FLOW) -->
+  <div id="diagram-rotate-container" class="hidden w-full max-w-6xl bg-slate-900/40 border border-slate-800 rounded-2xl p-6 shadow-2xl relative">
+    
+    <div class="flex items-center justify-between mb-4">
+      <div class="flex items-center gap-2">
+        <span class="w-2.5 h-2.5 rounded-full bg-purple-400 animate-pulse"></span>
+        <h2 class="text-sm font-bold text-slate-200 uppercase tracking-wider">Directional Roll-out & Revocation: Issue ➔ Stage ➔ Probe ➔ Promote ➔ Invalidate</h2>
+      </div>
+      <div class="text-xs font-mono text-purple-300">Spec 002 User Story 3</div>
+    </div>
+
+    <!-- SVG Directional Rollout Diagram -->
+    <svg viewBox="0 0 1000 500" class="w-full h-auto select-none" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <marker id="arrow-purple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 10 5 L 0 9 z" fill="#c084fc" />
+        </marker>
+        <marker id="arrow-rose" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+          <path d="M 0 1 L 10 5 L 0 9 z" fill="#f43f5e" />
+        </marker>
+      </defs>
+
+      <!-- OPERATOR (Top Center) -->
+      <g transform="translate(380, 20)">
+        <rect width="240" height="90" rx="10" fill="#1e1b4b" stroke="#6366f1" stroke-width="2" />
+        <text x="12" y="24" font-size="16">🧑‍💻</text>
+        <text x="36" y="24" fill="#e0e7ff" font-size="12" font-weight="700">Platform Operator</text>
+        <text x="228" y="24" text-anchor="end" fill="#a5b4fc" font-size="10" font-family="'JetBrains Mono'">Admin Custody</text>
+        <text x="16" y="52" fill="#c7d2fe" font-size="9.5">• Generates & deletes tokens on GitHub</text>
+        <text x="16" y="70" fill="#c7d2fe" font-size="9.5">• Stages replacement secrets into Vault</text>
+      </g>
+
+      <!-- VAULT (Bottom Left) -->
+      <g transform="translate(100, 260)">
+        <rect width="280" height="190" rx="12" fill="#022c22" stroke="#059669" stroke-width="2" />
+        <rect width="280" height="34" rx="12" fill="#064e3b" />
+        <text x="12" y="22" font-size="16">🛡️</text>
+        <text x="36" y="22" fill="#ecfdf5" font-size="12" font-weight="700">Cluster Vault Service</text>
+        <text x="268" y="22" text-anchor="end" fill="#6ee7b7" font-size="10" font-family="'JetBrains Mono'">State Engine</text>
+
+        <rect x="16" y="46" width="248" height="60" rx="6" fill="#062e24" stroke="#047857" />
+        <text x="24" y="64" fill="#a7f3d0" font-size="9.5" font-weight="700">Credential Versions:</text>
+        <text x="24" y="80" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">v1: Active (Serving pulls)</text>
+        <text x="24" y="96" fill="#fbbf24" font-size="9" font-family="'JetBrains Mono'">v2: Staged (Adoption Testing)</text>
+
+        <text x="16" y="126" fill="#6ee7b7" font-size="9.5">✓ Pre-flight tests v2 before cutover</text>
+        <text x="16" y="144" fill="#6ee7b7" font-size="9.5">✓ Fails safe: stays on v1 if v2 invalid</text>
+        <text x="16" y="162" fill="#6ee7b7" font-size="9.5">✓ Promotes v2 only when verified</text>
+      </g>
+
+      <!-- GITHUB (Bottom Right) -->
+      <g transform="translate(620, 260)">
+        <rect width="280" height="190" rx="12" fill="#0f172a" stroke="#334155" stroke-width="2" />
+        <rect width="280" height="34" rx="12" fill="#1e293b" />
+        <text x="12" y="22" font-size="16">🐙</text>
+        <text x="36" y="22" fill="#f8fafc" font-size="12" font-weight="700">GitHub (Issuer)</text>
+        <text x="268" y="22" text-anchor="end" fill="#fbbf24" font-size="10" font-family="'JetBrains Mono'">ghcr.io</text>
+
+        <text x="16" y="56" fill="#94a3b8" font-size="10">Active Personal Access Tokens:</text>
+        <text x="16" y="74" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">• ghp_***_v1 (Active)</text>
+        <text x="16" y="92" fill="#38bdf8" font-size="9.5" font-family="'JetBrains Mono'">• ghp_***_v2 (Newly Issued)</text>
+
+        <rect x="16" y="112" width="248" height="60" rx="6" fill="#1e293b" />
+        <text x="24" y="130" fill="#f8fafc" font-size="9.5" font-weight="700">Issuer-Side Invalidation:</text>
+        <text x="24" y="146" fill="#ef4444" font-size="9" font-family="'JetBrains Mono'">DELETE /user/tokens/v1</text>
+        <text x="24" y="160" fill="#94a3b8" font-size="8.5">(Permanently kills old token)</text>
+      </g>
+
+      <!-- DIRECTIONAL LIFECYCLE STEPS -->
+
+      <!-- Step A: Operator -> GitHub (Generate v2) -->
+      <g class="arrow-hover cursor-pointer">
+        <path d="M 620 60 Q 760 60 760 250" fill="none" stroke="#c084fc" stroke-width="2.5" marker-end="url(#arrow-purple)" />
+        <rect x="680" y="80" width="130" height="34" rx="6" fill="#2e1065" stroke="#9333ea" stroke-width="1.5" />
+        <text x="745" y="95" text-anchor="middle" fill="#d8b4fe" font-size="9" font-weight="700">A. Issue PAT v2</text>
+        <text x="745" y="107" text-anchor="middle" fill="#e9d5ff" font-size="7.5" font-family="'JetBrains Mono'">read:packages only</text>
+      </g>
+
+      <!-- Step B: Operator -> Vault (Stage v2) -->
+      <g class="arrow-hover cursor-pointer">
+        <path d="M 380 60 Q 240 60 240 250" fill="none" stroke="#c084fc" stroke-width="2.5" marker-end="url(#arrow-purple)" />
+        <rect x="190" y="80" width="130" height="34" rx="6" fill="#2e1065" stroke="#9333ea" stroke-width="1.5" />
+        <text x="255" y="95" text-anchor="middle" fill="#d8b4fe" font-size="9" font-weight="700">B. Stage v2 in Vault</text>
+        <text x="255" y="107" text-anchor="middle" fill="#e9d5ff" font-size="7.5" font-family="'JetBrains Mono'">v1 remains active</text>
+      </g>
+
+      <!-- Step C: Vault -> GitHub (Pre-flight Adoption Probe) -->
+      <g class="arrow-hover cursor-pointer">
+        <path d="M 380 340 L 610 340" stroke="#fbbf24" stroke-width="3" marker-end="url(#arrow-amber)" />
+        <path d="M 380 340 L 610 340" stroke="#ffffff" stroke-width="3" class="anim-packet-forward" />
+        <rect x="425" y="306" width="140" height="30" rx="6" fill="#451a03" stroke="#d97706" stroke-width="1.5" />
+        <text x="495" y="320" text-anchor="middle" fill="#fbbf24" font-size="9" font-weight="700">C. Pre-flight Adoption</text>
+        <text x="495" y="331" text-anchor="middle" fill="#fef08a" font-size="7.5" font-family="'JetBrains Mono'">HEAD /v2/manifests with v2</text>
+      </g>
+
+      <!-- Step D: Internal Promotion in Vault -->
+      <g transform="translate(130, 420)">
+        <text x="110" y="15" text-anchor="middle" fill="#34d399" font-size="9.5" font-family="'JetBrains Mono'" font-weight="700">D. Verified ➔ Promote v2 Active</text>
+      </g>
+
+      <!-- Step E: Operator -> GitHub (Invalidate Old v1) -->
+      <g class="arrow-hover cursor-pointer">
+        <path d="M 500 110 Q 500 240 680 250" fill="none" stroke="#f43f5e" stroke-width="2.5" stroke-dasharray="5 3" marker-end="url(#arrow-rose)" />
+        <rect x="520" y="170" width="130" height="34" rx="6" fill="#4c0519" stroke="#e11d48" stroke-width="1.5" />
+        <text x="585" y="185" text-anchor="middle" fill="#fda4af" font-size="9" font-weight="700">E. Invalidate v1</text>
+        <text x="585" y="197" text-anchor="middle" fill="#ffe4e6" font-size="7.5" font-family="'JetBrains Mono'">Delete v1 on GitHub</text>
+      </g>
+    </svg>
+
+    <div class="mt-4 p-4 rounded-xl border border-slate-800 bg-slate-950/80 font-mono text-xs text-slate-300">
+      <span class="text-purple-400 font-bold">Lifecycle Sequence:</span>
+      <span class="text-slate-400"> (A) Operator generates v2 on GitHub ➔ (B) Operator stages v2 in Vault ➔ (C) Vault probes GitHub with v2 ➔ (D) Vault promotes v2 to active ➔ (E) Operator deletes v1 on GitHub.</span>
+    </div>
+  </div>
+
+  <script>
+    const stepsData = {
+      1: {
+        text: "<strong>Direction (1):</strong> <code class='text-cyan-300'>K3s Node ➔ Cluster Vault</code>. containerd issues a plain image pull: <code class='text-slate-300'>GET /v2/nacfson/pn/manifests/sha256:7f...</code>. Crucially, the request carries <strong>NO Authorization header</strong>. The worker node does not possess any GHCR secret."
+      },
+      2: {
+        text: "<strong>Direction (2):</strong> <code class='text-amber-300'>Cluster Vault ➔ ghcr.io (GitHub)</code>. The Vault intercepts the pull, retrieves the active secret from its internal memory, injects <code class='text-amber-300'>Authorization: Bearer ghp_***_v1</code>, and requests the layers from GitHub upstream."
+      },
+      3: {
+        text: "<strong>Direction (3):</strong> <code class='text-emerald-300'>ghcr.io (GitHub) ➔ Cluster Vault</code>. GitHub authenticates the PAT, validates the <code class='text-amber-300'>read:packages</code> scope, and streams back HTTP 200 OK with the binary OCI tarball layers (manifests + diff tar.gz). Upstream auth tokens are NOT returned."
+      },
+      4: {
+        text: "<strong>Direction (4):</strong> <code class='text-emerald-300'>Cluster Vault ➔ K3s Node</code>. The Vault strips all upstream authentication headers and streams the pure OCI layer blobs directly to containerd. The node receives the image and unpacks it cleanly. The node's memory and disk remain 100% free of backend credentials."
+      }
+    };
+
+    function inspectStep(stepNum) {
+      document.getElementById('pull-detail-text').innerHTML = stepsData[stepNum].text;
+    }
+
+    function showDiagram(mode) {
+      const btnPull = document.getElementById('btn-diag-pull');
+      const btnRotate = document.getElementById('btn-diag-rotate');
+      const diagPull = document.getElementById('diagram-pull-container');
+      const diagRotate = document.getElementById('diagram-rotate-container');
+
+      if (mode === 'pull') {
+        btnPull.className = "px-4 py-2 rounded-lg text-xs font-bold transition bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/30";
+        btnRotate.className = "px-4 py-2 rounded-lg text-xs font-bold transition text-slate-400 hover:text-slate-200";
+        diagPull.classList.remove('hidden');
+        diagRotate.classList.add('hidden');
+      } else {
+        btnRotate.className = "px-4 py-2 rounded-lg text-xs font-bold transition bg-purple-500 text-white shadow-lg shadow-purple-500/30";
+        btnPull.className = "px-4 py-2 rounded-lg text-xs font-bold transition text-slate-400 hover:text-slate-200";
+        diagPull.classList.add('hidden');
+        diagRotate.classList.remove('hidden');
+      }
+    }
+  </script>
+</body>
+</html>

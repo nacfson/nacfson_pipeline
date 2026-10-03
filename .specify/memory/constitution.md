@@ -1,14 +1,14 @@
 <!--
 # Sync Impact Report
-- Version change: 1.1.0 -> 1.2.0
+- Version change: 1.2.0 -> 1.3.0
 - List of modified principles:
-  - V. Isolated Shared Persistence & Zero Plaintext Secrets (Replaced CNPG operator dependency with standard decoupled PostgreSQL StatefulSet for maximum cloud portability)
+  - V. Isolated Shared Persistence & Zero Plaintext Secrets (Replaced direct Kubernetes Secret delivery with centralized self-hosted internal cluster Vault; backend credentials remain confined inside trusted execution; applications execute operations without receiving backend secrets)
 - Added sections:
   - None
 - Removed sections:
   - None
 - Follow-up TODOs:
-  - None
+  - Plan and implement Spec 002 Internal Cluster Vault to provide the vault service and operation integrations
 -->
 
 # nacfson_pipeline Constitution
@@ -27,8 +27,8 @@ Public ingress MUST expose only the minimal browser-facing OIDC routes and authe
 ### IV. Bounded Resource Allocation & 1/n Budgeting
 Every container MUST define explicit CPU and memory requests and limits; unbounded borrowing or unconstrained memory execution is prohibited. Compute resources MUST be allocated according to a deterministic 1/n project model: application capacity equals measured node allocatable capacity minus platform reservations, divided equally across deployed projects. The aggregate resource consumption of a project (accounting for peak concurrency, rollout surge, Jobs, and CronJobs) MUST fit within its assigned slice. Candidate revisions exceeding project budgets or decreasing existing memory limits during the interim freeze MUST be rejected before application. Platform-managed namespace ResourceQuotas act as non-bypassable admission backstops.
 
-### V. Isolated Shared Persistence & Zero Plaintext Secrets
-Initial persistent database storage MUST be operated via a standard PostgreSQL instance (deployed via a Kubernetes StatefulSet without complex operator dependencies) backed by persistent disk storage, with strict per-project database and role isolation. Projects MUST connect via dedicated credentials and MUST NOT access Keycloak data, administrative endpoints, or peer project databases. Persistent Volume Claims MUST be backed by node storage and survive ordinary pod lifecycles. The deployment contract MUST maintain universal compatibility allowing seamless substitution with external managed database endpoints (e.g., AWS RDS or GCP Cloud SQL). Plaintext secret material MUST NEVER be committed to Git, embedded in Helm values, output in build logs, or transmitted in communication channels. Secrets MUST be operator-provisioned Kubernetes Secrets referenced by name, with strictly segregated credentials between operational duties (e.g., session revocation credentials separated from client provisioning credentials).
+### V. Isolated Shared Persistence & Zero Plaintext Secrets (Centralized Cluster Vault)
+Initial persistent database storage MUST be operated via a standard PostgreSQL instance (deployed via a Kubernetes StatefulSet without complex operator dependencies) backed by persistent disk storage, with strict per-project database and role isolation. Projects MUST connect via restricted roles and MUST NOT access Keycloak data, administrative endpoints, or peer project databases. Persistent Volume Claims MUST be backed by node storage and survive ordinary pod lifecycles. The deployment contract MUST maintain universal compatibility allowing seamless substitution with external managed database endpoints (e.g., AWS RDS or GCP Cloud SQL). Plaintext secret material MUST NEVER be committed to Git, embedded in Helm values, output in build logs, or transmitted in communication channels. All platform and project backend credentials (database passwords, container registry tokens, signing keys, external API credentials) MUST be stored, managed, and executed exclusively within a self-hosted internal cluster Vault inside an isolated trusted execution boundary. Backend credentials MUST NOT be delivered to application nodes or project pods through Kubernetes Secrets, environment variables, volume mounts, or in-memory responses. Applications and nodes MUST invoke authorized operations through protected Vault integrations that execute on their behalf, receiving only sanitized operational results. Strictly segregated credentials MUST be maintained between operational duties (e.g., session revocation credentials separated from client provisioning credentials).
 
 ### VI. Environmental Portability Without Code Changes
 The platform deployment contract MUST run consistently across local native k3s, single VPS k3s, EKS, and GKE without modifying application source code. Differences in ingress controllers, persistent storage classes, external database endpoints, and image-pull secrets MUST be handled purely via environment-specific configuration. Colocated single-VPS deployment represents the initial footprint, not a structural barrier to future horizontal scale, separate database nodes, or high-availability migration.
@@ -63,4 +63,4 @@ The platform deployment contract MUST run consistently across local native k3s, 
   - **PATCH (1.0.X):** Clarifications, wording refinements, documentation synchronization, and non-semantic corrections.
 - **Compliance Review:** All pull requests and candidate revisions MUST be verified for compliance with this Constitution during code review and pre-deployment execution.
 
-**Version**: 1.2.0 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-10-01
+**Version**: 1.3.0 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-10-03
