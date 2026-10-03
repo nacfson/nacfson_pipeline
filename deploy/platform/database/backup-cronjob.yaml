@@ -57,13 +57,13 @@ spec:
                   TIMESTAMP=$(date +%Y%m%d_%H%M%S)
                   BACKUP_FILE="/backups/pg_dumpall_${TIMESTAMP}.sql.gz"
                   echo "Starting logical cluster backup as dedicated least-privilege 'backup_role' to ${BACKUP_FILE}..."
-                  
+
                   pg_dumpall -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" | gzip > "${BACKUP_FILE}"
-                  
+
                   # Immediately clear password from process memory
                   unset PGPASSWORD
                   echo "Backup completed successfully."
-                  
+
                   echo "Pruning archives older than 7 days..."
                   find /backups -name "pg_dumpall_*.sql.gz" -type f -mtime +7 -delete
                   echo "Retention enforcement complete."

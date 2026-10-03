@@ -44,12 +44,12 @@ spec:
                   SNAPSHOT_FILE="/backups/openbao_raft_${TIMESTAMP}.snap"
                   echo "Taking OpenBao Raft snapshot to ${SNAPSHOT_FILE}..."
                   export BAO_ADDR="http://openbao-service.vault.svc:8200"
-                  
+
                   # Take snapshot using operator/snapshot auth token or internal token
                   if [ -f /var/run/secrets/snapshot-token ]; then
                     export VAULT_TOKEN=$(cat /var/run/secrets/snapshot-token)
                   fi
-                  
+
                   bao operator raft snapshot save "${SNAPSHOT_FILE}"
                   echo "Snapshot completed successfully."
 
