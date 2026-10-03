@@ -20,8 +20,6 @@ spec:
     spec:
       serviceAccountName: pn-workload-sa
       automountServiceAccountToken: false
-      imagePullSecrets:
-        - name: ghcr-creds
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
@@ -36,10 +34,15 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
-          envFrom:
-            - secretRef:
-                name: pn-database-credentials
           env:
+            - name: DB_HOST
+              value: "vault-db-proxy.vault.svc"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "proj_pn"
+            - name: DB_USER
+              value: "project:pn:workload:backend"
             - name: CENTRAL_AUTH_INTERNAL_URL
               value: "http://keycloak-service.identity.svc:8080/realms/platform"
             - name: CENTRAL_AUTH_URL

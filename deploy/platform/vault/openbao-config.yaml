@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openbao-config
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: openbao
+    app.kubernetes.io/part-of: platform-vault
+data:
+  openbao.hcl: |
+    ui = false
+    disable_mlock = false
+
+    storage "raft" {
+      path = "/var/lib/openbao/data"
+      node_id = "openbao-0"
+    }
+
+    listener "tcp" {
+      address = "0.0.0.0:8200"
+      cluster_address = "0.0.0.0:8201"
+      tls_disable = 1
+    }
+
+    api_addr = "http://openbao-service.vault.svc:8200"
+    cluster_addr = "http://openbao-0.openbao-internal.vault.svc:8201"

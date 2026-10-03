@@ -25,14 +25,14 @@ resources:
   # Ingress & Security Middleware
   - ../../platform/ingress/traefik-middleware.yaml
   - ../../platform/ingress/ingress-allowlist.yaml
+  # Platform Internal Cluster Vault
+  - ../../platform/vault
   # Project PN Workloads
   - ../../projects/pn/namespace.yaml
   - ../../projects/pn/service-account.yaml
   - ../../projects/pn/resource-quota.yaml
   - ../../projects/pn/network-policy.yaml
-  - ../../projects/pn/database-secret.yaml
   - ../../projects/pn/backend-service.yaml
   - ../../projects/pn/backend-deployment.yaml
   - ../../projects/pn/frontend-deployment.yaml
-  - ../../projects/pn/image-pull-secret.yaml
   - ../../projects/pn/ingress-route.yaml

@@ -1,0 +1,39 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: openbao-internal
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: openbao
+    app.kubernetes.io/part-of: platform-vault
+spec:
+  clusterIP: None
+  ports:
+    - name: cluster
+      port: 8201
+      targetPort: 8201
+      protocol: TCP
+    - name: http
+      port: 8200
+      targetPort: 8200
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: openbao
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openbao-service
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: openbao
+    app.kubernetes.io/part-of: platform-vault
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8200
+      targetPort: 8200
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: openbao

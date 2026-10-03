@@ -1,0 +1,91 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: openbao-daily-snapshot
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: openbao-backup
+    app.kubernetes.io/part-of: platform-vault
+spec:
+  schedule: "0 0 * * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 1
+  concurrencyPolicy: Forbid
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: openbao-backup
+        spec:
+          automountServiceAccountToken: false
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: raft-snapshot
+              image: openbao/openbao:2.0.0
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop:
+                    - ALL
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -euo pipefail
+                  TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+                  SNAPSHOT_FILE="/backups/openbao_raft_${TIMESTAMP}.snap"
+                  echo "Taking OpenBao Raft snapshot to ${SNAPSHOT_FILE}..."
+                  export BAO_ADDR="http://openbao-service.vault.svc:8200"
+
+                  # Take snapshot using operator/snapshot auth token or internal token
+                  if [ -f /var/run/secrets/snapshot-token ]; then
+                    export VAULT_TOKEN=$(cat /var/run/secrets/snapshot-token)
+                  fi
+
+                  bao operator raft snapshot save "${SNAPSHOT_FILE}"
+                  echo "Snapshot completed successfully."
+
+                  echo "Enforcing 7-day retention on snapshot archives..."
+                  find /backups -name "openbao_raft_*.snap" -type f -mtime +7 -delete
+                  echo "Retention enforcement complete."
+              resources:
+                requests:
+                  cpu: 50m
+                  memory: 64Mi
+                limits:
+                  cpu: 100m
+                  memory: 128Mi
+              volumeMounts:
+                - name: snapshot-storage
+                  mountPath: /backups
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: snapshot-storage
+              persistentVolumeClaim:
+                claimName: openbao-backup-pvc
+            - name: tmp
+              emptyDir: {}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: openbao-backup-pvc
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: openbao-backup
+    app.kubernetes.io/part-of: platform-vault
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi

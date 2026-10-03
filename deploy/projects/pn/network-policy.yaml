@@ -57,4 +57,4 @@ spec:
         - protocol: TCP
           port: 5432
 
-    # 3. Explicit external API egress allowlist (empty by default; declared per project contract)
+  # 3. Explicit external API egress allowlist (empty by default; declared per project contract)

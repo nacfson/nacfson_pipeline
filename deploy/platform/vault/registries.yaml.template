@@ -1,0 +1,10 @@
+# K3s Containerd Registry Mirror Configuration Template
+# Place at: /etc/rancher/k3s/registries.yaml on each K3s node host
+# Directly routes private GHCR pulls to the Vault Registry Pull Proxy
+# strictly satisfying Constitution Principle V (zero secrets on node).
+
+mirrors:
+  "ghcr.io/nacfson":
+    endpoint:
+      - "http://127.0.0.1:5000"
+      - "http://vault-registry-proxy.vault.svc:5000"

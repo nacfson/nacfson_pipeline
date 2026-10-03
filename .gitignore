@@ -36,6 +36,8 @@ ansible/inventories/home-lab/.hosts.syntax-check.yaml
 vendor/
 coverage.out
 coverage.html
+services/vault-proxies/registry-proxy
+services/vault-proxies/db-proxy
 
 # Kubernetes secrets & local credentials
 *.secret.yaml

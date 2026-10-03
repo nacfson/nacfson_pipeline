@@ -14,9 +14,21 @@ spec:
         app.kubernetes.io/name: postgres-init
     spec:
       restartPolicy: OnFailure
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        runAsGroup: 999
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: init-db
           image: postgres:16-alpine
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
           env:
             - name: PGHOST
               value: postgres-service.identity.svc
@@ -26,26 +38,35 @@ spec:
               value: postgres
             - name: PGUSER
               value: postgres
-            - name: PGPASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-credentials
-                  key: POSTGRES_ADMIN_PASSWORD
-            - name: KEYCLOAK_DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-credentials
-                  key: KEYCLOAK_DB_PASSWORD
-            - name: PROJ_PN_DB_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: postgres-credentials
-                  key: PROJ_PN_DB_PASSWORD
+            - name: VAULT_ADDR
+              value: "http://openbao.vault.svc:8200"
           command:
             - /bin/sh
             - -c
             - |
               set -e
+              echo "Fetching credentials from Vault ephemeral storage..."
+              if [ -f /var/run/secrets/database/admin_password ]; then
+                export PGPASSWORD=$(cat /var/run/secrets/database/admin_password)
+              fi
+              if [ -f /var/run/secrets/database/keycloak_password ]; then
+                KEYCLOAK_DB_PASSWORD=$(cat /var/run/secrets/database/keycloak_password)
+              fi
+              if [ -f /var/run/secrets/database/pn_password ]; then
+                PROJ_PN_DB_PASSWORD=$(cat /var/run/secrets/database/pn_password)
+              fi
+              if [ -f /var/run/secrets/database/backup_password ]; then
+                BACKUP_DB_PASSWORD=$(cat /var/run/secrets/database/backup_password)
+              fi
+
+              # Direct Vault fallback if token present
+              if [ -z "${PGPASSWORD:-}" ] && [ -n "${VAULT_TOKEN:-}" ]; then
+                PGPASSWORD=$(wget -qO- --header="X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/kv/data/database/postgres-admin | grep -o '"password":"[^"]*"' | cut -d'"' -f4)
+                KEYCLOAK_DB_PASSWORD=$(wget -qO- --header="X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/kv/data/database/keycloak-user | grep -o '"password":"[^"]*"' | cut -d'"' -f4)
+                PROJ_PN_DB_PASSWORD=$(wget -qO- --header="X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/kv/data/database/pn-user | grep -o '"password":"[^"]*"' | cut -d'"' -f4)
+                BACKUP_DB_PASSWORD=$(wget -qO- --header="X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/kv/data/database/backup-user | grep -o '"password":"[^"]*"' | cut -d'"' -f4)
+              fi
+
               echo "Waiting for PostgreSQL service to be ready..."
               until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER"; do
                 sleep 2
@@ -57,9 +78,9 @@ spec:
                 DO \$\$
                 BEGIN
                   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'keycloak_user') THEN
-                    CREATE ROLE keycloak_user WITH LOGIN PASSWORD '$KEYCLOAK_DB_PASSWORD';
+                    CREATE ROLE keycloak_user WITH LOGIN PASSWORD '${KEYCLOAK_DB_PASSWORD}';
                   ELSE
-                    ALTER ROLE keycloak_user WITH PASSWORD '$KEYCLOAK_DB_PASSWORD';
+                    ALTER ROLE keycloak_user WITH PASSWORD '${KEYCLOAK_DB_PASSWORD}';
                   END IF;
                 END
                 \$\$;
@@ -71,15 +92,28 @@ spec:
                 DO \$\$
                 BEGIN
                   IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'user_pn') THEN
-                    CREATE ROLE user_pn WITH LOGIN PASSWORD '$PROJ_PN_DB_PASSWORD';
+                    CREATE ROLE user_pn WITH LOGIN PASSWORD '${PROJ_PN_DB_PASSWORD}';
                   ELSE
-                    ALTER ROLE user_pn WITH PASSWORD '$PROJ_PN_DB_PASSWORD';
+                    ALTER ROLE user_pn WITH PASSWORD '${PROJ_PN_DB_PASSWORD}';
                   END IF;
                 END
                 \$\$;
 
                 SELECT 'CREATE DATABASE proj_pn OWNER user_pn'
                 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'proj_pn')\gexec
+
+                -- Provision Dedicated Backup Role (Least Privilege pg_read_all_data)
+                DO \$\$
+                BEGIN
+                  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'backup_role') THEN
+                    CREATE ROLE backup_role WITH LOGIN PASSWORD '${BACKUP_DB_PASSWORD}';
+                  ELSE
+                    ALTER ROLE backup_role WITH PASSWORD '${BACKUP_DB_PASSWORD}';
+                  END IF;
+                END
+                \$\$;
+                GRANT pg_read_all_data TO backup_role;
+                REVOKE CREATE, TEMPORARY ON DATABASE keycloak, proj_pn FROM backup_role;
 
                 -- Enforce strict database isolation
                 REVOKE ALL ON DATABASE keycloak FROM PUBLIC;
@@ -89,4 +123,20 @@ spec:
                 GRANT CONNECT ON DATABASE keycloak TO keycloak_user;
                 GRANT CONNECT ON DATABASE proj_pn TO user_pn;
               EOSQL
+
+              # Clear secrets from memory immediately upon completion
+              unset PGPASSWORD KEYCLOAK_DB_PASSWORD PROJ_PN_DB_PASSWORD BACKUP_DB_PASSWORD
               echo "Database and role provisioning completed successfully."
+          volumeMounts:
+            - name: database-secrets
+              mountPath: /var/run/secrets/database
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: database-secrets
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        - name: tmp
+          emptyDir: {}

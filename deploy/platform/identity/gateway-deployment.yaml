@@ -17,8 +17,6 @@ spec:
         app.kubernetes.io/name: gateway
         app.kubernetes.io/part-of: platform
     spec:
-      imagePullSecrets:
-        - name: ghcr-creds
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -46,16 +44,12 @@ spec:
               value: "PLATFORM_SESSION"
             - name: GATEWAY_CLIENT_ID
               value: "gateway-client"
-            - name: GATEWAY_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: gateway-credentials
-                  key: GATEWAY_CLIENT_SECRET
-            - name: GATEWAY_HMAC_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: gateway-credentials
-                  key: GATEWAY_HMAC_SECRET
+            - name: GATEWAY_HMAC_SECRET_FILE
+              value: "/var/run/secrets/gateway/hmac"
+            - name: GATEWAY_CLIENT_SECRET_FILE
+              value: "/var/run/secrets/gateway/client_secret"
+            - name: SESSION_REVOCATION_CLIENT_SECRET_FILE
+              value: "/var/run/secrets/gateway/session_revocation_secret"
           resources:
             requests:
               cpu: 100m
@@ -69,6 +63,10 @@ spec:
             capabilities:
               drop:
                 - ALL
+          volumeMounts:
+            - name: gateway-secrets
+              mountPath: /var/run/secrets/gateway
+              readOnly: true
           livenessProbe:
             httpGet:
               path: /healthz
@@ -81,6 +79,11 @@ spec:
               port: 8080
             initialDelaySeconds: 3
             periodSeconds: 5
+      volumes:
+        - name: gateway-secrets
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
 ---
 apiVersion: v1
 kind: Service

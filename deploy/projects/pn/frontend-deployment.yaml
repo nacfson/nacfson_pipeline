@@ -20,8 +20,6 @@ spec:
     spec:
       serviceAccountName: pn-workload-sa
       automountServiceAccountToken: false
-      imagePullSecrets:
-        - name: ghcr-creds
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
