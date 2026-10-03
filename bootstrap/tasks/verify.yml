@@ -1,0 +1,110 @@
+---
+# Verify tasks: Four bounded readiness checks and version agreement validation
+# Scope: Read-only cluster verification; never exports kubeconfig or invokes app deployment.
+
+- name: Set current stage tracking to verify
+  ansible.builtin.set_fact:
+    current_stage: "verify"
+    stage_failure_remediation: "Inspect cluster service logs (journalctl -u k3s) and pod status in kube-system."
+
+# Check 1: Service active and enabled (within 300s deadline)
+- name: Verify k3s service is active and enabled
+  ansible.builtin.command:
+    cmd: "systemctl is-active k3s"
+  register: service_active_check
+  until: service_active_check.stdout == 'active'
+  retries: 60
+  delay: 5
+  changed_when: false
+  failed_when: service_active_check.stdout != 'active'
+
+- name: Verify k3s service is enabled
+  ansible.builtin.command:
+    cmd: "systemctl is-enabled k3s"
+  register: service_enabled_check
+  changed_when: false
+  failed_when: service_enabled_check.stdout != 'enabled'
+
+- name: Record service readiness outcome
+  ansible.builtin.set_fact:
+    bootstrap_result: "{{ bootstrap_result | combine({
+      'readiness_outcomes': bootstrap_result.readiness_outcomes | combine({'service_active_and_enabled': true})
+    }) }}"
+
+# Check 2: Authorized local /readyz endpoint (within 300s deadline, 5s request timeout)
+- name: Poll /readyz endpoint until healthy
+  ansible.builtin.command:
+    cmd: "k3s kubectl --request-timeout=5s get --raw=/readyz"
+  register: readyz_check
+  until: readyz_check.stdout == 'ok'
+  retries: 60
+  delay: 5
+  changed_when: false
+  failed_when: readyz_check.stdout != 'ok'
+
+- name: Record API readiness outcome
+  ansible.builtin.set_fact:
+    bootstrap_result: "{{ bootstrap_result | combine({
+      'readiness_outcomes': bootstrap_result.readiness_outcomes | combine({'management_api_ready': true})
+    }) }}"
+
+# Check 3: Node readiness (within 300s deadline, exactly one Ready node)
+- name: Poll node readiness until exactly one Ready node is reported
+  ansible.builtin.shell:
+    cmd: |
+      nodes=$(k3s kubectl --request-timeout=5s get nodes --no-headers 2>/dev/null || true)
+      count=$(echo "$nodes" | grep -v '^$' | wc -l)
+      ready_count=$(echo "$nodes" | grep -w 'Ready' | grep -v 'NotReady' | wc -l)
+      if [ "$count" -eq 1 ] && [ "$ready_count" -eq 1 ]; then
+        echo "READY"
+      else
+        echo "WAITING: count=$count ready=$ready_count"
+        exit 1
+      fi
+  register: node_check
+  until: node_check.stdout == 'READY'
+  retries: 60
+  delay: 5
+  changed_when: false
+  failed_when: node_check.stdout != 'READY'
+
+- name: Record node readiness outcome
+  ansible.builtin.set_fact:
+    bootstrap_result: "{{ bootstrap_result | combine({
+      'readiness_outcomes': bootstrap_result.readiness_outcomes | combine({'node_ready': true})
+    }) }}"
+
+# Check 4: CoreDNS readiness (within 300s rollout bound)
+- name: Await CoreDNS deployment rollout completion
+  ansible.builtin.command:
+    cmd: "k3s kubectl --request-timeout=5s -n kube-system rollout status deployment/coredns --timeout=300s"
+  register: coredns_rollout
+  changed_when: false
+  failed_when: coredns_rollout.rc != 0
+
+- name: Record CoreDNS readiness outcome
+  ansible.builtin.set_fact:
+    bootstrap_result: "{{ bootstrap_result | combine({
+      'readiness_outcomes': bootstrap_result.readiness_outcomes | combine({'coredns_ready': true})
+    }) }}"
+
+# Version verification
+- name: Inspect observed k3s version
+  ansible.builtin.shell:
+    cmd: "k3s --version | head -n 1 | awk '{print $3}'"
+  register: observed_version_check
+  changed_when: false
+  failed_when: observed_version_check.rc != 0
+
+- name: Assert observed version matches requested version
+  ansible.builtin.assert:
+    that:
+      - (observed_version_check.stdout | trim) == (k3s_version | trim)
+    fail_msg: >-
+      Version mismatch: Expected '{{ k3s_version }}', but observed '{{ observed_version_check.stdout | trim }}'.
+
+- name: Record observed version in bootstrap result
+  ansible.builtin.set_fact:
+    bootstrap_result: "{{ bootstrap_result | combine({
+      'observed_version': observed_version_check.stdout | trim
+    }) }}"
