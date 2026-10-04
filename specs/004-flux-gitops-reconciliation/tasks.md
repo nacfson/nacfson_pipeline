@@ -77,7 +77,7 @@
 - [X] T027 [US1] Add patches to `clusters/local-k3s/projects/proj-pn.yaml` for the `spec.routes[0..1].match` hosts of `IngressRoute proj-pn/project-pn-ingress` and env `CENTRAL_AUTH_URL` of `Deployment proj-pn/pn-backend`
 - [X] T028 [US1] Add the same four patch targets to `clusters/vps-k3s/layers.yaml` and `clusters/vps-k3s/projects/proj-pn.yaml` with the vps-k3s values (today both use the `example.com` values)
 - [X] T029 [US1] Re-run the T024 builds and confirm the patched fields render with the environment values and `keycloak-realm-config` is unchanged (R3 limitation)
-- [ ] T030 [US1] On the test VM, run [quickstart](quickstart.md) C1 ×10 (SC-002) and B6 (SC-010); on a throwaway tracked branch, merge an invalid declaration and confirm the layer reports the cause while the last good state and other layers stay in place (Story 1.3); record in `specs/004-flux-gitops-reconciliation/validation.md`
+- [X] T030 [US1] On the test VM, run [quickstart](quickstart.md) C1 ×10 (SC-002) and B6 (SC-010); on a throwaway tracked branch, merge an invalid declaration and confirm the layer reports the cause while the last good state and other layers stay in place (Story 1.3); record in `specs/004-flux-gitops-reconciliation/validation.md`
 
 **Checkpoint**: MVP: Git-driven delivery works on the test VM.
 
@@ -96,7 +96,7 @@
 - [X] T035 [US2] Wire stage 4 into `bootstrap/bootstrap.yml` after the verify stage: initialize `readiness_outcomes.reconciler_ready: false` and `reconciler_preexisting`, include `tasks/reconciler.yml`, and change the final `next_action` to "Cluster and reconciler ready. Run `scripts/vault-init.sh` to initialize or unseal the vault; Flux applies all other layers."
 - [X] T036 [P] [US2] Add `-e gitops_environment=local-k3s` to the syntax-check command in the `bootstrap-syntax` job of `.github/workflows/lint.yaml`
 - [X] T037 [P] [US2] Amend `docs/bootstrap-scope.md` per R17: the bootstrap installs the reconciler as its last stage and nothing else; vault installation and all other workloads stay outside it
-- [ ] T038 [US2] On a clean test VM, run [quickstart](quickstart.md) B1–B5, B7 and B8 (SC-001, SC-008, Story 2.4, Story 2.5) and record in `specs/004-flux-gitops-reconciliation/validation.md`
+- [X] T038 [US2] On a clean test VM, run [quickstart](quickstart.md) B1–B5, B7 and B8 (SC-001, SC-008, Story 2.4, Story 2.5) and record in `specs/004-flux-gitops-reconciliation/validation.md`
 
 **Checkpoint**: Rebuilding from a clean VM is repeatable and ordered.
 
@@ -113,7 +113,7 @@
 - [X] T041 [P] [US3] Add `kustomize.toolkit.fluxcd.io/prune: disabled` to Namespace `proj-pn` in `deploy/projects/pn/boundary/namespace.yaml`
 - [X] T042 [P] [US3] Add `kustomize.toolkit.fluxcd.io/prune: disabled` to PVC `postgres-data-postgres-0` in `deploy/platform/database/postgres-pvc.yaml` and PVC `postgres-backup-pvc` in `deploy/platform/database/backup-cronjob.yaml`
 - [X] T043 [US3] Add annotation `kustomize.toolkit.fluxcd.io/force: enabled` to `Job identity/postgres-init-job` in `deploy/platform/database/postgres-init-job.yaml` (after T013 and T017)
-- [ ] T044 [US3] On the test VM, run [quickstart](quickstart.md) C2–C9 (SC-003, SC-004, SC-005, Story 3.5, edge cases "Restarts" and "Repository unreachable") and record in `specs/004-flux-gitops-reconciliation/validation.md`. Until US7 lands, C2, C7 and C9 can run without the break-glass prefix.
+- [X] T044 [US3] On the test VM, run [quickstart](quickstart.md) C2–C9 (SC-003, SC-004, SC-005, Story 3.5, edge cases "Restarts" and "Repository unreachable") and record in `specs/004-flux-gitops-reconciliation/validation.md`. Until US7 lands, C2, C7 and C9 can run without the break-glass prefix.
 
 **Checkpoint**: All P1 stories proven; the old scripts may now be retired (US6) once US7 is also in place.
 
@@ -141,7 +141,7 @@
 - [X] T051 [P] [US4] Widen the trigger in `.github/workflows/secret-scan.yaml` to every pull request into `main`
 - [X] T052 [P] [US4] Add `clusters/` to the yamllint step in `.github/workflows/lint.yaml`; exclude `gotk-components.yaml` only if the generated Flux output violates the default rules
 - [ ] T053 [US4] Configure branch protection on `main` per [platform-preflight §7](contracts/platform-preflight.md#7-branch-protection-operator-configuration-documented-in-the-runbook) (after T008 and T050) with every required check except `platform-preflight (vps-k3s)`, which fails closed until the VPS is measured (added in T078); record in `specs/004-flux-gitops-reconciliation/validation.md`
-- [ ] T054 [US4] Run [quickstart](quickstart.md) A1–A8 (SC-006, SC-009) and record the results in `specs/004-flux-gitops-reconciliation/validation.md`
+- [X] T054 [US4] Run [quickstart](quickstart.md) A1–A8 (SC-006, SC-009) and record the results in `specs/004-flux-gitops-reconciliation/validation.md`
 
 **Checkpoint**: `main` only accepts checked revisions.
 
@@ -156,7 +156,7 @@
 **Order**: T055 runs before the first live install (T030), because the `proj-pn` layer acts as `pn-reconciler` in every live test (T030, T038, T044). T056 needs a running Flux, so it runs after T030.
 
 - [X] T055 [US5] Create `deploy/projects/pn/boundary/reconciler-rbac.yaml` and add it to `deploy/projects/pn/boundary/kustomization.yaml`: `ServiceAccount proj-pn/pn-reconciler` with `automountServiceAccountToken: false`; `Role proj-pn/pn-reconciler` with verbs `get, list, watch, create, update, patch, delete` on `apps/deployments`, `services`, `configmaps`, `traefik.io/ingressroutes`, which "MUST NOT include `namespaces`, `resourcequotas`, `networkpolicies`, `serviceaccounts`, or any `rbac.authorization.k8s.io` resource"; `RoleBinding proj-pn/pn-reconciler` binding the Role to the SA
-- [ ] T056 [US5] On the test VM, run [quickstart](quickstart.md) D (SC-007) and record in `specs/004-flux-gitops-reconciliation/validation.md`
+- [X] T056 [US5] On the test VM, run [quickstart](quickstart.md) D (SC-007) and record in `specs/004-flux-gitops-reconciliation/validation.md`
 
 **Checkpoint**: Project changes cannot weaken the platform boundary.
 
@@ -175,9 +175,9 @@
 - [X] T061 [US7] Extend `scripts/render-invariants.py` with invariant 8 ([manual-change-policy §5](contracts/manual-change-policy.md#5-invariants-checked-by-ci-render-validate) items 1–5), including "the `namespaceSelector` list equals `{default, flux-system}` ∪ every `Namespace` declared under `deploy/`"
 - [X] T062 [P] [US7] Create `scripts/operator-kubeconfig.sh <vm>` per [operations §13](contracts/operations.md#13-read-only-workstation-kubeconfig): over SSH run `sudo k3s kubectl -n governance create token operator-readonly --duration=24h` and read the cluster CA; write `~/.kube/nacfson-<env>.yaml` pointing at `https://127.0.0.1:6443`; store nothing in the repository
 - [X] T063 [P] [US7] Add a break-glass mode to `scripts/verify-isolation.sh` (environment variable that adds `--as=break-glass:verify --as-group=platform:break-glass` to its `kubectl` calls) so the root-pod test still exercises Pod Security
-- [ ] T064 [US7] On the test VM, run [quickstart](quickstart.md) F0–F6 (SC-011); add any denied K3s internal user to allow rule 4 in `deploy/platform/governance/manual-change-policy.yaml` and in [contracts/manual-change-policy.md §3](contracts/manual-change-policy.md#3-allow-rule-identical-in-both-policies), re-run until F0 shows no denials; re-run C2, C7 and C9 with the break-glass prefix; record in `specs/004-flux-gitops-reconciliation/validation.md`
+- [X] T064 [US7] On the test VM, run [quickstart](quickstart.md) F0–F6 (SC-011); add any denied K3s internal user to allow rule 4 in `deploy/platform/governance/manual-change-policy.yaml` and in [contracts/manual-change-policy.md §3](contracts/manual-change-policy.md#3-allow-rule-identical-in-both-policies), re-run until F0 shows no denials; re-run C2, C7 and C9 with the break-glass prefix; record in `specs/004-flux-gitops-reconciliation/validation.md`
 - [X] T065 [US7] In `bootstrap/tasks/reconciler.yml`, when the apply in step 4 is denied by the policy, fail with remediation "Reinstall under break-glass (operations §12)" ([bootstrap stage §5](contracts/bootstrap-reconciler-stage.md#5-known-limit))
-- [ ] T066 [US7] Run [quickstart](quickstart.md) A9 and A10 and record in `specs/004-flux-gitops-reconciliation/validation.md`
+- [X] T066 [US7] Run [quickstart](quickstart.md) A9 and A10 and record in `specs/004-flux-gitops-reconciliation/validation.md`
 
 **Checkpoint**: Git is the only way to change an environment, outside deliberate break-glass.
 
@@ -214,7 +214,7 @@ Production per [quickstart E](quickstart.md#e-production-vps-k3s), in order T075
 - [ ] T078 Add `platform-preflight (vps-k3s)` to the required checks on `main` (after T077 is merged); record in `specs/004-flux-gitops-reconciliation/validation.md`
 - [ ] T079 On the VPS, run quickstart B2–B7, C1 ×3, C2 ×2, F1 (one object), F3, F5; replace the workstation admin kubeconfig with the read-only one
 - [X] T080 Run the Story 6 check: `grep -rn -E "apply-release|rollback-release|preflight-budget|deploy/environments|deploy-baseline" --exclude-dir=.git --exclude-dir=specs .` returns nothing except the constitution's Sync Impact comment
-- [ ] T081 Complete `specs/004-flux-gitops-reconciliation/validation.md` with the status and evidence of SC-001 to SC-011
+- [X] T081 Complete `specs/004-flux-gitops-reconciliation/validation.md` with the status and evidence of SC-001 to SC-011
 
 ---
 
