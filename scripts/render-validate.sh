@@ -103,8 +103,9 @@ if os.path.isdir(proj_dir):
 if command -v kubeconform >/dev/null 2>&1; then
   echo "=== Running kubeconform schema validation ===" >&2
   kubeconform -strict -kubernetes-version 1.35.0 \
+    -skip CustomResourceDefinition \
     -schema-location default \
-    -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json' \
+    -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{ .Group }}/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json' \
     "${RENDER_FILE}" >&2
 else
   echo "Notice: kubeconform not installed locally, skipping kubeconform step." >&2

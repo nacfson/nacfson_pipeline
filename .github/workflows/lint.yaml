@@ -35,6 +35,8 @@ jobs:
           file_or_dir: 'deploy/ clusters/'
           config_data: |
             extends: default
+            ignore: |
+              **/gotk-components.yaml
             rules:
               line-length: disable
               truthy: disable

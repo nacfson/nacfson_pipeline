@@ -9,7 +9,7 @@ on:
 env:
   FLUX_VERSION: "2.9.5"
   KUBECONFORM_VERSION: "v0.6.7"
-  TRAEFIK_CRD_SCHEMA_URL: "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json"
+  TRAEFIK_CRD_SCHEMA_URL: "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{ .Group }}/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json"
 
 jobs:
   preflight-tests:
