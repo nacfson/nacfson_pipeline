@@ -18,7 +18,7 @@
 
 **Purpose**: Branch, generated Flux manifests, pinned tool versions, and the SPEC.md sync that the spec requires before building
 
-- [ ] T001 Create the first short-lived branch from `main` and merge `specs/004-flux-gitops-reconciliation/`, `.specify/memory/constitution.md` (v1.4.1) and `.specify/feature.json` through a pull request; every later task or small task group follows the same branch-and-PR flow
+- [X] T001 Create the first short-lived branch from `main` and merge `specs/004-flux-gitops-reconciliation/`, `.specify/memory/constitution.md` (v1.4.1) and `.specify/feature.json` through a pull request; every later task or small task group follows the same branch-and-PR flow
 - [X] T002 [P] Generate `clusters/local-k3s/flux-system/gotk-components.yaml` with `flux install --version=v2.9.5 --components=source-controller,kustomize-controller --export`, and copy it unchanged to `clusters/vps-k3s/flux-system/gotk-components.yaml`
 - [X] T003 [P] Create `scripts/requirements-preflight.txt` pinning one exact PyYAML version
 - [X] T004 [P] Create `.github/workflows/gitops.yaml` with triggers `pull_request` and `push` on `main`, and an `env` block pinning Flux CLI `2.9.5`, one exact kubeconform version, and the Traefik CRD schema source (jobs are added in US4)
