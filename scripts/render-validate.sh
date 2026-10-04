@@ -17,10 +17,12 @@ ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # If a git ref is specified, create a worktree, run there, and exit
 if [ -n "$REF" ]; then
-  WORKTREE_DIR="$(mktemp -d /tmp/render-validate-worktree-XXXXXX)"
+  WORKTREE_DIR="$(mktemp -d "/tmp/render-validate-worktree-XXXXXX")"
   trap 'rm -rf "${WORKTREE_DIR}"' EXIT
   git worktree add --detach "${WORKTREE_DIR}" "${REF}" >/dev/null 2>&1 || {
     echo "Warning: git worktree add failed for ref '${REF}'. Baseline render will be empty." >&2
+    touch /tmp/empty-baseline.yaml
+    echo "/tmp/empty-baseline.yaml"
     exit 0
   }
   cd "${WORKTREE_DIR}"
@@ -36,10 +38,10 @@ fi
 
 cd "${ROOT_DIR}"
 
-RENDER_FILE="$(mktemp /tmp/render-${ENV}-XXXXXX)"
+RENDER_FILE="$(mktemp "/tmp/render-${ENV}-XXXXXX")"
 mv "${RENDER_FILE}" "${RENDER_FILE}.yaml"
 RENDER_FILE="${RENDER_FILE}.yaml"
-> "${RENDER_FILE}"
+: > "${RENDER_FILE}"
 
 echo "=== Rendering clusters/${ENV}/flux-system ===" >&2
 kubectl kustomize "clusters/${ENV}/flux-system" >> "${RENDER_FILE}"
@@ -103,12 +105,12 @@ if command -v kubeconform >/dev/null 2>&1; then
   kubeconform -strict -kubernetes-version 1.35.0 \
     -schema-location default \
     -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json' \
-    "${RENDER_FILE}"
+    "${RENDER_FILE}" >&2
 else
   echo "Notice: kubeconform not installed locally, skipping kubeconform step." >&2
 fi
 
 echo "=== Running render-invariants check ===" >&2
-python3 "${SCRIPT_DIR}/render-invariants.py" --environment "${ENV}" --rendered "${RENDER_FILE}"
+python3 "${SCRIPT_DIR}/render-invariants.py" --environment "${ENV}" --rendered "${RENDER_FILE}" >&2
 
 echo "${RENDER_FILE}"
