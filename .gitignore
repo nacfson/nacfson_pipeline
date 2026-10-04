@@ -60,7 +60,6 @@ k3s.yaml
 *.secret.env
 secrets.env
 !*.env.example
-.deploy-baseline
 
 *-secret.yaml
 image-pull-secret.yaml

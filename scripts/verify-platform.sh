@@ -39,8 +39,11 @@ echo "##########################################################################
 
 # Scenario 1: Capacity Discovery & Deterministic 1/n Budget
 run_suite "Scenario 1: Capacity Discovery & 1/n Resource Budgeting" \
-  "bash '$REPO_ROOT/scripts/preflight-budget.sh' --environment vps-k3s --projects 1 && \
-   bash '$REPO_ROOT/scripts/preflight-budget.sh' --environment local-k3s --projects 0"
+  "python3 -m unittest discover '$REPO_ROOT/tests/preflight' && \
+   python3 '$REPO_ROOT/scripts/platform-preflight.py' --environment test-env \
+     --candidate '$REPO_ROOT/tests/preflight/fixtures/valid_candidate.yaml' \
+     --baseline '$REPO_ROOT/tests/preflight/fixtures/valid_baseline.yaml' \
+     --capacity '$REPO_ROOT/tests/preflight/fixtures/valid_capacity.yaml'"
 
 # Scenario 2 & 3: Workload Sandboxing & NetworkPolicy Isolation
 run_suite "Scenarios 2 & 3: Restricted PSA Sandboxing & Network Isolation" \
@@ -67,21 +70,10 @@ run_suite "Scenario 6a: PostgreSQL Data Persistence & Catalog Isolation" \
 run_suite "Scenario 6b: Disaster Recovery Backup & Automated Restore" \
   "bash '$REPO_ROOT/scripts/verify-backup.sh'"
 
-# Release Baseline & Rollback Automation
-run_suite "Cross-Cutting: Sequential Deployment & Baseline Rollback Tracking" \
-  "python3 -c \"
-import yaml, os
-
-for env in ['local-k3s', 'vps-k3s']:
-    kpath = f'$REPO_ROOT/deploy/environments/{env}/kustomization.yaml'
-    with open(kpath) as f:
-        data = yaml.safe_load(f)
-    for res in data['resources']:
-        target = os.path.normpath(os.path.join(f'$REPO_ROOT/deploy/environments/{env}', res))
-        if not os.path.isfile(target):
-            raise FileNotFoundError(f'Missing manifest {target}')
-print('Kustomize overlays validated cleanly.')
-\""
+# Declarative Reconciliation & Layer Validation
+run_suite "Cross-Cutting: Declarative GitOps Layer Validation" \
+  "bash '$REPO_ROOT/scripts/render-validate.sh' local-k3s >/dev/null && \
+   bash '$REPO_ROOT/scripts/render-validate.sh' vps-k3s >/dev/null"
 
 echo ""
 echo "================================================================================"

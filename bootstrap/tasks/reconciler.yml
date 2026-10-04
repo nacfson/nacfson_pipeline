@@ -1,0 +1,101 @@
+---
+# Reconciler stage: Install and verify in-cluster Flux GitOps controller
+# Scope: Idempotently installs Flux 2.9.5 source-controller and kustomize-controller.
+
+- name: Set current stage tracking to reconciler
+  ansible.builtin.set_fact:
+    current_stage: "reconciler"
+    stage_failure_remediation: "Check `k3s kubectl -n flux-system get pods,events`, outbound HTTPS to ghcr.io, then re-run bootstrap."
+
+# Step 2: Detect preexisting reconciler
+- name: Check if Flux controllers are already deployed
+  ansible.builtin.command:
+    cmd: "k3s kubectl -n flux-system get deployment source-controller kustomize-controller"
+  register: reconciler_detect
+  changed_when: false
+  failed_when: false
+
+- name: Set reconciler_preexisting fact
+  ansible.builtin.set_fact:
+    reconciler_preexisting: "{{ reconciler_detect.rc == 0 }}"
+
+# Steps 3 & 4: Copy and Apply (only when not preexisting)
+- name: Install Flux reconciler components
+  when: not reconciler_preexisting
+  block:
+    - name: Create local staging directory for flux-system manifests
+      ansible.builtin.file:
+        path: "/var/lib/nacfson-bootstrap/flux-system"
+        state: directory
+        owner: root
+        group: root
+        mode: "0700"
+
+    - name: Copy flux-system manifests from controller to target VM
+      ansible.builtin.copy:
+        src: "{{ playbook_dir }}/../clusters/{{ gitops_environment }}/flux-system/"
+        dest: "/var/lib/nacfson-bootstrap/flux-system/"
+        owner: root
+        group: root
+        mode: "0600"
+
+    - name: Apply Flux manifests with retry on CRD establishment
+      ansible.builtin.shell:
+        cmd: |
+          set -e
+          APPLY_OUT=""
+          for attempt in 1 2 3; do
+            if APPLY_OUT=$(k3s kubectl apply --server-side -k /var/lib/nacfson-bootstrap/flux-system/ 2>&1); then
+              echo "$APPLY_OUT"
+              exit 0
+            fi
+            if echo "$APPLY_OUT" | grep -qi "Manual change rejected"; then
+              echo "POLICY_DENIED: $APPLY_OUT" >&2
+              exit 42
+            fi
+            echo "Attempt $attempt failed; waiting for CRD establishment..."
+            k3s kubectl wait --for=condition=Established crd --all --timeout=60s || true
+            sleep 2
+          done
+          echo "$APPLY_OUT" >&2
+          exit 1
+      register: reconciler_apply
+      changed_when: true
+      failed_when: false
+
+    - name: Handle admission policy rejection
+      when: reconciler_apply.rc == 42
+      block:
+        - name: Update stage remediation for policy rejection
+          ansible.builtin.set_fact:
+            stage_failure_remediation: "Reinstall under break-glass (operations §12)"
+        - name: Fail due to manual-change admission policy rejection
+          ansible.builtin.fail:
+            msg: "Reinstall under break-glass (operations §12)"
+
+    - name: Fail on unexpected apply failure
+      when: reconciler_apply.rc != 0
+      ansible.builtin.fail:
+        msg: "Failed to apply Flux reconciler manifests: {{ reconciler_apply.stderr | default(reconciler_apply.stdout) }}"
+
+# Step 5: Verify rollout status (always)
+- name: Verify source-controller deployment rollout status
+  ansible.builtin.command:
+    cmd: "k3s kubectl -n flux-system rollout status deployment/source-controller --timeout=300s"
+  changed_when: false
+
+- name: Verify kustomize-controller deployment rollout status
+  ansible.builtin.command:
+    cmd: "k3s kubectl -n flux-system rollout status deployment/kustomize-controller --timeout=300s"
+  changed_when: false
+
+# Step 6: Record outcomes in bootstrap_result
+- name: Record reconciler stage completion in bootstrap result
+  ansible.builtin.set_fact:
+    bootstrap_result: "{{ bootstrap_result | combine({
+      'completed_stages': bootstrap_result.completed_stages + ['reconciler'],
+      'reconciler_preexisting': reconciler_preexisting,
+      'readiness_outcomes': bootstrap_result.readiness_outcomes | combine({
+        'reconciler_ready': true
+      })
+    }) }}"

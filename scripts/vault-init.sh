@@ -13,7 +13,7 @@ POLICIES_DIR="deploy/platform/vault/policies"
 echo "=== [1/5] Checking OpenBao Pod Status in namespace '${VAULT_NS}' ==="
 if ! kubectl get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
   echo "Error: Pod ${VAULT_POD} not found in namespace ${VAULT_NS}."
-  echo "Deploy manifests first: kubectl apply -k deploy/platform/vault/"
+  echo "Wait for the Flux layer \`vault\` to apply (\`flux get kustomizations -A\`)"
   exit 1
 fi
 

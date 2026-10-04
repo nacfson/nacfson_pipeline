@@ -9,6 +9,4 @@ resources:
   - openbao-config.yaml
   - openbao-statefulset.yaml
   - openbao-service.yaml
-  - registry-proxy.yaml
-  - db-proxy.yaml
   - backup-cronjob.yaml

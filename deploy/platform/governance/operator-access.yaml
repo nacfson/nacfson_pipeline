@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: operator-readonly
+  namespace: governance
+  labels:
+    platform.nacfson.io/managed-by: platform
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: operator-readonly-view
+  labels:
+    platform.nacfson.io/managed-by: platform
+subjects:
+  - kind: ServiceAccount
+    name: operator-readonly
+    namespace: governance
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view

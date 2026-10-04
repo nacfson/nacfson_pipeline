@@ -1,0 +1,172 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: governance
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/governance
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: vault
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: governance
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/vault
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: vault-proxies
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: vault
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/vault-proxies
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: database
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: vault
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/database
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: identity
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: database
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/identity
+  patches:
+    - target:
+        kind: Deployment
+        name: gateway
+      patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: gateway
+        spec:
+          template:
+            spec:
+              containers:
+                - name: gateway
+                  env:
+                    - name: COOKIE_DOMAIN
+                      value: ".example.com"
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: ingress
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: identity
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/ingress
+  patches:
+    - target:
+        kind: IngressRoute
+        name: public-auth-allowlist
+      patch: |
+        - op: replace
+          path: /spec/routes/0/match
+          value: Host(`auth.example.com`) && (PathPrefix(`/realms/platform/protocol/openid-connect/auth`) || PathPrefix(`/realms/platform/login-actions`) || PathPrefix(`/realms/platform/broker/google/endpoint`) || PathPrefix(`/resources`))
+        - op: replace
+          path: /spec/routes/1/match
+          value: Host(`auth.example.com`) && PathPrefix(`/oauth/callback`)
+        - op: replace
+          path: /spec/routes/2/match
+          value: Host(`auth.example.com`) && PathPrefix(`/auth/logout`)
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: project-boundaries
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: governance
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/projects/pn/boundary
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: projects
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: false
+  dependsOn:
+    - name: project-boundaries
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./clusters/local-k3s/projects

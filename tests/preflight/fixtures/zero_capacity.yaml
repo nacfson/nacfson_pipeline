@@ -1,0 +1,9 @@
+environment: test-env
+nodeName: test-node
+observedAt: "2026-10-04T00:00:00Z"
+allocatable:
+  cpuMillicores: 0
+  memoryMib: 0
+systemReserved:
+  cpuMillicores: 0
+  memoryMib: 0

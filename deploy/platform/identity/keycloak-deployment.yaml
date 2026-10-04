@@ -24,7 +24,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: keycloak
-          image: quay.io/keycloak/keycloak:24.0
+          image: quay.io/keycloak/keycloak:24.0.5
           args: ["start", "--vault=file", "--vault-dir=/opt/keycloak/conf/secrets"]
           env:
             - name: KC_DB

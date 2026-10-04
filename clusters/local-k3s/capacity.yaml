@@ -1,0 +1,9 @@
+environment: local-k3s
+nodeName: local-k3s-control-plane
+observedAt: "2026-10-04T00:00:00Z"
+allocatable:
+  cpuMillicores: 4000
+  memoryMib: 8192
+systemReserved:
+  cpuMillicores: 200
+  memoryMib: 512

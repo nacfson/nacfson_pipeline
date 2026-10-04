@@ -262,3 +262,21 @@
         fail_msg: >-
           Port conflict: Ports required by K3s (6443, 10250, 80, 443) are already in use.
           Observed listeners: {{ port_conflict_check.stdout }}.
+
+# Controller check: verify Flux entrypoint exists for selected gitops_environment
+- name: Inspect controller Flux entrypoint directory for gitops_environment
+  ansible.builtin.stat:
+    path: "{{ playbook_dir }}/../clusters/{{ gitops_environment }}/flux-system"
+  register: flux_entrypoint_dir
+  delegate_to: localhost
+  run_once: true
+
+- name: Assert Flux entrypoint directory exists on controller
+  ansible.builtin.assert:
+    that:
+      - flux_entrypoint_dir.stat.exists
+      - flux_entrypoint_dir.stat.isdir
+    fail_msg: >-
+      Preflight failed: Flux entrypoint directory does not exist at {{ playbook_dir }}/../clusters/{{ gitops_environment }}/flux-system.
+  delegate_to: localhost
+  run_once: true
