@@ -25,6 +25,11 @@ spec:
   timeout: 5m
   prune: true
   wait: true
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: openbao
+      namespace: vault
   dependsOn:
     - name: governance
   sourceRef:
@@ -61,6 +66,11 @@ spec:
   timeout: 5m
   prune: true
   wait: true
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: postgres
+      namespace: identity
   dependsOn:
     - name: vault
   sourceRef:

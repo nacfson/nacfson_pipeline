@@ -54,8 +54,6 @@ spec:
             capabilities:
               drop:
                 - ALL
-              add:
-                - IPC_LOCK
           volumeMounts:
             - name: config
               mountPath: /etc/openbao
