@@ -21,9 +21,9 @@ spec:
         request.userInfo.username.startsWith('system:node:') ||
         request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver'] ||
         'platform:break-glass' in request.userInfo.groups ||
-        (request.resource.resource == 'pods' && request.subResource == '' && request.operation == 'DELETE') ||
-        (request.resource.resource == 'pods' && request.subResource == 'eviction') ||
-        (request.resource.resource == 'serviceaccounts' && request.subResource == 'token')
+        (request.resource.resource == 'pods' && (!has(request.subResource) || request.subResource == '') && request.operation == 'DELETE') ||
+        (request.resource.resource == 'pods' && has(request.subResource) && request.subResource == 'eviction') ||
+        (request.resource.resource == 'serviceaccounts' && has(request.subResource) && request.subResource == 'token')
       message: "Manual change rejected: merge to main in github.com/nacfson/nacfson_pipeline, or use the break-glass procedure (operations §12)."
       messageExpression: "'Manual change rejected: merge to main in github.com/nacfson/nacfson_pipeline, or use the break-glass procedure (operations §12).'"
 ---
@@ -81,9 +81,9 @@ spec:
         request.userInfo.username.startsWith('system:node:') ||
         request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver'] ||
         'platform:break-glass' in request.userInfo.groups ||
-        (request.resource.resource == 'pods' && request.subResource == '' && request.operation == 'DELETE') ||
-        (request.resource.resource == 'pods' && request.subResource == 'eviction') ||
-        (request.resource.resource == 'serviceaccounts' && request.subResource == 'token')
+        (request.resource.resource == 'pods' && (!has(request.subResource) || request.subResource == '') && request.operation == 'DELETE') ||
+        (request.resource.resource == 'pods' && has(request.subResource) && request.subResource == 'eviction') ||
+        (request.resource.resource == 'serviceaccounts' && has(request.subResource) && request.subResource == 'token')
       message: "Manual change rejected: merge to main in github.com/nacfson/nacfson_pipeline, or use the break-glass procedure (operations §12)."
       messageExpression: "'Manual change rejected: merge to main in github.com/nacfson/nacfson_pipeline, or use the break-glass procedure (operations §12).'"
 ---

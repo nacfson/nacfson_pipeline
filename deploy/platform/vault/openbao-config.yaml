@@ -9,7 +9,6 @@ metadata:
 data:
   openbao.hcl: |
     ui = false
-    disable_mlock = true
 
     storage "raft" {
       path = "/var/lib/openbao/data"
