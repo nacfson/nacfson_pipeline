@@ -32,7 +32,7 @@ jobs:
       - name: Validate Kubernetes Manifests YAML
         uses: ibiqlik/action-yamllint@v3
         with:
-          file_or_dir: 'deploy/'
+          file_or_dir: 'deploy/ clusters/'
           config_data: |
             extends: default
             rules:
@@ -58,5 +58,5 @@ jobs:
 
       - name: Ansible playbook syntax check
         run: |
-          ansible-playbook -i 'syntax-check-vm,' -u ubuntu -e 'k3s_version=v1.35.9+k3s1' bootstrap/bootstrap.yml --syntax-check
+          ansible-playbook -i 'syntax-check-vm,' -u ubuntu -e 'k3s_version=v1.35.9+k3s1' -e 'gitops_environment=local-k3s' bootstrap/bootstrap.yml --syntax-check
 

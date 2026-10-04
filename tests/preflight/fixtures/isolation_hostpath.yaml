@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pn-bad-hostpath
+  namespace: proj-pn
+spec:
+  replicas: 1
+  template:
+    spec:
+      automountServiceAccountToken: false
+      volumes:
+        - name: bad-vol
+          hostPath:
+            path: /var/log
+      containers:
+        - name: backend
+          image: ghcr.io/nacfson/project-pn-backend@sha256:d3ab8644467bbbb2a49b0afc6631b2600ce344908ce15ddf99e8478c11ecaf21
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi

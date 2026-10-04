@@ -80,6 +80,8 @@ kind: PersistentVolumeClaim
 metadata:
   name: openbao-backup-pvc
   namespace: vault
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
   labels:
     app.kubernetes.io/name: openbao-backup
     app.kubernetes.io/part-of: platform-vault

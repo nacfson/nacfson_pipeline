@@ -12,6 +12,7 @@ This document defines the scope. The automation is implemented as an Ansible pla
 | VM address | SSH connection target |
 | SSH user | Existing account with administrator privileges through sudo |
 | K3s version | Explicit version to install; no implicit latest-version upgrade |
+| GitOps environment | Environment profile for the reconciler (`local-k3s` or `vps-k3s`) |
 
 Use the operator's existing SSH configuration or agent for authentication. Keep
 private keys outside the repository. Do not add a second credential configuration
@@ -35,6 +36,7 @@ architecture. It must not silently claim support for other combinations.
 1. Validate prerequisites and report missing requirements before installation.
 2. Install the selected K3s version and enable its service.
 3. Verify the service, Kubernetes API, node Ready condition, and CoreDNS readiness.
+4. Install and verify the in-cluster GitOps reconciler (FluxCD 2.9.5) as the final stage, so a clean VM reaches continuous reconciliation with no separate manual step.
 
 Use K3s defaults unless a documented project requirement makes an override
 necessary. Do not expose the API broadly or copy administrative kubeconfig into Git.
@@ -47,7 +49,8 @@ the difference; upgrades, reinitialization, and disk formatting are separate act
 
 VM creation, cloud network changes, disk provisioning, application deployment,
 workload resource allocation, vault installation, backend credential provisioning,
-backup/restore, monitoring, and upgrades remain outside this playbook.
+backup/restore, monitoring, and upgrades remain outside this playbook. Application
+workloads and the vault are reconciled from Git by Flux, not installed by the bootstrap.
 
 Successful bootstrap means the Kubernetes host is ready. It does not establish
 application readiness, durable data recovery, or compliance with the vault design.

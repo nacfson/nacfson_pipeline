@@ -1,0 +1,9 @@
+environment: test-env
+nodeName: test-node
+observedAt: "2026-10-04T00:00:00Z"
+allocatable:
+  cpuMillicores: 4000
+  memoryMib: 24576
+systemReserved:
+  cpuMillicores: 200
+  memoryMib: 512

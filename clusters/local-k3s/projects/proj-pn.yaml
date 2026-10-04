@@ -1,0 +1,51 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: proj-pn
+  namespace: proj-pn
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  serviceAccountName: pn-reconciler
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  dependsOn:
+    - name: project-boundaries
+      namespace: flux-system
+    - name: ingress
+      namespace: flux-system
+    - name: vault-proxies
+      namespace: flux-system
+  path: ./deploy/projects/pn/workloads
+  patches:
+    - target:
+        kind: IngressRoute
+        name: project-pn-ingress
+      patch: |
+        - op: replace
+          path: /spec/routes/0/match
+          value: Host(`pn.example.com`)
+        - op: replace
+          path: /spec/routes/1/match
+          value: Host(`pn.example.com`) && PathPrefix(`/api`)
+    - target:
+        kind: Deployment
+        name: pn-backend
+      patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: pn-backend
+        spec:
+          template:
+            spec:
+              containers:
+                - name: backend
+                  env:
+                    - name: CENTRAL_AUTH_URL
+                      value: "https://auth.example.com/realms/platform"

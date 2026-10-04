@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pn-bad-service
+  namespace: proj-pn
+spec:
+  type: NodePort
+  ports:
+    - port: 8080
+      nodePort: 30080

@@ -2,6 +2,8 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: identity
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
   labels:
     app.kubernetes.io/part-of: platform
     name: identity
@@ -10,6 +12,8 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: platform
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
   labels:
     app.kubernetes.io/part-of: platform
     name: platform
@@ -18,6 +22,8 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: governance
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
   labels:
     app.kubernetes.io/part-of: platform
     name: governance

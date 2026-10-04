@@ -1,7 +1,7 @@
 ---
 # Minimal VM Bootstrap Playbook
-# Scope: Prepare an existing VM for a single K3s server using three settings:
-# target host address, SSH user, and pinned k3s_version.
+# Scope: Prepare an existing VM for a single K3s server using four settings:
+# target host address, SSH user, pinned k3s_version, and gitops_environment.
 
 - name: Controller request validation
   hosts: localhost
@@ -10,6 +10,9 @@
   vars:
     accepted_k3s_versions:
       - "v1.35.9+k3s1"
+    accepted_gitops_environments:
+      - "local-k3s"
+      - "vps-k3s"
   tasks:
     - name: Validate inventory contains exactly one target host
       ansible.builtin.assert:
@@ -49,6 +52,16 @@
           Validation failed: Invalid or missing k3s_version '{{ k3s_version | default('NOT_SET') }}'.
           Supported version allowlist: {{ accepted_k3s_versions | join(', ') }}.
 
+    - name: Validate gitops_environment is provided and accepted
+      ansible.builtin.assert:
+        that:
+          - gitops_environment is defined
+          - gitops_environment | trim | length > 0
+          - gitops_environment in accepted_gitops_environments
+        fail_msg: >-
+          Validation failed: Invalid or missing gitops_environment '{{ gitops_environment | default('NOT_SET') }}'.
+          Supported environment allowlist: {{ accepted_gitops_environments | join(', ') }}.
+
 
 - name: Bootstrap target VM
   hosts: all
@@ -74,6 +87,8 @@
                 management_api_ready: false
                 node_ready: false
                 coredns_ready: false
+                reconciler_ready: false
+              reconciler_preexisting: null
               status: "failed"
               failed_stage: null
               next_action: "Review preflight diagnostics and ensure host meets support profile."
@@ -121,13 +136,17 @@
           ansible.builtin.set_fact:
             bootstrap_result: "{{ bootstrap_result | combine({'completed_stages': bootstrap_result.completed_stages + ['verify']}) }}"
 
+        # Stage 4: Reconciler
+        - name: Execute reconciler installation and verification
+          ansible.builtin.include_tasks: tasks/reconciler.yml
+
         # Final Success
         - name: Finalize successful bootstrap result
           ansible.builtin.set_fact:
             bootstrap_result: "{{ bootstrap_result | combine({
               'status': 'ready',
               'failed_stage': null,
-              'next_action': 'Base cluster bootstrap ready. Proceed to separate platform deployment.'
+              'next_action': 'Cluster and reconciler ready. Run scripts/vault-init.sh to initialize or unseal the vault; Flux applies all other layers.'
             }) }}"
 
         - name: Display final bootstrap summary

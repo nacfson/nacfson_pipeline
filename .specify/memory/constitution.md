@@ -1,22 +1,11 @@
-<!--
-# Sync Impact Report
-- Version change: 1.2.0 -> 1.3.0
-- List of modified principles:
-  - V. Isolated Shared Persistence & Zero Plaintext Secrets (Replaced direct Kubernetes Secret delivery with centralized self-hosted internal cluster Vault; backend credentials remain confined inside trusted execution; applications execute operations without receiving backend secrets)
-- Added sections:
-  - None
-- Removed sections:
-  - None
-- Follow-up TODOs:
-  - Plan and implement Spec 002 Internal Cluster Vault to provide the vault service and operation integrations
--->
 
 # nacfson_pipeline Constitution
 
 ## Core Principles
 
-### I. Declarative Configuration as Single Source of Truth (Phased GitOps)
-All declarative configurations, workload definitions, and environment profiles MUST reside in Git. For the initial platform design, the operator manually reviews, orders, and applies manifests in sequential order, verifying capacity budgets and isolation compliance without requiring an in-cluster automated continuous reconciliation controller. Automated in-cluster GitOps reconciliation (FluxCD) and automated branch promotion gating (`platform-preflight`) are established as the target operating model for future platform expansion. Deployment references MUST use immutable image digests rather than mutable tags.
+### I. Declarative Configuration as Single Source of Truth (Continuous GitOps)
+All declarative configurations, workload definitions, and environment profiles MUST reside in Git. Each environment MUST track a protected deployment source. Changes MUST reach a cluster only through an in-cluster, pull-based reconciler (FluxCD) running as ordinary cluster workloads, and only after a revision has passed that environment's required checks, including `platform-preflight`. The reconciler MUST apply declarations in explicit dependency order, correct drift, and prune removed declarations. Persistent data declarations (volume claims and database or vault storage) MUST be protected from pruning. The reconciler MUST NOT store, decrypt, generate, or deliver secret material. It MUST read the repository without any repository credential stored in the cluster, and MUST have no write access to the repository. Manual cluster changes are prohibited except the one-time reconciler installation and documented break-glass actions (for example reconciliation suspend/resume, vault unseal, emergency changes, and verification exercises). Any break-glass change MUST be reconciled back to Git. Rollback MUST be performed by reverting the deployment source. Images built by this project MUST be referenced by immutable SHA256 digests. Third-party images MUST be pinned to an exact upstream version tag; floating tags (such as `latest` or `16-alpine`) are prohibited.
+*Rationale:* Operator-applied ordering skipped declarations, left drift and orphaned objects, and depended on one workstation's credentials. Pull-based reconciliation keeps the management interface closed to inbound automation.
 
 ### II. Strict Workload Isolation & Restricted Pod Security
 All project namespaces MUST enforce the Kubernetes Restricted Pod Security profile through Pod Security Admission (audit and warn modes are strictly prohibited). Application containers MUST run as non-root and drop all capabilities, permitting at most `NET_BIND_SERVICE`. Workloads MUST run under dedicated platform-provisioned ServiceAccounts with automatic API token mounting disabled. Project pods MUST NOT mount service-account tokens or access the Kubernetes API. Project Services MUST be ClusterIP only; NodePort and LoadBalancer services represent perimeter bypasses and MUST be rejected. Cross-workload traffic MUST be constrained by explicit NetworkPolicies.
@@ -43,11 +32,12 @@ The platform deployment contract MUST run consistently across local native k3s, 
 
 ## Deployment Quality Gates & Verification Standards
 
-- **Capacity & Budget Verification:** Candidate deployment revisions MUST be verified against actual, observed node allocatable capacity before application (manually verified in the initial phase; automated via `platform-preflight` prior to branch promotion in future GitOps).
+- **Capacity & Budget Verification:** Candidate deployment revisions MUST be verified against actual, observed node allocatable capacity by the automated `platform-preflight` required check before they can be promoted to an environment's deployment source. The platform reservation MUST include the reconciler's own resource footprint.
 - **Interim Memory Limit Freeze:** Until the dynamic allocation lifecycle policy is formally ratified, revisions that reduce an existing workload's memory limits, or introduce new projects that force existing project slices below their deployed peak memory envelope, MUST be rejected prior to application.
 - **Multi-Architecture Image Packaging:** Applications MUST be built and packaged into multi-architecture OCI images (supporting both Linux AMD64 and ARM64) pushed to GHCR and referenced in manifests by immutable SHA256 digests.
 - **Restoration Verification for Backups:** When optional scheduled backups are enabled (default daily at 00:00 UTC with 7-day retention), backup validity MUST be proven via documented, successful restore exercises on a clean environment. Unexercised backups MUST NOT be considered disaster recovery assets.
 - **Automated Manifest Validation:** Helm templates and Kustomize overlays MUST render cleanly with pinned tool versions and pass schema validation against target Kubernetes API versions.
+- **Repository Secret Hygiene:** The repository is public. Every candidate revision MUST pass secret scanning, and the full history MUST pass a secret scan before the repository's visibility is widened. Any real credential that has appeared in Git history, encrypted or not, MUST be treated as exposed and rotated.
 
 ## Governance
 
@@ -63,4 +53,4 @@ The platform deployment contract MUST run consistently across local native k3s, 
   - **PATCH (1.0.X):** Clarifications, wording refinements, documentation synchronization, and non-semantic corrections.
 - **Compliance Review:** All pull requests and candidate revisions MUST be verified for compliance with this Constitution during code review and pre-deployment execution.
 
-**Version**: 1.3.0 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-10-03
+**Version**: 1.4.1 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-10-04

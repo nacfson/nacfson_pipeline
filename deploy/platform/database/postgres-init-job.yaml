@@ -3,6 +3,8 @@ kind: Job
 metadata:
   name: postgres-init-job
   namespace: identity
+  annotations:
+    kustomize.toolkit.fluxcd.io/force: enabled
   labels:
     app.kubernetes.io/name: postgres-init
     app.kubernetes.io/part-of: platform
@@ -22,7 +24,14 @@ spec:
           type: RuntimeDefault
       containers:
         - name: init-db
-          image: postgres:16-alpine
+          image: postgres:16.8-alpine
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true

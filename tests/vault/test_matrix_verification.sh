@@ -70,10 +70,9 @@ else
   echo "PASS: Zero legacy secret references found across all deploy manifests."
 fi
 
-# Assert Kustomize builds pass
-kubectl kustomize deploy/ > /dev/null
-kubectl kustomize --load-restrictor=LoadRestrictionsNone deploy/environments/local-k3s/ > /dev/null
-kubectl kustomize --load-restrictor=LoadRestrictionsNone deploy/environments/vps-k3s/ > /dev/null
+# Assert GitOps builds pass
+./scripts/render-validate.sh local-k3s > /dev/null
+./scripts/render-validate.sh vps-k3s > /dev/null
 echo "PASS: Declarative GitOps manifests validated cleanly across all environments."
 
 echo ""

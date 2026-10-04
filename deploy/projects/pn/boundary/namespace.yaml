@@ -2,6 +2,8 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: proj-pn
+  annotations:
+    kustomize.toolkit.fluxcd.io/prune: disabled
   labels:
     app.kubernetes.io/part-of: project-pn
     name: proj-pn

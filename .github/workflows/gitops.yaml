@@ -1,0 +1,111 @@
+name: GitOps Reconciliation Gate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+env:
+  FLUX_VERSION: "2.9.5"
+  KUBECONFORM_VERSION: "v0.6.7"
+  TRAEFIK_CRD_SCHEMA_URL: "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json"
+
+jobs:
+  preflight-tests:
+    name: preflight-tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r scripts/requirements-preflight.txt
+
+      - name: Run preflight unit tests
+        run: |
+          python3 -m unittest discover tests/preflight
+
+  render-validate:
+    name: render-validate (${{ matrix.env }})
+    needs: [preflight-tests]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env: [local-k3s, vps-k3s]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned tools and dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r scripts/requirements-preflight.txt
+          curl -s https://fluxcd.io/install.sh | sudo bash -s ${{ env.FLUX_VERSION }}
+          curl -sL https://github.com/yannh/kubeconform/releases/download/${{ env.KUBECONFORM_VERSION }}/kubeconform-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin kubeconform
+
+      - name: Run render-validate
+        run: |
+          ./scripts/render-validate.sh ${{ matrix.env }}
+
+  platform-preflight:
+    name: platform-preflight (${{ matrix.env }})
+    needs: [render-validate]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        env: [local-k3s, vps-k3s]
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install pinned tools and dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r scripts/requirements-preflight.txt
+          curl -s https://fluxcd.io/install.sh | sudo bash -s ${{ env.FLUX_VERSION }}
+          curl -sL https://github.com/yannh/kubeconform/releases/download/${{ env.KUBECONFORM_VERSION }}/kubeconform-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin kubeconform
+
+      - name: Render candidate and baseline
+        id: render
+        run: |
+          CANDIDATE_FILE=$(./scripts/render-validate.sh ${{ matrix.env }})
+          echo "candidate=${CANDIDATE_FILE}" >> "$GITHUB_OUTPUT"
+
+          BASELINE_REF=$(git merge-base origin/main HEAD 2>/dev/null || echo "")
+          if [ -n "$BASELINE_REF" ]; then
+            BASELINE_FILE=$(./scripts/render-validate.sh ${{ matrix.env }} "$BASELINE_REF" 2>/dev/null || touch /tmp/empty-baseline.yaml && echo "/tmp/empty-baseline.yaml")
+          else
+            BASELINE_FILE="/tmp/empty-baseline.yaml"
+            touch "$BASELINE_FILE"
+          fi
+          echo "baseline=${BASELINE_FILE}" >> "$GITHUB_OUTPUT"
+
+      - name: Run platform-preflight check
+        run: |
+          python3 scripts/platform-preflight.py \
+            --environment ${{ matrix.env }} \
+            --candidate "${{ steps.render.outputs.candidate }}" \
+            --baseline "${{ steps.render.outputs.baseline }}" \
+            --capacity "clusters/${{ matrix.env }}/capacity.yaml"

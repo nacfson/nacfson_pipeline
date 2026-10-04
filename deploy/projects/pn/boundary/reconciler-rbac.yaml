@@ -1,0 +1,48 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: pn-reconciler
+  namespace: proj-pn
+  labels:
+    app.kubernetes.io/name: pn-reconciler
+    app.kubernetes.io/part-of: project-pn
+    platform.nacfson.io/managed-by: platform
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: pn-reconciler
+  namespace: proj-pn
+  labels:
+    app.kubernetes.io/name: pn-reconciler
+    app.kubernetes.io/part-of: project-pn
+    platform.nacfson.io/managed-by: platform
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["services", "configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["traefik.io"]
+    resources: ["ingressroutes"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: pn-reconciler
+  namespace: proj-pn
+  labels:
+    app.kubernetes.io/name: pn-reconciler
+    app.kubernetes.io/part-of: project-pn
+    platform.nacfson.io/managed-by: platform
+subjects:
+  - kind: ServiceAccount
+    name: pn-reconciler
+    namespace: proj-pn
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: pn-reconciler

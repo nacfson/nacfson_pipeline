@@ -1,0 +1,98 @@
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: gitops-managed-namespaces
+  labels:
+    platform.nacfson.io/managed-by: platform
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["*"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources: ["*"]
+        scope: Namespaced
+  validations:
+    - expression: >-
+        request.userInfo.username.startsWith('system:serviceaccount:flux-system:') ||
+        request.userInfo.username == 'system:serviceaccount:proj-pn:pn-reconciler' ||
+        request.userInfo.username.startsWith('system:serviceaccount:kube-system:') ||
+        request.userInfo.username.startsWith('system:node:') ||
+        request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver'] ||
+        'platform:break-glass' in request.userInfo.groups ||
+        (request.resource.resource == 'pods' && request.subResource == '' && request.operation == 'DELETE') ||
+        (request.resource.resource == 'pods' && request.subResource == 'eviction') ||
+        (request.resource.resource == 'serviceaccounts' && request.subResource == 'token')
+      message: "Manual change rejected: merge to main in github.com/nacfson/nacfson_pipeline, or use the break-glass procedure (operations §12)."
+      messageExpression: "'Manual change rejected: merge to main in github.com/nacfson/nacfson_pipeline, or use the break-glass procedure (operations §12).'"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: gitops-managed-namespaces
+  labels:
+    platform.nacfson.io/managed-by: platform
+spec:
+  policyName: gitops-managed-namespaces
+  validationActions: [Deny]
+  matchResources:
+    namespaceSelector:
+      matchExpressions:
+        - key: kubernetes.io/metadata.name
+          operator: In
+          values:
+            - default
+            - flux-system
+            - governance
+            - identity
+            - platform
+            - vault
+            - proj-pn
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicy
+metadata:
+  name: gitops-managed-cluster-kinds
+  labels:
+    platform.nacfson.io/managed-by: platform
+spec:
+  failurePolicy: Fail
+  matchConstraints:
+    resourceRules:
+      - apiGroups: ["*"]
+        apiVersions: ["*"]
+        operations: ["CREATE", "UPDATE", "DELETE"]
+        resources:
+          - namespaces
+          - customresourcedefinitions
+          - clusterroles
+          - clusterrolebindings
+          - validatingadmissionpolicies
+          - validatingadmissionpolicybindings
+          - validatingwebhookconfigurations
+          - mutatingwebhookconfigurations
+        scope: Cluster
+  validations:
+    - expression: >-
+        request.userInfo.username.startsWith('system:serviceaccount:flux-system:') ||
+        request.userInfo.username == 'system:serviceaccount:proj-pn:pn-reconciler' ||
+        request.userInfo.username.startsWith('system:serviceaccount:kube-system:') ||
+        request.userInfo.username.startsWith('system:node:') ||
+        request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver'] ||
+        'platform:break-glass' in request.userInfo.groups ||
+        (request.resource.resource == 'pods' && request.subResource == '' && request.operation == 'DELETE') ||
+        (request.resource.resource == 'pods' && request.subResource == 'eviction') ||
+        (request.resource.resource == 'serviceaccounts' && request.subResource == 'token')
+      message: "Manual change rejected: merge to main in github.com/nacfson/nacfson_pipeline, or use the break-glass procedure (operations §12)."
+      messageExpression: "'Manual change rejected: merge to main in github.com/nacfson/nacfson_pipeline, or use the break-glass procedure (operations §12).'"
+---
+apiVersion: admissionregistration.k8s.io/v1
+kind: ValidatingAdmissionPolicyBinding
+metadata:
+  name: gitops-managed-cluster-kinds
+  labels:
+    platform.nacfson.io/managed-by: platform
+spec:
+  policyName: gitops-managed-cluster-kinds
+  validationActions: [Deny]

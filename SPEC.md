@@ -18,7 +18,7 @@ In this document, MUST identifies a required behavior, SHOULD identifies a recom
 | --- | --- |
 | Kubernetes | Native k3s locally and on one production VPS; EKS/GKE deployment compatibility |
 | Application packaging | Helm charts |
-| Deployment reconciliation | Initial: Operator-applied Git-versioned manifests; Future: Automated FluxCD reconciliation and platform-preflight promotion |
+| Deployment reconciliation | Automated FluxCD reconciliation and platform-preflight promotion; direct manual changes rejected |
 | Application image delivery | GitHub Actions and GHCR; immutable deployment references |
 | Ingress | Traefik; Cilium is not part of the initial design |
 | Authentication gateway | Custom Go service using the standard library, without third-party Go modules at runtime |
@@ -29,13 +29,13 @@ In this document, MUST identifies a required behavior, SHOULD identifies a recom
 | Database | Standard PostgreSQL (StatefulSet backed by persistent disk volume) |
 | Database isolation | One initial PostgreSQL instance, separate databases and restricted roles |
 | Persistent storage | Disk-backed persistent volumes on the VPS |
-| Secrets | Operator-provided Kubernetes Secrets; no initial Vault deployment |
+| Secrets | Centralized self-hosted internal cluster Vault (OpenBao); zero plaintext secrets in Git or manifests; runtime injection via proxies |
 | Resource policy | Explicit CPU requests and limits, bounded memory, 1/n slices, preflight rejection, and namespace ResourceQuota |
 | Workload boundary | Restricted Pod Security in project namespaces; platform-owned ServiceAccounts, quotas, and network policy |
 | User-requested revocation | Current platform session only; authenticated gateway route |
 | Backups | Optional; when enabled, daily at 00:00 UTC with seven-day retention |
 
-Keycloak, PostgreSQL, Traefik, the gateway, and project workloads initially reside on the same VPS. In-cluster continuous GitOps controllers (FluxCD), separate infrastructure hosts, a second production server, and HA replicas are not initial requirements.
+Keycloak, PostgreSQL, Traefik, the gateway, and project workloads reside on the same VPS, continuously reconciled by in-cluster FluxCD. Separate infrastructure hosts, a second production server, and HA replicas are not initial requirements.
 
 ## 3. Traffic and trust boundaries
 
@@ -48,8 +48,7 @@ Browser --> project.example.com --> Traefik --> Project workload
                                                    |
                                                  Google
 
-GitHub candidate revision --> Operator verification & manual deployment (Initial)
-                             [Future: platform-preflight --> protected branch --> FluxCD]
+GitHub candidate revision --> platform-preflight --> protected main --> FluxCD reconciliation
 GitHub Actions --> GHCR --> Kubernetes image pulls
 ```
 
@@ -160,9 +159,9 @@ The project MUST store and enforce these bindings. The gateway MUST forward issu
 
 ### DEPLOY-01: Git is the desired-state source
 
-Project declarations and environment-specific configuration MUST reside in GitHub. In the initial design, the operator reviews and applies manifests in ordered sequence; automated continuous reconciliation via FluxCD is deferred to future platform expansion.
+Project declarations and environment-specific configuration MUST reside in GitHub. Continuous pull-based reconciliation is performed in-cluster by FluxCD. Direct manual changes to managed cluster resources are rejected by cluster admission policy and prohibited except for documented break-glass operations.
 
-A separate runtime management database, dashboard, imperative deployment service, or continuously running resource-allocation controller is not required for the initial platform.
+A separate runtime management database, dashboard, imperative deployment service, or continuously running resource-allocation controller is not required for the platform.
 
 The project configuration contract MUST cover:
 
@@ -197,17 +196,17 @@ EKS/GKE deployment profiles MUST support an external PostgreSQL endpoint so RDS 
 
 Supporting these environments means portable deployment, not one live database stretched across cloud providers or simultaneous active-active platform operation.
 
-### DEPLOY-04: Deployment verification and future protected promotion
+### DEPLOY-04: Deployment verification and protected promotion
 
-In the initial design, candidate manifests and resource budgets reside in Git. The operator manually verifies that candidate revisions comply with RESOURCE-02 and ISOLATE-01 controls against measured capacity before applying manifests to the cluster in ordered sequence.
+In the continuous GitOps architecture, candidate manifests and resource budgets reside in Git. Candidate revisions reach the cluster solely through in-cluster pull-based FluxCD reconciliation after passing automated verification. Direct manual changes to managed cluster resources are rejected by cluster admission policy.
 
-For future automated GitOps expansion, GitHub Actions MUST run a required check named `platform-preflight` on the exact candidate revision. The check will run separately for each environment, using that environment's committed capacity, platform reservations, project count, calculated slices, and rendered workload resources. Rendering will use the same Helm and Kustomize versions and the same values Flux will apply for that environment.
+GitHub Actions MUST run a required check named `platform-preflight` on the exact candidate revision. The check runs separately for each environment (`local-k3s`, `vps-k3s`), using that environment's committed capacity (`capacity.yaml`), platform reservations (including Flux controller footprints and memory limits), project count, calculated slices, and rendered workload resources. Rendering uses the pinned Flux CLI build engine for each layer.
 
 The rendered aggregate MUST use peak concurrent resources: every container, rollout surge above steady-state replicas, Job parallelism, and CronJobs that the concurrency policy can run at the same time. Completed pods MUST NOT be counted. A zero-project revision MUST be accepted and MUST NOT divide by zero.
 
 `platform-preflight` MUST reject a revision that violates RESOURCE-02 or that renders manifests weakening the ISOLATE-01 controls. It MUST also fail closed when the environment has no node-allocatable measurement, or when the revision's committed allocatable capacity is greater than the newest measurement for that environment. The measurement MUST be produced by observing that node. Setting the measurement equal to the desired committed figure is not an observation.
 
-When automated GitOps is enabled in future phases, each environment will have a protected deployment branch tracked by Flux. Only a revision that passes `platform-preflight` for that environment MAY be promoted onto that branch. While operating under manual deployment ordering in the initial phase, the operator MUST NOT apply an over-budget revision to the cluster.
+Each environment tracks the protected `main` branch. Only a revision that passes `platform-preflight` and schema validation (`render-validate`) for that environment MAY be merged to `main`.
 
 ## 6. Resource allocation
 
@@ -274,9 +273,9 @@ Physical backups or continuous WAL archiving MAY be chosen later, but a usable b
 
 ### EXPAND-01: Simple now, expandable later
 
-The initial deployment MUST remain colocated and MUST NOT require an HA topology, Vault, a dedicated PostgreSQL node, separate identity infrastructure, or an in-cluster automated GitOps reconciliation controller (FluxCD).
+The deployment MUST remain colocated on a single node and MUST NOT require an HA topology, a dedicated external PostgreSQL node, or separate identity infrastructure hosts.
 
-Configuration SHOULD permit later additional application/Keycloak replicas, independent PostgreSQL standby nodes, and the introduction of automated GitOps reconciliation via FluxCD and `platform-preflight`. This is a migration path, not an initial availability guarantee. Single-host volumes may need migration, and applications may need appropriate connection recovery behavior when HA is introduced.
+Configuration SHOULD permit later additional application/Keycloak replicas and independent PostgreSQL standby nodes. This is an expansion path, not an initial availability guarantee. Single-host volumes may need migration, and applications may need appropriate connection recovery behavior when HA is introduced.
 
 There is no current downtime SLO. Future HA can reduce downtime; the platform MUST NOT promise that scaling replicas eliminates every outage.
 
