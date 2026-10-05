@@ -6,21 +6,117 @@
 
 set -euo pipefail
 
-VAULT_NS="vault"
-VAULT_POD="openbao-0"
+VAULT_NS="${VAULT_NS:-vault}"
+VAULT_POD="${VAULT_POD:-openbao-0}"
+KUBE_EXEC="${KUBE_EXEC:-kubectl}"
+FORCE_SEED="${FORCE_SEED:-false}"
 
-echo "=== Seeding the 11 Mandatory Managed Credentials into OpenBao KV v2 ==="
+if [ "${1:-}" = "--force" ]; then
+  FORCE_SEED="true"
+fi
+
+# If running against remote host without local kubectl cluster access
+if ! ${KUBE_EXEC} get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
+  if ssh oracleCloud "sudo k3s kubectl get pod -n ${VAULT_NS} ${VAULT_POD}" >/dev/null 2>&1; then
+    KUBE_EXEC="ssh oracleCloud sudo k3s kubectl"
+  fi
+fi
+
+echo "=== [1/3] Verifying Vault Status ==="
+INIT_STATUS=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao status -format=json 2>/dev/null || true)
+IS_SEALED=$(echo "${INIT_STATUS}" | grep -o '"sealed":[^,]*' | cut -d: -f2 | tr -d ' ' || echo "true")
+IS_INITIALIZED=$(echo "${INIT_STATUS}" | grep -o '"initialized":[^,]*' | cut -d: -f2 | tr -d ' ' || echo "false")
+
+if [ "${IS_INITIALIZED}" != "true" ] || [ "${IS_SEALED}" = "true" ]; then
+  echo "Error: Vault is not initialized or is sealed. Please unseal Vault first." >&2
+  exit 1
+fi
+echo "PASS: Vault is initialized and unsealed."
+
+# Function to test token validity
+test_token() {
+  local token="$1"
+  ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- \
+    env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${token}" \
+    bao token lookup >/dev/null 2>&1
+}
+
+# Function to generate a new root token using Shamir Unseal Key
+generate_root_token() {
+  local unseal_key="$1"
+  echo "Initiating root token generation ceremony..."
+  ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -cancel >/dev/null 2>&1 || true
+
+  local otp_json=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -generate-otp -format=json)
+  local otp=$(echo "${otp_json}" | grep -o '"otp":"[^"]*"' | cut -d'"' -f4)
+
+  local init_json=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -init -otp="${otp}" -format=json)
+  local nonce=$(echo "${init_json}" | grep -o '"nonce":"[^"]*"' | cut -d'"' -f4)
+
+  local step_json=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -nonce="${nonce}" -otp="${otp}" -format=json "${unseal_key}")
+  local encoded=$(echo "${step_json}" | grep -o '"encoded_root_token":"[^"]*"' | cut -d'"' -f4)
+
+  if [ -z "${encoded}" ]; then
+    echo "Error: Failed to encode root token. Check your unseal key." >&2
+    exit 1
+  fi
+
+  local decoded_token=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -decode="${encoded}" -otp="${otp}" | tr -d '\r\n ')
+  echo "${decoded_token}"
+}
+
+# Resolve Vault Token (Prompt or environment)
+if [ -z "${VAULT_TOKEN:-}" ]; then
+  read -r -s -p "Enter Vault Root/Admin Token (or press Enter if you only have the Unseal Key): " VAULT_TOKEN
+  echo ""
+fi
+VAULT_TOKEN=$(echo "${VAULT_TOKEN}" | tr -d '\r\n ')
+
+if [ -n "${VAULT_TOKEN}" ] && test_token "${VAULT_TOKEN}"; then
+  echo "PASS: Vault Token authenticated successfully."
+else
+  if [ -n "${VAULT_TOKEN}" ]; then
+    echo "Notice: The provided token was rejected by Vault (Code 403: permission denied)."
+    echo "Remember: The Root Token is different from the Unseal Key."
+  fi
+  read -r -p "Would you like to generate a new Root Token using your Unseal Key? [Y/n]: " DO_GEN
+  if [[ "${DO_GEN}" =~ ^[Nn] ]]; then
+    echo "Aborted." >&2
+    exit 1
+  fi
+
+  read -r -s -p "Enter Unseal Key: " UNSEAL_KEY
+  echo ""
+  UNSEAL_KEY=$(echo "${UNSEAL_KEY}" | tr -d '\r\n ')
+
+  VAULT_TOKEN=$(generate_root_token "${UNSEAL_KEY}")
+  echo "================================================================================"
+  echo "SUCCESS: Generated new Root Token: ${VAULT_TOKEN}"
+  echo "Please store this Root Token in your password manager!"
+  echo "================================================================================"
+fi
+
+echo "=== [2/3] Ensuring KV v2 Engine is Enabled ==="
+${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- \
+  env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${VAULT_TOKEN}" \
+  bao secrets enable -version=2 kv 2>/dev/null || echo "KV v2 engine already enabled."
+
+echo "=== [3/3] Seeding the 11 Mandatory Managed Credentials into OpenBao KV v2 ==="
 
 seed_secret() {
   local path="$1"
   shift
-  echo "Seeding ${path}..."
-  if [ "${VAULT_MOCK_MODE:-false}" != "true" ] && kubectl --request-timeout=1s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
-    kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_TOKEN="${VAULT_TOKEN:-root}" \
-      bao kv put "${path}" "$@"
-  else
-    echo "  (Mock/Local) Stored: ${path}"
+  if [ "${FORCE_SEED}" != "true" ] && ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- \
+      env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${VAULT_TOKEN}" \
+      bao kv get "${path}" >/dev/null 2>&1; then
+    echo "Already exists: ${path} (skipping, use --force to overwrite)"
+    return 0
   fi
+
+  echo "Seeding ${path}..."
+  ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- \
+    env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${VAULT_TOKEN}" \
+    bao kv put "${path}" "$@"
 }
 
 # 1. GHCR Container Registry Pull Token
