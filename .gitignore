@@ -63,3 +63,4 @@ secrets.env
 
 *-secret.yaml
 image-pull-secret.yaml
+.orca/

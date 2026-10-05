@@ -10,6 +10,13 @@ VAULT_NS="vault"
 VAULT_POD="openbao-0"
 REGISTRY_PROXY_ADDR="http://127.0.0.1:5000"
 DB_PROXY_ADDR="http://127.0.0.1:8080"
+KUBE_EXEC="${KUBE_EXEC:-kubectl}"
+
+if ! ${KUBE_EXEC} --request-timeout=1s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
+  if ssh oracleCloud "sudo k3s kubectl get pod -n ${VAULT_NS} ${VAULT_POD}" >/dev/null 2>&1; then
+    KUBE_EXEC="ssh oracleCloud sudo k3s kubectl"
+  fi
+fi
 
 usage() {
   echo "Usage: $0 <command> <credential-name> [value]"
@@ -81,8 +88,8 @@ case "$COMMAND" in
     fi
 
     echo "=== Staging replacement version for '${CRED_NAME}' at '${VPATH}' ==="
-    if [ "${VAULT_MOCK_MODE:-false}" != "true" ] && kubectl --request-timeout=1s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
-      kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_TOKEN="${VAULT_TOKEN:-root}" \
+    if [ "${VAULT_MOCK_MODE:-false}" != "true" ] && ${KUBE_EXEC} --request-timeout=1s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
+      ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_TOKEN="${VAULT_TOKEN:-root}" \
         bao kv put "${VPATH}" value="${CRED_VALUE}" staged="true"
     else
       echo "(Mock/Local mode) Staged secret in local buffer."
@@ -128,8 +135,8 @@ case "$COMMAND" in
     fi
     VPATH=$(get_vault_path "${CRED_NAME}")
     echo "=== Promoting staged version of '${CRED_NAME}' to ACTIVE ==="
-    if [ "${VAULT_MOCK_MODE:-false}" != "true" ] && kubectl --request-timeout=1s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
-      kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_TOKEN="${VAULT_TOKEN:-root}" \
+    if [ "${VAULT_MOCK_MODE:-false}" != "true" ] && ${KUBE_EXEC} --request-timeout=1s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
+      ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_TOKEN="${VAULT_TOKEN:-root}" \
         bao kv patch "${VPATH}" active="true" staged="false"
     else
       echo "(Mock/Local mode) Promoted secret to active."
@@ -155,8 +162,8 @@ case "$COMMAND" in
     if [ -n "${CRED_NAME}" ]; then
       VPATH=$(get_vault_path "${CRED_NAME}")
       echo "Target: ${CRED_NAME} (${VPATH})"
-      if [ "${VAULT_MOCK_MODE:-false}" != "true" ] && kubectl --request-timeout=1s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
-        kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_TOKEN="${VAULT_TOKEN:-root}" \
+      if [ "${VAULT_MOCK_MODE:-false}" != "true" ] && ${KUBE_EXEC} --request-timeout=1s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
+        ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_TOKEN="${VAULT_TOKEN:-root}" \
           bao kv metadata get "${VPATH}"
       else
         echo "(Mock/Local mode) Metadata: active_version=2, staged_version=none"

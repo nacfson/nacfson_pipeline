@@ -19,7 +19,8 @@ spec:
           labels:
             app.kubernetes.io/name: postgres-backup
         spec:
-          automountServiceAccountToken: false
+          serviceAccountName: postgres-backup
+          automountServiceAccountToken: true
           restartPolicy: OnFailure
           securityContext:
             runAsNonRoot: true
@@ -42,11 +43,18 @@ spec:
                 - |
                   set -euo pipefail
 
-                  # 1. Fetch credentials from ephemeral memory mount or Vault KV
+                  # 1. Fetch credentials from ephemeral memory mount or Vault Kubernetes Auth
                   if [ -f /var/run/secrets/database/backup_password ]; then
                     export PGPASSWORD=$(cat /var/run/secrets/database/backup_password)
+                  elif [ -f /var/run/secrets/kubernetes.io/serviceaccount/token ]; then
+                    SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+                    LOGIN_RESP=$(wget -qO- --post-data="{\"jwt\": \"${SA_TOKEN}\", \"role\": \"postgres-backup\"}" "${VAULT_ADDR}/v1/auth/kubernetes/login" || true)
+                    VAULT_TOKEN=$(echo "${LOGIN_RESP}" | sed -n 's/.*"client_token":"\([^"]*\)".*/\1/p')
+                    if [ -n "${VAULT_TOKEN}" ]; then
+                      export PGPASSWORD=$(wget -qO- --header="X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/database/backup-user" | sed -n 's/.*"password":"\([^"]*\)".*/\1/p')
+                    fi
                   elif [ -n "${VAULT_TOKEN:-}" ]; then
-                    export PGPASSWORD=$(wget -qO- --header="X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/kv/data/database/backup-user | grep -o '"password":"[^"]*"' | cut -d'"' -f4)
+                    export PGPASSWORD=$(wget -qO- --header="X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/database/backup-user" | sed -n 's/.*"password":"\([^"]*\)".*/\1/p')
                   fi
 
                   if [ -z "${PGPASSWORD:-}" ]; then
@@ -75,7 +83,7 @@ spec:
                 - name: PGUSER
                   value: "backup_role"
                 - name: VAULT_ADDR
-                  value: "http://openbao.vault.svc:8200"
+                  value: "http://openbao-service.vault.svc:8200"
               resources:
                 requests:
                   cpu: "100m"

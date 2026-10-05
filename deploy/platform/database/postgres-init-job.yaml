@@ -16,12 +16,68 @@ spec:
         app.kubernetes.io/name: postgres-init
     spec:
       restartPolicy: OnFailure
+      serviceAccountName: postgres-init
       securityContext:
         runAsNonRoot: true
         runAsUser: 999
         runAsGroup: 999
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: secret-fetcher
+          image: curlimages/curl:8.10.1
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          env:
+            - name: VAULT_ADDR
+              value: "http://openbao-service.vault.svc:8200"
+            - name: VAULT_ROLE
+              value: "postgres-init"
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              set -euo pipefail
+              echo "Authenticating to Vault via Kubernetes ServiceAccount Token..."
+              SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+              LOGIN_RESP=$(curl -fsSL -X POST "${VAULT_ADDR}/v1/auth/kubernetes/login" \
+                -d "{\"jwt\": \"${SA_TOKEN}\", \"role\": \"${VAULT_ROLE}\"}")
+              VAULT_TOKEN=$(echo "${LOGIN_RESP}" | sed -n 's/.*"client_token":"\([^"]*\)".*/\1/p')
+
+              mkdir -p /var/run/secrets/database
+
+              echo "Retrieving database role credentials..."
+              curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/database/postgres-admin" | \
+                sed -n 's/.*"password":"\([^"]*\)".*/\1/p' > /var/run/secrets/database/admin_password
+
+              curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/database/keycloak-user" | \
+                sed -n 's/.*"password":"\([^"]*\)".*/\1/p' > /var/run/secrets/database/keycloak_password
+
+              curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/database/pn-user" | \
+                sed -n 's/.*"password":"\([^"]*\)".*/\1/p' > /var/run/secrets/database/pn_password
+
+              curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/database/backup-user" | \
+                sed -n 's/.*"password":"\([^"]*\)".*/\1/p' > /var/run/secrets/database/backup_password
+
+              chmod 0400 /var/run/secrets/database/*
+              echo "All database credentials populated into ephemeral storage."
+          volumeMounts:
+            - name: database-secrets
+              mountPath: /var/run/secrets/database
       containers:
         - name: init-db
           image: postgres:16.8-alpine
@@ -48,7 +104,7 @@ spec:
             - name: PGUSER
               value: postgres
             - name: VAULT_ADDR
-              value: "http://openbao.vault.svc:8200"
+              value: "http://openbao-service.vault.svc:8200"
           command:
             - /bin/sh
             - -c

@@ -17,7 +17,8 @@ spec:
         app.kubernetes.io/name: vault-registry-proxy
         app.kubernetes.io/part-of: platform-vault
     spec:
-      automountServiceAccountToken: false
+      serviceAccountName: vault-registry-proxy
+      automountServiceAccountToken: true
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

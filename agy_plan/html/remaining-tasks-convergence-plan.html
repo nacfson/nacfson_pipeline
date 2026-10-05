@@ -1,0 +1,604 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Implementation Plan: Remaining Tasks & Full Platform Convergence</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #111827;
+      --card-border: #1f2937;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --primary-light: rgba(99, 102, 241, 0.15);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --success: #10b981;
+      --success-light: rgba(16, 185, 129, 0.15);
+      --warning: #f59e0b;
+      --warning-light: rgba(245, 158, 11, 0.15);
+      --danger: #ef4444;
+      --danger-light: rgba(239, 68, 68, 0.15);
+      --code-bg: #030712;
+      --font-mono: 'JetBrains Mono', 'Fira Code', Menlo, Consolas, Monaco, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.6;
+      padding: 2.5rem 1rem;
+    }
+
+    .container { max-width: 1100px; margin: 0 auto; }
+
+    header {
+      background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
+      border: 1px solid #312e81;
+      border-radius: 1rem;
+      padding: 2.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+
+    .badge-bar { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 1.2rem; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.025em;
+      text-transform: uppercase;
+    }
+
+    .badge-primary { background: var(--primary-light); color: #a5b4fc; border: 1px solid #4338ca; }
+    .badge-success { background: var(--success-light); color: #6ee7b7; border: 1px solid #047857; }
+    .badge-warning { background: var(--warning-light); color: #fcd34d; border: 1px solid #b45309; }
+    .badge-danger { background: var(--danger-light); color: #fca5a5; border: 1px solid #b91c1c; }
+
+    h1 { font-size: 2.2rem; font-weight: 800; line-height: 1.25; margin-bottom: 0.75rem; color: #ffffff; }
+
+    .subtitle { color: var(--text-muted); font-size: 1.1rem; max-width: 900px; }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1rem;
+      margin-top: 1.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 0.9rem;
+    }
+
+    .meta-item span:first-child { display: block; color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .meta-item span:last-child { font-weight: 600; color: #e2e8f0; }
+
+    section {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 1rem;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      color: #f1f5f9;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 0.75rem;
+    }
+
+    h3 { font-size: 1.2rem; font-weight: 600; margin: 1.5rem 0 0.75rem 0; color: #e2e8f0; }
+
+    p { margin-bottom: 1rem; color: #cbd5e1; }
+
+    ul, ol { margin-bottom: 1.2rem; padding-left: 1.4rem; color: #cbd5e1; }
+    li { margin-bottom: 0.4rem; }
+
+    .callout {
+      border-left: 4px solid;
+      border-radius: 0.5rem;
+      padding: 1.2rem;
+      margin: 1.2rem 0;
+      background: #1e293b;
+    }
+
+    .callout-info { border-color: var(--primary); background: rgba(99, 102, 241, 0.08); }
+    .callout-warning { border-color: var(--warning); background: rgba(245, 158, 11, 0.08); }
+    .callout-success { border-color: var(--success); background: rgba(16, 185, 129, 0.08); }
+
+    .callout-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.4rem; }
+    .callout-info .callout-title { color: #818cf8; }
+    .callout-warning .callout-title { color: #fbbf24; }
+    .callout-success .callout-title { color: #34d399; }
+
+    pre {
+      background: var(--code-bg);
+      border: 1px solid #1f2937;
+      border-radius: 0.6rem;
+      padding: 1.2rem;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      line-height: 1.5;
+      margin: 1rem 0;
+      color: #e5e7eb;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 0.15rem 0.35rem;
+      border-radius: 0.3rem;
+      color: #f3f4f6;
+    }
+
+    pre code { background: transparent; padding: 0; }
+
+    table { width: 100%; border-collapse: collapse; margin: 1.2rem 0; font-size: 0.92rem; }
+    th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--card-border); }
+    th { background: rgba(255, 255, 255, 0.03); color: #94a3b8; font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+    tr:hover { background: rgba(255, 255, 255, 0.02); }
+
+    .status-pill {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 0.25rem;
+      font-size: 0.75rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .status-applied { background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid #059669; }
+    .status-blocked { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid #d97706; }
+    .status-waiting { background: rgba(156, 163, 175, 0.15); color: #9ca3af; border: 1px solid #4b5563; }
+
+    .diagram-card {
+      background: #030712;
+      border: 1px solid #1f2937;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      text-align: center;
+      margin: 1.5rem 0;
+      overflow-x: auto;
+    }
+
+    .diagram-svg { max-width: 100%; min-width: 820px; height: auto; }
+
+    .task-card {
+      background: #0f172a;
+      border: 1px solid #1e293b;
+      border-radius: 0.6rem;
+      padding: 1.25rem;
+      margin-bottom: 1rem;
+      border-left: 4px solid var(--primary);
+    }
+    .task-card.active { border-left-color: var(--warning); }
+    .task-card.complete { border-left-color: var(--success); }
+    .task-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+    .task-title { font-weight: 700; font-size: 1.05rem; color: #f8fafc; }
+    .task-step { font-size: 0.8rem; font-weight: 600; color: #818cf8; text-transform: uppercase; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge-bar">
+        <span class="badge badge-success">Bootstrap Complete</span>
+        <span class="badge badge-success">RBAC Diagnostics Synced</span>
+        <span class="badge badge-warning">Vault Initialization Needed</span>
+        <span class="badge badge-primary">Convergence Plan</span>
+      </div>
+      <h1>Platform Convergence: Remaining Tasks Roadmap</h1>
+      <p class="subtitle">
+        Systematic progression to transition the K3s single-node cluster from current foundational readiness (Flux + Governance) into full end-to-end operational convergence across Vault, Keycloak, PostgreSQL, Ingress, and Tenant workloads.
+      </p>
+
+      <div class="meta-grid">
+        <div class="meta-item">
+          <span>Target Host</span>
+          <span><code>oracleCloud</code> (Oracle Linux 9.8 aarch64)</span>
+        </div>
+        <div class="meta-item">
+          <span>GitOps Active Revision</span>
+          <span><code>af52e3c</code> (origin/main)</span>
+        </div>
+        <div class="meta-item">
+          <span>Immediate Blocker</span>
+          <span><code>vault/openbao-0</code> uninitialized & sealed</span>
+        </div>
+        <div class="meta-item">
+          <span>Governing Standard</span>
+          <span>Constitution Principles I (GitOps) & V (OpenBao)</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- SECTION 1: CURRENT CLUSTER STATE -->
+    <section>
+      <h2>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        1. Live Cluster State & Layer Dependencies
+      </h2>
+      <p>
+        The Ansible bootstrap and initial GitOps layers have converged successfully. 4 layers are active and compliant, while the remaining 6 layers are gated by OpenBao's unsealed state:
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Kustomization</th>
+            <th>Namespace</th>
+            <th>Status</th>
+            <th>Condition / Blocking Reason</th>
+            <th>Action Required</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>flux-system</code></td>
+            <td><code>flux-system</code></td>
+            <td><span class="status-pill status-applied">Applied (True)</span></td>
+            <td>Synced to <code>af52e3c</code></td>
+            <td>None (Self-reconciling)</td>
+          </tr>
+          <tr>
+            <td><code>governance</code></td>
+            <td><code>governance</code></td>
+            <td><span class="status-pill status-applied">Applied (True)</span></td>
+            <td>RBAC <code>operator-diagnostics</code> active</td>
+            <td>None (Verified via can-i)</td>
+          </tr>
+          <tr>
+            <td><code>project-boundaries</code></td>
+            <td><code>project-boundaries</code></td>
+            <td><span class="status-pill status-applied">Applied (True)</span></td>
+            <td>PSA Restricted labels enforced</td>
+            <td>None</td>
+          </tr>
+          <tr>
+            <td><code>projects</code></td>
+            <td><code>projects</code></td>
+            <td><span class="status-pill status-applied">Applied (True)</span></td>
+            <td>ResourceQuotas & LimitRanges active</td>
+            <td>None</td>
+          </tr>
+          <tr>
+            <td><code>vault</code></td>
+            <td><code>vault</code></td>
+            <td><span class="status-pill status-blocked">Unknown (Blocked)</span></td>
+            <td><code>openbao-0</code> HTTP 501 (Uninitialized & Sealed)</td>
+            <td><strong>Execute <code>bao operator init</code> & unseal</strong></td>
+          </tr>
+          <tr>
+            <td><code>vault-proxies</code></td>
+            <td><code>vault</code></td>
+            <td><span class="status-pill status-waiting">Waiting (False)</span></td>
+            <td>Depends on <code>vault</code></td>
+            <td>Auto-reconciles after Vault ready</td>
+          </tr>
+          <tr>
+            <td><code>database</code></td>
+            <td><code>database</code></td>
+            <td><span class="status-pill status-waiting">Waiting (False)</span></td>
+            <td>Depends on <code>vault</code></td>
+            <td>Auto-reconciles after Vault ready</td>
+          </tr>
+          <tr>
+            <td><code>identity</code></td>
+            <td><code>identity</code></td>
+            <td><span class="status-pill status-waiting">Waiting (False)</span></td>
+            <td>Depends on <code>database</code></td>
+            <td>Auto-reconciles after DB ready</td>
+          </tr>
+          <tr>
+            <td><code>ingress</code></td>
+            <td><code>ingress</code></td>
+            <td><span class="status-pill status-waiting">Waiting (False)</span></td>
+            <td>Depends on <code>identity</code></td>
+            <td>Auto-reconciles after Identity ready</td>
+          </tr>
+          <tr>
+            <td><code>proj-pn</code></td>
+            <td><code>proj-pn</code></td>
+            <td><span class="status-pill status-waiting">Waiting (False)</span></td>
+            <td>Depends on <code>ingress</code></td>
+            <td>Auto-reconciles after Ingress ready</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- SECTION 2: ARCHITECTURE & CASCADE DIAGRAM -->
+    <section>
+      <h2>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="3" y1="9" x2="21" y2="9"></line><line x1="9" y1="21" x2="9" y2="9"></line></svg>
+        2. GitOps Dependency Cascade & Convergence Path
+      </h2>
+      <p>
+        The visual dependency map below illustrates how unlocking OpenBao triggers the cascading reconciliation of all downstream platform capabilities:
+      </p>
+
+      <div class="diagram-card">
+        <svg class="diagram-svg" viewBox="0 0 940 330" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#6366f1"/>
+            </marker>
+            <marker id="arrow-green" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#10b981"/>
+            </marker>
+          </defs>
+
+          <!-- Row 1: Ready Base Layers -->
+          <rect x="30" y="30" width="180" height="60" rx="8" fill="#064e3b" stroke="#10b981" stroke-width="2"/>
+          <text x="120" y="55" fill="#f8fafc" font-size="12" font-weight="bold" text-anchor="middle">flux-system</text>
+          <text x="120" y="75" fill="#6ee7b7" font-size="10" text-anchor="middle">✓ Applied (True)</text>
+
+          <rect x="250" y="30" width="180" height="60" rx="8" fill="#064e3b" stroke="#10b981" stroke-width="2"/>
+          <text x="340" y="55" fill="#f8fafc" font-size="12" font-weight="bold" text-anchor="middle">governance</text>
+          <text x="340" y="75" fill="#6ee7b7" font-size="10" text-anchor="middle">✓ Applied (True)</text>
+
+          <rect x="470" y="30" width="180" height="60" rx="8" fill="#064e3b" stroke="#10b981" stroke-width="2"/>
+          <text x="560" y="55" fill="#f8fafc" font-size="12" font-weight="bold" text-anchor="middle">project-boundaries</text>
+          <text x="560" y="75" fill="#6ee7b7" font-size="10" text-anchor="middle">✓ Applied (True)</text>
+
+          <rect x="690" y="30" width="180" height="60" rx="8" fill="#064e3b" stroke="#10b981" stroke-width="2"/>
+          <text x="780" y="55" fill="#f8fafc" font-size="12" font-weight="bold" text-anchor="middle">projects</text>
+          <text x="780" y="75" fill="#6ee7b7" font-size="10" text-anchor="middle">✓ Applied (True)</text>
+
+          <!-- Active Blocker: Vault -->
+          <rect x="230" y="130" width="220" height="75" rx="8" fill="#78350f" stroke="#f59e0b" stroke-width="3"/>
+          <text x="340" y="158" fill="#fef3c7" font-size="13" font-weight="bold" text-anchor="middle">⚠️ Layer: vault (openbao-0)</text>
+          <text x="340" y="176" fill="#fcd34d" font-size="10" text-anchor="middle">ACTIVE BLOCKER: Sealed / Uninit</text>
+          <text x="340" y="193" fill="#ffffff" font-size="9.5" font-weight="bold" text-anchor="middle">Action: Run ./scripts/vault-init.sh</text>
+
+          <!-- Vault Proxies & DB -->
+          <rect x="30" y="240" width="180" height="60" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+          <text x="120" y="265" fill="#e2e8f0" font-size="12" font-weight="bold" text-anchor="middle">vault-proxies</text>
+          <text x="120" y="285" fill="#94a3b8" font-size="10" text-anchor="middle">Pending Vault</text>
+
+          <rect x="250" y="240" width="180" height="60" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+          <text x="340" y="265" fill="#e2e8f0" font-size="12" font-weight="bold" text-anchor="middle">database (Postgres)</text>
+          <text x="340" y="285" fill="#94a3b8" font-size="10" text-anchor="middle">Pending Vault</text>
+
+          <!-- Identity -->
+          <rect x="470" y="240" width="180" height="60" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+          <text x="560" y="265" fill="#e2e8f0" font-size="12" font-weight="bold" text-anchor="middle">identity (Keycloak)</text>
+          <text x="560" y="285" fill="#94a3b8" font-size="10" text-anchor="middle">Pending DB</text>
+
+          <!-- Ingress & Project PN -->
+          <rect x="690" y="240" width="180" height="60" rx="8" fill="#1e293b" stroke="#475569" stroke-width="1.5"/>
+          <text x="780" y="265" fill="#e2e8f0" font-size="12" font-weight="bold" text-anchor="middle">ingress & proj-pn</text>
+          <text x="780" y="285" fill="#94a3b8" font-size="10" text-anchor="middle">Pending Identity</text>
+
+          <!-- Arrows -->
+          <path d="M 270 205 L 140 240" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+          <path d="M 340 205 L 340 240" stroke="#f59e0b" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+          <path d="M 430 270 L 470 270" stroke="#6366f1" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+          <path d="M 650 270 L 690 270" stroke="#6366f1" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+        </svg>
+      </div>
+    </section>
+
+    <!-- SECTION 3: THE 4 REMAINING PHASES -->
+    <section>
+      <h2>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 11 12 14 22 4"></polyline><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"></path></svg>
+        3. Detailed Breakdown of Remaining Tasks
+      </h2>
+
+      <!-- TASK 1 -->
+      <div class="task-card active">
+        <div class="task-header">
+          <span class="task-step">Phase 1 &bull; Immediate Execution</span>
+          <span class="status-pill status-blocked">Active Blocker</span>
+        </div>
+        <div class="task-title">Task 1: OpenBao Vault Initialization, Unseal, and Secret Seeding</div>
+        <p style="margin-top: 0.5rem;">
+          OpenBao was successfully bootstrapped as a StatefulSet with persistent storage and TLS listeners, but per security architecture (Principle V), it starts in an uninitialized and sealed state.
+        </p>
+        <ul>
+          <li><strong>Subtask 1.1: Run Operator Init:</strong> Execute <code>bao operator init -key-shares=1 -key-threshold=1</code> against <code>openbao-0</code> via <code>scripts/vault-init.sh</code>.</li>
+          <li><strong>Subtask 1.2: Capture Root Token & Unseal Key:</strong> Securely persist the unseal key and root token in the operator's password store.</li>
+          <li><strong>Subtask 1.3: Unseal Vault Engine:</strong> Feed the unseal key to <code>openbao-0</code>, transitioning HTTP readiness from 501/503 to 200 OK.</li>
+          <li><strong>Subtask 1.4: Enable Secrets Engines & Apply Policies:</strong> Mount KV v2 at <code>kv/</code>, transit engine, audit file logger, and apply RBAC policies (<code>deploy/platform/vault/policies/</code>).</li>
+          <li><strong>Subtask 1.5: Seed 11 Mandatory Platform Credentials:</strong> Run <code>scripts/vault-seed-inventory.sh</code> to generate and store credentials for Keycloak, Postgres, GHCR pull secrets, and Go Auth Gateway HMAC.</li>
+        </ul>
+        <div class="callout callout-warning">
+          <div class="callout-title">Exit Verification:</div>
+          <code>kubectl get pod -n vault openbao-0</code> reports <code>1/1 Running</code> and <code>flux get kustomization vault</code> reports <code>Ready: True</code>.
+        </div>
+      </div>
+
+      <!-- TASK 2 -->
+      <div class="task-card">
+        <div class="task-header">
+          <span class="task-step">Phase 2 &bull; Automated Cascade</span>
+          <span class="status-pill status-waiting">Pending Phase 1</span>
+        </div>
+        <div class="task-title">Task 2: Downstream GitOps Layer Cascade & Convergence</div>
+        <p style="margin-top: 0.5rem;">
+          With OpenBao healthy and seeded, Flux will automatically cascade through the remaining dependency tree without manual intervention.
+        </p>
+        <ul>
+          <li><strong>Subtask 2.1: Reconcile <code>vault-proxies</code> & <code>database</code>:</strong> PostgreSQL StatefulSet deploys, dynamic credential synchronizers mount database secrets.</li>
+          <li><strong>Subtask 2.2: Reconcile <code>identity</code>:</strong> Keycloak boots with PostgreSQL backend; Go Auth Gateway sidecar boots with HMAC dual-key configuration.</li>
+          <li><strong>Subtask 2.3: Reconcile <code>ingress</code>:</strong> Traefik IngressRoutes and ForwardAuth middlewares wire edge routing to Keycloak/Gateway.</li>
+          <li><strong>Subtask 2.4: Reconcile <code>proj-pn</code>:</strong> Example multi-tenant project workload reconciles under Restricted PSA sandboxing.</li>
+        </ul>
+        <div class="callout callout-info">
+          <div class="callout-title">Exit Verification:</div>
+          <code>kubectl get kustomizations -A</code> displays <code>Ready: True</code> across all 10 platform kustomizations.
+        </div>
+      </div>
+
+      <!-- TASK 3 -->
+      <div class="task-card">
+        <div class="task-header">
+          <span class="task-step">Phase 3 &bull; Automated Acceptance</span>
+          <span class="status-pill status-waiting">Pending Phase 2</span>
+        </div>
+        <div class="task-title">Task 3: Automated Platform Verification & Security Drills</div>
+        <p style="margin-top: 0.5rem;">
+          Execute the end-to-end verification suites to prove that all constitutional invariants and functional requirements hold in the live cluster.
+        </p>
+        <ul>
+          <li><strong>Subtask 3.1: Workload Sandboxing & Network Isolation Drill:</strong> Run <code>scripts/verify-isolation.sh</code> to assert Restricted PSA blocks root/hostPath execution and NetworkPolicy blocks unauthorized egress.</li>
+          <li><strong>Subtask 3.2: ForwardAuth & Header Sanitization Drill:</strong> Execute Go test suite in <code>gateway/tests</code> to verify untrusted spoofed identity headers are stripped.</li>
+          <li><strong>Subtask 3.3: Instant Session Revocation Drill:</strong> Run <code>scripts/verify-revocation.sh</code> to confirm OIDC backchannel logout terminates edge sessions synchronously across all projects.</li>
+          <li><strong>Subtask 3.4: PostgreSQL Persistence & Catalog Isolation Drill:</strong> Run <code>scripts/verify-persistence.sh</code> to verify that tenants cannot query adjacent catalogs and data survives pod recreation.</li>
+          <li><strong>Subtask 3.5: Disaster Recovery & Automated Snapshot Drill:</strong> Run <code>scripts/verify-backup.sh</code> to verify automated OpenBao Raft and Postgres dump integrity.</li>
+          <li><strong>Subtask 3.6: Master Verification Suite:</strong> Run <code>scripts/verify-platform.sh</code> confirming 100% scenario pass rate.</li>
+        </ul>
+      </div>
+
+      <!-- TASK 4 -->
+      <div class="task-card">
+        <div class="task-header">
+          <span class="task-step">Phase 4 &bull; Security Sign-off</span>
+          <span class="status-pill status-waiting">Pending Phase 3</span>
+        </div>
+        <div class="task-title">Task 4: Post-Bootstrap Security Hardening & Secret Lifecycle Management</div>
+        <p style="margin-top: 0.5rem;">
+          Finalize operational security by destroying temporary bootstrap access and confirming zero-downtime secret rotation.
+        </p>
+        <ul>
+          <li><strong>Subtask 4.1: Vault Root Token Revocation (FR-015):</strong> Revoke the bootstrap root token (<code>bao token revoke -self</code>) once operator AppRoles and service tokens are operational.</li>
+          <li><strong>Subtask 4.2: Zero-Downtime Secret Rotation Drill:</strong> Run <code>tests/vault/test_rotation_drill.sh</code> and <code>scripts/vault-rotate.sh</code> to verify HMAC dual-key and database credential rotation with zero dropped requests.</li>
+          <li><strong>Subtask 4.3: Operator Access Audit:</strong> Generate operator non-root kubeconfig via <code>scripts/operator-kubeconfig.sh</code> and verify <code>nodes</code>, <code>metrics</code>, and <code>port-forward</code> work while <code>exec</code> remains strictly denied.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- SECTION 4: EXACT STEP-BY-STEP EXECUTION RUNBOOK -->
+    <section>
+      <h2>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
+        4. Step-by-Step Execution Commands
+      </h2>
+      <p>
+        The following exact commands will be executed sequentially to carry out the remaining work:
+      </p>
+
+      <h3>Step 1: Initialize, Unseal & Seed Vault</h3>
+      <pre><code># 1. Run the official automated Vault init script over SSH
+ssh oracleCloud "cd /home/opc && sudo bash -c '
+  # Run vault initialization and policy application
+  bash /home/nacfson/Projects/nacfson_pipeline/scripts/vault-init.sh
+'"
+
+# Alternatively, run directly from the workstation against oracleCloud context:
+./scripts/vault-init.sh
+./scripts/vault-seed-inventory.sh</code></pre>
+
+      <h3>Step 2: Watch GitOps Convergence</h3>
+      <pre><code># Monitor the Flux kustomizations until all 10 are Ready: True
+watch -n 5 'ssh oracleCloud "kubectl get kustomizations -A && echo \"\" && kubectl get pods -A"'</code></pre>
+
+      <h3>Step 3: Run Platform Verification Drills</h3>
+      <pre><code># Run isolation drill
+./scripts/verify-isolation.sh
+
+# Run session revocation drill
+./scripts/verify-revocation.sh
+
+# Run database persistence drill
+./scripts/verify-persistence.sh
+
+# Run master verification suite
+./scripts/verify-platform.sh</code></pre>
+
+      <h3>Step 4: Revoke Root Token & Validate Operator Boundaries</h3>
+      <pre><code># Revoke bootstrap root token per FR-015
+ssh oracleCloud "kubectl exec -n vault openbao-0 -- env VAULT_TOKEN=\"\$VAULT_ROOT_TOKEN\" bao token revoke -self"
+
+# Assert operator non-root access boundary
+kubectl auth can-i get nodes --as=system:serviceaccount:governance:operator-readonly      # -> yes
+kubectl auth can-i exec pods -n default --as=system:serviceaccount:governance:operator-readonly # -> no</code></pre>
+    </section>
+
+    <!-- SECTION 5: ACCEPTANCE CRITERIA MATRIX -->
+    <section>
+      <h2>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+        5. Verification & Acceptance Criteria Matrix
+      </h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Milestone</th>
+            <th>Verification Command</th>
+            <th>Success Criteria</th>
+            <th>Governing Spec</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Vault Unseal</strong></td>
+            <td><code>kubectl get pods -n vault openbao-0</code></td>
+            <td>Status <code>1/1 Running</code> (HTTP 200)</td>
+            <td>Spec 002 (FR-001, FR-015)</td>
+          </tr>
+          <tr>
+            <td><strong>Secret Inventory</strong></td>
+            <td><code>scripts/vault-seed-inventory.sh</code></td>
+            <td>11 mandatory keys present in <code>kv/</code></td>
+            <td>Constitution Principle V</td>
+          </tr>
+          <tr>
+            <td><strong>GitOps Convergence</strong></td>
+            <td><code>kubectl get kustomizations -A</code></td>
+            <td>10/10 layers report <code>Ready: True</code></td>
+            <td>Constitution Principle I</td>
+          </tr>
+          <tr>
+            <td><strong>Workload Isolation</strong></td>
+            <td><code>scripts/verify-isolation.sh</code></td>
+            <td>0 exit code; PSA blocks hostPath/root</td>
+            <td>Spec 001 (FR-003, FR-004)</td>
+          </tr>
+          <tr>
+            <td><strong>Session Revocation</strong></td>
+            <td><code>scripts/verify-revocation.sh</code></td>
+            <td>Backchannel logout invalidates cookie</td>
+            <td>Spec 001 (FR-009, SC-004)</td>
+          </tr>
+          <tr>
+            <td><strong>DB Persistence</strong></td>
+            <td><code>scripts/verify-persistence.sh</code></td>
+            <td>Data survives restart; cross-tenant blocked</td>
+            <td>Spec 001 (FR-011, SC-005)</td>
+          </tr>
+          <tr>
+            <td><strong>Disaster Recovery</strong></td>
+            <td><code>scripts/verify-backup.sh</code></td>
+            <td>Raft snapshot & pg_dump created</td>
+            <td>Spec 001 (FR-018), Spec 002</td>
+          </tr>
+          <tr>
+            <td><strong>Operator RBAC</strong></td>
+            <td><code>kubectl auth can-i</code> assertions</td>
+            <td>Read-only + diagnostics allowed; exec denied</td>
+            <td>Spec 004, Runbook §4</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+  </div>
+</body>
+</html>

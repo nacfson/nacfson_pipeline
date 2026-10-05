@@ -75,6 +75,16 @@ run_suite "Cross-Cutting: Declarative GitOps Layer Validation" \
   "bash '$REPO_ROOT/scripts/render-validate.sh' local-k3s >/dev/null && \
    bash '$REPO_ROOT/scripts/render-validate.sh' vps-k3s >/dev/null"
 
+# Scenario 7: Automated Post-Vault Workload Orchestration (Spec 005)
+run_suite "Scenario 7: Post-Vault Workload Secret Ingestion & PSA Compliance (Spec 005)" \
+  "grep -q 'name: secret-fetcher' '$REPO_ROOT/deploy/platform/database/postgres-statefulset.yaml' && \
+   grep -q 'name: secret-fetcher' '$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml' && \
+   grep -q 'medium: Memory' '$REPO_ROOT/deploy/platform/database/postgres-statefulset.yaml' && \
+   grep -q 'medium: Memory' '$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml' && \
+   grep -q 'serviceAccountName: postgres' '$REPO_ROOT/deploy/platform/database/postgres-statefulset.yaml' && \
+   grep -q 'serviceAccountName: keycloak' '$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml' && \
+   grep -q 'auth/kubernetes/config' '$REPO_ROOT/scripts/vault-configure-k8s-auth.sh'"
+
 echo ""
 echo "================================================================================"
 echo "Master Platform Verification Summary"

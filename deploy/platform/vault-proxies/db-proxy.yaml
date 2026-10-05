@@ -17,7 +17,8 @@ spec:
         app.kubernetes.io/name: vault-db-proxy
         app.kubernetes.io/part-of: platform-vault
     spec:
-      automountServiceAccountToken: false
+      serviceAccountName: vault-db-proxy
+      automountServiceAccountToken: true
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001

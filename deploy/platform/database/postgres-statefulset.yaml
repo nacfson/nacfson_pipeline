@@ -18,12 +18,59 @@ spec:
         app.kubernetes.io/name: postgres
         app.kubernetes.io/part-of: platform
     spec:
+      serviceAccountName: postgres
       securityContext:
         fsGroup: 999
         runAsNonRoot: true
         runAsUser: 999
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: secret-fetcher
+          image: curlimages/curl:8.10.1
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 999
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          env:
+            - name: VAULT_ADDR
+              value: "http://openbao-service.vault.svc:8200"
+            - name: VAULT_ROLE
+              value: "postgres-server"
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              set -euo pipefail
+              echo "Authenticating to Vault via Kubernetes ServiceAccount Token..."
+              SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+              LOGIN_RESP=$(curl -fsSL -X POST "${VAULT_ADDR}/v1/auth/kubernetes/login" \
+                -d "{\"jwt\": \"${SA_TOKEN}\", \"role\": \"${VAULT_ROLE}\"}")
+              VAULT_TOKEN=$(echo "${LOGIN_RESP}" | sed -n 's/.*"client_token":"\([^"]*\)".*/\1/p')
+
+              echo "Retrieving postgres administrator credentials..."
+              SECRET_JSON=$(curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/database/postgres-admin")
+              ADMIN_PASS=$(echo "${SECRET_JSON}" | sed -n 's/.*"password":"\([^"]*\)".*/\1/p')
+
+              mkdir -p /var/run/secrets/database
+              echo -n "${ADMIN_PASS}" > /var/run/secrets/database/admin_password
+              chmod 0400 /var/run/secrets/database/admin_password
+              echo "Postgres admin password written to ephemeral storage."
+          volumeMounts:
+            - name: database-secrets
+              mountPath: /var/run/secrets/database
       containers:
         - name: postgres
           image: postgres:16.8-alpine

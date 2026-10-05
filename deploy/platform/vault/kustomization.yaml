@@ -10,3 +10,4 @@ resources:
   - openbao-statefulset.yaml
   - openbao-service.yaml
   - backup-cronjob.yaml
+  - service-accounts.yaml

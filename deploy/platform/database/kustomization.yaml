@@ -7,3 +7,4 @@ resources:
   - postgres-statefulset.yaml
   - postgres-init-job.yaml
   - backup-cronjob.yaml
+  - service-accounts.yaml

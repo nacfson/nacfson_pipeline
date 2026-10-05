@@ -5,3 +5,4 @@ resources:
   - keycloak-realm-config.yaml
   - keycloak-deployment.yaml
   - gateway-deployment.yaml
+  - service-accounts.yaml

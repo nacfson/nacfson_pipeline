@@ -17,12 +17,65 @@ spec:
         app.kubernetes.io/name: gateway
         app.kubernetes.io/part-of: platform
     spec:
+      serviceAccountName: gateway
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
         runAsGroup: 65532
         seccompProfile:
           type: RuntimeDefault
+      initContainers:
+        - name: secret-fetcher
+          image: curlimages/curl:8.10.1
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 65532
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          env:
+            - name: VAULT_ADDR
+              value: "http://openbao-service.vault.svc:8200"
+            - name: VAULT_ROLE
+              value: "gateway"
+          command:
+            - /bin/sh
+            - -c
+          args:
+            - |
+              set -euo pipefail
+              echo "Authenticating to Vault via Kubernetes ServiceAccount Token..."
+              SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)
+              LOGIN_RESP=$(curl -fsSL -X POST "${VAULT_ADDR}/v1/auth/kubernetes/login" \
+                -d "{\"jwt\": \"${SA_TOKEN}\", \"role\": \"${VAULT_ROLE}\"}")
+              VAULT_TOKEN=$(echo "${LOGIN_RESP}" | sed -n 's/.*"client_token":"\([^"]*\)".*/\1/p')
+
+              mkdir -p /var/run/secrets/gateway
+
+              echo "Retrieving gateway secrets from Vault..."
+              curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/gateway/hmac-secret" | \
+                sed -n 's/.*"hmac_secret":"\([^"]*\)".*/\1/p' > /var/run/secrets/gateway/hmac
+
+              curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/gateway/client-secret" | \
+                sed -n 's/.*"client_secret":"\([^"]*\)".*/\1/p' > /var/run/secrets/gateway/client_secret
+
+              curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/gateway/session-revocation-secret" | \
+                sed -n 's/.*"client_secret":"\([^"]*\)".*/\1/p' > /var/run/secrets/gateway/session_revocation_secret
+
+              chmod 0400 /var/run/secrets/gateway/*
+              echo "Gateway secrets populated into ephemeral storage."
+          volumeMounts:
+            - name: gateway-secrets
+              mountPath: /var/run/secrets/gateway
       containers:
         - name: gateway
           image: ghcr.io/nacfson/platform-auth-gateway:latest
