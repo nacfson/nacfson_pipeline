@@ -43,6 +43,8 @@ spec:
               value: "proj_pn"
             - name: DB_USER
               value: "project:pn:workload:backend"
+            - name: DB_TOKEN
+              value: "project:pn:workload:backend"
             - name: CENTRAL_AUTH_INTERNAL_URL
               value: "http://keycloak-service.identity.svc:8080/realms/platform"
             - name: CENTRAL_AUTH_URL

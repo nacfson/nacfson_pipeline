@@ -45,14 +45,14 @@ spec:
         - protocol: TCP
           port: 53
 
-    # 2. Allow connection to shared platform PostgreSQL (port 5432) in identity namespace
+    # 2. Allow connection to vault-db-proxy only (Zero-Plaintext; no direct Postgres)
     - to:
         - namespaceSelector:
             matchLabels:
-              name: identity
+              kubernetes.io/metadata.name: vault
           podSelector:
             matchLabels:
-              app.kubernetes.io/name: postgres
+              app.kubernetes.io/name: vault-db-proxy
       ports:
         - protocol: TCP
           port: 5432
