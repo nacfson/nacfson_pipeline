@@ -72,7 +72,7 @@ spec:
       containers:
         - name: keycloak
           image: quay.io/keycloak/keycloak:24.0.5
-          args: ["start", "--vault=file", "--vault-dir=/opt/keycloak/conf/secrets"]
+          args: ["start", "--vault=file", "--vault-dir=/opt/keycloak/conf/secrets", "--spi-vault-file-key-resolvers=KEY_ONLY,REALM_UNDERSCORE_KEY"]
           env:
             - name: KC_DB
               value: postgres
@@ -81,7 +81,7 @@ spec:
             - name: KC_DB_USERNAME
               value: keycloak_user
             - name: KC_DB_PASSWORD
-              value: "${VAULT:keycloak_db_password}"
+              value: "${vault.keycloak_db_password}"
             - name: KC_PROXY_HEADERS
               value: xforwarded
             - name: KC_HTTP_ENABLED

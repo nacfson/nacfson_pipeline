@@ -187,6 +187,8 @@ spec:
                 REVOKE CONNECT ON DATABASE proj_pn FROM keycloak_user;
                 GRANT CONNECT ON DATABASE keycloak TO keycloak_user;
                 GRANT CONNECT ON DATABASE proj_pn TO user_pn;
+                GRANT CONNECT ON DATABASE keycloak TO backup_role;
+                GRANT CONNECT ON DATABASE proj_pn TO backup_role;
               EOSQL
 
               # Clear secrets from memory immediately upon completion
