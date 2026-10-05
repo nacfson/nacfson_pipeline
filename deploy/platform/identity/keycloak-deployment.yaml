@@ -119,20 +119,20 @@ spec:
           startupProbe:
             httpGet:
               path: /health/live
-              port: 9000
+              port: 8080
             initialDelaySeconds: 30
             periodSeconds: 10
             failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /health/ready
-              port: 9000
-            initialDelaySeconds: 20
+              port: 8080
+            initialDelaySeconds: 10
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health/live
-              port: 9000
+              port: 8080
             initialDelaySeconds: 30
             periodSeconds: 15
           volumeMounts:
