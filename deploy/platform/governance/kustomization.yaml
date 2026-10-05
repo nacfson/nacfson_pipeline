@@ -8,3 +8,4 @@ resources:
   - manual-change-policy.yaml
   - break-glass-rbac.yaml
   - operator-access.yaml
+  - openbao-rbac.yaml
