@@ -113,7 +113,8 @@ EOF"
 run_bao write auth/kubernetes/config \
   kubernetes_host="https://kubernetes.default.svc:443" \
   kubernetes_ca_cert=@/tmp/ca.crt \
-  token_reviewer_jwt=@/tmp/token_reviewer.jwt
+  token_reviewer_jwt=@/tmp/token_reviewer.jwt \
+  disable_iss_validation=true
 
 echo "=== [3/4] Syncing Vault RBAC Policies ==="
 if [ -d "${POLICIES_DIR}" ]; then
