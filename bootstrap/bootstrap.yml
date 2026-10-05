@@ -93,6 +93,26 @@
               failed_stage: null
               next_action: "Review preflight diagnostics and ensure host meets support profile."
 
+        # Stage 0: Host Preparation
+        - name: Ensure conflicting host web services are stopped and disabled
+          when: not ansible_check_mode
+          ansible.builtin.systemd:
+            name: "{{ item }}"
+            state: stopped
+            enabled: false
+          loop:
+            - nginx
+            - httpd
+          failed_when: false
+
+        - name: Clean lingering container cache and old cluster state
+          when: not ansible_check_mode
+          ansible.builtin.shell:
+            cmd: |
+              rm -rf /var/lib/containerd /var/lib/docker /etc/rancher
+          changed_when: false
+          failed_when: false
+
         # Stage 1: Preflight
         - name: Execute preflight inspections
           ansible.builtin.include_tasks: tasks/preflight.yml
@@ -109,7 +129,7 @@
               ansible.builtin.set_fact:
                 bootstrap_result: "{{ bootstrap_result | combine({
                   'status': 'validation_only',
-                  'failed_stage': null,
+                  'failed_stage': none,
                   'next_action': 'Check mode completed read-only validation. Zero changes made. Run without --check to perform live installation.'
                 }) }}"
 
@@ -145,7 +165,7 @@
           ansible.builtin.set_fact:
             bootstrap_result: "{{ bootstrap_result | combine({
               'status': 'ready',
-              'failed_stage': null,
+              'failed_stage': none,
               'next_action': 'Cluster and reconciler ready. Run scripts/vault-init.sh to initialize or unseal the vault; Flux applies all other layers.'
             }) }}"
 

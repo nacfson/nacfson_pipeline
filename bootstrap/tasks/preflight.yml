@@ -20,16 +20,17 @@
   ansible.builtin.command:
     cmd: "sudo -n true"
   changed_when: false
+  check_mode: false
   register: sudo_check
   failed_when: sudo_check.rc != 0
 
-- name: Assert supported OS distribution is Ubuntu 24.04 LTS
+- name: Assert supported OS distribution is Ubuntu 24.04 LTS or Oracle Linux 9
   ansible.builtin.assert:
     that:
-      - ansible_distribution == 'Ubuntu'
-      - ansible_distribution_version == '24.04'
+      - (ansible_distribution == 'Ubuntu' and ansible_distribution_version == '24.04') or
+        (ansible_distribution == 'OracleLinux' and ansible_distribution_major_version == '9')
     fail_msg: >-
-      Unsupported OS: Bootstrap requires Ubuntu Server 24.04 LTS.
+      Unsupported OS: Bootstrap requires Ubuntu Server 24.04 LTS or Oracle Linux 9.
       Observed: {{ ansible_distribution | default('unknown') }} {{ ansible_distribution_version | default('unknown') }}.
 
 - name: Assert supported CPU architecture is ARM64
@@ -40,13 +41,13 @@
       Unsupported CPU architecture: Bootstrap requires ARM64 (aarch64).
       Observed: {{ ansible_architecture | default('unknown') }}.
 
-- name: Assert target Python version is 3.12
+- name: Assert target Python version is supported
   ansible.builtin.assert:
     that:
-      - ansible_python_version is version('3.12', '>=')
+      - ansible_python_version is version('3.9', '>=')
       - ansible_python_version is version('3.13', '<')
     fail_msg: >-
-      Unsupported target Python: Bootstrap requires Python 3.12.
+      Unsupported target Python: Bootstrap requires Python 3.9 to 3.12.
       Observed: {{ ansible_python_version | default('unknown') }}.
 
 - name: Assert service manager is systemd
@@ -90,6 +91,7 @@
       done
       df -k "$target" | tail -1 | awk '{print $4}'
   changed_when: false
+  check_mode: false
   register: disk_free_check
 
 - name: Assert minimum free disk space (>= 10 GiB / 10,485,760 KiB)
@@ -113,6 +115,7 @@
     - overlay
     - br_netfilter
   changed_when: false
+  check_mode: false
   register: kernel_module_check
   failed_when: kernel_module_check.rc != 0
 
@@ -126,6 +129,7 @@
     - ip
     - ss
   changed_when: false
+  check_mode: false
   register: host_tools_check
   failed_when: host_tools_check.rc != 0
 
@@ -140,6 +144,7 @@
   ansible.builtin.command:
     cmd: "getent hosts github.com"
   changed_when: false
+  check_mode: false
   register: dns_check
   failed_when: dns_check.rc != 0
 
@@ -147,6 +152,7 @@
   ansible.builtin.command:
     cmd: "curl -sI --connect-timeout 10 https://github.com"
   changed_when: false
+  check_mode: false
   register: https_trust_check
   failed_when: https_trust_check.rc != 0
 
@@ -154,6 +160,7 @@
   ansible.builtin.command:
     cmd: "curl -sI --connect-timeout 15 https://github.com/k3s-io/k3s/releases/download/{{ k3s_version }}/sha256sum-arm64.txt"
   changed_when: false
+  check_mode: false
   register: release_artifact_check
   failed_when: release_artifact_check.rc != 0
 
@@ -200,7 +207,7 @@
       {%- set foreign1 = (state_stats.results | selectattr('item', 'equalto', '/usr/local/bin/rke2') | first).stat -%}
       {%- set foreign2 = (state_stats.results | selectattr('item', 'equalto', '/usr/bin/kubeadm') | first).stat -%}
       {%- set foreign3 = (state_stats.results | selectattr('item', 'equalto', '/etc/rancher/k3s') | first).stat -%}
-      {%- set any_cluster_exists = r_stat.exists or b_stat.exists or u_stat.exists or d_dropin.exists or f_env1.exists or f_env2.exists or f_env3.exists or foreign1.exists or foreign2 or foreign3.exists -%}
+      {%- set any_cluster_exists = r_stat.exists or b_stat.exists or u_stat.exists or d_dropin.exists or f_env1.exists or f_env2.exists or f_env3.exists or foreign1.exists or foreign2.exists or foreign3.exists -%}
       {%- if not any_cluster_exists -%}
         fresh
       {%- elif r_stat.exists and r_stat.pw_name == 'root' and (r_stat.mode in ['0600', '00600']) and
@@ -234,6 +241,7 @@
         cmd: |
           ip route show | grep -E '^10\.(42|43)\.' || true
       changed_when: false
+      check_mode: false
       register: cidr_check
 
     - name: Assert no CIDR overlap with default cluster ranges
@@ -253,6 +261,7 @@
         cmd: |
           ss -tulpn | grep -E ':(6443|10250|80|443)\s' || true
       changed_when: false
+      check_mode: false
       register: port_conflict_check
 
     - name: Assert required cluster ports are not in use
@@ -269,6 +278,7 @@
     path: "{{ playbook_dir }}/../clusters/{{ gitops_environment }}/flux-system"
   register: flux_entrypoint_dir
   delegate_to: localhost
+  become: false
   run_once: true
 
 - name: Assert Flux entrypoint directory exists on controller
@@ -279,4 +289,5 @@
     fail_msg: >-
       Preflight failed: Flux entrypoint directory does not exist at {{ playbook_dir }}/../clusters/{{ gitops_environment }}/flux-system.
   delegate_to: localhost
+  become: false
   run_once: true
