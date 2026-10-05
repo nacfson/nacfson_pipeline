@@ -116,17 +116,24 @@ spec:
             capabilities:
               drop:
                 - ALL
+          startupProbe:
+            httpGet:
+              path: /health/live
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 30
           readinessProbe:
             httpGet:
               path: /health/ready
               port: 9000
-            initialDelaySeconds: 40
+            initialDelaySeconds: 20
             periodSeconds: 10
           livenessProbe:
             httpGet:
               path: /health/live
               port: 9000
-            initialDelaySeconds: 60
+            initialDelaySeconds: 30
             periodSeconds: 15
           volumeMounts:
             - name: keycloak-secrets
