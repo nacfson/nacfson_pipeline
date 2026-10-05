@@ -29,10 +29,10 @@ spec:
       patch: |
         - op: replace
           path: /spec/routes/0/match
-          value: Host(`pn.example.com`)
+          value: Host(`pn.nacfson.cloud`)
         - op: replace
           path: /spec/routes/1/match
-          value: Host(`pn.example.com`) && PathPrefix(`/api`)
+          value: Host(`pn.nacfson.cloud`) && PathPrefix(`/api`)
     - target:
         kind: Deployment
         name: pn-backend
@@ -48,4 +48,4 @@ spec:
                 - name: backend
                   env:
                     - name: CENTRAL_AUTH_URL
-                      value: "https://auth.example.com/realms/platform"
+                      value: "https://auth.nacfson.cloud/realms/platform"
