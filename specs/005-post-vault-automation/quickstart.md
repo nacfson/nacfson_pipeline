@@ -65,3 +65,22 @@
    ```bash
    kubectl exec -n vault openbao-0 -- ls -la /backups/
    ```
+
+---
+
+## 3. Live Cluster Verification Results (Oracle Cloud VPS)
+
+| Component | Target State | Live Cluster Status |
+| :--- | :--- | :--- |
+| `vault/openbao-0` | `1/1 Running` | **`1/1 Running`** (Initialized & Unsealed) |
+| `vault/vault-db-proxy` | `1/1 Running` | **`1/1 Running`** (GHCR Multi-Arch Image) |
+| `vault/vault-registry-proxy` | `1/1 Running` | **`1/1 Running`** (GHCR Multi-Arch Image) |
+| `identity/postgres-0` | `1/1 Running` | **`1/1 Running`** (Vault Secret Injection `0400`) |
+| `identity/postgres-init-job` | `Completed` | **`1/1 Completed`** (Catalogs & Roles Initialized) |
+| `identity/keycloak` | `1/1 Running` | **`1/1 Running`** (Ephemeral Secret Injection & Port 8080 Probes) |
+| `identity/gateway` | `1/1 Running` | **`1/1 Running`** (GHCR Multi-Arch Image & Ephemeral HMAC Secrets) |
+| `flux-system/database` | `Ready: True` | **`Ready: True`** |
+| `flux-system/identity` | `Ready: True` | **`Ready: True`** |
+| `flux-system/ingress` | `Ready: True` | **`Ready: True`** |
+| `flux-system/vault-proxies` | `Ready: True` | **`Ready: True`** |
+| `verify-platform.sh` | 8/8 Suites Passed | **`100% Passed`** (All 8 scenarios green) |

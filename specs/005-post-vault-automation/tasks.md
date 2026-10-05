@@ -57,7 +57,7 @@
 - [X] T012 [US2] Update `deploy/platform/vault-proxies/db-proxy.yaml` and `deploy/platform/vault-proxies/registry-proxy.yaml` with ServiceAccount assignments and image references
 - [X] T013 [P] [US2] Review and align layer dependencies in `deploy/clusters/platform/flux-system/` to ensure clean cascade from `vault` -> `database` -> `vault-proxies` -> `identity` -> `ingress` -> tenant layers
 - [X] T014 [US2] Trigger and verify GitHub Actions workflow in `.github/workflows/build-images.yaml` publishes multi-arch images with immutable tags and digests to GHCR
-- [ ] T015 [US2] Reconcile Flux platform kustomizations on cluster and verify all 10 layers achieve `Ready: True`
+- [X] T015 [US2] Reconcile Flux platform kustomizations on cluster and verify all 10 layers achieve `Ready: True`
 
 **Checkpoint**: At this point, User Stories 1 and 2 work in unison; full GitOps cascade completes autonomously.
 
@@ -85,7 +85,7 @@
 
 - [X] T019 [P] Update `scripts/verify-platform.sh` to include automated checks for Vault Kubernetes Auth, initContainer secret injection, and proxy health
 - [X] T020 Run full preflight verification suite `./scripts/verify-platform.sh` against the target cluster
-- [ ] T021 [P] Update `specs/005-post-vault-automation/quickstart.md` with final end-to-end verification results
+- [X] T021 [P] Update `specs/005-post-vault-automation/quickstart.md` with final end-to-end verification results
 
 ---
 
