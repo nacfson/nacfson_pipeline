@@ -108,3 +108,10 @@
     bootstrap_result: "{{ bootstrap_result | combine({
       'observed_version': observed_version_check.stdout | trim
     }) }}"
+
+# Check 5: Verify non-root operator kubectl command execution
+- name: Verify non-root kubectl execution
+  ansible.builtin.command:
+    cmd: "kubectl --request-timeout=5s get nodes"
+  become: false
+  changed_when: false

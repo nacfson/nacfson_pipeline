@@ -10,7 +10,7 @@ This is the binding shape of `deploy/platform/governance/manual-change-policy.ya
 |---|---|
 | `manual-change-policy.yaml` | `ValidatingAdmissionPolicy` `gitops-managed-namespaces` + its `ValidatingAdmissionPolicyBinding`; `ValidatingAdmissionPolicy` `gitops-managed-cluster-kinds` + its binding |
 | `break-glass-rbac.yaml` | `ClusterRoleBinding` `platform-break-glass`: group `platform:break-glass` → ClusterRole `cluster-admin` |
-| `operator-access.yaml` | `ServiceAccount` `governance/operator-readonly` (`automountServiceAccountToken: false`); `ClusterRoleBinding` `operator-readonly-view` → ClusterRole `view` |
+| `operator-access.yaml` | `ServiceAccount` `governance/operator-readonly` (`automountServiceAccountToken: false`); `ClusterRoleBinding` `operator-readonly-view` → ClusterRole `view`; `ClusterRole` `operator-diagnostics` + `ClusterRoleBinding` `operator-readonly-diagnostics` (nodes, metrics, portforward) |
 
 ## 2. Match scope
 
@@ -46,7 +46,7 @@ A request is **allowed** if any of these is true; otherwise it is denied:
 
 | Identity | How it is used | Can write? |
 |---|---|---|
-| `governance/operator-readonly` | Workstation kubeconfig with a ≤ 24 h token (`scripts/operator-kubeconfig.sh`) | No (RBAC `view`; no Secrets) |
+| `governance/operator-readonly` | Workstation kubeconfig with a ≤ 24 h token (`scripts/operator-kubeconfig.sh`) | No (RBAC `view` + `operator-diagnostics`; no Secrets, no exec) |
 | Group `platform:break-glass` | Only through impersonation by the node's K3s admin credential: `sudo k3s kubectl --as=break-glass:<operator> --as-group=platform:break-glass …` | Yes (`cluster-admin`, allowed by rule 5) |
 | K3s admin (`system:admin`, group `system:masters`) without impersonation | Node only | No: denied in the matched scope |
 

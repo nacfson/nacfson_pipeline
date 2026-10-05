@@ -49,6 +49,6 @@ Do not promise particular nonzero exit codes beyond Ansible's native semantics. 
 
 ## Ownership and reruns
 
-Bootstrap owns only its installed binary, service definition, and receipt. K3s owns its runtime state. Inspect unexpected config files, config drop-ins, systemd overrides/environment sources, alternate installations, or unowned existing data and stop before modifying them. Missing receipt means an existing installation cannot be automatically adopted.
+Bootstrap owns only its installed binary (`/usr/local/bin/k3s`), standard PATH symlinks (`/usr/bin/k3s`, `/usr/bin/kubectl`, `/usr/local/bin/kubectl`), target user non-root kubeconfig (`~/.kube/config`, mode `0600`), service definition, and receipt. K3s owns its runtime state. Inspect unexpected config files, config drop-ins, systemd overrides/environment sources, alternate installations, or unowned existing data and stop before modifying them. Missing receipt means an existing installation cannot be automatically adopted.
 
 A successful second run must not rewrite these managed files or restart an already healthy service. Changes to an accepted version never authorize upgrading an existing different version. Platform manifests, Vault integration, custom registry routing, backup/restore, and host lifecycle maintenance remain separate work.

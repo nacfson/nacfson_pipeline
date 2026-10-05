@@ -128,8 +128,16 @@ Operators inspect cluster state from their local workstation using read-only cre
    ./scripts/operator-kubeconfig.sh <vm>
    export KUBECONFIG=~/.kube/nacfson-<env>.yaml
    ```
-3. Inspect GitOps reconciliation:
+3. Inspect cluster status and GitOps reconciliation:
    ```bash
+   # Inspect cluster nodes and metrics (granted via operator-diagnostics)
+   kubectl get nodes
+   kubectl top nodes
+   kubectl top pods -A
+
+   # Open temporary port-forward tunnel to internal services for diagnosis (e.g. Vault)
+   kubectl port-forward -n vault openbao-0 8200:8200 &
+
    # Check all reconciliation layers
    flux get kustomizations -A
 

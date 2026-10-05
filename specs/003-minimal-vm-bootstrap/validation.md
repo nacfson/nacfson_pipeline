@@ -19,6 +19,7 @@
 | Missing K3s Version | `ansible-playbook -i 'test-vm,' -u ubuntu bootstrap/bootstrap.yml` | **PASS (rc=2)** | Successfully halted: `Invalid or missing k3s_version 'NOT_SET'. Supported version allowlist: v1.35.9+k3s1.` |
 | Unsupported K3s Version | `ansible-playbook -i 'test-vm,' -u ubuntu -e 'k3s_version=v0.0.0+k3s1' bootstrap/bootstrap.yml` | **PASS (rc=2)** | Successfully halted: `Invalid or missing k3s_version 'v0.0.0+k3s1'. Supported version allowlist: v1.35.9+k3s1.` |
 | CI Lint Integration | `.github/workflows/lint.yaml` | **PASS** | Dedicated `bootstrap-syntax` job added with Python 3.12, pinned `requirements.txt`, and syntax check. |
+| Non-Root Kubectl Execution | `ssh <target> 'kubectl get nodes'` | **PASS** | Standard PATH symlinks (`/usr/bin/kubectl`) and mode 0600 `~/.kube/config` enable immediate non-root diagnostic commands. |
 
 ---
 

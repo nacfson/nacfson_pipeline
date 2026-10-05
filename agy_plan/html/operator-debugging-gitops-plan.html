@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Implementation Plan: Operator Debugging Permissions & Full Spec Revision</title>
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: #111827;
+      --card-border: #1f2937;
+      --primary: #6366f1;
+      --primary-hover: #4f46e5;
+      --primary-light: rgba(99, 102, 241, 0.15);
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --success: #10b981;
+      --success-light: rgba(16, 185, 129, 0.15);
+      --warning: #f59e0b;
+      --warning-light: rgba(245, 158, 11, 0.15);
+      --danger: #ef4444;
+      --danger-light: rgba(239, 68, 68, 0.15);
+      --code-bg: #030712;
+      --font-mono: 'JetBrains Mono', 'Fira Code', Menlo, Consolas, Monaco, monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      line-height: 1.6;
+      padding: 2.5rem 1rem;
+    }
+
+    .container { max-width: 1040px; margin: 0 auto; }
+
+    header {
+      background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 100%);
+      border: 1px solid #312e81;
+      border-radius: 1rem;
+      padding: 2.5rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
+    }
+
+    .badge-bar { display: flex; flex-wrap: wrap; gap: 0.6rem; margin-bottom: 1.2rem; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      letter-spacing: 0.025em;
+      text-transform: uppercase;
+    }
+
+    .badge-primary { background: var(--primary-light); color: #a5b4fc; border: 1px solid #4338ca; }
+    .badge-success { background: var(--success-light); color: #6ee7b7; border: 1px solid #047857; }
+    .badge-warning { background: var(--warning-light); color: #fcd34d; border: 1px solid #b45309; }
+
+    h1 { font-size: 2.2rem; font-weight: 800; line-height: 1.25; margin-bottom: 0.75rem; color: #ffffff; }
+
+    .subtitle { color: var(--text-muted); font-size: 1.1rem; max-width: 850px; }
+
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 1rem;
+      margin-top: 1.5rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 0.9rem;
+    }
+
+    .meta-item span:first-child { display: block; color: var(--text-muted); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; }
+    .meta-item span:last-child { font-weight: 600; color: #e2e8f0; }
+
+    section {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 1rem;
+      padding: 2rem;
+      margin-bottom: 2rem;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+    }
+
+    h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
+      color: #f1f5f9;
+      border-bottom: 1px solid var(--card-border);
+      padding-bottom: 0.75rem;
+    }
+
+    h3 { font-size: 1.2rem; font-weight: 600; margin: 1.5rem 0 0.75rem 0; color: #e2e8f0; }
+
+    p { margin-bottom: 1rem; color: #cbd5e1; }
+
+    ul, ol { margin-bottom: 1.2rem; padding-left: 1.4rem; color: #cbd5e1; }
+    li { margin-bottom: 0.4rem; }
+
+    .callout {
+      border-left: 4px solid;
+      border-radius: 0.5rem;
+      padding: 1.2rem;
+      margin: 1.2rem 0;
+      background: #1e293b;
+    }
+
+    .callout-info { border-color: var(--primary); background: rgba(99, 102, 241, 0.08); }
+    .callout-warning { border-color: var(--warning); background: rgba(245, 158, 11, 0.08); }
+    .callout-success { border-color: var(--success); background: rgba(16, 185, 129, 0.08); }
+
+    .callout-title { font-weight: 700; font-size: 0.95rem; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.4rem; }
+    .callout-info .callout-title { color: #818cf8; }
+    .callout-warning .callout-title { color: #fbbf24; }
+    .callout-success .callout-title { color: #34d399; }
+
+    pre {
+      background: var(--code-bg);
+      border: 1px solid #1f2937;
+      border-radius: 0.6rem;
+      padding: 1.2rem;
+      overflow-x: auto;
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      line-height: 1.5;
+      margin: 1rem 0;
+      color: #e5e7eb;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.88rem;
+      background: rgba(255, 255, 255, 0.08);
+      padding: 0.15rem 0.35rem;
+      border-radius: 0.3rem;
+      color: #f3f4f6;
+    }
+
+    pre code { background: transparent; padding: 0; }
+
+    table { width: 100%; border-collapse: collapse; margin: 1.2rem 0; font-size: 0.92rem; }
+    th, td { padding: 0.75rem 1rem; text-align: left; border-bottom: 1px solid var(--card-border); }
+    th { background: rgba(255, 255, 255, 0.03); color: #94a3b8; font-weight: 600; text-transform: uppercase; font-size: 0.75rem; letter-spacing: 0.05em; }
+    tr:hover { background: rgba(255, 255, 255, 0.02); }
+
+    .diff-add { color: #4ade80; background: rgba(74, 222, 128, 0.1); display: block; }
+    .diff-del { color: #f87171; background: rgba(248, 113, 113, 0.1); display: block; }
+
+    .diagram-card {
+      background: #030712;
+      border: 1px solid #1f2937;
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      text-align: center;
+      margin: 1.5rem 0;
+    }
+
+    .diagram-svg { max-width: 100%; height: auto; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge-bar">
+        <span class="badge badge-primary">Full Plan</span>
+        <span class="badge badge-success">User Decisions Incorporated</span>
+        <span class="badge badge-warning">Awaiting Final Approval</span>
+      </div>
+      <h1>Operator Debugging Permissions & Full Spec Revision Plan</h1>
+      <p class="subtitle">
+        Declarative GitOps RBAC expansion for operator diagnostics, host bootstrap non-root standardization, and formal synchronization across Spec 003, Spec 004, contracts, and runbooks.
+      </p>
+
+      <div class="meta-grid">
+        <div class="meta-item">
+          <span>Target Architecture</span>
+          <span>K3s Single-Node + FluxCD GitOps</span>
+        </div>
+        <div class="meta-item">
+          <span>Reconciliation Layer</span>
+          <span>deploy/platform/governance/</span>
+        </div>
+        <div class="meta-item">
+          <span>Decisions Incorporated</span>
+          <span>exec: Restricted | kubeconfig: ~/.kube/config (0600)</span>
+        </div>
+        <div class="meta-item">
+          <span>Constitutional Invariants</span>
+          <span>Principle I (Continuous GitOps) & Principle V (Vault Secrets)</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- SECTION 1: CONFIRMED USER DECISIONS -->
+    <section>
+      <h2>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+        1. Confirmed User Decisions & Security Scope
+      </h2>
+      <p>
+        The following technical parameters have been explicitly aligned and confirmed:
+      </p>
+
+      <table>
+        <thead>
+          <tr>
+            <th>Decision Topic</th>
+            <th>Confirmed Resolution</th>
+            <th>Rationale & Security Boundary</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Workstation <code>kubectl exec</code></strong></td>
+            <td><strong>Restricted to Node SSH / Break-Glass</strong></td>
+            <td>Interactive container execution can alter runtime container state. Leaving it restricted preserves auditability and strict GitOps integrity. Operator workstation gets <code>nodes</code>, <code>metrics</code>, <code>logs</code>, and <code>port-forward</code>.</td>
+          </tr>
+          <tr>
+            <td><strong>Host VM Non-Root Kubeconfig</strong></td>
+            <td><strong>Standard <code>~/.kube/config</code> (Mode 0600)</strong></td>
+            <td>Ansible bootstrap copies <code>/etc/rancher/k3s/k3s.yaml</code> into <code>~/.kube/config</code> owned by the SSH user, and cleans/synchronizes any stale environment references like <code>/secure/production.conf</code>.</td>
+          </tr>
+          <tr>
+            <td><strong>GitOps Delivery</strong></td>
+            <td><strong>100% Declarative in Git</strong></td>
+            <td>RBAC is committed under <code>deploy/platform/governance/operator-access.yaml</code>. The in-cluster Flux reconciler applies and maintains the rules across all clusters.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- SECTION 2: GITOPS ARCHITECTURE -->
+    <section>
+      <h2>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect><rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect><line x1="6" y1="6" x2="6.01" y2="6"></line><line x1="6" y1="18" x2="6.01" y2="18"></line></svg>
+        2. GitOps Delivery & Authorization Architecture
+      </h2>
+
+      <div class="diagram-card">
+        <svg class="diagram-svg" viewBox="0 0 880 270" xmlns="http://www.w3.org/2000/svg">
+          <!-- Git Box -->
+          <rect x="20" y="85" width="200" height="100" rx="8" fill="#1e1b4b" stroke="#6366f1" stroke-width="2"/>
+          <text x="120" y="120" fill="#f8fafc" font-size="14" font-weight="bold" text-anchor="middle">Git Repository</text>
+          <text x="120" y="140" fill="#94a3b8" font-size="11" text-anchor="middle">deploy/platform/governance/</text>
+          <text x="120" y="160" fill="#818cf8" font-size="10" text-anchor="middle">operator-access.yaml</text>
+
+          <!-- Arrow 1 -->
+          <path d="M 220 135 L 300 135" stroke="#6366f1" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+          <text x="260" y="125" fill="#94a3b8" font-size="10" text-anchor="middle">Flux Pull</text>
+
+          <!-- Flux Controller -->
+          <rect x="300" y="85" width="200" height="100" rx="8" fill="#064e3b" stroke="#10b981" stroke-width="2"/>
+          <text x="400" y="120" fill="#f8fafc" font-size="14" font-weight="bold" text-anchor="middle">Flux Kustomize</text>
+          <text x="400" y="140" fill="#6ee7b7" font-size="11" text-anchor="middle">Layer: governance</text>
+          <text x="400" y="160" fill="#94a3b8" font-size="10" text-anchor="middle">Auto-reconciliation</text>
+
+          <!-- Arrow 2 -->
+          <path d="M 500 135 L 580 135" stroke="#10b981" stroke-width="2" marker-end="url(#arrow)" fill="none"/>
+          <text x="540" y="125" fill="#94a3b8" font-size="10" text-anchor="middle">Applies</text>
+
+          <!-- Target Cluster RBAC -->
+          <rect x="580" y="45" width="280" height="185" rx="8" fill="#1e293b" stroke="#475569" stroke-width="2"/>
+          <text x="720" y="75" fill="#f8fafc" font-size="14" font-weight="bold" text-anchor="middle">In-Cluster RBAC State</text>
+          
+          <rect x="600" y="90" width="240" height="30" rx="4" fill="#0f172a" stroke="#334155"/>
+          <text x="720" y="110" fill="#cbd5e1" font-size="11" text-anchor="middle">SA: governance/operator-readonly</text>
+          
+          <rect x="600" y="130" width="240" height="30" rx="4" fill="#0f172a" stroke="#334155"/>
+          <text x="720" y="150" fill="#cbd5e1" font-size="11" text-anchor="middle">CRB: operator-readonly-view → view</text>
+          
+          <rect x="600" y="170" width="240" height="42" rx="4" fill="#312e81" stroke="#6366f1"/>
+          <text x="720" y="190" fill="#a5b4fc" font-size="11" font-weight="bold" text-anchor="middle">NEW: CR operator-diagnostics</text>
+          <text x="720" y="204" fill="#94a3b8" font-size="8.5" text-anchor="middle">(nodes, metrics, events, port-forward)</text>
+
+          <defs>
+            <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#6366f1"/>
+            </marker>
+          </defs>
+        </svg>
+      </div>
+    </section>
+
+    <!-- SECTION 3: SPEC & CONTRACT REVISION -->
+    <section>
+      <h2>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+        3. Specification, Contract & Runbook Revisions
+      </h2>
+
+      <h3>A. Spec 004: Flux GitOps Reconciliation</h3>
+      <ul>
+        <li><strong><code>specs/004/spec.md</code> (FR-015, Story 7)</strong>: Formally specify that operator workstation inspection includes cluster-scoped node status, metrics inspection, and pod port-forwarding, while preserving rejection of mutations.</li>
+        <li><strong><code>specs/004/contracts/operations.md §13</code></strong>: Update exit criteria for workstation verification:
+          <pre><code># Test node status inspection
+KUBECONFIG=$OUTPUT_FILE kubectl get nodes
+
+# Test metrics inspection
+KUBECONFIG=$OUTPUT_FILE kubectl top nodes
+
+# Test port-forwarding capability
+KUBECONFIG=$OUTPUT_FILE kubectl port-forward -n vault openbao-0 8200:8200 &
+
+# Assert write mutation rejection (Forbidden by RBAC / Denied by VAP)
+KUBECONFIG=$OUTPUT_FILE kubectl create deployment test --image=busybox -n identity   # Expected: denied</code></pre>
+        </li>
+        <li><strong><code>specs/004/contracts/manual-change-policy.md</code></strong>: Update Object and Identity tables with the new <code>operator-diagnostics</code> ClusterRole.</li>
+      </ul>
+
+      <h3>B. Spec 003: Minimal VM Bootstrap</h3>
+      <ul>
+        <li><strong><code>specs/003/contracts/bootstrap.md</code> & <code>quickstart.md</code></strong>: Formalize that the installer creates symlinks in <code>/usr/bin/kubectl</code>, <code>/usr/bin/k3s</code>, and provisions a mode-<code>0600</code> kubeconfig at <code>~/.kube/config</code> for the SSH user.</li>
+        <li><strong><code>specs/003/validation.md</code></strong>: Add validation rows verifying non-root <code>kubectl get nodes</code> execution directly after bootstrap.</li>
+      </ul>
+
+      <h3>C. Operations Runbook</h3>
+      <ul>
+        <li><strong><code>docs/operations-runbook.md §4 & §6</code></strong>: Update runbook commands to document host diagnostic access and workstation port-forwarding.</li>
+      </ul>
+    </section>
+
+    <!-- SECTION 4: CODE MODIFICATIONS -->
+    <section>
+      <h2>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+        4. Exact Code Modifications & Diffs
+      </h2>
+
+      <h3>1. <code>deploy/platform/governance/operator-access.yaml</code></h3>
+      <pre><code>apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: operator-readonly
+  namespace: governance
+  labels:
+    platform.nacfson.io/managed-by: platform
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: operator-readonly-view
+  labels:
+    platform.nacfson.io/managed-by: platform
+subjects:
+  - kind: ServiceAccount
+    name: operator-readonly
+    namespace: governance
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: view
+<span class="diff-add">---</span>
+<span class="diff-add">apiVersion: rbac.authorization.k8s.io/v1</span>
+<span class="diff-add">kind: ClusterRole</span>
+<span class="diff-add">metadata:</span>
+<span class="diff-add">  name: operator-diagnostics</span>
+<span class="diff-add">  labels:</span>
+<span class="diff-add">    platform.nacfson.io/managed-by: platform</span>
+<span class="diff-add">rules:</span>
+<span class="diff-add">  - apiGroups: [""]</span>
+<span class="diff-add">    resources: ["nodes", "nodes/status"]</span>
+<span class="diff-add">    verbs: ["get", "list", "watch"]</span>
+<span class="diff-add">  - apiGroups: [""]</span>
+<span class="diff-add">    resources: ["namespaces"]</span>
+<span class="diff-add">    verbs: ["get", "list", "watch"]</span>
+<span class="diff-add">  - apiGroups: [""]</span>
+<span class="diff-add">    resources: ["events"]</span>
+<span class="diff-add">    verbs: ["get", "list", "watch"]</span>
+<span class="diff-add">  - apiGroups: [""]</span>
+<span class="diff-add">    resources: ["pods/portforward"]</span>
+<span class="diff-add">    verbs: ["create"]</span>
+<span class="diff-add">  - apiGroups: ["metrics.k8s.io"]</span>
+<span class="diff-add">    resources: ["nodes", "pods"]</span>
+<span class="diff-add">    verbs: ["get", "list"]</span>
+<span class="diff-add">---</span>
+<span class="diff-add">apiVersion: rbac.authorization.k8s.io/v1</span>
+<span class="diff-add">kind: ClusterRoleBinding</span>
+<span class="diff-add">metadata:</span>
+<span class="diff-add">  name: operator-readonly-diagnostics</span>
+<span class="diff-add">  labels:</span>
+<span class="diff-add">    platform.nacfson.io/managed-by: platform</span>
+<span class="diff-add">subjects:</span>
+<span class="diff-add">  - kind: ServiceAccount</span>
+<span class="diff-add">    name: operator-readonly</span>
+<span class="diff-add">    namespace: governance</span>
+<span class="diff-add">roleRef:</span>
+<span class="diff-add">  apiGroup: rbac.authorization.k8s.io</span>
+<span class="diff-add">  kind: ClusterRole</span>
+<span class="diff-add">  name: operator-diagnostics</span></code></pre>
+
+      <h3>2. <code>bootstrap/tasks/install.yml</code></h3>
+      <pre><code><span class="diff-add">    - name: Ensure symlinks exist for k3s and kubectl in standard PATH locations</span>
+<span class="diff-add">      ansible.builtin.file:</span>
+<span class="diff-add">        src: "/usr/local/bin/k3s"</span>
+<span class="diff-add">        dest: "{{ item }}"</span>
+<span class="diff-add">        state: link</span>
+<span class="diff-add">        force: true</span>
+<span class="diff-add">      loop:</span>
+<span class="diff-add">        - "/usr/bin/k3s"</span>
+<span class="diff-add">        - "/usr/bin/kubectl"</span>
+<span class="diff-add">        - "/usr/local/bin/kubectl"</span>
+
+<span class="diff-add">    - name: Ensure target user kube directory exists</span>
+<span class="diff-add">      ansible.builtin.file:</span>
+<span class="diff-add">        path: "~{{ ansible_user }}/.kube"</span>
+<span class="diff-add">        state: directory</span>
+<span class="diff-add">        owner: "{{ ansible_user }}"</span>
+<span class="diff-add">        mode: "0700"</span>
+
+<span class="diff-add">    - name: Provision fresh target user kubeconfig</span>
+<span class="diff-add">      ansible.builtin.copy:</span>
+<span class="diff-add">        src: "/etc/rancher/k3s/k3s.yaml"</span>
+<span class="diff-add">        dest: "~{{ ansible_user }}/.kube/config"</span>
+<span class="diff-add">        remote_src: true</span>
+<span class="diff-add">        owner: "{{ ansible_user }}"</span>
+<span class="diff-add">        mode: "0600"</span></code></pre>
+    </section>
+
+    <!-- SECTION 5: AUTOMATED VERIFICATION -->
+    <section>
+      <h2>
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+        5. Automated Verification Plan
+      </h2>
+
+      <pre><code># 1. Kubeconform and Invariant checks across all environments
+./scripts/render-validate.sh local-k3s
+./scripts/render-validate.sh vps-k3s
+
+# 2. Ansible Playbook syntax test
+bootstrap/.venv/bin/ansible-playbook -i "oracleCloud," -u opc \
+  -e 'k3s_version=v1.35.9+k3s1' -e 'gitops_environment=vps-k3s' \
+  bootstrap/bootstrap.yml --syntax-check
+
+# 3. Target cluster live RBAC verification
+ssh oracleCloud '
+  echo "can-i get nodes: $(sudo k3s kubectl auth can-i get nodes --as=system:serviceaccount:governance:operator-readonly)"
+  echo "can-i port-forward: $(sudo k3s kubectl auth can-i create pods/portforward -n vault --as=system:serviceaccount:governance:operator-readonly)"
+  echo "can-i top nodes: $(sudo k3s kubectl auth can-i get nodes.metrics.k8s.io --as=system:serviceaccount:governance:operator-readonly)"
+  echo "can-i exec (deny): $(sudo k3s kubectl auth can-i create pods/exec -n vault --as=system:serviceaccount:governance:operator-readonly)"
+  echo "can-i create deployments (deny): $(sudo k3s kubectl auth can-i create deployments -n identity --as=system:serviceaccount:governance:operator-readonly)"
+  echo "can-i get secrets (deny): $(sudo k3s kubectl auth can-i get secrets -n vault --as=system:serviceaccount:governance:operator-readonly)"
+'</code></pre>
+    </section>
+  </div>
+</body>
+</html>

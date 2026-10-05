@@ -121,7 +121,7 @@ clusters/                                  # NEW: one entrypoint per environment
 deploy/
 ├── platform/
 │   ├── governance/    + kustomization.yaml; explicit ns on 2 objects; prune-disabled namespaces
-│   │                  + manual-change-policy.yaml, break-glass-rbac.yaml, operator-access.yaml (NEW)
+│   │                  + manual-change-policy.yaml, break-glass-rbac.yaml, operator-access.yaml (operator-readonly, operator-diagnostics) (NEW)
 │   ├── vault/         kustomization.yaml (proxies removed); probe split; prune-disabled ns + backup PVC
 │   ├── vault-proxies/ NEW dir: db-proxy.yaml, registry-proxy.yaml (moved) + kustomization.yaml
 │   ├── database/      + kustomization.yaml; prune-disabled PVCs; force + resources on init Job

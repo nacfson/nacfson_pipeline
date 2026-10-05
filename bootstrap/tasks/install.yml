@@ -73,6 +73,17 @@
         group: root
         mode: "0755"
 
+    - name: Ensure symlinks exist for k3s and kubectl in standard PATH locations
+      ansible.builtin.file:
+        src: "/usr/local/bin/k3s"
+        dest: "{{ item }}"
+        state: link
+        force: true
+      loop:
+        - "/usr/bin/k3s"
+        - "/usr/bin/kubectl"
+        - "/usr/local/bin/kubectl"
+
     - name: Render systemd service unit template
       ansible.builtin.template:
         src: "templates/k3s.service.j2"
@@ -145,3 +156,48 @@
     state: started
   async: 60
   poll: 2
+
+# Provision non-root operator kubeconfig for local diagnostics
+- name: Wait for /etc/rancher/k3s/k3s.yaml to be created
+  ansible.builtin.wait_for:
+    path: /etc/rancher/k3s/k3s.yaml
+    state: present
+    timeout: 30
+
+- name: Get target user home directory
+  ansible.builtin.getent:
+    database: passwd
+    key: "{{ ansible_user }}"
+
+- name: Set target user home path fact
+  ansible.builtin.set_fact:
+    target_user_home: "{{ getent_passwd[ansible_user][4] }}"
+
+- name: Ensure target user .kube directory exists
+  ansible.builtin.file:
+    path: "{{ target_user_home }}/.kube"
+    state: directory
+    owner: "{{ ansible_user }}"
+    mode: "0700"
+
+- name: Provision fresh target user kubeconfig
+  ansible.builtin.copy:
+    src: "/etc/rancher/k3s/k3s.yaml"
+    dest: "{{ target_user_home }}/.kube/config"
+    remote_src: true
+    owner: "{{ ansible_user }}"
+    mode: "0600"
+
+- name: Check if legacy /secure/production.conf exists
+  ansible.builtin.stat:
+    path: "/secure/production.conf"
+  register: legacy_conf_stat
+
+- name: Synchronize legacy /secure/production.conf if present
+  ansible.builtin.copy:
+    src: "/etc/rancher/k3s/k3s.yaml"
+    dest: "/secure/production.conf"
+    remote_src: true
+    owner: "{{ ansible_user }}"
+    mode: "0600"
+  when: legacy_conf_stat.stat.exists | default(false)

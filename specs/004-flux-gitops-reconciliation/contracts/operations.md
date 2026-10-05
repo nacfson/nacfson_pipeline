@@ -106,4 +106,11 @@ sudo k3s kubectl --as=break-glass:<operator> --as-group=platform:break-glass <co
 2. Run `scripts/operator-kubeconfig.sh <vm>`. It requests a 24-hour token for `governance/operator-readonly` on the node over SSH, and writes `~/.kube/nacfson-<env>.yaml` pointing at `https://127.0.0.1:6443` (through the tunnel).
 3. Re-run it when the token expires.
 
-**Exit criterion**: `kubectl auth can-i create deployments -n identity` → `no`; `flux get kustomizations -A` works.
+**Exit criterion**:
+- `kubectl auth can-i create deployments -n identity` → `no`
+- `kubectl auth can-i get secrets -n vault` → `no`
+- `kubectl auth can-i create pods/exec -n vault` → `no`
+- `kubectl auth can-i get nodes` → `yes`
+- `kubectl auth can-i create pods/portforward -n vault` → `yes`
+- `kubectl auth can-i get nodes.metrics.k8s.io` → `yes`
+- `flux get kustomizations -A` works cleanly.
