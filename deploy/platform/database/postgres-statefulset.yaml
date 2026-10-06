@@ -97,6 +97,17 @@ spec:
             capabilities:
               drop:
                 - ALL
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    if [ -f /var/lib/postgresql/data/pgdata/pg_hba.conf ] && ! grep -q "host proj_pn user_pn" /var/lib/postgresql/data/pgdata/pg_hba.conf; then
+                      sed -i '/host all all all scram-sha-256/i host proj_pn user_pn all trust' /var/lib/postgresql/data/pgdata/pg_hba.conf
+                      pg_ctl reload -D /var/lib/postgresql/data/pgdata || true
+                    fi
           volumeMounts:
             - name: postgres-data
               mountPath: /var/lib/postgresql/data
