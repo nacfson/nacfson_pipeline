@@ -19,7 +19,7 @@ spec:
         request.userInfo.username == 'system:serviceaccount:proj-pn:pn-reconciler' ||
         request.userInfo.username.startsWith('system:serviceaccount:kube-system:') ||
         request.userInfo.username.startsWith('system:node:') ||
-        request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver'] ||
+        request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver', 'system:k3s-controller', 'k3s-cloud-controller-manager'] ||
         'platform:break-glass' in request.userInfo.groups ||
         (request.resource.resource == 'pods' && (!has(request.subResource) || request.subResource == '') && request.operation == 'DELETE') ||
         (request.resource.resource == 'pods' && has(request.subResource) && request.subResource == 'eviction') ||
@@ -79,7 +79,8 @@ spec:
         request.userInfo.username == 'system:serviceaccount:proj-pn:pn-reconciler' ||
         request.userInfo.username.startsWith('system:serviceaccount:kube-system:') ||
         request.userInfo.username.startsWith('system:node:') ||
-        request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver'] ||
+        request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver', 'system:k3s-controller', 'k3s-cloud-controller-manager'] ||
+        (request.resource.resource == 'customresourcedefinitions' && (request.name.endsWith('.cattle.io') || request.name.endsWith('.k3s.io'))) ||
         'platform:break-glass' in request.userInfo.groups ||
         (request.resource.resource == 'pods' && (!has(request.subResource) || request.subResource == '') && request.operation == 'DELETE') ||
         (request.resource.resource == 'pods' && has(request.subResource) && request.subResource == 'eviction') ||

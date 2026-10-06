@@ -34,6 +34,7 @@ spec:
             - name: http
               containerPort: 8080
               protocol: TCP
+          workingDir: /app
           env:
             - name: DB_HOST
               value: "vault-db-proxy.vault.svc"
@@ -45,6 +46,8 @@ spec:
               value: "project:pn:workload:backend"
             - name: DB_TOKEN
               value: "project:pn:workload:backend"
+            - name: MIGRATIONS_PATH
+              value: "file:///app/db/migrations"
             - name: CENTRAL_AUTH_INTERNAL_URL
               value: "http://keycloak-service.identity.svc:8080/realms/platform"
             - name: CENTRAL_AUTH_URL
