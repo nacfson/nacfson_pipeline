@@ -85,6 +85,10 @@ run_suite "Scenario 7: Post-Vault Workload Secret Ingestion & PSA Compliance (Sp
    grep -q 'serviceAccountName: keycloak' '$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml' && \
    grep -q 'auth/kubernetes/config' '$REPO_ROOT/scripts/vault-configure-k8s-auth.sh'"
 
+# Scenario 8: Automated Declarative Realm Import & Vault Secret Resolution
+run_suite "Scenario 8: Declarative Identity Realm Auto-Import & Vault Integration" \
+  "bash '$REPO_ROOT/scripts/verify-identity.sh'"
+
 echo ""
 echo "================================================================================"
 echo "Master Platform Verification Summary"

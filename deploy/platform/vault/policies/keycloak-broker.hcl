@@ -8,3 +8,11 @@ path "kv/data/identity/google-oauth" {
 path "kv/data/database/keycloak-user" {
   capabilities = ["read"]
 }
+
+path "kv/data/gateway/*" {
+  capabilities = ["read"]
+}
+
+path "kv/data/projects/pn/*" {
+  capabilities = ["read"]
+}

@@ -64,8 +64,36 @@ spec:
 
               mkdir -p /opt/keycloak/conf/secrets
               echo -n "${DB_PASS}" > /opt/keycloak/conf/secrets/keycloak_db_password
-              chmod 0400 /opt/keycloak/conf/secrets/keycloak_db_password
-              echo "Keycloak database secret populated into ephemeral storage."
+
+              echo "Retrieving Google OAuth credentials..."
+              GOOGLE_JSON=$(curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/identity/google-oauth")
+              GOOGLE_ID=$(echo "${GOOGLE_JSON}" | sed -n 's/.*"client_id":"\([^"]*\)".*/\1/p')
+              GOOGLE_SECRET=$(echo "${GOOGLE_JSON}" | sed -n 's/.*"client_secret":"\([^"]*\)".*/\1/p')
+              echo -n "${GOOGLE_ID}" > /opt/keycloak/conf/secrets/google_client_id
+              echo -n "${GOOGLE_ID}" > /opt/keycloak/conf/secrets/platform_google_client_id
+              echo -n "${GOOGLE_SECRET}" > /opt/keycloak/conf/secrets/google_client_secret
+              echo -n "${GOOGLE_SECRET}" > /opt/keycloak/conf/secrets/platform_google_client_secret
+
+              echo "Retrieving Gateway client secret..."
+              GW_JSON=$(curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/gateway/client-secret")
+              GW_SECRET=$(echo "${GW_JSON}" | sed -n 's/.*"client_secret":"\([^"]*\)".*/\1/p')
+              echo -n "${GW_SECRET}" > /opt/keycloak/conf/secrets/gateway_client_secret
+              echo -n "${GW_SECRET}" > /opt/keycloak/conf/secrets/platform_gateway_client_secret
+
+              echo "Retrieving Session Revocation client secret..."
+              REV_JSON=$(curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/gateway/session-revocation-secret")
+              REV_SECRET=$(echo "${REV_JSON}" | sed -n 's/.*"client_secret":"\([^"]*\)".*/\1/p')
+              echo -n "${REV_SECRET}" > /opt/keycloak/conf/secrets/session_revocation_secret
+              echo -n "${REV_SECRET}" > /opt/keycloak/conf/secrets/platform_session_revocation_secret
+
+              echo "Retrieving Project PN client secret..."
+              PN_JSON=$(curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/projects/pn/client-secret")
+              PN_SECRET=$(echo "${PN_JSON}" | sed -n 's/.*"client_secret":"\([^"]*\)".*/\1/p')
+              echo -n "${PN_SECRET}" > /opt/keycloak/conf/secrets/project_pn_client_secret
+              echo -n "${PN_SECRET}" > /opt/keycloak/conf/secrets/platform_project_pn_client_secret
+
+              chmod 0400 /opt/keycloak/conf/secrets/*
+              echo "Keycloak secrets and realm client secrets populated into ephemeral storage."
           volumeMounts:
             - name: keycloak-secrets
               mountPath: /opt/keycloak/conf/secrets
@@ -77,7 +105,7 @@ spec:
             - -c
             - |
               export KC_DB_PASSWORD=$(cat /opt/keycloak/conf/secrets/keycloak_db_password)
-              exec /opt/keycloak/bin/kc.sh start
+              exec /opt/keycloak/bin/kc.sh start --import-realm --vault=file --vault-dir=/opt/keycloak/conf/secrets
           env:
             - name: KC_DB
               value: postgres
@@ -139,11 +167,18 @@ spec:
             - name: keycloak-secrets
               mountPath: /opt/keycloak/conf/secrets
               readOnly: true
+            - name: keycloak-realm-config
+              mountPath: /opt/keycloak/data/import/platform-realm.json
+              subPath: platform-realm.json
+              readOnly: true
       volumes:
         - name: keycloak-secrets
           emptyDir:
             medium: Memory
             sizeLimit: 1Mi
+        - name: keycloak-realm-config
+          configMap:
+            name: keycloak-realm-config
 ---
 apiVersion: v1
 kind: Service
