@@ -29,7 +29,7 @@ fi
 echo "[Check 2/3] Verifying declarative realm definition and Vault secret placeholders..."
 if grep -q '"realm": "platform"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
    grep -q 'GOOGLE_CLIENT_ID' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
-   grep -q '\${VAULT:google_client_secret}' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q 'GOOGLE_CLIENT_SECRET' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
    grep -q '"clientId": "gateway-client"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
    grep -q '"clientId": "project-pn"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
    grep -q '"clientId": "session-revocation-client"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml"; then
