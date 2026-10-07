@@ -41,8 +41,8 @@ data:
                 "authenticateByDefault": true,
                 "firstBrokerLoginFlowAlias": "first broker login",
                 "config": {
-                    "clientId": "${env.GOOGLE_CLIENT_ID}",
-                    "clientSecret": "${VAULT:google_client_secret}",
+                    "clientId": "${GOOGLE_CLIENT_ID}",
+                    "clientSecret": "${GOOGLE_CLIENT_SECRET}",
                     "defaultScope": "openid profile email"
                 }
             }
@@ -263,7 +263,7 @@ data:
                 "directAccessGrantsEnabled": false,
                 "serviceAccountsEnabled": true,
                 "clientAuthenticatorType": "client-secret",
-                "secret": "${env.GATEWAY_CLIENT_SECRET}",
+                "secret": "${GATEWAY_CLIENT_SECRET}",
                 "defaultClientScopes": [
                     "web-origins",
                     "profile",
@@ -287,7 +287,7 @@ data:
                 "standardFlowEnabled": true,
                 "directAccessGrantsEnabled": false,
                 "clientAuthenticatorType": "client-secret",
-                "secret": "${env.PROJECT_PN_CLIENT_SECRET}",
+                "secret": "${PROJECT_PN_CLIENT_SECRET}",
                 "defaultClientScopes": [
                     "web-origins",
                     "profile",
@@ -312,7 +312,7 @@ data:
                 "standardFlowEnabled": false,
                 "serviceAccountsEnabled": true,
                 "clientAuthenticatorType": "client-secret",
-                "secret": "${env.SESSION_REVOCATION_SECRET}"
+                "secret": "${SESSION_REVOCATION_SECRET}"
             }
         ]
     }

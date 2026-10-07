@@ -111,6 +111,7 @@ spec:
             - |
               export KC_DB_PASSWORD=$(cat /opt/keycloak/conf/secrets/keycloak_db_password)
               export GOOGLE_CLIENT_ID=$(cat /opt/keycloak/conf/secrets/google_client_id)
+              export GOOGLE_CLIENT_SECRET=$(cat /opt/keycloak/conf/secrets/google_client_secret)
               export GATEWAY_CLIENT_SECRET=$(cat /opt/keycloak/conf/secrets/gateway_client_secret)
               export PROJECT_PN_CLIENT_SECRET=$(cat /opt/keycloak/conf/secrets/project_pn_client_secret)
               export SESSION_REVOCATION_SECRET=$(cat /opt/keycloak/conf/secrets/session_revocation_secret)
@@ -133,7 +134,7 @@ spec:
             - name: KC_HOSTNAME_STRICT
               value: "false"
             - name: JAVA_OPTS_APPEND
-              value: "-Xms256m -Xmx1200m -XX:MaxRAMPercentage=75 -Dkeycloak.migration.strategy=OVERWRITE_EXISTING"
+              value: "-Xms256m -Xmx1200m -XX:MaxRAMPercentage=75 -Dkeycloak.migration.strategy=OVERWRITE_EXISTING -Dkeycloak.migration.replace-placeholders=true"
           ports:
             - name: http
               containerPort: 8080
