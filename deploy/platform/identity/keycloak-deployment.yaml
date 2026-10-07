@@ -126,7 +126,7 @@ spec:
             - name: KC_HOSTNAME_STRICT
               value: "false"
             - name: JAVA_OPTS_APPEND
-              value: "-Xms256m -Xmx1200m -XX:MaxRAMPercentage=75"
+              value: "-Xms256m -Xmx1200m -XX:MaxRAMPercentage=75 -Dkeycloak.migration.strategy=OVERWRITE_EXISTING"
           ports:
             - name: http
               containerPort: 8080

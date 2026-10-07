@@ -9,102 +9,310 @@ metadata:
 data:
   platform-realm.json: |
     {
-      "realm": "platform",
-      "displayName": "Personal Project Platform",
-      "enabled": true,
-      "registrationAllowed": false,
-      "resetPasswordAllowed": false,
-      "rememberMe": true,
-      "loginWithEmailAllowed": false,
-      "duplicateEmailsAllowed": false,
-      "sslRequired": "external",
-      "identityProviders": [
-        {
-          "alias": "google",
-          "displayName": "Google",
-          "providerId": "google",
-          "enabled": true,
-          "updateProfileFirstLoginMode": "off",
-          "trustEmail": true,
-          "storeToken": false,
-          "addReadTokenRoleOnCreate": false,
-          "authenticateByDefault": true,
-          "firstBrokerLoginFlowAlias": "first broker login",
-          "config": {
-            "clientId": "${VAULT:google_client_id}",
-            "clientSecret": "${VAULT:google_client_secret}",
-            "defaultScope": "openid profile email"
-          }
-        }
-      ],
-      "clientScopes": [
-        {
-          "name": "project-pn-audience",
-          "description": "Inject project-pn audience into issued access tokens",
-          "protocol": "openid-connect",
-          "attributes": {
-            "include.in.token.scope": "true",
-            "display.on.consent.screen": "false"
-          },
-          "protocolMappers": [
+        "realm": "platform",
+        "displayName": "Personal Project Platform",
+        "enabled": true,
+        "registrationAllowed": false,
+        "resetPasswordAllowed": false,
+        "rememberMe": true,
+        "loginWithEmailAllowed": false,
+        "duplicateEmailsAllowed": false,
+        "sslRequired": "external",
+        "defaultDefaultClientScopes": [
+            "profile",
+            "email",
+            "roles",
+            "web-origins",
+            "acr"
+        ],
+        "defaultOptionalClientScopes": [
+            "offline_access"
+        ],
+        "identityProviders": [
             {
-              "name": "project-pn-aud-mapper",
-              "protocol": "openid-connect",
-              "protocolMapper": "oidc-audience-mapper",
-              "consentRequired": false,
-              "config": {
-                "included.client.audience": "project-pn",
-                "id.token.claim": "false",
-                "access.token.claim": "true"
-              }
+                "alias": "google",
+                "displayName": "Google",
+                "providerId": "google",
+                "enabled": true,
+                "updateProfileFirstLoginMode": "off",
+                "trustEmail": true,
+                "storeToken": false,
+                "addReadTokenRoleOnCreate": false,
+                "authenticateByDefault": true,
+                "firstBrokerLoginFlowAlias": "first broker login",
+                "config": {
+                    "clientId": "${VAULT:google_client_id}",
+                    "clientSecret": "${VAULT:google_client_secret}",
+                    "defaultScope": "openid profile email"
+                }
             }
-          ]
-        }
-      ],
-      "clients": [
-        {
-          "clientId": "gateway-client",
-          "name": "Go Authentication Gateway",
-          "enabled": true,
-          "publicClient": false,
-          "standardFlowEnabled": true,
-          "directAccessGrantsEnabled": false,
-          "serviceAccountsEnabled": true,
-          "clientAuthenticatorType": "client-secret",
-          "secret": "${VAULT:gateway_client_secret}",
-          "redirectUris": [
-            "https://auth.nacfson.cloud/oauth/callback",
-            "https://auth.example.com/oauth/callback",
-            "http://localhost:8080/oauth/callback"
-          ],
-          "webOrigins": ["+"]
-        },
-        {
-          "clientId": "project-pn",
-          "name": "Project PN Application",
-          "enabled": true,
-          "publicClient": false,
-          "standardFlowEnabled": true,
-          "directAccessGrantsEnabled": false,
-          "clientAuthenticatorType": "client-secret",
-          "secret": "${VAULT:project_pn_client_secret}",
-          "defaultClientScopes": ["web-origins", "role_list", "profile", "email", "project-pn-audience"],
-          "redirectUris": [
-            "https://pn.nacfson.cloud/*",
-            "https://pn.example.com/*",
-            "http://localhost:8080/*"
-          ],
-          "webOrigins": ["+"]
-        },
-        {
-          "clientId": "session-revocation-client",
-          "name": "Platform Session Revocation Service",
-          "enabled": true,
-          "publicClient": false,
-          "standardFlowEnabled": false,
-          "serviceAccountsEnabled": true,
-          "clientAuthenticatorType": "client-secret",
-          "secret": "${VAULT:session_revocation_secret}"
-        }
-      ]
+        ],
+        "clientScopes": [
+            {
+                "name": "email",
+                "description": "OpenID Connect built-in scope: email",
+                "protocol": "openid-connect",
+                "attributes": {
+                    "include.in.token.scope": "true",
+                    "display.on.consent.screen": "true"
+                },
+                "protocolMappers": [
+                    {
+                        "name": "email",
+                        "protocol": "openid-connect",
+                        "protocolMapper": "oidc-usermodel-attribute-mapper",
+                        "consentRequired": false,
+                        "config": {
+                            "user.attribute": "email",
+                            "claim.name": "email",
+                            "jsonType.label": "String",
+                            "id.token.claim": "true",
+                            "access.token.claim": "true",
+                            "userinfo.token.claim": "true"
+                        }
+                    },
+                    {
+                        "name": "email verified",
+                        "protocol": "openid-connect",
+                        "protocolMapper": "oidc-usermodel-property-mapper",
+                        "consentRequired": false,
+                        "config": {
+                            "user.attribute": "emailVerified",
+                            "claim.name": "email_verified",
+                            "jsonType.label": "boolean",
+                            "id.token.claim": "true",
+                            "access.token.claim": "true",
+                            "userinfo.token.claim": "true"
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "profile",
+                "description": "OpenID Connect built-in scope: profile",
+                "protocol": "openid-connect",
+                "attributes": {
+                    "include.in.token.scope": "true",
+                    "display.on.consent.screen": "true"
+                },
+                "protocolMappers": [
+                    {
+                        "name": "full name",
+                        "protocol": "openid-connect",
+                        "protocolMapper": "oidc-full-name-mapper",
+                        "consentRequired": false,
+                        "config": {
+                            "id.token.claim": "true",
+                            "access.token.claim": "true",
+                            "userinfo.token.claim": "true"
+                        }
+                    },
+                    {
+                        "name": "username",
+                        "protocol": "openid-connect",
+                        "protocolMapper": "oidc-usermodel-attribute-mapper",
+                        "consentRequired": false,
+                        "config": {
+                            "user.attribute": "username",
+                            "claim.name": "preferred_username",
+                            "jsonType.label": "String",
+                            "id.token.claim": "true",
+                            "access.token.claim": "true",
+                            "userinfo.token.claim": "true"
+                        }
+                    },
+                    {
+                        "name": "given name",
+                        "protocol": "openid-connect",
+                        "protocolMapper": "oidc-usermodel-attribute-mapper",
+                        "consentRequired": false,
+                        "config": {
+                            "user.attribute": "firstName",
+                            "claim.name": "given_name",
+                            "jsonType.label": "String",
+                            "id.token.claim": "true",
+                            "access.token.claim": "true",
+                            "userinfo.token.claim": "true"
+                        }
+                    },
+                    {
+                        "name": "family name",
+                        "protocol": "openid-connect",
+                        "protocolMapper": "oidc-usermodel-attribute-mapper",
+                        "consentRequired": false,
+                        "config": {
+                            "user.attribute": "lastName",
+                            "claim.name": "family_name",
+                            "jsonType.label": "String",
+                            "id.token.claim": "true",
+                            "access.token.claim": "true",
+                            "userinfo.token.claim": "true"
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "roles",
+                "description": "OpenID Connect scope for add user roles to the access token",
+                "protocol": "openid-connect",
+                "attributes": {
+                    "include.in.token.scope": "false",
+                    "display.on.consent.screen": "true"
+                },
+                "protocolMappers": [
+                    {
+                        "name": "realm roles",
+                        "protocol": "openid-connect",
+                        "protocolMapper": "oidc-usermodel-realm-role-mapper",
+                        "consentRequired": false,
+                        "config": {
+                            "multivalued": "true",
+                            "userinfo.token.claim": "true",
+                            "id.token.claim": "true",
+                            "access.token.claim": "true",
+                            "claim.name": "realm_access.roles",
+                            "jsonType.label": "String"
+                        }
+                    },
+                    {
+                        "name": "client roles",
+                        "protocol": "openid-connect",
+                        "protocolMapper": "oidc-usermodel-client-role-mapper",
+                        "consentRequired": false,
+                        "config": {
+                            "multivalued": "true",
+                            "userinfo.token.claim": "true",
+                            "id.token.claim": "true",
+                            "access.token.claim": "true",
+                            "claim.name": "resource_access.${client_id}.roles",
+                            "jsonType.label": "String"
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "web-origins",
+                "description": "OpenID Connect scope for add allowed web origins to the access token",
+                "protocol": "openid-connect",
+                "attributes": {
+                    "include.in.token.scope": "false",
+                    "display.on.consent.screen": "false"
+                },
+                "protocolMappers": [
+                    {
+                        "name": "allowed web origins",
+                        "protocol": "openid-connect",
+                        "protocolMapper": "oidc-allowed-origins-mapper",
+                        "consentRequired": false,
+                        "config": {}
+                    }
+                ]
+            },
+            {
+                "name": "acr",
+                "description": "OpenID Connect scope for add acr (authentication context class reference) to the token",
+                "protocol": "openid-connect",
+                "attributes": {
+                    "include.in.token.scope": "false",
+                    "display.on.consent.screen": "false"
+                },
+                "protocolMappers": [
+                    {
+                        "name": "acr loa level",
+                        "protocol": "openid-connect",
+                        "protocolMapper": "oidc-acr-mapper",
+                        "consentRequired": false,
+                        "config": {
+                            "id.token.claim": "true",
+                            "access.token.claim": "true",
+                            "userinfo.token.claim": "true"
+                        }
+                    }
+                ]
+            },
+            {
+                "name": "project-pn-audience",
+                "description": "Inject project-pn audience into issued access tokens",
+                "protocol": "openid-connect",
+                "attributes": {
+                    "include.in.token.scope": "true",
+                    "display.on.consent.screen": "false"
+                },
+                "protocolMappers": [
+                    {
+                        "name": "project-pn-aud-mapper",
+                        "protocol": "openid-connect",
+                        "protocolMapper": "oidc-audience-mapper",
+                        "consentRequired": false,
+                        "config": {
+                            "included.client.audience": "project-pn",
+                            "id.token.claim": "false",
+                            "access.token.claim": "true"
+                        }
+                    }
+                ]
+            }
+        ],
+        "clients": [
+            {
+                "clientId": "gateway-client",
+                "name": "Go Authentication Gateway",
+                "enabled": true,
+                "publicClient": false,
+                "standardFlowEnabled": true,
+                "directAccessGrantsEnabled": false,
+                "serviceAccountsEnabled": true,
+                "clientAuthenticatorType": "client-secret",
+                "secret": "${VAULT:gateway_client_secret}",
+                "defaultClientScopes": [
+                    "web-origins",
+                    "profile",
+                    "email",
+                    "roles"
+                ],
+                "redirectUris": [
+                    "https://auth.nacfson.cloud/oauth/callback",
+                    "https://auth.example.com/oauth/callback",
+                    "http://localhost:8080/oauth/callback"
+                ],
+                "webOrigins": [
+                    "+"
+                ]
+            },
+            {
+                "clientId": "project-pn",
+                "name": "Project PN Application",
+                "enabled": true,
+                "publicClient": false,
+                "standardFlowEnabled": true,
+                "directAccessGrantsEnabled": false,
+                "clientAuthenticatorType": "client-secret",
+                "secret": "${VAULT:project_pn_client_secret}",
+                "defaultClientScopes": [
+                    "web-origins",
+                    "profile",
+                    "email",
+                    "roles",
+                    "project-pn-audience"
+                ],
+                "redirectUris": [
+                    "https://pn.nacfson.cloud/*",
+                    "https://pn.example.com/*",
+                    "http://localhost:8080/*"
+                ],
+                "webOrigins": [
+                    "+"
+                ]
+            },
+            {
+                "clientId": "session-revocation-client",
+                "name": "Platform Session Revocation Service",
+                "enabled": true,
+                "publicClient": false,
+                "standardFlowEnabled": false,
+                "serviceAccountsEnabled": true,
+                "clientAuthenticatorType": "client-secret",
+                "secret": "${VAULT:session_revocation_secret}"
+            }
+        ]
     }
