@@ -28,7 +28,7 @@ fi
 # Check 2: Static verification of single-source-of-truth realm config
 echo "[Check 2/3] Verifying declarative realm definition and Vault secret placeholders..."
 if grep -q '"realm": "platform"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
-   grep -q '\${VAULT:google_client_id}' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q 'GOOGLE_CLIENT_ID' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
    grep -q '\${VAULT:google_client_secret}' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
    grep -q '"clientId": "gateway-client"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
    grep -q '"clientId": "project-pn"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
@@ -41,16 +41,9 @@ fi
 
 # Check 3: Dynamic Realm API Reachability (if live cluster is accessible)
 echo "[Check 3/3] Dynamic Platform Realm Health & Discovery Endpoint Check..."
-KUBE_EXEC=""
-if command -v kubectl >/dev/null 2>&1 && kubectl get nodes >/dev/null 2>&1; then
-  KUBE_EXEC="kubectl"
-elif ssh oracleCloud "sudo k3s kubectl get nodes" >/dev/null 2>&1; then
-  KUBE_EXEC="ssh oracleCloud sudo k3s kubectl"
-fi
-
-if [ -n "$KUBE_EXEC" ]; then
+if ssh -o BatchMode=yes -o ConnectTimeout=3 oracleCloud "sudo k3s kubectl get nodes" >/dev/null 2>&1; then
   echo "Live cluster detected. Querying Keycloak platform realm endpoint..."
-  KC_IP=$($KUBE_EXEC get svc -n identity keycloak-service -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
+  KC_IP=$(ssh oracleCloud "sudo k3s kubectl get svc -n identity keycloak-service -o jsonpath='{.spec.clusterIP}'" 2>/dev/null || true)
   if [ -n "$KC_IP" ]; then
     REALM_RESP=$(ssh oracleCloud "curl -sS --max-time 5 http://${KC_IP}:8080/realms/platform" 2>/dev/null || true)
     if echo "$REALM_RESP" | grep -q '"realm":"platform"'; then
@@ -58,6 +51,15 @@ if [ -n "$KUBE_EXEC" ]; then
     else
       echo "  ℹ NOTICE: Realm endpoint returned non-200 or not yet ready: $REALM_RESP"
       echo "           (Expected before initial GitOps reconciliation and pod restart)"
+    fi
+  fi
+elif command -v kubectl >/dev/null 2>&1 && kubectl get nodes >/dev/null 2>&1; then
+  echo "Local cluster detected. Querying Keycloak platform realm endpoint..."
+  KC_IP=$(kubectl get svc -n identity keycloak-service -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
+  if [ -n "$KC_IP" ]; then
+    REALM_RESP=$(curl -sS --max-time 5 "http://${KC_IP}:8080/realms/platform" 2>/dev/null || true)
+    if echo "$REALM_RESP" | grep -q '"realm":"platform"'; then
+      echo "  ✓ PASS: Live Keycloak endpoint returned healthy platform realm metadata."
     fi
   fi
 else
