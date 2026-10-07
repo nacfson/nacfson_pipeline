@@ -268,7 +268,8 @@ data:
                     "web-origins",
                     "profile",
                     "email",
-                    "roles"
+                    "roles",
+                    "project-pn-audience"
                 ],
                 "redirectUris": [
                     "https://auth.nacfson.cloud/oauth/callback",
@@ -298,7 +299,9 @@ data:
                 "redirectUris": [
                     "https://pn.nacfson.cloud/*",
                     "https://pn.example.com/*",
-                    "http://localhost:8080/*"
+                    "http://localhost:8080/*",
+                    "https://auth.nacfson.cloud/oauth/callback",
+                    "https://auth.example.com/oauth/callback"
                 ],
                 "webOrigins": [
                     "+"

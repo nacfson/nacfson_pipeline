@@ -112,6 +112,8 @@ spec:
                   env:
                     - name: COOKIE_DOMAIN
                       value: ".nacfson.cloud"
+                    - name: KEYCLOAK_PUBLIC_URL
+                      value: "https://auth.nacfson.cloud/realms/platform"
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization

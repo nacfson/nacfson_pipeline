@@ -91,6 +91,8 @@ spec:
               value: "http://keycloak-service.identity.svc:8080/realms/platform"
             - name: KEYCLOAK_ADMIN_URL
               value: "http://keycloak-service.identity.svc:8080"
+            - name: KEYCLOAK_PUBLIC_URL
+              value: "https://auth.example.com/realms/platform"
             - name: COOKIE_DOMAIN
               value: ".example.com"
             - name: COOKIE_NAME

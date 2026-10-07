@@ -162,12 +162,21 @@ func (h *Handler) initiateLogin(w http.ResponseWriter, r *http.Request, targetUR
 		SameSite: http.SameSiteLaxMode,
 	})
 
-	projectAudience := deriveProjectAudience(targetHost)
 	redirectURI := fmt.Sprintf("https://auth%s/oauth/callback", h.Config.CookieDomain)
 
+	loginIssuer := h.Config.KeycloakPublicURL
+	if loginIssuer == "" {
+		loginIssuer = h.Config.KeycloakIssuerURL
+	}
+
+	loginClientID := h.Config.ClientID
+	if loginClientID == "" {
+		loginClientID = deriveProjectAudience(targetHost)
+	}
+
 	loginURL := fmt.Sprintf("%s/protocol/openid-connect/auth?client_id=%s&response_type=code&scope=openid+profile+email&redirect_uri=%s&state=%s&code_challenge=%s&code_challenge_method=S256",
-		h.Config.KeycloakIssuerURL,
-		url.QueryEscape(projectAudience),
+		loginIssuer,
+		url.QueryEscape(loginClientID),
 		url.QueryEscape(redirectURI),
 		url.QueryEscape(signedState),
 		url.QueryEscape(challenge),
@@ -256,11 +265,16 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	sessionIssuer := h.Config.KeycloakPublicURL
+	if sessionIssuer == "" {
+		sessionIssuer = h.Config.KeycloakIssuerURL
+	}
+
 	// Build session data
 	sess := SessionCookieData{
 		SessionID: tokenResp.SessionState,
 		Subject:   parseSubjectFromJWT(tokenResp.AccessToken),
-		Issuer:    h.Config.KeycloakIssuerURL,
+		Issuer:    sessionIssuer,
 		Tokens: map[string]string{
 			"default":    tokenResp.AccessToken,
 			"project-pn": tokenResp.AccessToken,

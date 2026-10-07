@@ -13,6 +13,7 @@ type Config struct {
 	Port                    int
 	KeycloakIssuerURL       string
 	KeycloakAdminURL        string
+	KeycloakPublicURL       string
 	CookieDomain            string
 	CookieName              string
 	HMACSecret              []byte
@@ -44,6 +45,15 @@ func LoadFromEnv() (*Config, error) {
 	cookieDomain := getEnvOrDefault("COOKIE_DOMAIN", ".example.com")
 	cookieName := getEnvOrDefault("COOKIE_NAME", "PLATFORM_SESSION")
 
+	publicURL := os.Getenv("KEYCLOAK_PUBLIC_URL")
+	if publicURL == "" {
+		if cookieDomain != "" && cookieDomain != ".example.com" {
+			publicURL = fmt.Sprintf("https://auth%s/realms/platform", cookieDomain)
+		} else {
+			publicURL = issuerURL
+		}
+	}
+
 	// 1. Load HMAC Secret (check ephemeral tmpfs first, then environment variable)
 	hmacSecretStr := readSecretFileOrEnv("GATEWAY_HMAC_SECRET_FILE", "/var/run/secrets/gateway/hmac", "GATEWAY_HMAC_SECRET", "default-insecure-secret-for-dev-32b!")
 	if len(hmacSecretStr) < 32 {
@@ -67,6 +77,7 @@ func LoadFromEnv() (*Config, error) {
 		Port:                    port,
 		KeycloakIssuerURL:       issuerURL,
 		KeycloakAdminURL:        adminURL,
+		KeycloakPublicURL:       publicURL,
 		CookieDomain:            cookieDomain,
 		CookieName:              cookieName,
 		HMACSecret:              []byte(hmacSecretStr),
