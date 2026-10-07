@@ -139,7 +139,7 @@ spec:
       patch: |
         - op: replace
           path: /spec/routes/0/match
-          value: Host(`auth.nacfson.cloud`) && (PathPrefix(`/realms/platform/protocol/openid-connect/auth`) || PathPrefix(`/realms/platform/login-actions`) || PathPrefix(`/realms/platform/broker/google/endpoint`) || PathPrefix(`/resources`))
+          value: Host(`auth.nacfson.cloud`) && (PathPrefix(`/realms/platform/protocol/openid-connect/auth`) || PathPrefix(`/realms/platform/login-actions`) || PathPrefix(`/realms/platform/broker/`) || PathPrefix(`/resources`))
         - op: replace
           path: /spec/routes/1/match
           value: Host(`auth.nacfson.cloud`) && PathPrefix(`/oauth/callback`)
