@@ -9,10 +9,10 @@ metadata:
     platform.nacfson.io/managed-by: platform
 spec:
   hard:
-    requests.cpu: "550m"
-    limits.cpu: "550m"
-    requests.memory: "1024Mi"
-    limits.memory: "1024Mi"
+    requests.cpu: "850m"
+    limits.cpu: "850m"
+    requests.memory: "1536Mi"
+    limits.memory: "1536Mi"
     pods: "10"
     # Strict perimeter backstops: Reject bypass service types at quota admission level
     services.nodeports: "0"
