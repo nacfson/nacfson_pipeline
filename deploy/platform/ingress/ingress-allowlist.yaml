@@ -19,8 +19,8 @@ spec:
           namespace: identity
           port: 8080
 
-    # 2. Gateway OIDC Callback
-    - match: Host(`auth.example.com`) && PathPrefix(`/oauth/callback`)
+    # 2. Gateway OIDC Start & Callback
+    - match: Host(`auth.example.com`) && (PathPrefix(`/oauth/start`) || PathPrefix(`/oauth/callback`))
       kind: Rule
       services:
         - name: gateway
