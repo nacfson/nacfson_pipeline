@@ -9,6 +9,11 @@ metadata:
     platform.nacfson.io/managed-by: platform
 spec:
   replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: pn-frontend
@@ -28,7 +33,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: frontend
-          image: ghcr.io/nacfson/project-pn-frontend@sha256:43ea11fb80621f452102d118f8437230efff7f96925fd9079347d8c09ab348f1
+          image: ghcr.io/nacfson/project-pn-frontend:f7e7cffb@sha256:9cfafd9702e0258eb1610676ef46622ffbcd0ab5e12f156c49b99f7d0f1dcbfc
           imagePullPolicy: IfNotPresent
           env:
             - name: PN_BACKEND_HOST
