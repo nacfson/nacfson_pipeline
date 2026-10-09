@@ -43,6 +43,9 @@ func main() {
 	// Traefik ForwardAuth verification endpoint
 	mux.HandleFunc("/auth", handler.HandleForwardAuth)
 
+	// Sign-in start. return must be an address already on the project door.
+	mux.HandleFunc("/oauth/start", handler.HandleSessionStart)
+
 	// OIDC callback from Keycloak
 	mux.HandleFunc("/oauth/callback", handler.HandleCallback)
 

@@ -1,5 +1,7 @@
 # Contract: Traefik ForwardAuth HTTP API
 
+> A project door no longer calls ForwardAuth. Visitor entry is specified in [`specs/006-separate-project-auth/contracts/project-door.md`](../../006-separate-project-auth/contracts/project-door.md). The `/auth` endpoint remains the confirmation call a shared project may make after the visitor has arrived. A missing session does not redirect the visitor before the project answers.
+
 **Feature**: `001-project-platform`  
 **Endpoint**: `http://gateway.identity.svc:8080/auth`  
 **Method**: `GET`  
@@ -77,17 +79,17 @@ Content-Type: application/json
 
 {"error": "service_unavailable", "message": "Authentication service is temporarily unavailable."}
 ```
-**Invariant**: Fail-closed strictly enforced. The gateway MUST NEVER allow an unverified request through when Keycloak is down.
+**Invariant**: Confirmation does not succeed while Keycloak is unreachable. This response is not placed on the project door. A project that does not use sign-in keeps answering.
 
 ---
 
 ## 3. Authentication Lifecycle & Cross-Project SSO Mechanics
 
 ### 3.1 Return Destination Tracking
-1. When unauthenticated traffic hits `https://<project>.example.com/<path>`, the gateway encodes the target destination into an HMAC-SHA256 signed `state` query parameter.
+1. A shared project sends the browser to the sign-in start with a `return` address already on that project's door. The gateway encodes that return address into an HMAC-SHA256 signed `state` query parameter. Any other return is rejected. Opening the project host does not require this step.
 2. Google redirects to Keycloak broker endpoint (`/realms/platform/broker/google/endpoint`).
 3. Keycloak creates the session and redirects to the gateway callback: `https://auth.example.com/oauth/callback?code=...&state=...`.
-4. The gateway verifies the state signature, exchanges the code for tokens, sets the `PLATFORM_SESSION` cookie (`Domain=.example.com`), and redirects to the exact saved destination URL.
+4. The gateway verifies the state signature, exchanges the code for tokens, sets the `PLATFORM_SESSION` cookie scoped to the project host (`HttpOnly`, `Secure`), and redirects to that same return address.
 
 ### 3.2 Login Initiation Verification (PKCE & State Integrity)
 1. The gateway generates a cryptographic 32-byte `code_verifier`, computes `code_challenge = BASE64URL(SHA256(code_verifier))`, and generates a unique `nonce`.
@@ -98,7 +100,7 @@ Content-Type: application/json
 ### 3.3 Token Expiration & Refresh Flow
 1. User SSO Sessions have a typical lifespan of 8–12 hours; project access JWTs are short-lived (5–15 minutes).
 2. On every ForwardAuth check, if the project access token is near expiry but the Keycloak session is valid, the gateway uses the session refresh token to synchronously fetch a new project access token from Keycloak over the internal cluster network.
-3. If the user session itself is expired or revoked, the gateway fails closed (HTTP 302 redirecting to login).
+3. If the user session itself is expired, revoked, or signed for another project, confirmation returns HTTP 401 and does not redirect the visitor. If the sign-in service is unreachable, confirmation returns HTTP 503 and does not confirm the user. The project door still answers for parts that do not need a known user.
 
 ### 3.4 Cross-Project Token Acquisition (Project A to Project B)
 1. Each project has a distinct Keycloak client and audience (`aud: project-a`, `aud: project-b`). Sharing generic tokens across projects is prohibited.

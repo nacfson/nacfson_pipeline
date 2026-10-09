@@ -16,6 +16,7 @@ type Config struct {
 	KeycloakPublicURL       string
 	CookieDomain            string
 	CookieName              string
+	AllowedReturnHosts      []string
 	HMACSecret              []byte
 	HMACSecretPrevious      []byte
 	ClientID                string
@@ -44,6 +45,13 @@ func LoadFromEnv() (*Config, error) {
 
 	cookieDomain := getEnvOrDefault("COOKIE_DOMAIN", ".example.com")
 	cookieName := getEnvOrDefault("COOKIE_NAME", "PLATFORM_SESSION")
+	var allowedReturnHosts []string
+	for _, host := range strings.Split(getEnvOrDefault("PROJECT_RETURN_HOSTS", "pn.example.com"), ",") {
+		host = strings.TrimSpace(host)
+		if host != "" {
+			allowedReturnHosts = append(allowedReturnHosts, host)
+		}
+	}
 
 	publicURL := os.Getenv("KEYCLOAK_PUBLIC_URL")
 	if publicURL == "" {
@@ -80,6 +88,7 @@ func LoadFromEnv() (*Config, error) {
 		KeycloakPublicURL:       publicURL,
 		CookieDomain:            cookieDomain,
 		CookieName:              cookieName,
+		AllowedReturnHosts:      allowedReturnHosts,
 		HMACSecret:              []byte(hmacSecretStr),
 		HMACSecretPrevious:      hmacSecretPrevious,
 		ClientID:                getEnvOrDefault("GATEWAY_CLIENT_ID", "gateway-client"),

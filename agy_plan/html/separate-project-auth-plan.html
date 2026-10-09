@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Implementation Plan: Separate Project Entry from Sign-In</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --card: #171d25;
+      --line: #2a3441;
+      --text: #e7ecf1;
+      --muted: #9aa6b2;
+      --accent: #8fb4d4;
+      --warn: #e0b15a;
+      --ok: #8fbfa8;
+      --code: #0c1014;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+      line-height: 1.5;
+    }
+    main { max-width: 980px; margin: 0 auto; padding: 32px 20px 64px; }
+    h1 { font-size: 1.75rem; font-weight: 650; margin: 0 0 8px; }
+    h2 { font-size: 1.2rem; margin: 36px 0 12px; }
+    p { margin: 0 0 12px; }
+    a { color: var(--accent); }
+    .meta { color: var(--muted); font-size: 0.92rem; margin-bottom: 28px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 720px) { .grid { grid-template-columns: 1fr; } }
+    figure {
+      margin: 0;
+      background: var(--card);
+      border: 1px solid var(--line);
+      padding: 12px;
+    }
+    figcaption { color: var(--muted); font-size: 0.85rem; margin-bottom: 8px; }
+    svg { width: 100%; height: auto; display: block; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.92rem; }
+    th, td { text-align: left; vertical-align: top; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); font-weight: 600; }
+    pre {
+      background: var(--code);
+      border: 1px solid var(--line);
+      padding: 14px;
+      overflow: auto;
+      font-size: 0.82rem;
+      line-height: 1.45;
+    }
+    .del { color: #e7a0a0; }
+    .add { color: var(--ok); }
+    .note { border-left: 3px solid var(--warn); padding: 8px 12px; color: var(--muted); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Separate project entry from sign-in</h1>
+  <p class="meta">Branch 006-separate-project-auth · 2026-10-09 · Spec <a href="../../specs/006-separate-project-auth/spec.md">specs/006-separate-project-auth/spec.md</a></p>
+  <p>The visitor road into a project stays that project's door. Sign-in only answers who the user is, and only after the project asks. Project PN keeps its site on port 80 and its API on port 8080. The sign-in check comes off those routes. Constitution 2.0.0 is part of the same revision.</p>
+
+  <h2>Architecture</h2>
+  <div class="grid">
+    <figure>
+      <figcaption>Today: sign-in stands on the road</figcaption>
+      <svg viewBox="0 0 420 220" role="img" aria-label="Visitor reaches a wall labeled sign-in before the website and API">
+        <rect x="16" y="86" width="88" height="40" fill="#171d25" stroke="#e7ecf1"/>
+        <text x="60" y="110" text-anchor="middle" fill="#e7ecf1" font-size="13">Visitor</text>
+        <rect x="156" y="78" width="92" height="56" fill="#171d25" stroke="#8fb4d4"/>
+        <text x="202" y="102" text-anchor="middle" fill="#8fb4d4" font-size="13">Sign-in</text>
+        <text x="202" y="120" text-anchor="middle" fill="#9aa6b2" font-size="12">on the road</text>
+        <rect x="308" y="28" width="96" height="36" fill="#171d25" stroke="#e7ecf1"/>
+        <text x="356" y="50" text-anchor="middle" fill="#e7ecf1" font-size="13">Website :80</text>
+        <rect x="308" y="148" width="96" height="36" fill="#171d25" stroke="#e7ecf1"/>
+        <text x="356" y="170" text-anchor="middle" fill="#e7ecf1" font-size="13">API :8080</text>
+        <path d="M104 106 H156 M248 106 H280 V46 H308 M280 106 V166 H308" fill="none" stroke="#e7ecf1" stroke-width="1.5"/>
+      </svg>
+    </figure>
+    <figure>
+      <figcaption>Planned: same road, sign-in beside it</figcaption>
+      <svg viewBox="0 0 420 220" role="img" aria-label="Visitor reaches the website and API directly. Sign-in sits below the road.">
+        <rect x="16" y="70" width="88" height="40" fill="#171d25" stroke="#e7ecf1"/>
+        <text x="60" y="94" text-anchor="middle" fill="#e7ecf1" font-size="13">Visitor</text>
+        <rect x="308" y="28" width="96" height="36" fill="#171d25" stroke="#e7ecf1"/>
+        <text x="356" y="50" text-anchor="middle" fill="#e7ecf1" font-size="13">Website :80</text>
+        <rect x="308" y="112" width="96" height="36" fill="#171d25" stroke="#e7ecf1"/>
+        <text x="356" y="134" text-anchor="middle" fill="#e7ecf1" font-size="13">API :8080</text>
+        <rect x="150" y="164" width="110" height="40" fill="#171d25" stroke="#8fb4d4"/>
+        <text x="205" y="188" text-anchor="middle" fill="#8fb4d4" font-size="13">Sign-in</text>
+        <path d="M104 90 H280 V46 H308 M280 90 V130 H308" fill="none" stroke="#e7ecf1" stroke-width="1.5"/>
+        <path d="M200 90 V164 M250 164 V90" fill="none" stroke="#8fb4d4" stroke-width="1.5" stroke-dasharray="4 3"/>
+      </svg>
+    </figure>
+  </div>
+
+  <h2>Scope</h2>
+  <table>
+    <thead><tr><th>In this revision</th><th>Stays as it is</th></tr></thead>
+    <tbody>
+      <tr><td>Constitution amendment 2.0.0, with maintainer approval</td><td>Auth-host pages for sign-in, callback, and sign-out</td></tr>
+      <tr><td><code>signIn: shared</code> or <code>none</code>. Omitted means <code>none</code></td><td>Project PN site and API addresses</td></tr>
+      <tr><td>Remove <code>forward-auth</code> from the Project PN door</td><td>NetworkPolicy ports 80 and 8080 from the platform namespace</td></tr>
+      <tr><td>Strip forged identity headers, including Authorization</td><td>Gateway standard-library limit, ClusterIP-only Services</td></tr>
+      <tr><td>Return the browser to the same project address after sign-in</td><td>Business permissions inside the project</td></tr>
+      <tr><td>Gateway egress on port 8080 only when <code>signIn</code> is <code>shared</code></td><td>Machine access to the secret store</td></tr>
+    </tbody>
+  </table>
+
+  <h2>Door diff</h2>
+  <p>Project PN, both routes. Ports and Services stay. The middleware list loses the sign-in wall.</p>
+  <pre><span class="del">- middlewares:
+-   - name: strip-forged-headers
+-     namespace: platform
+-   - name: forward-auth
+-     namespace: platform</span>
+<span class="add">+ priority: 100   # /api to pn-backend:8080
++ priority: 10    # host to pn-frontend:80
++ middlewares:
++   - name: strip-forged-headers
++     namespace: platform</span></pre>
+  <p class="note">strip-forged-headers also clears Authorization. A candidate that names forward-auth, or a port other than 80 or 8080, is rejected and this door stays.</p>
+
+  <h2>Verification</h2>
+  <table>
+    <thead><tr><th>Check</th><th>Expected</th></tr></thead>
+    <tbody>
+      <tr><td>Render the PN door and NetworkPolicy</td><td>Priorities 100 and 10. Ports 8080 and 80. No forward-auth.</td></tr>
+      <tr><td>10 requests to a <code>none</code> project while sign-in is stopped</td><td>The project answers every time. No redirect to the auth host.</td></tr>
+      <tr><td>10 requests to <code>https://pn.example.com/</code></td><td>The project answers before any sign-in request.</td></tr>
+      <tr><td>Sign-in return</td><td>The browser comes back to the same PN address. A return to another project is rejected.</td></tr>
+      <tr><td>Door candidate on port 9090</td><td>Rejected. The previous door remains.</td></tr>
+    </tbody>
+  </table>
+  <p>Commands and the full expected outcomes are in <a href="../../specs/006-separate-project-auth/quickstart.md">quickstart.md</a>.</p>
+
+  <h2>Gate</h2>
+  <p>Constitution 1.4.1 fails this design until amendment 2.0.0 is in the same revision. After that amendment, the design passes: the project door is not a sign-in check, and a failed confirmation leaves only the asking part unsigned-in.</p>
+</main>
+</body>
+</html>

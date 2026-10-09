@@ -1,0 +1,12 @@
+# Project PN sign-in choice. Flux applies the copy in boundary/sign-in.yaml.
+# Keep the two files the same. This file does not grant business permissions.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sign-in
+  namespace: proj-pn
+  labels:
+    app.kubernetes.io/name: project-pn
+    app.kubernetes.io/part-of: project-pn
+data:
+  signIn: shared

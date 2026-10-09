@@ -11,7 +11,7 @@ All declarative configurations, workload definitions, and environment profiles M
 All project namespaces MUST enforce the Kubernetes Restricted Pod Security profile through Pod Security Admission (audit and warn modes are strictly prohibited). Application containers MUST run as non-root and drop all capabilities, permitting at most `NET_BIND_SERVICE`. Workloads MUST run under dedicated platform-provisioned ServiceAccounts with automatic API token mounting disabled. Project pods MUST NOT mount service-account tokens or access the Kubernetes API. Project Services MUST be ClusterIP only; NodePort and LoadBalancer services represent perimeter bypasses and MUST be rejected. Cross-workload traffic MUST be constrained by explicit NetworkPolicies.
 
 ### III. Defense-in-Depth Identity & Decoupled Authorization
-Public ingress MUST expose only the minimal browser-facing OIDC routes and authenticated session revocation. Administrative consoles (including Keycloak `/admin/`, master realm, metrics port 9000, and health endpoints) MUST NEVER be exposed via public ingress and require private, authenticated cluster access. Platform authentication MUST be handled via a custom Go gateway built strictly with the Go standard library (zero runtime third-party dependencies). The gateway forwards Keycloak-issued target-project access tokens; projects MUST independently verify token signatures, issuer, audience, and expiration. Platform identity is strictly `(issuer, subject)`—email addresses MUST NOT serve as persistent unique identifiers. Identity establishment does NOT grant application permissions; projects MUST explicitly declare business authorization, and missing declarations MUST fail closed.
+Public ingress MUST expose only the minimal browser-facing OIDC routes and authenticated session revocation. Administrative consoles (including Keycloak `/admin/`, master realm, metrics port 9000, and health endpoints) MUST NEVER be exposed via public ingress and require private, authenticated cluster access. Platform authentication MUST be handled via a custom Go gateway built strictly with the Go standard library (zero runtime third-party dependencies). The shared sign-in service establishes who a user is only after a project asks. It does not select the project's published addresses. A project that uses shared sign-in verifies a confirmed identity for signature, issuer, audience, and expiration. A project that does not use shared sign-in has no connection to the sign-in service. Platform identity is strictly `(issuer, subject)`—email addresses MUST NOT serve as persistent unique identifiers. Identity establishment does NOT grant application permissions; projects MUST explicitly declare business authorization, and missing declarations MUST fail closed.
 
 ### IV. Bounded Resource Allocation & 1/n Budgeting
 Every container MUST define explicit CPU and memory requests and limits; unbounded borrowing or unconstrained memory execution is prohibited. Compute resources MUST be allocated according to a deterministic 1/n project model: application capacity equals measured node allocatable capacity minus platform reservations, divided equally across deployed projects. The aggregate resource consumption of a project (accounting for peak concurrency, rollout surge, Jobs, and CronJobs) MUST fit within its assigned slice. Candidate revisions exceeding project budgets or decreasing existing memory limits during the interim freeze MUST be rejected before application. Platform-managed namespace ResourceQuotas act as non-bypassable admission backstops.
@@ -25,7 +25,7 @@ The platform deployment contract MUST run consistently across local native k3s, 
 ## Security, Isolation & Architectural Constraints
 
 - **Minimal Gateway Dependencies:** The authentication gateway MUST use Go standard-library cryptographic primitives, TLS, HTTP, and JSON functionality. Third-party Go modules, external gateway frameworks, Redis, or OAuth2 Proxy MUST NOT be introduced into the runtime image.
-- **Fail-Closed Session Authority:** The gateway MUST validate credential validity and active session status synchronously before proxying requests. Any authentication failure, expired session, or backend dependency failure MUST fail closed.
+- **Fail-Closed Session Authority:** When a project asks the sign-in service to confirm a session, failure or unavailability leaves the visitor unsigned-in for that part. A project that does not use sign-in continues to answer while the sign-in service is unavailable. The sign-in service is not placed on the project's door. Online sign-out of a confirmed session stays.
 - **Online Current-Session Revocation:** Users MUST be able to terminate their active platform session across all protected projects via an authenticated, CSRF-protected gateway endpoint. The revocation MUST invalidate subsequent requests immediately on the cluster network without waiting for access token expiration.
 - **Public Surface Allowlist:** Ingress routing rules MUST reject all traffic to internal endpoints, including Keycloak administrative consoles, management ports, and cluster internal JWKS/introspection channels.
 - **Controlled Ingress Bypass Prevention:** Platform admission controls and preflight validations MUST reject project manifests defining NodePort/LoadBalancer Services, hostPath mounts, host namespaces, or privileged container security contexts.
@@ -53,4 +53,18 @@ The platform deployment contract MUST run consistently across local native k3s, 
   - **PATCH (1.0.X):** Clarifications, wording refinements, documentation synchronization, and non-semantic corrections.
 - **Compliance Review:** All pull requests and candidate revisions MUST be verified for compliance with this Constitution during code review and pre-deployment execution.
 
-**Version**: 1.4.1 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-10-04
+## Amendment 2.0.0
+
+**Rationale**: Visitors open a project without the sign-in service standing on that road. The sign-in service remains the only shared way to establish who a user is, and only when that project asks.
+
+**Impact**:
+
+- Security: `none` projects have no platform identity. `shared` projects still reject a missing, forged, expired, or foreign identity on the parts that need a known user. Admin routes stay private.
+- Resource quota: Unchanged.
+- Portability: Unchanged. The door remains configuration, not application code.
+
+**Migration**: Project PN declares `shared`. Its site and API addresses stay. `forward-auth` is removed from those routes. Ports 80 and 8080 stay aligned with its NetworkPolicy. Egress to the gateway on port 8080 is added for session confirmation only.
+
+**Maintainer approval**: This major bump is written in the working tree and is not approved for commit. Do not commit version 2.0.0 until the repository maintainer approves it.
+
+**Version**: 2.0.0 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-10-09

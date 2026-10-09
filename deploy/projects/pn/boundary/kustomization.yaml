@@ -7,3 +7,4 @@ resources:
   - resource-quota.yaml
   - network-policy.yaml
   - reconciler-rbac.yaml
+  - sign-in.yaml

@@ -44,9 +44,16 @@ func TestHeaderSanitization(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.HandleForwardAuth(rr, req)
 
-	// Since there is no session cookie, should redirect to login (HTTP 302)
-	if rr.Code != http.StatusFound {
-		t.Fatalf("expected status 302 Found, got %d", rr.Code)
+	// Opening confirmation without a cookie leaves the visitor unsigned-in.
+	// It does not redirect to the sign-in host.
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected status 401 Unauthorized, got %d", rr.Code)
+	}
+	if loc := rr.Header().Get("Location"); loc != "" {
+		t.Fatalf("unsigned-in confirmation must not redirect, got Location %q", loc)
+	}
+	if rr.Header().Get("Authorization") != "" {
+		t.Errorf("Authorization must not be emitted when the visitor is unsigned-in")
 	}
 
 	// Verify inbound headers were stripped from the request
@@ -55,6 +62,9 @@ func TestHeaderSanitization(t *testing.T) {
 	}
 	if req.Header.Get("X-User-Issuer") != "" {
 		t.Errorf("expected X-User-Issuer to be stripped, got %s", req.Header.Get("X-User-Issuer"))
+	}
+	if req.Header.Get("Authorization") != "" {
+		t.Errorf("expected Authorization to be stripped, got %s", req.Header.Get("Authorization"))
 	}
 }
 

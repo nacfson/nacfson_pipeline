@@ -11,23 +11,21 @@ spec:
     - web
     - websecure
   routes:
-    # Protected Frontend & Backend Routes
+    # Host route, then /api. Flux match patches address these indexes.
     - match: Host(`pn.example.com`)
       kind: Rule
+      priority: 10
       middlewares:
         - name: strip-forged-headers
-          namespace: platform
-        - name: forward-auth
           namespace: platform
       services:
         - name: pn-frontend
           port: 80
     - match: Host(`pn.example.com`) && PathPrefix(`/api`)
       kind: Rule
+      priority: 100
       middlewares:
         - name: strip-forged-headers
-          namespace: platform
-        - name: forward-auth
           namespace: platform
       services:
         - name: pn-backend

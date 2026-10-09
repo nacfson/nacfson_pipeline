@@ -23,7 +23,7 @@ properties:
       - HTTP_SERVICE
       - BACKGROUND_WORKER
       - SCHEDULED_JOB
-    description: "Type of workload. HTTP services receive Traefik IngressRoute and ForwardAuth integration."
+    description: "Type of workload. HTTP services receive a Traefik IngressRoute for the project's published addresses. That route is the project door, not a sign-in check."
 
   image:
     type: object
@@ -110,6 +110,13 @@ properties:
         type: string
         default: "1Gi"
         pattern: "^[0-9]+Gi$"
+
+  signIn:
+    type: string
+    enum:
+      - shared
+      - none
+    description: "Optional. shared asks the platform sign-in service after the visitor has reached the project. none means the project has no connection to sign-in. Omitted means none. This field does not grant business permissions."
 
   ordinaryRole:
     type: object

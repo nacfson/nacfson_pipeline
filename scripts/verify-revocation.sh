@@ -23,15 +23,19 @@ else
   exit 1
 fi
 
-# Check 2: Static verification of Traefik Middleware and Ingress Routing
-echo "[Check 2/4] Verifying Ingress Routing for /auth/logout..."
-if grep -q "path: /auth" "$REPO_ROOT/deploy/platform/ingress/traefik-middleware.yaml" || \
-   grep -q "forwardAuth:" "$REPO_ROOT/deploy/platform/ingress/traefik-middleware.yaml"; then
-  echo "  ✓ PASS: Traefik ForwardAuth middleware routing verified."
+# Check 2: Project doors do not require forward-auth. Sign-out stays on the auth host.
+echo "[Check 2/4] Verifying project door and /auth/logout..."
+if grep -q "/auth/logout" "$REPO_ROOT/deploy/platform/ingress/ingress-allowlist.yaml"; then
+  echo "  ✓ PASS: /auth/logout remains on the auth-host allowlist."
 else
-  echo "  ✗ FAIL: ForwardAuth middleware not configured!" >&2
+  echo "  ✗ FAIL: /auth/logout missing from deploy/platform/ingress/ingress-allowlist.yaml" >&2
   exit 1
 fi
+if grep -q "forward-auth" "$REPO_ROOT/deploy/projects/pn/workloads/ingress-route.yaml"; then
+  echo "  ✗ FAIL: Project PN door still names forward-auth" >&2
+  exit 1
+fi
+echo "  ✓ PASS: Project door without forward-auth is accepted."
 
 # Check 3: Automated Contract & Unit Testing via Container/Podman
 echo "[Check 3/4] Running Go Revocation & Contract Test Suite..."

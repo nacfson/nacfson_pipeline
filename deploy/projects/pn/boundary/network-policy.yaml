@@ -57,4 +57,14 @@ spec:
         - protocol: TCP
           port: 5432
 
-  # 3. Explicit external API egress allowlist (empty by default; declared per project contract)
+    # 3. Session confirmation only. Not a visitor door, and not Keycloak itself.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: identity
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway
+      ports:
+        - protocol: TCP
+          port: 8080

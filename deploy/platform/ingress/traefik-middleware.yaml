@@ -26,3 +26,4 @@ spec:
     customRequestHeaders:
       X-User-Subject: ""
       X-User-Issuer: ""
+      Authorization: ""

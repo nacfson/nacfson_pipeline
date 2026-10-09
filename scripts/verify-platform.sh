@@ -49,13 +49,16 @@ run_suite "Scenario 1: Capacity Discovery & 1/n Resource Budgeting" \
 run_suite "Scenarios 2 & 3: Restricted PSA Sandboxing & Network Isolation" \
   "bash '$REPO_ROOT/scripts/verify-isolation.sh'"
 
-# Scenario 4: Authentication Gateway & ForwardAuth Protocol
+# Scenario 4: Session confirmation. A project door does not use forward-auth.
 run_suite "Scenario 4: Go Authentication Gateway Contracts & Header Sanitization" \
-  "if command -v podman >/dev/null 2>&1; then \
+  "if grep -q 'forward-auth' '$REPO_ROOT/deploy/projects/pn/workloads/ingress-route.yaml'; then \
+     echo 'Project door must not name forward-auth' >&2; exit 1; \
+   fi && \
+   if command -v podman >/dev/null 2>&1; then \
      podman run --rm -v '$REPO_ROOT/gateway:/app:Z' -w /app docker.io/library/golang:1.22-alpine \
-       go test -v -run 'TestForwardAuth|TestHeader|TestAuthenticated' ./tests; \
+       go test -v -run 'TestForwardAuth|TestHeader|TestAuthenticated|TestSessionReturn|TestConfirmation' ./tests; \
    elif command -v go >/dev/null 2>&1; then \
-     (cd '$REPO_ROOT/gateway' && go test -v -run 'TestForwardAuth|TestHeader|TestAuthenticated' ./tests); \
+     (cd '$REPO_ROOT/gateway' && go test -v -run 'TestForwardAuth|TestHeader|TestAuthenticated|TestSessionReturn|TestConfirmation' ./tests); \
    fi"
 
 # Scenario 5: Synchronous Online Session Revocation & CSRF

@@ -25,7 +25,7 @@ In this document, MUST identifies a required behavior, SHOULD identifies a recom
 | Identity provider | Keycloak with Google identity brokering |
 | Registration | Any Google account may register; no administrator approval |
 | Project access | Ordinary-user entry for every registered identity; business permissions come from the project declaration |
-| Project credential verification | Projects independently verify the credential forwarded by the gateway |
+| Project credential verification | A shared project verifies a confirmed identity after it asks. A project that does not use sign-in has no connection to the sign-in service |
 | Database | Standard PostgreSQL (StatefulSet backed by persistent disk volume) |
 | Database isolation | One initial PostgreSQL instance, separate databases and restricted roles |
 | Persistent storage | Disk-backed persistent volumes on the VPS |
@@ -41,22 +41,21 @@ Keycloak, PostgreSQL, Traefik, the gateway, and project workloads reside on the 
 
 ```text
 Browser --> project.example.com --> Traefik --> Project workload
-                                      |
-                                      +--> Go gateway: authentication check
-                                                   |
-                                                Keycloak --> PostgreSQL
-                                                   |
-                                                 Google
+                                                    |
+                                                    +--> only when that project asks
+                                                         Go gateway --> Keycloak --> PostgreSQL
+                                                                           |
+                                                                         Google
 
 GitHub candidate revision --> platform-preflight --> protected main --> FluxCD reconciliation
 GitHub Actions --> GHCR --> Kubernetes image pulls
 ```
 
-The authentication check MUST happen before a protected request reaches its project. The login flow redirects the browser through Keycloak and Google; the diagram does not imply that Google is contacted for every application request.
+A visitor reaches the project on that project's published address before any sign-in request. The sign-in service establishes who the user is only after the project asks. A project that does not use sign-in has no connection to the sign-in service. The login flow redirects the browser through Keycloak and Google when a project asks; the diagram does not imply that Google is contacted for every application request.
 
 The existing hostname pattern MUST be preserved: a central identity hostname such as `auth.example.com` and separate project subdomains. Exact domain names are operator configuration, not embedded platform constants.
 
-Keycloak's login and callback routes MUST remain reachable without an already authenticated platform session. Protected workloads MUST NOT have an alternative externally accessible route that bypasses the gateway. Workload traffic isolation MUST be enforced using network policy, not an assumption that ClusterIP services are inherently inaccessible to other pods.
+Keycloak's login and callback routes MUST remain reachable without an already authenticated platform session. A project door publishes that project's addresses and does not place the sign-in service on those addresses. NodePort and LoadBalancer remain rejected. Workload traffic isolation MUST be enforced using network policy, not an assumption that ClusterIP services are inherently inaccessible to other pods.
 
 ### ISOLATE-01: Project workload and administrative boundaries
 
@@ -66,7 +65,7 @@ Under Restricted, a container MUST drop all capabilities and MAY add back only `
 
 Each project MUST run its pods as a dedicated platform-provisioned ServiceAccount. That account MUST NOT receive application-granted Kubernetes API permissions. Automatic ServiceAccount token mounting MUST be disabled on both the ServiceAccount and the pod. Project pods MUST NOT mount a projected service-account token and MUST NOT select or create a different ServiceAccount. Pod Security Admission does not evaluate these token settings, so a platform admission control MUST reject them.
 
-Namespace Pod Security labels, ResourceQuota, NetworkPolicy, and the project ServiceAccount MUST be reconciled only by the platform identity. The project reconciliation identity MAY create and update project workload objects. It MUST NOT be able to create or modify Namespace objects, ResourceQuota, NetworkPolicy, ServiceAccounts, Roles, RoleBindings, ClusterRoles, or ClusterRoleBindings. Project Services MUST be ClusterIP; NodePort and LoadBalancer Services are bypass routes and MUST be rejected. A project Ingress for a protected HTTP workload MUST use the gateway authentication check.
+Namespace Pod Security labels, ResourceQuota, NetworkPolicy, and the project ServiceAccount MUST be reconciled only by the platform identity. The project reconciliation identity MAY create and update project workload objects. It MUST NOT be able to create or modify Namespace objects, ResourceQuota, NetworkPolicy, ServiceAccounts, Roles, RoleBindings, ClusterRoles, or ClusterRoleBindings. Project Services MUST be ClusterIP; NodePort and LoadBalancer Services are bypass routes and MUST be rejected. A project Ingress publishes that project's addresses and does not place the sign-in service on those addresses.
 
 Restricted enforcement in this requirement applies to project namespaces. It does not select a Pod Security profile for Keycloak, PostgreSQL, Traefik, Flux (when deployed), or the gateway.
 
@@ -100,13 +99,13 @@ Google OAuth client configuration, Keycloak broker credentials, redirect URIs, a
 
 ### AUTH-03: Go gateway
 
-The gateway MUST implement the browser OIDC flow and Traefik-compatible external authentication checks. Keycloak, not the gateway, MUST implement Google identity brokering and act as the credential issuer.
+The gateway MUST implement the browser OIDC flow. Keycloak, not the gateway, MUST implement Google identity brokering and act as the credential issuer. The gateway is not placed on a project's door.
 
 The gateway MUST use the authorization-code flow with PKCE and validate state, nonce where applicable, callback parameters, and the expected issuer. Redirect destinations MUST be restricted to configured project routes.
 
 The gateway MUST use standard-library cryptographic primitives, TLS, HTTP, and JSON functionality. It MUST NOT implement new cryptographic primitives or depend on OAuth2 Proxy, an external gateway framework, Redis, or a third-party Go authentication module for the initial runtime.
 
-The gateway MUST check both credential validity and current session validity before permitting a protected request. Authentication errors, unavailable authentication dependencies, and invalid session state MUST fail closed.
+When a project asks the gateway to confirm a session, the gateway MUST check credential validity and current session validity. Failure or unavailability leaves the visitor unsigned-in for that part. A project that does not use sign-in continues to answer. Opening the project host does not require a session cookie.
 
 The gateway MUST supply a Keycloak-issued access token intended for the target project. It MUST NOT forward a Google access token or an OIDC ID token as the project's API access credential. Obtaining the correct project audience MUST be part of the client/gateway integration.
 
@@ -116,7 +115,7 @@ Session state MUST NOT rely exclusively on one gateway process's memory. Prefer 
 
 ### AUTH-04: Project-side verification
 
-Projects MUST accept only requests the gateway has authenticated, and they MUST independently verify the forwarded credential. Successful verification establishes the platform identity in AUTH-06 and does not grant business permissions. Project verification MUST check:
+A project that does not use shared sign-in accepts its own door without a sign-in session. A presented identity claim is not a signed-in user. A project that uses shared sign-in verifies a confirmed identity on the parts that need a known user. Successful verification establishes the platform identity in AUTH-06 and does not grant business permissions. Project verification MUST check:
 
 - A signature using the configured Keycloak realm's published verification keys and an explicitly allowed algorithm.
 - The expected issuer and target-project audience.

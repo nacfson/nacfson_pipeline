@@ -34,12 +34,18 @@ type SessionCookieData struct {
 	CreatedAt    int64             `json:"iat"`
 }
 
-// Handler handles Traefik ForwardAuth and OIDC callbacks.
+// CodeExchanger exchanges an authorization code for tokens.
+type CodeExchanger interface {
+	ExchangeCode(code, codeVerifier, redirectURI string) (*keycloak.TokenResponse, error)
+}
+
+// Handler handles session confirmation and OIDC return.
 type Handler struct {
 	Config    *config.Config
 	Validator keycloak.SessionValidator
 	Client    *keycloak.Client
 	Revoker   keycloak.SessionTerminator
+	Exchanger CodeExchanger
 }
 
 // NewHandler creates a new Auth Handler.
@@ -61,36 +67,38 @@ func (h *Handler) SetRevoker(revoker keycloak.SessionTerminator) {
 	h.Revoker = revoker
 }
 
-// HandleForwardAuth implements Traefik ForwardAuth protocol on GET /auth.
+// HandleForwardAuth confirms a session when a shared project asks.
+// A missing cookie does not redirect. Opening the project host does not require one.
 func (h *Handler) HandleForwardAuth(w http.ResponseWriter, r *http.Request) {
-	// 1. Inbound Header Sanitization: Strip client-supplied headers
+	// 1. Inbound Header Sanitization: Strip client-supplied identity headers
 	r.Header.Del("X-User-Subject")
 	r.Header.Del("X-User-Issuer")
+	r.Header.Del("Authorization")
 
 	targetHost := r.Header.Get("X-Forwarded-Host")
 	if targetHost == "" {
 		targetHost = r.Host
 	}
-	targetProto := r.Header.Get("X-Forwarded-Proto")
-	if targetProto == "" {
-		targetProto = "https"
-	}
-	targetURI := r.Header.Get("X-Forwarded-Uri")
-	if targetURI == "" {
-		targetURI = "/"
-	}
-	targetURL := fmt.Sprintf("%s://%s%s", targetProto, targetHost, targetURI)
 
-	// 2. Check for PLATFORM_SESSION cookie
+	// 2. A missing or unreadable session leaves the visitor unsigned-in.
 	cookie, err := r.Cookie(h.Config.CookieName)
 	if err != nil || cookie.Value == "" {
-		h.initiateLogin(w, r, targetURL, targetHost)
+		http.Error(w, `{"error":"unsigned_in","message":"No confirmed session"}`, http.StatusUnauthorized)
 		return
 	}
 
 	session, err := h.decodeSessionCookie(cookie.Value)
 	if err != nil {
-		h.initiateLogin(w, r, targetURL, targetHost)
+		http.Error(w, `{"error":"unsigned_in","message":"No confirmed session"}`, http.StatusUnauthorized)
+		return
+	}
+
+	if h.Config.SessionTimeout > 0 && time.Now().Unix()-session.CreatedAt >= int64(h.Config.SessionTimeout.Seconds()) {
+		http.Error(w, `{"error":"unsigned_in","message":"Session expired"}`, http.StatusUnauthorized)
+		return
+	}
+	if h.Config.KeycloakIssuerURL != "" && session.Issuer != h.Config.KeycloakIssuerURL {
+		http.Error(w, `{"error":"unsigned_in","message":"Session issuer does not match this sign-in service"}`, http.StatusUnauthorized)
 		return
 	}
 
@@ -110,12 +118,12 @@ func (h *Handler) HandleForwardAuth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 4. Determine Project Audience & Inject Token
+	// 4. Confirm only a token issued for this project.
 	projectAudience := deriveProjectAudience(targetHost)
 	projectToken := session.Tokens[projectAudience]
 	if projectToken == "" {
-		// Fallback to primary session token if audience mapping not separately cached
-		projectToken = session.Tokens["default"]
+		http.Error(w, `{"error":"unsigned_in","message":"Session is not confirmed for this project"}`, http.StatusUnauthorized)
+		return
 	}
 
 	// Success: Inject headers for Traefik to forward upstream
@@ -183,6 +191,53 @@ func (h *Handler) initiateLogin(w http.ResponseWriter, r *http.Request, targetUR
 	)
 
 	http.Redirect(w, r, loginURL, http.StatusFound)
+}
+
+// HandleSessionStart begins sign-in for a shared project.
+// return must already be an address on that project's door.
+func (h *Handler) HandleSessionStart(w http.ResponseWriter, r *http.Request) {
+	returnTo := r.URL.Query().Get("return")
+	if !h.returnHostAllowed(returnTo) {
+		http.Error(w, "return address is not on this project door", http.StatusBadRequest)
+		return
+	}
+	u, err := url.Parse(returnTo)
+	if err != nil {
+		http.Error(w, "return address is not on this project door", http.StatusBadRequest)
+		return
+	}
+	h.initiateLogin(w, r, returnTo, u.Hostname())
+}
+
+func (h *Handler) returnHostAllowed(targetURL string) bool {
+	if h.Config == nil {
+		return false
+	}
+	u, err := url.Parse(targetURL)
+	if err != nil || u.Hostname() == "" || u.User != nil || u.Scheme != "https" {
+		return false
+	}
+	host := u.Hostname()
+	for _, allowed := range h.Config.AllowedReturnHosts {
+		if strings.EqualFold(host, strings.TrimSpace(allowed)) {
+			return true
+		}
+	}
+	return false
+}
+
+// ProjectHostSessionCookie is the session cookie scoped to one project host.
+func ProjectHostSessionCookie(name, value, host string, expires time.Time) *http.Cookie {
+	return &http.Cookie{
+		Name:     name,
+		Value:    value,
+		Path:     "/",
+		Domain:   host,
+		Expires:  expires,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	}
 }
 
 // HandleCallback processes OIDC authorization code return from Keycloak.
@@ -257,11 +312,29 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Exchange Code with Keycloak
-	redirectURI := fmt.Sprintf("https://auth%s/oauth/callback", h.Config.CookieDomain)
-	tokenResp, err := h.Client.ExchangeCode(code, verifier, redirectURI)
+	if !h.returnHostAllowed(state.TargetURL) {
+		http.Error(w, "return address is not on this project door", http.StatusBadRequest)
+		return
+	}
+	returnURL, err := url.Parse(state.TargetURL)
 	if err != nil {
-		http.Error(w, "token exchange error: "+err.Error(), http.StatusBadGateway)
+		http.Error(w, "return address is not on this project door", http.StatusBadRequest)
+		return
+	}
+
+	// Exchange Code with Keycloak. Unreachable sign-in does not confirm the user.
+	redirectURI := fmt.Sprintf("https://auth%s/oauth/callback", h.Config.CookieDomain)
+	var tokenResp *keycloak.TokenResponse
+	if h.Exchanger != nil {
+		tokenResp, err = h.Exchanger.ExchangeCode(code, verifier, redirectURI)
+	} else if h.Client != nil {
+		tokenResp, err = h.Client.ExchangeCode(code, verifier, redirectURI)
+	} else {
+		http.Error(w, `{"error":"unsigned_in","message":"Sign-in service unreachable"}`, http.StatusServiceUnavailable)
+		return
+	}
+	if err != nil {
+		http.Error(w, `{"error":"unsigned_in","message":"Sign-in service unreachable"}`, http.StatusServiceUnavailable)
 		return
 	}
 
@@ -270,14 +343,14 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		sessionIssuer = h.Config.KeycloakIssuerURL
 	}
 
-	// Build session data
+	// Build session data for the project that owns the return address.
+	audience := deriveProjectAudience(returnURL.Hostname())
 	sess := SessionCookieData{
 		SessionID: tokenResp.SessionState,
 		Subject:   parseSubjectFromJWT(tokenResp.AccessToken),
 		Issuer:    sessionIssuer,
 		Tokens: map[string]string{
-			"default":    tokenResp.AccessToken,
-			"project-pn": tokenResp.AccessToken,
+			audience: tokenResp.AccessToken,
 		},
 		RefreshToken: tokenResp.RefreshToken,
 		CreatedAt:    time.Now().Unix(),
@@ -285,17 +358,13 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	cookieVal := h.encodeSessionCookie(sess)
 
-	// Set session cookie
-	http.SetCookie(w, &http.Cookie{
-		Name:     h.Config.CookieName,
-		Value:    cookieVal,
-		Path:     "/",
-		Domain:   h.Config.CookieDomain,
-		Expires:  time.Now().Add(h.Config.SessionTimeout),
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-	})
+	// Cookie is scoped to the project host, not the platform parent domain.
+	http.SetCookie(w, ProjectHostSessionCookie(
+		h.Config.CookieName,
+		cookieVal,
+		returnURL.Hostname(),
+		time.Now().Add(h.Config.SessionTimeout),
+	))
 
 	// Clear temporary auth cookie
 	http.SetCookie(w, &http.Cookie{
@@ -307,11 +376,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		Secure:   true,
 	})
 
-	targetRedirect := state.TargetURL
-	if targetRedirect == "" {
-		targetRedirect = "/"
-	}
-	http.Redirect(w, r, targetRedirect, http.StatusFound)
+	http.Redirect(w, r, state.TargetURL, http.StatusFound)
 }
 
 func (h *Handler) encodeSessionCookie(data SessionCookieData) string {

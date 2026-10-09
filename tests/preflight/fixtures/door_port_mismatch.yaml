@@ -1,0 +1,65 @@
+# Candidate door on port 9090. The NetworkPolicy allows only 80 and 8080 from the platform namespace.
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: proj-mismatch
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 9090
+      targetPort: 9090
+      protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: project-mismatch-isolation
+  namespace: proj-mismatch
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: platform
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: project-mismatch-ingress
+  namespace: proj-mismatch
+spec:
+  entryPoints:
+    - web
+    - websecure
+  routes:
+    - match: Host(`mismatch.example.com`)
+      kind: Rule
+      priority: 10
+      middlewares:
+        - name: strip-forged-headers
+          namespace: platform
+      services:
+        - name: web
+          port: 9090

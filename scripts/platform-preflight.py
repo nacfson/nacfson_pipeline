@@ -62,6 +62,188 @@ def load_yaml_docs(file_path):
         sys.exit(2)
 
 
+def sign_in_choice(docs):
+    """Return (choice, error). Absent means none."""
+    choice = None
+    for doc in docs:
+        if not isinstance(doc, dict):
+            continue
+        if isinstance(doc.get("signIn"), str):
+            choice = doc.get("signIn")
+        data = doc.get("data")
+        if isinstance(data, dict) and isinstance(data.get("signIn"), str):
+            choice = data.get("signIn")
+        spec = doc.get("spec")
+        if isinstance(spec, dict) and isinstance(spec.get("signIn"), str):
+            choice = spec.get("signIn")
+    if choice is None or choice == "":
+        return "none", None
+    if choice not in ("shared", "none"):
+        return choice, f"signIn must be shared or none, got {choice!r}"
+    return choice, None
+
+
+def _as_port(value):
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.isdigit():
+        return int(value)
+    return None
+
+
+def _platform_ingress_ports(docs):
+    ports = set()
+    for doc in docs:
+        if doc.get("kind") != "NetworkPolicy":
+            continue
+        for rule in (doc.get("spec") or {}).get("ingress") or []:
+            from_platform = False
+            for src in rule.get("from") or []:
+                labels = (src.get("namespaceSelector") or {}).get("matchLabels") or {}
+                if labels.get("name") == "platform" or labels.get("kubernetes.io/metadata.name") == "platform":
+                    from_platform = True
+            if not from_platform:
+                continue
+            for entry in rule.get("ports") or []:
+                port = _as_port(entry.get("port"))
+                if port is not None:
+                    ports.add(port)
+    return ports
+
+
+def _services_by_name(docs):
+    found = {}
+    for doc in docs:
+        if doc.get("kind") != "Service":
+            continue
+        name = (doc.get("metadata") or {}).get("name")
+        if name:
+            found[name] = doc
+    return found
+
+
+def _service_ports(svc):
+    ports = set()
+    for entry in (svc.get("spec") or {}).get("ports") or []:
+        port = _as_port(entry.get("port"))
+        if port is not None:
+            ports.add(port)
+    return ports
+
+
+def _middleware_names(route):
+    names = []
+    for mw in route.get("middlewares") or []:
+        if isinstance(mw, dict):
+            names.append(mw.get("name") or "")
+        elif isinstance(mw, str):
+            names.append(mw)
+    return names
+
+
+def _gateway_or_signin_egress(rule):
+    hits = []
+    for dest in rule.get("to") or []:
+        ns_labels = (dest.get("namespaceSelector") or {}).get("matchLabels") or {}
+        pod_labels = (dest.get("podSelector") or {}).get("matchLabels") or {}
+        ns = ns_labels.get("kubernetes.io/metadata.name") or ns_labels.get("name") or ""
+        name = pod_labels.get("app.kubernetes.io/name") or pod_labels.get("app") or ""
+        if ns == "identity" or name in ("gateway", "keycloak"):
+            ports = []
+            for entry in rule.get("ports") or []:
+                port = _as_port(entry.get("port"))
+                if port is not None:
+                    ports.append(port)
+            hits.append((name, ports))
+    return hits
+
+
+def check_project_doors(projects_dict):
+    """Reject a candidate door that does not match the project's internal network.
+
+    A rejection does not rewrite the last accepted door. This check only reads
+    the candidate and reports it.
+    """
+    violations = []
+    kept = "; last accepted door is not replaced"
+    for proj_id, docs in sorted(projects_dict.items()):
+        choice, choice_err = sign_in_choice(docs)
+        if choice_err:
+            violations.append({
+                "rule": 2,
+                "object": f"project/{proj_id}",
+                "detail": choice_err + kept,
+            })
+            continue
+        allowed_ports = _platform_ingress_ports(docs)
+        services = _services_by_name(docs)
+        for doc in docs:
+            if doc.get("kind") != "NetworkPolicy":
+                continue
+            obj = f"{proj_id}/NetworkPolicy/{(doc.get('metadata') or {}).get('name', '')}"
+            for rule in (doc.get("spec") or {}).get("egress") or []:
+                for name, ports in _gateway_or_signin_egress(rule):
+                    gateway_confirm = name == "gateway" and ports == [8080]
+                    if choice == "shared" and gateway_confirm:
+                        continue
+                    if choice != "shared":
+                        detail = f"signIn {choice} forbids egress to the gateway or the sign-in service"
+                    else:
+                        detail = f"shared sign-in egress must be the gateway on port 8080, got {name or 'identity'} ports {ports}"
+                    violations.append({"rule": 2, "object": obj, "detail": detail + kept})
+        for doc in docs:
+            if doc.get("kind") != "IngressRoute":
+                continue
+            obj = f"{proj_id}/IngressRoute/{(doc.get('metadata') or {}).get('name', '')}"
+            for route in (doc.get("spec") or {}).get("routes") or []:
+                names = _middleware_names(route)
+                if "forward-auth" in names:
+                    violations.append({
+                        "rule": 2,
+                        "object": obj,
+                        "detail": "project door must not name forward-auth" + kept,
+                    })
+                if "strip-forged-headers" not in names:
+                    violations.append({
+                        "rule": 2,
+                        "object": obj,
+                        "detail": "project door must name strip-forged-headers" + kept,
+                    })
+                for svc_ref in route.get("services") or []:
+                    svc_name = svc_ref.get("name")
+                    foreign_ns = svc_ref.get("namespace")
+                    if foreign_ns and foreign_ns != proj_id:
+                        violations.append({
+                            "rule": 2,
+                            "object": obj,
+                            "detail": f"service {svc_name} is outside project namespace {proj_id}" + kept,
+                        })
+                        continue
+                    svc = services.get(svc_name)
+                    if svc is None:
+                        violations.append({
+                            "rule": 2,
+                            "object": obj,
+                            "detail": f"service {svc_name} is not in project namespace {proj_id}" + kept,
+                        })
+                        continue
+                    port = _as_port(svc_ref.get("port"))
+                    if port is None or port not in _service_ports(svc):
+                        violations.append({
+                            "rule": 2,
+                            "object": obj,
+                            "detail": f"route port {svc_ref.get('port')} is not present on service {svc_name}" + kept,
+                        })
+                        continue
+                    if port not in allowed_ports:
+                        violations.append({
+                            "rule": 2,
+                            "object": obj,
+                            "detail": f"route port {port} is not allowed from the platform namespace" + kept,
+                        })
+    return violations
+
+
 def get_pod_spec_and_meta(doc):
     kind = doc.get("kind", "")
     spec = doc.get("spec", {})
@@ -300,6 +482,14 @@ def main():
             if ns not in projects_dict:
                 projects_dict[ns] = []
             projects_dict[ns].append(doc)
+
+    if status == STATUS_PASSED:
+        door_violations = check_project_doors(projects_dict)
+        if door_violations:
+            violations.extend(door_violations)
+            status = STATUS_REJECTED_ISOLATION
+            rejection_reason = door_violations[0]["detail"]
+            exit_code = 1
 
     project_count = len(projects_dict)
     slice_cpu = app_cap_cpu / project_count if project_count > 0 else app_cap_cpu
