@@ -12,7 +12,7 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # 1. Allow traffic from Traefik Ingress Controller (platform namespace)
+    # 1. Door contract: ports 80 and 8080 from the platform namespace.
     - from:
         - namespaceSelector:
             matchLabels:
@@ -23,7 +23,21 @@ spec:
         - protocol: TCP
           port: 8080
 
-    # 2. Allow intra-namespace traffic between project pods (frontend -> backend)
+    # 2. K3s runs Traefik in kube-system. Admit only those pods, on the same ports.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+
+    # 3. Allow intra-namespace traffic between project pods (frontend -> backend)
     - from:
         - podSelector: {}
       ports:
