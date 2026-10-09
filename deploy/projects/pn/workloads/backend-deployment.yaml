@@ -41,6 +41,8 @@ spec:
               protocol: TCP
           workingDir: /app
           env:
+            - name: DATABASE_URL
+              value: "postgres://project%3Apn%3Aworkload%3Abackend:project%3Apn%3Aworkload%3Abackend@vault-db-proxy.vault.svc:5432/proj_pn?sslmode=disable"
             - name: DB_HOST
               value: "vault-db-proxy.vault.svc"
             - name: DB_PORT
