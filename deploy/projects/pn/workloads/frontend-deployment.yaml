@@ -30,6 +30,11 @@ spec:
         - name: frontend
           image: ghcr.io/nacfson/project-pn-frontend:f7e7cffb@sha256:9cfafd9702e0258eb1610676ef46622ffbcd0ab5e12f156c49b99f7d0f1dcbfc
           imagePullPolicy: IfNotPresent
+          env:
+            - name: PN_BACKEND_HOST
+              value: "pn-backend"
+            - name: PN_BACKEND_PORT
+              value: "8080"
           ports:
             - name: http
               containerPort: 80
