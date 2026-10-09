@@ -13,6 +13,8 @@ KUBE_EXEC="${KUBE_EXEC:-kubectl}"
 
 # If running against remote host without local kubectl cluster access
 if ! ${KUBE_EXEC} get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
+  # VAULT_NS and VAULT_POD exist on this machine and must expand before ssh.
+  # shellcheck disable=SC2029
   if ssh oracleCloud "sudo k3s kubectl get pod -n ${VAULT_NS} ${VAULT_POD}" >/dev/null 2>&1; then
     KUBE_EXEC="ssh oracleCloud sudo k3s kubectl"
   fi
@@ -43,21 +45,28 @@ generate_root_token() {
   echo "Initiating root token generation ceremony..."
   ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -cancel >/dev/null 2>&1 || true
 
-  local otp_json=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -generate-otp -format=json)
-  local otp=$(echo "${otp_json}" | grep -o '"otp":"[^"]*"' | cut -d'"' -f4)
+  local otp_json
+  otp_json=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -generate-otp -format=json)
+  local otp
+  otp=$(echo "${otp_json}" | grep -o '"otp":"[^"]*"' | cut -d'"' -f4)
 
-  local init_json=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -init -otp="${otp}" -format=json)
-  local nonce=$(echo "${init_json}" | grep -o '"nonce":"[^"]*"' | cut -d'"' -f4)
+  local init_json
+  init_json=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -init -otp="${otp}" -format=json)
+  local nonce
+  nonce=$(echo "${init_json}" | grep -o '"nonce":"[^"]*"' | cut -d'"' -f4)
 
-  local step_json=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -nonce="${nonce}" -otp="${otp}" -format=json "${unseal_key}")
-  local encoded=$(echo "${step_json}" | grep -o '"encoded_root_token":"[^"]*"' | cut -d'"' -f4)
+  local step_json
+  step_json=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -nonce="${nonce}" -otp="${otp}" -format=json "${unseal_key}")
+  local encoded
+  encoded=$(echo "${step_json}" | grep -o '"encoded_root_token":"[^"]*"' | cut -d'"' -f4)
 
   if [ -z "${encoded}" ]; then
     echo "Error: Failed to encode root token. Check your unseal key." >&2
     exit 1
   fi
 
-  local decoded_token=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -decode="${encoded}" -otp="${otp}" | tr -d '\r\n ')
+  local decoded_token
+  decoded_token=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -decode="${encoded}" -otp="${otp}" | tr -d '\r\n ')
   echo "${decoded_token}"
 }
 

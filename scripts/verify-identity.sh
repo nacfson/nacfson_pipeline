@@ -45,6 +45,8 @@ if ssh -o BatchMode=yes -o ConnectTimeout=3 oracleCloud "sudo k3s kubectl get no
   echo "Live cluster detected. Querying Keycloak platform realm endpoint..."
   KC_IP=$(ssh oracleCloud "sudo k3s kubectl get svc -n identity keycloak-service -o jsonpath='{.spec.clusterIP}'" 2>/dev/null || true)
   if [ -n "$KC_IP" ]; then
+    # KC_IP was read on this machine and must be filled in before ssh.
+    # shellcheck disable=SC2029
     REALM_RESP=$(ssh oracleCloud "curl -sS --max-time 5 http://${KC_IP}:8080/realms/platform" 2>/dev/null || true)
     if echo "$REALM_RESP" | grep -q '"realm":"platform"'; then
       echo "  ✓ PASS: Live Keycloak endpoint returned healthy platform realm metadata."

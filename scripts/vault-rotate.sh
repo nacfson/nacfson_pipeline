@@ -13,6 +13,8 @@ DB_PROXY_ADDR="http://127.0.0.1:8080"
 KUBE_EXEC="${KUBE_EXEC:-kubectl}"
 
 if ! ${KUBE_EXEC} --request-timeout=1s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
+  # VAULT_NS and VAULT_POD exist on this machine and must expand before ssh.
+  # shellcheck disable=SC2029
   if ssh oracleCloud "sudo k3s kubectl get pod -n ${VAULT_NS} ${VAULT_POD}" >/dev/null 2>&1; then
     KUBE_EXEC="ssh oracleCloud sudo k3s kubectl"
   fi
