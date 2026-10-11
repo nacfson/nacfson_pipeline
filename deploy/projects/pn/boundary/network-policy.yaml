@@ -39,7 +39,9 @@ spec:
 
     # 3. Allow intra-namespace traffic between project pods (frontend -> backend)
     - from:
-        - podSelector: {}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: pn-frontend
       ports:
         - protocol: TCP
           port: 8080
@@ -85,9 +87,9 @@ spec:
 
     # 4. Allow intra-namespace traffic between project pods (frontend -> backend)
     - to:
-        - podSelector: {}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: pn-backend
       ports:
         - protocol: TCP
           port: 8080
-
-
