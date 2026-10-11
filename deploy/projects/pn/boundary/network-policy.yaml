@@ -83,14 +83,3 @@ spec:
         - protocol: TCP
           port: 8080
 
-    # 4. In-cluster JWT JWKS verification from Keycloak in identity namespace
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: identity
-          podSelector:
-            matchLabels:
-              app.kubernetes.io/name: keycloak
-      ports:
-        - protocol: TCP
-          port: 8080
