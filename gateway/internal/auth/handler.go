@@ -6,8 +6,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"strconv"
 	"strings"
 	"time"
@@ -466,4 +468,49 @@ func parseSubjectFromJWT(token string) string {
 		return claims.Sub
 	}
 	return "unknown-subject"
+}
+
+// HandleJWKSProxy safely proxies public OIDC metadata and JWKS certs to Keycloak.
+// Only GET and HEAD requests to /.well-known/openid-configuration and /protocol/openid-connect/certs are allowed.
+func (h *Handler) HandleJWKSProxy(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	cleanPath := path.Clean(r.URL.Path)
+	subpath := strings.TrimPrefix(cleanPath, "/realms/platform")
+	if subpath != "/.well-known/openid-configuration" && subpath != "/protocol/openid-connect/certs" {
+		http.Error(w, `{"error":"forbidden","message":"access to this Keycloak path is forbidden"}`, http.StatusForbidden)
+		return
+	}
+
+	targetURL := fmt.Sprintf("%s%s", strings.TrimSuffix(h.Config.KeycloakIssuerURL, "/"), subpath)
+	if r.URL.RawQuery != "" {
+		targetURL = fmt.Sprintf("%s?%s", targetURL, r.URL.RawQuery)
+	}
+
+	req, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, nil)
+	if err != nil {
+		http.Error(w, `{"error":"internal_error"}`, http.StatusInternalServerError)
+		return
+	}
+
+	client := http.DefaultClient
+	if h.Client != nil && h.Client.HTTPClient != nil {
+		client = h.Client.HTTPClient
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		http.Error(w, `{"error":"bad_gateway","message":"failed to contact Keycloak"}`, http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+
+	for k, v := range resp.Header {
+		w.Header()[k] = v
+	}
+	w.WriteHeader(resp.StatusCode)
+	_, _ = io.Copy(w, resp.Body)
 }

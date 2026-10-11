@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -284,3 +285,84 @@ func TestSessionReturnCookieScopedToProjectHost(t *testing.T) {
 		t.Fatalf("cookie must be HttpOnly and Secure, HttpOnly=%v Secure=%v", session.HttpOnly, session.Secure)
 	}
 }
+
+func TestJWKSProxyAllowedPaths(t *testing.T) {
+	mockKC := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/realms/platform/protocol/openid-connect/certs" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"keys":[{"kty":"RSA","kid":"1"}]}`))
+			return
+		}
+		if r.URL.Path == "/realms/platform/.well-known/openid-configuration" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"issuer":"https://auth.example.com"}`))
+			return
+		}
+		http.NotFound(w, r)
+	}))
+	defer mockKC.Close()
+
+	cfg := &config.Config{
+		KeycloakIssuerURL: mockKC.URL + "/realms/platform",
+	}
+	client := keycloak.NewClient(cfg.KeycloakIssuerURL, mockKC.URL, "client", "secret")
+	handler := auth.NewHandler(cfg, nil, client)
+
+	// Test certs proxy
+	req := httptest.NewRequest("GET", "/realms/platform/protocol/openid-connect/certs", nil)
+	rr := httptest.NewRecorder()
+	handler.HandleJWKSProxy(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for certs proxy, got %d", rr.Code)
+	}
+	if !strings.Contains(rr.Body.String(), `"keys"`) {
+		t.Fatalf("expected keys in body, got %s", rr.Body.String())
+	}
+
+	// Test discovery proxy
+	req2 := httptest.NewRequest("GET", "/realms/platform/.well-known/openid-configuration", nil)
+	rr2 := httptest.NewRecorder()
+	handler.HandleJWKSProxy(rr2, req2)
+
+	if rr2.Code != http.StatusOK {
+		t.Fatalf("expected 200 for discovery proxy, got %d", rr2.Code)
+	}
+	if !strings.Contains(rr2.Body.String(), `"issuer"`) {
+		t.Fatalf("expected issuer in body, got %s", rr2.Body.String())
+	}
+}
+
+func TestJWKSProxyForbiddenPaths(t *testing.T) {
+	cfg := &config.Config{
+		KeycloakIssuerURL: "http://localhost:9999/realms/platform",
+	}
+	handler := auth.NewHandler(cfg, nil, nil)
+
+	forbidden := []string{
+		"/realms/platform/users",
+		"/realms/platform/admin",
+		"/admin",
+		"/realms/master",
+	}
+
+	for _, p := range forbidden {
+		req := httptest.NewRequest("GET", p, nil)
+		rr := httptest.NewRecorder()
+		handler.HandleJWKSProxy(rr, req)
+		if rr.Code != http.StatusForbidden {
+			t.Errorf("expected 403 Forbidden for path %s, got %d", p, rr.Code)
+		}
+	}
+
+	// Test POST method not allowed
+	postReq := httptest.NewRequest("POST", "/realms/platform/protocol/openid-connect/certs", nil)
+	rrPost := httptest.NewRecorder()
+	handler.HandleJWKSProxy(rrPost, postReq)
+	if rrPost.Code != http.StatusMethodNotAllowed {
+		t.Errorf("expected 405 Method Not Allowed for POST, got %d", rrPost.Code)
+	}
+}
+

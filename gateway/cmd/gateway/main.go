@@ -52,6 +52,10 @@ func main() {
 	// User-initiated synchronous session revocation
 	mux.HandleFunc("/auth/logout", handler.HandleLogout)
 
+	// Safe public OIDC discovery and JWKS public key proxy for project workloads
+	mux.HandleFunc("/realms/platform/.well-known/openid-configuration", handler.HandleJWKSProxy)
+	mux.HandleFunc("/realms/platform/protocol/openid-connect/certs", handler.HandleJWKSProxy)
+
 	server := &http.Server{
 		Addr:         fmt.Sprintf(":%d", cfg.Port),
 		Handler:      mux,
