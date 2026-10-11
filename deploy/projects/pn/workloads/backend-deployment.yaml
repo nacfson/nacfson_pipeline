@@ -55,6 +55,8 @@ spec:
               value: "project:pn:workload:backend"
             - name: MIGRATIONS_PATH
               value: "file:///app/db/migrations"
+            - name: AUTH_JWT_JWKS_URL
+              value: "http://gateway.identity.svc:8080/realms/platform/protocol/openid-connect/certs"
             - name: CENTRAL_AUTH_INTERNAL_URL
               value: "http://gateway.identity.svc:8080/realms/platform"
             - name: CENTRAL_AUTH_URL
