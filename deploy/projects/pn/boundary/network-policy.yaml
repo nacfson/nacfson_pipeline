@@ -83,3 +83,11 @@ spec:
         - protocol: TCP
           port: 8080
 
+    # 4. Allow intra-namespace traffic between project pods (frontend -> backend)
+    - to:
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8080
+
+
