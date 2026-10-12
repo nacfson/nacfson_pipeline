@@ -28,6 +28,7 @@ jobs:
         uses: ludeeus/action-shellcheck@master
         with:
           scandir: './scripts'
+          version: v0.11.0
 
       - name: Validate Kubernetes Manifests YAML
         uses: ibiqlik/action-yamllint@v3
