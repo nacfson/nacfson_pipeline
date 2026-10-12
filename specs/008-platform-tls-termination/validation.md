@@ -102,3 +102,14 @@ Result: Exited 0 with no warnings or errors across all manifests (`certificates.
 Result: Both environments rendered cleanly and passed all schema validation, invariant checks, and preflight rules.
 
 
+
+---
+
+## PR A Cluster Verification (T025, 2026-10-12 23:10 KST)
+
+PR #32 merged as `036df80`; all Flux layers Ready at that revision.
+
+- `TLSStore platform/default` present; `platform/auth-tls` and `platform/pn-tls` Ready (`pn-tls` issued within ~1 min via ClusterIP solver).
+- `proj-pn`: no Certificate/CertificateRequest/Order/Challenge, no `kubernetes.io/tls` Secret, only `project-pn-isolation` NetworkPolicy (T026 cleanup not needed).
+- Images: backend `…@sha256:662c869b…`, frontend `…@sha256:1da19ae7…` running.
+- External: `pn.nacfson.cloud` https 200, Let's Encrypt YE1, expires 2027-01-10; `auth.nacfson.cloud` Let's Encrypt YE1 (404 on `/` is the allowlist); both http → 301 https.

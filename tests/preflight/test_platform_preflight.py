@@ -308,5 +308,14 @@ spec:
         self.assertTrue(data.get("rejectionReason", "").startswith("certificate inventory:"))
 
 
+    def test_22_tls_platform_route_secret_name_rejected(self):
+        """TLS-2 (platform): a platform websecure route naming a secret is rejected with rule 2."""
+        rc, data, _ = self.run_preflight("tls_platform_route_secret_name.yaml", "valid_capacity.yaml")
+        self.assertEqual(rc, 1)
+        self.assertEqual(data.get("validationStatus"), "REJECTED_ISOLATION")
+        details = [v.get("detail", "") for v in data.get("violations", []) if v.get("rule") == 2]
+        self.assertTrue(any(d.startswith("route must declare tls: {} and let the platform select the certificate") for d in details))
+
+
 if __name__ == "__main__":
     unittest.main()

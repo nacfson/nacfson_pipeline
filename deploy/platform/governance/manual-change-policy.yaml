@@ -21,6 +21,7 @@ spec:
         request.userInfo.username.startsWith('system:node:') ||
         request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver', 'system:k3s-controller', 'k3s-cloud-controller-manager'] ||
         (request.userInfo.username.startsWith('system:serviceaccount:cert-manager:') &&
+          request.namespace in ['platform', 'cert-manager'] &&
           request.resource.group in ['', 'cert-manager.io', 'acme.cert-manager.io', 'networking.k8s.io', 'events.k8s.io'] &&
           request.resource.resource in ['secrets', 'events', 'pods', 'services', 'ingresses', 'certificates', 'certificaterequests', 'orders', 'challenges']) ||
         'platform:break-glass' in request.userInfo.groups ||

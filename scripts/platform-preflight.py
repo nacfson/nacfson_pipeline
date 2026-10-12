@@ -380,6 +380,27 @@ def check_edge_tls(project_docs, platform_docs):
                             "detail": f"hostname {h} has no platform certificate; add it to deploy/platform/tls first" + kept,
                         })
 
+    # TLS-2 (platform): websecure IngressRoutes in platform must also declare tls: {}
+    for doc in platform_docs:
+        if not isinstance(doc, dict) or doc.get("kind") != "IngressRoute":
+            continue
+        meta = doc.get("metadata") or {}
+        ns = meta.get("namespace", "")
+        if not ns:
+            ns = (meta.get("labels") or {}).get("kustomize.toolkit.fluxcd.io/namespace", "")
+        if ns != "platform":
+            continue
+        spec = doc.get("spec") or {}
+        if "websecure" not in (spec.get("entryPoints") or []):
+            continue
+        tls_field = spec.get("tls")
+        if "tls" not in spec or not isinstance(tls_field, dict) or len(tls_field) > 0:
+            violations.append({
+                "rule": 2,
+                "object": f"platform/IngressRoute/{meta.get('name', '')}",
+                "detail": "route must declare tls: {} and let the platform select the certificate",
+            })
+
     # TLS-6: Certificate inventory invariants (Platform render)
     # Check stores outside platform or multiple defaults
     for s in all_stores:
