@@ -49,3 +49,7 @@ spec:
                   env:
                     - name: CENTRAL_AUTH_URL
                       value: "https://auth.example.com/realms/platform"
+                    - name: ALLOWED_ORIGINS
+                      value: "http://localhost:8081,http://localhost:19006,tauri://localhost,http://tauri.localhost,https://pn.example.com"
+                    - name: PUBLIC_APP_URL
+                      value: "https://pn.example.com"

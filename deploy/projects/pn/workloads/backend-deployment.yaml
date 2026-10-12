@@ -62,6 +62,13 @@ spec:
               value: "http://gateway.identity.svc:8080/realms/platform"
             - name: CENTRAL_AUTH_URL
               value: "https://auth.example.com/realms/platform"
+            # Browser SPA /api fetches may send Cache-Control/Pragma -> CORS preflight.
+            # PUBLIC_APP_URL MUST appear in ALLOWED_ORIGINS (007 browser-api-access).
+            # Flux env patches override these per cluster door host.
+            - name: ALLOWED_ORIGINS
+              value: "http://localhost:8081,http://localhost:19006,tauri://localhost,http://tauri.localhost,https://pn.nacfson.cloud,https://pn.example.com"
+            - name: PUBLIC_APP_URL
+              value: "https://pn.nacfson.cloud"
             - name: PORT
               value: "8080"
           securityContext:

@@ -1,36 +1,35 @@
-# Specification Quality Checklist: Project PN Startup, Readiness Disconnect Signal, and Restart Policy
+# Specification Quality Checklist: 007-pn-readiness-restart
 
-**Purpose**: Validate specification completeness and quality before proceeding to planning
-**Created**: 2026-10-12
+**Purpose**: Validate completeness and quality of the revised specification before / during implementation  
+**Created**: 2026-10-12  
+**Updated**: 2026-10-12 (browser API origin path)  
 **Feature**: [spec.md](../spec.md)
 
 ## Content Quality
 
-- [x] No implementation details (languages, frameworks, APIs)
-- [x] Focused on user value and business needs
-- [x] Written for non-technical stakeholders
-- [x] All mandatory sections completed
+- [x] No implementation-only jargon without a user/operator-visible outcome
+- [x] Cluster hop vs browser API path are both explained in plain language
+- [x] Scope boundaries clear (no notification sinks; no image rebuild; no door/NP edits)
+- [x] Requirements are testable via quickstart / static rg / CORS preflight
+- [x] Success criteria are measurable (SC-001–SC-010)
+- [x] Proven production failure mode (Ready pods + SPA connect error) is captured
 
 ## Requirement Completeness
 
-- [x] No [NEEDS CLARIFICATION] markers remain
-- [x] Requirements are testable and unambiguous
-- [x] Success criteria are measurable
-- [x] Success criteria are technology-agnostic (no implementation details)
-- [x] All acceptance scenarios are defined
-- [x] Edge cases are identified
-- [x] Scope is clearly bounded
-- [x] Dependencies and assumptions identified
+- [x] FR-001–FR-013 cover probe/restart/governance
+- [x] FR-014–FR-017 cover browser origin allowlist + validation + documentation warning
+- [x] User Story 5 acceptance scenarios cover allowlist, preflight ACAO, and “Ready ≠ CORS”
+- [x] Edge cases include kubelet inability to assert CORS headers
+- [x] Assumptions updated so “access backend explicitly” means both paths
+- [x] Contracts exist for probe matrix, disconnect signal, and browser-api-access
+- [x] Plan and tasks include US5 and Flux env patches
 
-## Feature Readiness
+## Consistency
 
-- [x] All functional requirements have clear acceptance criteria
-- [x] User scenarios cover primary flows
-- [x] Feature meets measurable outcomes defined in Success Criteria
-- [x] No implementation details leak into specification
+- [x] Spec ↔ plan ↔ research R10/R11 agree: config+validation, not readiness ACAO probe
+- [x] Constitution Principle VII draft mentions browser origin allowlist (after constitution edit in same change set)
+- [x] Quickstart maps SC-008–SC-010
 
 ## Notes
 
-- Validation pass 1 (2026-10-12): Initial readiness-only draft.
-- Validation pass 2 (2026-10-12): Rewrote for startup + continuous readiness disconnect signal; push notifications deferred; constitution Principle VII / Amendment 2.1.0 aligned. Checklist re-passed with no clarification markers.
-- Validation pass 3 (2026-10-12): Clarified readiness never restarts process; added explicit startup-failure restart architecture (FR-001a/b, SC-001/SC-001b) in spec and plan.
+- Items unchecked only if a later edit regresses them; re-run this checklist after material spec edits.
