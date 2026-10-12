@@ -49,3 +49,7 @@ spec:
                   env:
                     - name: CENTRAL_AUTH_URL
                       value: "https://auth.nacfson.cloud/realms/platform"
+                    - name: ALLOWED_ORIGINS
+                      value: "http://localhost:8081,http://localhost:19006,tauri://localhost,http://tauri.localhost,https://pn.nacfson.cloud"
+                    - name: PUBLIC_APP_URL
+                      value: "https://pn.nacfson.cloud"

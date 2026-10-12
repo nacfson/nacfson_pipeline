@@ -1,6 +1,6 @@
 # Data Model: 007-pn-readiness-restart
 
-This feature has no persistent business database. Entities are **lifecycle signals** and **workload declarations**.
+This feature has no persistent business database. Entities are **lifecycle signals**, **workload declarations**, and **browser origin access config**.
 
 ## Entities
 
@@ -9,7 +9,7 @@ This feature has no persistent business database. Entities are **lifecycle signa
 | Field | Description |
 | --- | --- |
 | Source | `pn-frontend` container startup check |
-| Target | Backend process-availability via FE `/healthz` → BE `/healthz` |
+| Target | Backend process-availability via FE `/healthz` → BE `/healthz` (**cluster hop**) |
 | Cardinality | Once per container start (until success or startup window exhausted) |
 | Success | Startup succeeds; liveness/readiness evaluation may proceed |
 | Failure within window | Startup not yet successful; container not fully started |
@@ -22,9 +22,9 @@ This feature has no persistent business database. Entities are **lifecycle signa
 | Source | `pn-frontend` container readiness check |
 | Target | Same FE→BE process-availability hop as startup |
 | Cardinality | Continuous after startup success |
-| Ready | FE receives new Service traffic; connected |
-| NotReady | Unconnected; Endpoints omit pod; durable hook for future notifications |
-| Must not | Restart the container solely for NotReady after startup |
+| Ready | FE receives new Service traffic; **cluster** connected |
+| NotReady | Cluster unconnected; Endpoints omit pod; durable hook for future notifications |
+| Must not | Restart the container solely for NotReady after startup; claim browser CORS OK |
 
 ### BackendReadinessSignal
 
@@ -50,7 +50,16 @@ Independent of peer/DB reachability after startup.
 | --- | --- |
 | Workloads | `pn-frontend`, `pn-backend` |
 | Policy | Always restart |
-| Trigger | Process exit / failed liveness / failed startup window — **not** readiness-only |
+| Trigger | Process exit / failed liveness / failed startup window — **not** readiness-only; **not** CORS misconfig alone |
+
+### BrowserApiOriginAllowlist
+
+| Field | Description |
+| --- | --- |
+| `PUBLIC_APP_URL` | Environment public SPA origin |
+| `ALLOWED_ORIGINS` | Backend CORS allowlist; MUST contain `PUBLIC_APP_URL` |
+| Success evidence | CORS preflight to public `/api` returns ACAO for that Origin |
+| Independence | May fail while FrontendDisconnectSignal is Ready (cluster hop still up) |
 
 ### FutureNotificationConsumer (out of scope)
 
@@ -61,7 +70,7 @@ Independent of peer/DB reachability after startup.
 
 ## State transitions
 
-### Frontend container lifecycle
+### Frontend container lifecycle (cluster hop)
 
 ```text
 [Created]
@@ -72,8 +81,8 @@ Independent of peer/DB reachability after startup.
     | startup /healthz success
     v
 [Running]
-    |-- readiness /healthz success --> Ready (in Endpoints)
-    |-- readiness /healthz fail ----> NotReady (disconnect signal)
+    |-- readiness /healthz success --> Ready (in Endpoints)  [≠ CORS OK]
+    |-- readiness /healthz fail ----> NotReady (cluster disconnect)
     |-- liveness / fail ------------> Restart (Always)
     |-- startup window exhausted --> Restart (Always)
 ```
@@ -87,6 +96,18 @@ Independent of peer/DB reachability after startup.
     |-- readiness /readyz fail --> NotReady (DB/dependency)
 ```
 
+### Browser API path (config gate)
+
+```text
+[Deploy BE with PUBLIC_APP_URL + ALLOWED_ORIGINS]
+    |
+    | PUBLIC_APP_URL ∈ ALLOWED_ORIGINS ?
+    |-- no  --> non-compliant (SPA may show connect error; pods may still be Ready)
+    |-- yes --> run OPTIONS preflight with Origin=PUBLIC_APP_URL
+                 |-- ACAO present --> browser origin access OK
+                 |-- ACAO missing --> non-compliant / investigate middleware
+```
+
 ## Validation rules
 
 1. FE startup and readiness MUST share the backend **process-availability** hop, not DB readiness.
@@ -94,3 +115,5 @@ Independent of peer/DB reachability after startup.
 3. BE readiness MUST NOT equal BE liveness path after this feature.
 4. `restartPolicy` MUST be explicitly `Always` on both Deployments.
 5. NetworkPolicy MUST still allow only the existing FE→BE path used by probes.
+6. `PUBLIC_APP_URL` MUST be declared and MUST appear in `ALLOWED_ORIGINS` for every environment.
+7. FE Ready MUST NOT be treated as evidence of rule 6.
