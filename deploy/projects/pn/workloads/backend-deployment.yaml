@@ -23,6 +23,7 @@ spec:
         app.kubernetes.io/name: pn-backend
         app.kubernetes.io/part-of: project-pn
     spec:
+      restartPolicy: Always
       serviceAccountName: pn-workload-sa
       automountServiceAccountToken: false
       securityContext:
@@ -87,12 +88,15 @@ spec:
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 3
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: 8080
-            initialDelaySeconds: 2
             periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
       volumes:
         - name: tmp
           emptyDir: {}
