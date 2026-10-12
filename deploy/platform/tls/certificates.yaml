@@ -1,0 +1,45 @@
+# Traefik reads a TLS Secret only from the IngressRoute's own namespace,
+# so each certificate lives next to the route that serves it.
+# Flux patches index 0 of spec.dnsNames and spec.issuerRef.name per environment.
+
+# Served by IngressRoute platform/public-auth-allowlist
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: auth-tls
+  namespace: platform
+  labels:
+    app.kubernetes.io/part-of: platform
+spec:
+  secretName: auth-tls
+  dnsNames:
+    - auth.example.com
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: selfsigned
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+---
+# Served by IngressRoute proj-pn/project-pn-ingress
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pn-tls
+  namespace: proj-pn
+  labels:
+    app.kubernetes.io/part-of: project-pn
+spec:
+  secretName: pn-tls
+  dnsNames:
+    - pn.example.com
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: selfsigned
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always

@@ -15,7 +15,10 @@ CLUSTER_SCOPED_KINDS = {
     "ClusterRoleBinding",
     "CustomResourceDefinition",
     "ValidatingAdmissionPolicy",
-    "ValidatingAdmissionPolicyBinding"
+    "ValidatingAdmissionPolicyBinding",
+    "ValidatingWebhookConfiguration",
+    "MutatingWebhookConfiguration",
+    "ClusterIssuer"
 }
 
 ALLOWED_PROJECT_KINDS = {"Deployment", "Service", "ConfigMap", "IngressRoute"}

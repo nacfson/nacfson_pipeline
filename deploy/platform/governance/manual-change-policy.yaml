@@ -20,6 +20,9 @@ spec:
         request.userInfo.username.startsWith('system:serviceaccount:kube-system:') ||
         request.userInfo.username.startsWith('system:node:') ||
         request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver', 'system:k3s-controller', 'k3s-cloud-controller-manager'] ||
+        (request.userInfo.username.startsWith('system:serviceaccount:cert-manager:') &&
+          request.resource.group in ['', 'cert-manager.io', 'acme.cert-manager.io', 'networking.k8s.io', 'events.k8s.io'] &&
+          request.resource.resource in ['secrets', 'events', 'pods', 'services', 'ingresses', 'certificates', 'certificaterequests', 'orders', 'challenges']) ||
         'platform:break-glass' in request.userInfo.groups ||
         (request.resource.resource == 'pods' && (!has(request.subResource) || request.subResource == '') && request.operation == 'DELETE') ||
         (request.resource.resource == 'pods' && has(request.subResource) && request.subResource == 'eviction') ||
@@ -49,6 +52,7 @@ spec:
             - platform
             - vault
             - proj-pn
+            - cert-manager
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy
@@ -81,6 +85,10 @@ spec:
         request.userInfo.username.startsWith('system:node:') ||
         request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver', 'system:k3s-controller', 'k3s-cloud-controller-manager'] ||
         (request.resource.resource == 'customresourcedefinitions' && (request.name.endsWith('.cattle.io') || request.name.endsWith('.k3s.io'))) ||
+        (request.userInfo.username == 'system:serviceaccount:cert-manager:cert-manager-cainjector' &&
+          request.operation == 'UPDATE' &&
+          request.resource.resource in ['validatingwebhookconfigurations', 'mutatingwebhookconfigurations'] &&
+          request.name == 'cert-manager-webhook') ||
         'platform:break-glass' in request.userInfo.groups ||
         (request.resource.resource == 'pods' && (!has(request.subResource) || request.subResource == '') && request.operation == 'DELETE') ||
         (request.resource.resource == 'pods' && has(request.subResource) && request.subResource == 'eviction') ||

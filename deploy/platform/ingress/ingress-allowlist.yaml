@@ -8,8 +8,10 @@ metadata:
     app.kubernetes.io/part-of: platform
 spec:
   entryPoints:
-    - web
     - websecure
+  # Certificate platform/auth-tls (deploy/platform/tls). HTTP is redirected by platform/http-to-https.
+  tls:
+    secretName: auth-tls
   routes:
     # 1. Keycloak Browser OIDC Login & Broker Callbacks
     - match: Host(`auth.example.com`) && (PathPrefix(`/realms/platform/protocol/openid-connect/auth`) || PathPrefix(`/realms/platform/login-actions`) || PathPrefix(`/realms/platform/broker/`) || PathPrefix(`/resources`))

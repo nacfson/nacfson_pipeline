@@ -6,5 +6,6 @@ resources:
   - service-account.yaml
   - resource-quota.yaml
   - network-policy.yaml
+  - acme-solver-network-policy.yaml
   - reconciler-rbac.yaml
   - sign-in.yaml

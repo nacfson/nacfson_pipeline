@@ -20,7 +20,7 @@ All cluster interactions follow two distinct tiers:
 
 ### Key Invariants
 1. **Git as Single Source of Truth**: The `main` branch defines desired state. Changes are delivered via Pull Requests passing automated CI gates.
-2. **Cluster Rejection of Manual Changes**: Kubernetes `ValidatingAdmissionPolicy` intercepts and rejects manual mutations (`CREATE`, `UPDATE`, `DELETE`) across all managed namespaces (`default`, `flux-system`, `governance`, `identity`, `platform`, `vault`, `proj-pn`) and critical cluster kinds.
+2. **Cluster Rejection of Manual Changes**: Kubernetes `ValidatingAdmissionPolicy` intercepts and rejects manual mutations (`CREATE`, `UPDATE`, `DELETE`) across all managed namespaces (`default`, `flux-system`, `governance`, `identity`, `platform`, `vault`, `proj-pn`, `cert-manager`) and critical cluster kinds.
 3. **Residual Risk - `kube-system` (R16)**: To prevent disrupting core K3s control plane components (CoreDNS, metrics-server, Traefik), `kube-system` is not gated by the manual-change policy. A root user on the host node could run workloads directly in `kube-system`. This residual risk is bounded by restricting SSH/root node access and eliminating cluster-admin credentials from workstations.
 4. **Verification Scripts Under Break-Glass**: Verification scripts that execute active probe pod creation (such as `scripts/verify-isolation.sh`) must run in break-glass mode (`BREAK_GLASS=1`) to bypass the admission policy and exercise Pod Security Admission directly.
 
