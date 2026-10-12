@@ -109,6 +109,7 @@ The current deployment, which has certificate artifacts inside the project names
 - **FR-014**: Edge private keys may be stored in the cluster's native secret storage inside platform namespaces, readable only by platform components (the ingress controller, the certificate manager, and the reconciler) and break-glass. They MUST NOT be delivered to project workloads. The Constitution's Principle V has been amended (Amendment 2.2.0) to state this exception explicitly.
 - **FR-015**: With read-only access, the operator MUST be able to see each certificate's hostnames, status, expiry and last renewal.
 - **FR-016**: Failure to issue or renew a certificate for one hostname MUST NOT affect the certificates served for other hostnames.
+- **FR-017**: The Project PN workload MUST deploy the updated container images: backend `ghcr.io/nacfson/project-pn-backend@sha256:662c869b3c9e9559e518a844d8afc28b81844847081e00959e9b0f3c333a61a0` and frontend `ghcr.io/nacfson/project-pn-frontend@sha256:1da19ae7150980b4c0b50c7b8c7c207c2b41b13f00d32a429b901297776e70f6`.
 
 ### Key Entities
 
