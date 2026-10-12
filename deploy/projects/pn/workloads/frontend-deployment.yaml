@@ -23,6 +23,7 @@ spec:
         app.kubernetes.io/name: pn-frontend
         app.kubernetes.io/part-of: project-pn
     spec:
+      restartPolicy: Always
       serviceAccountName: pn-workload-sa
       automountServiceAccountToken: false
       securityContext:
@@ -72,12 +73,23 @@ spec:
               port: 80
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 3
           readinessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: 80
-            initialDelaySeconds: 2
             periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: 80
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 36
+            successThreshold: 1
       volumes:
         - name: nginx-conf
           emptyDir: {}
@@ -87,3 +99,4 @@ spec:
           emptyDir: {}
         - name: nginx-run
           emptyDir: {}
+
