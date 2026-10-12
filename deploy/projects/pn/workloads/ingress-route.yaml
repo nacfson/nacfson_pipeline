@@ -9,9 +9,8 @@ metadata:
 spec:
   entryPoints:
     - websecure
-  # Certificate proj-pn/pn-tls (deploy/platform/tls). HTTP is redirected by platform/http-to-https.
-  tls:
-    secretName: pn-tls
+  # The platform selects the certificate by hostname (TLSStore platform/default). HTTP is redirected by platform/http-to-https.
+  tls: {}
   routes:
     # Host route, then /api. Flux match patches address these indexes.
     - match: Host(`pn.example.com`)

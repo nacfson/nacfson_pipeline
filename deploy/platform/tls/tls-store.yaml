@@ -1,0 +1,19 @@
+---
+# Centralized Traefik TLSStore for platform-owned edge TLS termination
+# (Spec 008). Traefik uses the store named "default" across all IngressRoutes.
+# Certificates are matched automatically via SNI.
+#
+# NOTE: spec.defaultCertificate and spec.defaultGeneratedCert MUST stay unset
+# so that requests without SNI or unknown hostnames receive Traefik's generated
+# default certificate, preventing leakage of any project's certificate or data.
+apiVersion: traefik.io/v1alpha1
+kind: TLSStore
+metadata:
+  name: default
+  namespace: platform
+  labels:
+    app.kubernetes.io/part-of: platform
+spec:
+  certificates:
+    - secretName: auth-tls
+    - secretName: pn-tls

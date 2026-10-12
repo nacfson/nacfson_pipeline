@@ -1,3 +1,4 @@
+---
 # Self-signed issuer: default for base/local, needs no internet access.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
@@ -26,9 +27,13 @@ spec:
       - http01:
           ingress:
             ingressClassName: traefik
+            # cert-manager defaults solver to NodePort; Principle II
+            # forbids node ports
+            serviceType: ClusterIP
 ---
 # Let's Encrypt production: browser-trusted certificates.
-# HTTP-01 needs the hostname to resolve to the node and port 80 open to the internet.
+# HTTP-01 needs the hostname to resolve to the node and port 80 open
+# to the internet.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -45,3 +50,6 @@ spec:
       - http01:
           ingress:
             ingressClassName: traefik
+            # cert-manager defaults solver to NodePort; Principle II
+            # forbids node ports
+            serviceType: ClusterIP
