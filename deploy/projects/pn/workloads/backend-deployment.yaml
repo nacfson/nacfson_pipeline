@@ -62,7 +62,7 @@ spec:
               value: "http://gateway.identity.svc:8080/realms/platform"
             - name: CENTRAL_AUTH_URL
               value: "https://auth.example.com/realms/platform"
-            # Browser SPA /api fetches may send Cache-Control/Pragma → CORS preflight.
+            # Browser SPA /api fetches may send Cache-Control/Pragma -> CORS preflight.
             # PUBLIC_APP_URL MUST appear in ALLOWED_ORIGINS (007 browser-api-access).
             # Flux env patches override these per cluster door host.
             - name: ALLOWED_ORIGINS
@@ -109,6 +109,3 @@ spec:
           emptyDir: {}
         - name: logs
           emptyDir: {}
-
-
-[You have received this identical output 3 times. Re-reading '/home/nacfson/Projects/nacfson_pipeline/deploy/projects/pn/workloads/backend-deployment.yaml:raw' will not change it — use a narrower selector (path:A-B), or proceed with the edit.]

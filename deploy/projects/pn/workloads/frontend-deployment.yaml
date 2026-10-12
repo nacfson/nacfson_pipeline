@@ -99,4 +99,3 @@ spec:
           emptyDir: {}
         - name: nginx-run
           emptyDir: {}
-
