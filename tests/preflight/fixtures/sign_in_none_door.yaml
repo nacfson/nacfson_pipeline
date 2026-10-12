@@ -72,13 +72,31 @@ spec:
           port: 53
 ---
 apiVersion: traefik.io/v1alpha1
+kind: TLSStore
+metadata:
+  name: default
+  namespace: platform
+spec:
+  certificates:
+    - secretName: open-tls
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: open-tls
+  namespace: platform
+spec:
+  secretName: open-tls
+  dnsNames:
+    - open.example.com
+---
+apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: project-open-ingress
   namespace: proj-open
 spec:
   entryPoints:
-    - web
     - websecure
   routes:
     - match: Host(`open.example.com`)
@@ -90,3 +108,4 @@ spec:
       services:
         - name: web
           port: 80
+  tls: {}

@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Implementation Plan: Platform-Owned TLS Termination (Spec 008)</title>
+  <style>
+    :root {
+      --bg: #0f1419; --card: #171d25; --line: #2a3441; --text: #e7ecf1;
+      --muted: #9aa6b2; --accent: #8fb4d4; --warn: #e0b15a; --ok: #8fbfa8;
+      --bad: #d98c8c; --code: #0c1014;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+      font-family: "Segoe UI", Helvetica, Arial, sans-serif; line-height: 1.5; }
+    main { max-width: 1040px; margin: 0 auto; padding: 32px 20px 64px; }
+    h1 { font-size: 1.75rem; font-weight: 650; margin: 0 0 8px; }
+    h2 { font-size: 1.2rem; margin: 40px 0 12px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+    h3 { font-size: 1rem; margin: 20px 0 8px; color: var(--accent); }
+    p { margin: 0 0 12px; }
+    a { color: var(--accent); }
+    .meta { color: var(--muted); font-size: 0.92rem; margin-bottom: 24px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+    figure { margin: 0; background: var(--card); border: 1px solid var(--line); padding: 12px; }
+    figcaption { color: var(--muted); font-size: 0.88rem; margin-top: 8px; }
+    svg { width: 100%; height: auto; display: block; }
+    table { width: 100%; border-collapse: collapse; margin: 8px 0 16px; font-size: 0.92rem; }
+    th, td { border: 1px solid var(--line); padding: 7px 9px; text-align: left; vertical-align: top; }
+    th { background: var(--card); color: var(--muted); font-weight: 600; }
+    code { background: var(--code); padding: 1px 5px; font-family: "Roboto Mono", Consolas, monospace; font-size: 0.86em; }
+    pre { background: var(--code); border: 1px solid var(--line); padding: 12px; overflow-x: auto; font-size: 0.84rem; line-height: 1.45; }
+    pre code { background: none; padding: 0; }
+    .add { color: var(--ok); } .del { color: var(--bad); } .cmt { color: var(--muted); }
+    .callout { border-left: 4px solid var(--warn); background: var(--card); padding: 10px 14px; margin: 12px 0; }
+    .callout.ok { border-left-color: var(--ok); }
+    .pill { display: inline-block; padding: 1px 8px; border: 1px solid var(--line); font-size: 0.8rem; margin-right: 4px; }
+    .pass { color: var(--ok); } .cond { color: var(--warn); }
+  </style>
+</head>
+<body>
+<main>
+  <h1>Implementation Plan: Platform-Owned TLS Termination</h1>
+  <div class="meta">
+    Spec 008 · Branch <code>008-platform-tls-termination</code> · 2026-10-12 ·
+    Sources: <code>specs/008-platform-tls-termination/</code> (spec.md, plan.md, research.md, data-model.md, contracts/, quickstart.md)
+  </div>
+
+  <div class="callout ok">
+    <strong>One sentence:</strong> The platform holds every certificate in namespace <code>platform</code>. One Traefik
+    <code>TLSStore default</code> serves them by hostname. Projects only write <code>tls: {}</code> on their route.
+  </div>
+
+  <h2>1. Architecture: before and after</h2>
+  <div class="grid">
+    <figure>
+      <svg viewBox="0 0 480 360" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial" font-size="12">
+        <defs><marker id="a1" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#9aa6b2"/></marker></defs>
+        <text x="10" y="18" fill="#d98c8c" font-weight="600">BEFORE (PR #26): TLS work inside the project</text>
+        <rect x="170" y="32" width="140" height="40" fill="#171d25" stroke="#8fb4d4"/>
+        <text x="240" y="50" fill="#e7ecf1" text-anchor="middle">Traefik :443</text>
+        <text x="240" y="64" fill="#9aa6b2" text-anchor="middle" font-size="10">secretName per route</text>
+        <rect x="10" y="110" width="200" height="120" fill="#171d25" stroke="#2a3441"/>
+        <text x="20" y="128" fill="#9aa6b2">namespace platform</text>
+        <rect x="22" y="140" width="176" height="26" fill="#0c1014" stroke="#8fbfa8"/>
+        <text x="110" y="157" fill="#8fbfa8" text-anchor="middle">Certificate + Secret auth-tls ✓</text>
+        <rect x="22" y="174" width="176" height="26" fill="#0c1014" stroke="#2a3441"/>
+        <text x="110" y="191" fill="#e7ecf1" text-anchor="middle">route auth (secretName)</text>
+        <rect x="250" y="110" width="220" height="230" fill="#171d25" stroke="#d98c8c"/>
+        <text x="260" y="128" fill="#d98c8c">proj-pn (quota: nodeports 0)</text>
+        <rect x="262" y="140" width="196" height="24" fill="#0c1014" stroke="#d98c8c"/>
+        <text x="360" y="156" fill="#e7ecf1" text-anchor="middle">Certificate pn-tls ✗ never issued</text>
+        <rect x="262" y="170" width="196" height="24" fill="#0c1014" stroke="#d98c8c"/>
+        <text x="360" y="186" fill="#e7ecf1" text-anchor="middle">solver Service NodePort ✗ quota</text>
+        <rect x="262" y="200" width="196" height="24" fill="#0c1014" stroke="#2a3441"/>
+        <text x="360" y="216" fill="#e7ecf1" text-anchor="middle">NetworkPolicy :8089 hole</text>
+        <rect x="262" y="230" width="196" height="24" fill="#0c1014" stroke="#2a3441"/>
+        <text x="360" y="246" fill="#e7ecf1" text-anchor="middle">VAP exception for cert-manager</text>
+        <rect x="262" y="260" width="196" height="24" fill="#0c1014" stroke="#2a3441"/>
+        <text x="360" y="276" fill="#e7ecf1" text-anchor="middle">route pn (secretName: pn-tls)</text>
+        <text x="360" y="312" fill="#d98c8c" text-anchor="middle">→ visitors get TRAEFIK DEFAULT CERT</text>
+        <line x1="210" y1="72" x2="120" y2="108" stroke="#9aa6b2" marker-end="url(#a1)"/>
+        <line x1="270" y1="72" x2="350" y2="108" stroke="#9aa6b2" marker-end="url(#a1)"/>
+      </svg>
+      <figcaption>The project quota rejected cert-manager's NodePort solver, so pn never got a certificate.</figcaption>
+    </figure>
+    <figure>
+      <svg viewBox="0 0 480 360" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial" font-size="12">
+        <defs><marker id="a2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#9aa6b2"/></marker></defs>
+        <text x="10" y="18" fill="#8fbfa8" font-weight="600">AFTER (spec 008): platform owns all TLS</text>
+        <rect x="150" y="32" width="180" height="40" fill="#171d25" stroke="#8fb4d4"/>
+        <text x="240" y="50" fill="#e7ecf1" text-anchor="middle">Traefik :443</text>
+        <text x="240" y="64" fill="#9aa6b2" text-anchor="middle" font-size="10">picks certificate by SNI</text>
+        <rect x="10" y="100" width="290" height="240" fill="#171d25" stroke="#8fbfa8"/>
+        <text x="20" y="118" fill="#8fbfa8">namespace platform</text>
+        <rect x="22" y="128" width="266" height="40" fill="#0c1014" stroke="#8fb4d4"/>
+        <text x="155" y="145" fill="#8fb4d4" text-anchor="middle">TLSStore default</text>
+        <text x="155" y="160" fill="#9aa6b2" text-anchor="middle" font-size="10">certificates: auth-tls, pn-tls</text>
+        <rect x="22" y="176" width="128" height="26" fill="#0c1014" stroke="#8fbfa8"/>
+        <text x="86" y="193" fill="#8fbfa8" text-anchor="middle">auth-tls ✓</text>
+        <rect x="160" y="176" width="128" height="26" fill="#0c1014" stroke="#8fbfa8"/>
+        <text x="224" y="193" fill="#8fbfa8" text-anchor="middle">pn-tls ✓</text>
+        <rect x="22" y="210" width="266" height="26" fill="#0c1014" stroke="#2a3441"/>
+        <text x="155" y="227" fill="#e7ecf1" text-anchor="middle">ACME solver (ClusterIP, transient)</text>
+        <rect x="22" y="244" width="266" height="26" fill="#0c1014" stroke="#2a3441"/>
+        <text x="155" y="261" fill="#e7ecf1" text-anchor="middle">route auth (tls: {}) — PR B</text>
+        <text x="155" y="300" fill="#9aa6b2" text-anchor="middle" font-size="11">issuance never touches project quota</text>
+        <rect x="320" y="100" width="150" height="160" fill="#171d25" stroke="#2a3441"/>
+        <text x="330" y="118" fill="#9aa6b2">namespace proj-pn</text>
+        <rect x="332" y="130" width="126" height="26" fill="#0c1014" stroke="#2a3441"/>
+        <text x="395" y="147" fill="#e7ecf1" text-anchor="middle">Deployments</text>
+        <rect x="332" y="162" width="126" height="26" fill="#0c1014" stroke="#2a3441"/>
+        <text x="395" y="179" fill="#e7ecf1" text-anchor="middle">Services</text>
+        <rect x="332" y="194" width="126" height="26" fill="#0c1014" stroke="#8fbfa8"/>
+        <text x="395" y="211" fill="#8fbfa8" text-anchor="middle">route pn (tls: {})</text>
+        <text x="395" y="244" fill="#9aa6b2" text-anchor="middle" font-size="10">no TLS objects</text>
+        <line x1="210" y1="72" x2="155" y2="126" stroke="#9aa6b2" marker-end="url(#a2)"/>
+        <polyline points="300,72 312,207 330,207" fill="none" stroke="#9aa6b2" marker-end="url(#a2)"/>
+      </svg>
+      <figcaption>Projects declare routing only. Traefik matches the requested hostname against the store.</figcaption>
+    </figure>
+  </div>
+
+  <h3>Request path (unchanged inside the cluster)</h3>
+  <figure>
+    <svg viewBox="0 0 960 110" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial" font-size="12">
+      <defs><marker id="a3" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#9aa6b2"/></marker></defs>
+      <rect x="10" y="30" width="170" height="44" fill="#171d25" stroke="#2a3441"/><text x="95" y="56" fill="#e7ecf1" text-anchor="middle">Browser / iOS app</text>
+      <rect x="320" y="30" width="200" height="44" fill="#171d25" stroke="#8fb4d4"/><text x="420" y="50" fill="#e7ecf1" text-anchor="middle">Traefik (TLS ends here)</text><text x="420" y="66" fill="#9aa6b2" text-anchor="middle" font-size="10">cert from TLSStore by SNI</text>
+      <rect x="680" y="10" width="270" height="36" fill="#171d25" stroke="#2a3441"/><text x="815" y="33" fill="#e7ecf1" text-anchor="middle">pn-frontend :80 / pn-backend :8080</text>
+      <rect x="680" y="60" width="270" height="36" fill="#171d25" stroke="#2a3441"/><text x="815" y="83" fill="#e7ecf1" text-anchor="middle">identity (keycloak / gateway)</text>
+      <line x1="180" y1="52" x2="318" y2="52" stroke="#8fbfa8" stroke-width="2" marker-end="url(#a3)"/><text x="249" y="44" fill="#8fbfa8" text-anchor="middle">HTTPS :443</text>
+      <line x1="520" y1="45" x2="678" y2="30" stroke="#9aa6b2" marker-end="url(#a3)"/>
+      <line x1="520" y1="60" x2="678" y2="78" stroke="#9aa6b2" marker-end="url(#a3)"/>
+      <text x="600" y="100" fill="#9aa6b2" text-anchor="middle" font-size="11">plain HTTP + X-Forwarded-Proto: https</text>
+    </svg>
+  </figure>
+
+  <h2>2. Scope</h2>
+  <table>
+    <tr><th>In scope</th><th>Out of scope</th></tr>
+    <tr>
+      <td>
+        Move <code>pn-tls</code> to <code>platform</code><br>
+        <code>TLSStore default</code> as the certificate inventory<br>
+        ACME solver <code>serviceType: ClusterIP</code><br>
+        Project route <code>tls: {}</code>; delete the PN solver NetworkPolicy<br>
+        Narrow the cert-manager admission exception (PR B)<br>
+        Preflight rules TLS-1…TLS-6 and fixtures<br>
+        <code>scripts/verify-tls.sh</code> (renewal visibility)<br>
+        Constitution Amendment 2.2.0 (Principle V)<br>
+        <code>docs/tls-certificates.md</code>
+      </td>
+      <td>
+        Wildcard certificate / DNS-01 (needs a DNS credential)<br>
+        mTLS or a service mesh inside the cluster<br>
+        CDN or proxy in front of the VM<br>
+        Push alerting (no metrics stack)<br>
+        Restricting Traefik's cluster-wide Secret read (<code>kube-system</code> HelmChartConfig)<br>
+        PN application code changes (see handoff-project-pn.md)
+      </td>
+    </tr>
+  </table>
+
+  <h2>3. Constitution gate (v2.1.0)</h2>
+  <table>
+    <tr><th>Principle</th><th>Result</th><th>Note</th></tr>
+    <tr><td>I. GitOps</td><td class="pass">PASS</td><td>All via Flux. Possible one-off break-glass cleanup of stale Challenges is documented.</td></tr>
+    <tr><td>II. Isolation</td><td class="pass">PASS (improves)</td><td>No cert-manager writes or solver pods in projects. No node port anywhere.</td></tr>
+    <tr><td>III. Public surface</td><td class="pass">PASS</td><td>Routes unchanged. ACME path only during a challenge, only for listed hosts.</td></tr>
+    <tr><td>IV. Resources</td><td class="pass">PASS</td><td>Transient solver pods are counted in the platform reservation.</td></tr>
+    <tr><td>V. Secrets / Vault</td><td class="cond">CONDITIONAL</td><td>Edge keys as Secrets in <code>platform</code>. Needs Amendment 2.2.0 approved before PR A merges.</td></tr>
+    <tr><td>VI. Portability</td><td class="pass">PASS</td><td>Issuer and hosts only through Flux patches.</td></tr>
+    <tr><td>VII. Lifecycle</td><td class="pass">PASS</td><td>Probes untouched.</td></tr>
+  </table>
+
+  <h2>4. Rollout (two PRs)</h2>
+  <figure>
+    <svg viewBox="0 0 960 130" xmlns="http://www.w3.org/2000/svg" font-family="Segoe UI, Arial" font-size="12">
+      <defs><marker id="a4" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#9aa6b2"/></marker></defs>
+      <rect x="10" y="30" width="160" height="70" fill="#171d25" stroke="#e0b15a"/><text x="90" y="56" fill="#e0b15a" text-anchor="middle">0. Approve</text><text x="90" y="74" fill="#9aa6b2" text-anchor="middle" font-size="11">Amendment 2.2.0</text>
+      <rect x="200" y="30" width="200" height="70" fill="#171d25" stroke="#8fb4d4"/><text x="300" y="52" fill="#8fb4d4" text-anchor="middle">1. PR A</text><text x="300" y="70" fill="#9aa6b2" text-anchor="middle" font-size="11">store + pn move + ClusterIP</text><text x="300" y="86" fill="#9aa6b2" text-anchor="middle" font-size="11">auth keeps secretName</text>
+      <rect x="430" y="30" width="200" height="70" fill="#171d25" stroke="#8fbfa8"/><text x="530" y="52" fill="#8fbfa8" text-anchor="middle">2. Verify</text><text x="530" y="70" fill="#9aa6b2" text-anchor="middle" font-size="11">both hosts trusted</text><text x="530" y="86" fill="#9aa6b2" text-anchor="middle" font-size="11">proj-pn clean</text>
+      <rect x="660" y="30" width="200" height="70" fill="#171d25" stroke="#8fb4d4"/><text x="760" y="52" fill="#8fb4d4" text-anchor="middle">3. PR B</text><text x="760" y="70" fill="#9aa6b2" text-anchor="middle" font-size="11">auth tls: {}</text><text x="760" y="86" fill="#9aa6b2" text-anchor="middle" font-size="11">narrow VAP</text>
+      <rect x="885" y="45" width="65" height="40" fill="#171d25" stroke="#8fbfa8"/><text x="917" y="70" fill="#8fbfa8" text-anchor="middle">done</text>
+      <line x1="170" y1="65" x2="198" y2="65" stroke="#9aa6b2" marker-end="url(#a4)"/>
+      <line x1="400" y1="65" x2="428" y2="65" stroke="#9aa6b2" marker-end="url(#a4)"/>
+      <line x1="630" y1="65" x2="658" y2="65" stroke="#9aa6b2" marker-end="url(#a4)"/>
+      <line x1="860" y1="65" x2="883" y2="65" stroke="#9aa6b2" marker-end="url(#a4)"/>
+      <text x="480" y="122" fill="#9aa6b2" text-anchor="middle" font-size="11">Why two PRs: Flux applies the ingress layer before the tls layer. Switching auth in PR A could briefly serve the default certificate.</text>
+    </svg>
+  </figure>
+
+  <h2>5. File changes</h2>
+  <table>
+    <tr><th>File</th><th>PR</th><th>Change</th></tr>
+    <tr><td><code>deploy/platform/tls/cluster-issuers.yaml</code></td><td>A</td><td>ACME solvers <code>serviceType: ClusterIP</code></td></tr>
+    <tr><td><code>deploy/platform/tls/certificates.yaml</code></td><td>A</td><td><code>pn-tls</code> → namespace <code>platform</code>; <code>renewBefore: 720h</code> on both</td></tr>
+    <tr><td><code>deploy/platform/tls/tls-store.yaml</code></td><td>A</td><td><strong>New</strong> <code>TLSStore platform/default</code></td></tr>
+    <tr><td><code>deploy/platform/tls/kustomization.yaml</code></td><td>A</td><td>Add <code>tls-store.yaml</code></td></tr>
+    <tr><td><code>deploy/projects/pn/workloads/ingress-route.yaml</code></td><td>A</td><td><code>tls: {}</code></td></tr>
+    <tr><td><code>deploy/projects/pn/boundary/acme-solver-network-policy.yaml</code></td><td>A</td><td><strong>Delete</strong> (and drop it from <code>kustomization.yaml</code>)</td></tr>
+    <tr><td><code>scripts/platform-preflight.py</code></td><td>A, B</td><td><code>check_edge_tls</code> TLS-1…6; PR B extends TLS-2 to platform routes</td></tr>
+    <tr><td><code>tests/preflight/*</code></td><td>A</td><td>New fixtures and cases; update 2 door fixtures</td></tr>
+    <tr><td><code>scripts/verify-tls.sh</code></td><td>A</td><td><strong>New</strong> read-only status plus <code>--external</code></td></tr>
+    <tr><td><code>.specify/memory/constitution.md</code></td><td>A</td><td>Amendment 2.2.0 on top of <code>origin/main</code></td></tr>
+    <tr><td><code>docs/tls-certificates.md</code></td><td>A, B</td><td>Platform-owned model</td></tr>
+    <tr><td><code>deploy/platform/ingress/ingress-allowlist.yaml</code></td><td>B</td><td>Auth route <code>tls: {}</code></td></tr>
+    <tr><td><code>deploy/platform/governance/manual-change-policy.yaml</code></td><td>B</td><td>cert-manager clause limited to <code>platform</code>, <code>cert-manager</code></td></tr>
+  </table>
+
+  <h2>6. Key diffs</h2>
+  <pre><code><span class="cmt"># deploy/platform/tls/tls-store.yaml (new)</span>
+<span class="add">+apiVersion: traefik.io/v1alpha1
++kind: TLSStore
++metadata:
++  name: default
++  namespace: platform
++  labels:
++    app.kubernetes.io/part-of: platform
++spec:
++  certificates:
++    - secretName: auth-tls
++    - secretName: pn-tls</span></code></pre>
+
+  <pre><code><span class="cmt"># deploy/platform/tls/certificates.yaml</span>
+   name: pn-tls
+<span class="del">-  namespace: proj-pn</span>
+<span class="add">+  namespace: platform</span>
+   labels:
+<span class="del">-    app.kubernetes.io/part-of: project-pn</span>
+<span class="add">+    app.kubernetes.io/part-of: platform</span>
+ spec:
+   secretName: pn-tls
+<span class="add">+  renewBefore: 720h</span></code></pre>
+
+  <pre><code><span class="cmt"># deploy/platform/tls/cluster-issuers.yaml (letsencrypt-staging and letsencrypt-prod)</span>
+           ingress:
+             ingressClassName: traefik
+<span class="add">+            serviceType: ClusterIP</span></code></pre>
+
+  <pre><code><span class="cmt"># deploy/projects/pn/workloads/ingress-route.yaml</span>
+<span class="del">-  tls:
+-    secretName: pn-tls</span>
+<span class="add">+  tls: {}</span></code></pre>
+
+  <pre><code><span class="cmt"># deploy/platform/governance/manual-change-policy.yaml (PR B)</span>
+         (request.userInfo.username.startsWith('system:serviceaccount:cert-manager:') &amp;&amp;
+<span class="add">+          request.namespace in ['platform', 'cert-manager'] &amp;&amp;</span>
+           request.resource.group in [...] &amp;&amp;</code></pre>
+
+  <h2>7. Preflight TLS rules</h2>
+  <table>
+    <tr><th>ID</th><th>Rejects</th></tr>
+    <tr><td>TLS-1</td><td>Certificate, CertificateRequest, Issuer, Order, Challenge, TLSStore, TLSOption, or <code>kubernetes.io/tls</code> Secret in a project namespace</td></tr>
+    <tr><td>TLS-2</td><td>Route without <code>tls: {}</code>, or with <code>secretName</code>/<code>certResolver</code>/<code>store</code>/<code>options</code>/<code>domains</code></td></tr>
+    <tr><td>TLS-3</td><td>Project route entry point other than <code>websecure</code></td></tr>
+    <tr><td>TLS-4</td><td>Route match without a literal <code>Host()</code>, or with <code>HostRegexp</code></td></tr>
+    <tr><td>TLS-5</td><td>Hostname not covered by the platform inventory (FR-010)</td></tr>
+    <tr><td>TLS-6</td><td>Inventory inconsistency: duplicate or non-platform store, missing Certificate, default certificate set, duplicate hostname</td></tr>
+  </table>
+
+  <h2>8. Automated verification</h2>
+  <pre><code><span class="cmt"># Offline (CI runs the same per environment)</span>
+for env in local-k3s vps-k3s; do
+  CANDIDATE=$(./scripts/render-validate.sh "$env" | tail -n 1)
+  python3 scripts/platform-preflight.py --environment "$env" \
+    --candidate "$CANDIDATE" --capacity "clusters/$env/capacity.yaml"
+done
+python3 -m pytest tests/preflight -q
+
+<span class="cmt"># Cluster (after reconcile)</span>
+kubectl get tlsstore -A                  <span class="cmt"># only platform/default</span>
+kubectl get certificate -A               <span class="cmt"># platform/auth-tls, platform/pn-tls READY=True</span>
+kubectl get certificate,order,challenge -n proj-pn   <span class="cmt"># No resources found</span>
+./scripts/verify-tls.sh --external       <span class="cmt"># exit 0</span>
+
+<span class="cmt"># Outside</span>
+curl -sS -o /dev/null -w '%{http_code}\n' https://pn.nacfson.cloud/      <span class="cmt"># no -k, exit 0</span>
+curl -sS -o /dev/null -w '%{http_code}\n' http://pn.nacfson.cloud/       <span class="cmt"># 301/308</span>
+echo | openssl s_client -connect pn.nacfson.cloud:443 -servername pn.nacfson.cloud 2&gt;/dev/null \
+  | openssl x509 -noout -issuer           <span class="cmt"># Let's Encrypt</span></code></pre>
+
+  <h2>9. Risks</h2>
+  <table>
+    <tr><th>Risk</th><th>Mitigation</th></tr>
+    <tr><td>Stale <code>proj-pn</code> Challenge keeps a finalizer</td><td>The VAP exception stays until PR B. Break-glass delete as fallback.</td></tr>
+    <tr><td>Let's Encrypt rate limit</td><td>Debug with <code>letsencrypt-staging</code> through the <code>tls</code> layer patch.</td></tr>
+    <tr><td>Second <code>TLSStore default</code></td><td>TLS-6 rejects it in preflight.</td></tr>
+    <tr><td>Traefik reads Secrets cluster-wide</td><td>Accepted and documented. Follow-up via <code>defaultTLSResourcesNamespace</code>.</td></tr>
+  </table>
+
+  <div class="callout">
+    <strong>Decisions for the maintainer:</strong>
+    (1) Approve Amendment 2.2.0 (edge TLS keys as Secrets in <code>platform</code>/<code>cert-manager</code> only).
+    (2) Confirm one certificate per hostname, with wildcard deferred.
+  </div>
+</main>
+</body>
+</html>

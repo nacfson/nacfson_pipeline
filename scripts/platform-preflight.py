@@ -8,6 +8,7 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
 import yaml
 
@@ -241,6 +242,219 @@ def check_project_doors(projects_dict):
                             "object": obj,
                             "detail": f"route port {port} is not allowed from the platform namespace" + kept,
                         })
+    return violations
+
+
+def check_edge_tls(project_docs, platform_docs):
+    """Enforce edge TLS rules TLS-1 through TLS-6 (contracts/preflight-tls-rules.md)."""
+    violations = []
+    kept = "; last accepted door is not replaced"
+
+    all_docs = platform_docs + project_docs
+
+    # Gather platform certificates and default TLSStore to compute covered_hosts
+    platform_certs = []
+    for doc in platform_docs:
+        if not isinstance(doc, dict):
+            continue
+        if doc.get("kind") == "Certificate":
+            c_ns = doc.get("metadata", {}).get("namespace", "")
+            if not c_ns:
+                c_ns = doc.get("metadata", {}).get("labels", {}).get("kustomize.toolkit.fluxcd.io/namespace", "")
+            if c_ns == "platform":
+                platform_certs.append(doc)
+
+    default_stores = []
+    all_stores = []
+    for doc in all_docs:
+        if not isinstance(doc, dict):
+            continue
+        if doc.get("kind") == "TLSStore":
+            all_stores.append(doc)
+            s_name = (doc.get("metadata") or {}).get("name")
+            if s_name == "default":
+                default_stores.append(doc)
+
+    default_store = None
+    for s in default_stores:
+        s_ns = s.get("metadata", {}).get("namespace", "")
+        if not s_ns:
+            s_ns = s.get("metadata", {}).get("labels", {}).get("kustomize.toolkit.fluxcd.io/namespace", "")
+        if s_ns == "platform":
+            default_store = s
+            break
+
+    covered_hosts = set()
+    if default_store:
+        store_spec = default_store.get("spec") or {}
+        listed_secrets = {
+            c.get("secretName")
+            for c in (store_spec.get("certificates") or [])
+            if isinstance(c, dict) and c.get("secretName")
+        }
+        for c in platform_certs:
+            c_secret = (c.get("spec") or {}).get("secretName")
+            if c_secret in listed_secrets:
+                for dns in (c.get("spec") or {}).get("dnsNames") or []:
+                    covered_hosts.add(str(dns).strip().lower())
+
+    # TLS-1: Project kinds Certificate, CertificateRequest, Issuer, Order, Challenge, TLSStore, TLSOption, Secret kubernetes.io/tls
+    tls_kinds = {"Certificate", "CertificateRequest", "Issuer", "Order", "Challenge", "TLSStore", "TLSOption"}
+    for doc in project_docs:
+        if not isinstance(doc, dict):
+            continue
+        kind = doc.get("kind", "")
+        ns = doc.get("metadata", {}).get("namespace", "")
+        if not ns:
+            ns = doc.get("metadata", {}).get("labels", {}).get("kustomize.toolkit.fluxcd.io/namespace", "")
+        name = (doc.get("metadata") or {}).get("name", "")
+        obj = f"{ns}/{kind}/{name}"
+        if kind in tls_kinds:
+            violations.append({
+                "rule": 2,
+                "object": obj,
+                "detail": f"TLS objects are platform-owned; {kind} is not allowed in project namespace {ns}" + kept,
+            })
+        elif kind == "Secret" and (doc.get("type") == "kubernetes.io/tls" or (doc.get("spec") or {}).get("type") == "kubernetes.io/tls"):
+            violations.append({
+                "rule": 2,
+                "object": obj,
+                "detail": f"TLS objects are platform-owned; Secret is not allowed in project namespace {ns}" + kept,
+            })
+
+    # TLS-2, TLS-3, TLS-4, TLS-5: Project IngressRoute checks
+    for doc in project_docs:
+        if not isinstance(doc, dict):
+            continue
+        if doc.get("kind") != "IngressRoute":
+            continue
+        ns = doc.get("metadata", {}).get("namespace", "")
+        if not ns:
+            ns = doc.get("metadata", {}).get("labels", {}).get("kustomize.toolkit.fluxcd.io/namespace", "")
+        name = (doc.get("metadata") or {}).get("name", "")
+        obj = f"{ns}/IngressRoute/{name}"
+        spec = doc.get("spec") or {}
+
+        # TLS-2: project IngressRoute whose spec.tls is missing or has any key
+        tls_field = spec.get("tls")
+        if "tls" not in spec or not isinstance(tls_field, dict) or len(tls_field) > 0:
+            violations.append({
+                "rule": 2,
+                "object": obj,
+                "detail": "route must declare tls: {} and let the platform select the certificate" + kept,
+            })
+
+        # TLS-3: spec.entryPoints != ["websecure"]
+        entry_points = spec.get("entryPoints")
+        if entry_points != ["websecure"]:
+            violations.append({
+                "rule": 2,
+                "object": obj,
+                "detail": "project route entry point must be websecure only" + kept,
+            })
+
+        # TLS-4 & TLS-5: route match and covered_hosts
+        for route in spec.get("routes") or []:
+            match_expr = route.get("match", "")
+            has_forbidden = any(token in match_expr for token in ("HostRegexp", "HostSNI", "HostHeader"))
+            host_groups = re.findall(r"Host\(([^)]*)\)", match_expr)
+            extracted_hosts = []
+            for grp in host_groups:
+                for h in re.findall(r"`([^`]+)`", grp):
+                    h_clean = h.strip()
+                    if h_clean:
+                        extracted_hosts.append(h_clean)
+
+            if has_forbidden or not extracted_hosts:
+                violations.append({
+                    "rule": 2,
+                    "object": obj,
+                    "detail": "route match must name its hostname with Host()" + kept,
+                })
+            else:
+                for h in extracted_hosts:
+                    if h.lower() not in covered_hosts:
+                        violations.append({
+                            "rule": 2,
+                            "object": obj,
+                            "detail": f"hostname {h} has no platform certificate; add it to deploy/platform/tls first" + kept,
+                        })
+
+    # TLS-6: Certificate inventory invariants (Platform render)
+    # Check stores outside platform or multiple defaults
+    for s in all_stores:
+        s_ns = s.get("metadata", {}).get("namespace", "")
+        if not s_ns:
+            s_ns = s.get("metadata", {}).get("labels", {}).get("kustomize.toolkit.fluxcd.io/namespace", "")
+        s_name = (s.get("metadata") or {}).get("name", "")
+        if s_ns != "platform":
+            violations.append({
+                "rule": 2,
+                "object": f"{s_ns}/TLSStore/{s_name}",
+                "detail": f"certificate inventory: TLSStore outside platform namespace ({s_ns})",
+            })
+
+    if len(default_stores) > 1:
+        violations.append({
+            "rule": 2,
+            "object": "platform/TLSStore/default",
+            "detail": "certificate inventory: more than one TLSStore named default",
+        })
+
+    if default_store:
+        store_spec = default_store.get("spec") or {}
+        if store_spec.get("defaultCertificate") is not None or store_spec.get("defaultGeneratedCert") is not None:
+            violations.append({
+                "rule": 2,
+                "object": "platform/TLSStore/default",
+                "detail": "certificate inventory: defaultCertificate and defaultGeneratedCert must be unset",
+            })
+
+        platform_cert_secrets = {
+            (c.get("spec") or {}).get("secretName")
+            for c in platform_certs
+            if (c.get("spec") or {}).get("secretName")
+        }
+        for cert_entry in store_spec.get("certificates") or []:
+            s_name = cert_entry.get("secretName") if isinstance(cert_entry, dict) else None
+            if s_name and s_name not in platform_cert_secrets:
+                violations.append({
+                    "rule": 2,
+                    "object": "platform/TLSStore/default",
+                    "detail": f"certificate inventory: listed secretName '{s_name}' has no matching Certificate in platform",
+                })
+
+    # Check hostname duplicate across platform certificates
+    host_to_certs = {}
+    for c in platform_certs:
+        c_name = (c.get("metadata") or {}).get("name", "")
+        for dns in (c.get("spec") or {}).get("dnsNames") or []:
+            dns_clean = str(dns).strip().lower()
+            host_to_certs.setdefault(dns_clean, []).append(c_name)
+    for host, c_names in host_to_certs.items():
+        if len(c_names) > 1:
+            violations.append({
+                "rule": 2,
+                "object": f"platform/Certificate/{c_names[0]}",
+                "detail": f"certificate inventory: hostname '{host}' appears in multiple certificates: {', '.join(c_names)}",
+            })
+
+    # Check edge Certificate outside platform (in platform namespaces other than platform)
+    for doc in all_docs:
+        if not isinstance(doc, dict):
+            continue
+        if doc.get("kind") == "Certificate":
+            c_ns = doc.get("metadata", {}).get("namespace", "")
+            if not c_ns:
+                c_ns = doc.get("metadata", {}).get("labels", {}).get("kustomize.toolkit.fluxcd.io/namespace", "")
+            c_name = (doc.get("metadata") or {}).get("name", "")
+            if c_ns and c_ns != "platform" and c_ns in PLATFORM_NAMESPACES:
+                violations.append({
+                    "rule": 2,
+                    "object": f"{c_ns}/Certificate/{c_name}",
+                    "detail": f"certificate inventory: Certificate '{c_name}' outside platform namespace ({c_ns})",
+                })
+
     return violations
 
 
@@ -489,6 +703,14 @@ def main():
             violations.extend(door_violations)
             status = STATUS_REJECTED_ISOLATION
             rejection_reason = door_violations[0]["detail"]
+            exit_code = 1
+
+        tls_violations = check_edge_tls(project_docs, platform_docs)
+        if tls_violations:
+            violations.extend(tls_violations)
+            status = STATUS_REJECTED_ISOLATION
+            if not rejection_reason:
+                rejection_reason = tls_violations[0]["detail"]
             exit_code = 1
 
     project_count = len(projects_dict)

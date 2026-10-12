@@ -231,6 +231,8 @@ spec:
         """Project PN's published door matches ports 80 and 8080 and may call the gateway."""
         parts = []
         for rel in (
+            "deploy/platform/tls/certificates.yaml",
+            "deploy/platform/tls/tls-store.yaml",
             "deploy/projects/pn/sign-in.yaml",
             "deploy/projects/pn/boundary/network-policy.yaml",
             "deploy/projects/pn/workloads/ingress-route.yaml",
@@ -244,6 +246,66 @@ spec:
         applied = os.path.join(BASE_DIR, "deploy/projects/pn/boundary/sign-in.yaml")
         with open(applied, encoding="utf-8") as fh:
             self.assertIn("signIn: shared", fh.read())
+
+    def test_15_valid_tls_render_passed(self):
+        """Fixture valid_tls_render.yaml passes with exit code 0."""
+        rc, data, err = self.run_preflight("valid_tls_render.yaml", "valid_capacity.yaml")
+        self.assertEqual(rc, 0, err or data.get("rejectionReason"))
+        self.assertEqual(data.get("validationStatus"), "PASSED")
+
+    def test_16_tls_project_certificate_rejected(self):
+        """TLS-1: Certificate in project namespace is rejected with rule 2."""
+        rc, data, _ = self.run_preflight("tls_project_certificate.yaml", "valid_capacity.yaml")
+        self.assertEqual(rc, 1)
+        self.assertEqual(data.get("validationStatus"), "REJECTED_ISOLATION")
+        rule2_details = [v.get("detail", "") for v in data.get("violations", []) if v.get("rule") == 2]
+        self.assertTrue(any(d.startswith("TLS objects are platform-owned;") for d in rule2_details))
+        self.assertTrue(data.get("rejectionReason", "").startswith("TLS objects are platform-owned;"))
+
+    def test_17_tls_route_secret_name_rejected(self):
+        """TLS-2: Project IngressRoute with tls.secretName is rejected with rule 2."""
+        rc, data, _ = self.run_preflight("tls_route_secret_name.yaml", "valid_capacity.yaml")
+        self.assertEqual(rc, 1)
+        self.assertEqual(data.get("validationStatus"), "REJECTED_ISOLATION")
+        rule2_details = [v.get("detail", "") for v in data.get("violations", []) if v.get("rule") == 2]
+        self.assertTrue(any(d.startswith("route must declare tls: {} and let the platform select the certificate") for d in rule2_details))
+        self.assertTrue(data.get("rejectionReason", "").startswith("route must declare tls: {} and let the platform select the certificate"))
+
+    def test_18_tls_route_web_entrypoint_rejected(self):
+        """TLS-3: Project IngressRoute without websecure-only entrypoint is rejected with rule 2."""
+        rc, data, _ = self.run_preflight("tls_route_web_entrypoint.yaml", "valid_capacity.yaml")
+        self.assertEqual(rc, 1)
+        self.assertEqual(data.get("validationStatus"), "REJECTED_ISOLATION")
+        rule2_details = [v.get("detail", "") for v in data.get("violations", []) if v.get("rule") == 2]
+        self.assertTrue(any(d.startswith("project route entry point must be websecure only") for d in rule2_details))
+        self.assertTrue(data.get("rejectionReason", "").startswith("project route entry point must be websecure only"))
+
+    def test_19_tls_route_host_regexp_rejected(self):
+        """TLS-4: Route match with HostRegexp is rejected with rule 2."""
+        rc, data, _ = self.run_preflight("tls_route_host_regexp.yaml", "valid_capacity.yaml")
+        self.assertEqual(rc, 1)
+        self.assertEqual(data.get("validationStatus"), "REJECTED_ISOLATION")
+        rule2_details = [v.get("detail", "") for v in data.get("violations", []) if v.get("rule") == 2]
+        self.assertTrue(any(d.startswith("route match must name its hostname with Host()") for d in rule2_details))
+        self.assertTrue(data.get("rejectionReason", "").startswith("route match must name its hostname with Host()"))
+
+    def test_20_tls_uncovered_host_rejected(self):
+        """TLS-5: Route match with uncovered hostname is rejected with rule 2."""
+        rc, data, _ = self.run_preflight("tls_uncovered_host.yaml", "valid_capacity.yaml")
+        self.assertEqual(rc, 1)
+        self.assertEqual(data.get("validationStatus"), "REJECTED_ISOLATION")
+        rule2_details = [v.get("detail", "") for v in data.get("violations", []) if v.get("rule") == 2]
+        self.assertTrue(any(d.startswith("hostname shop.example.com has no platform certificate; add it to deploy/platform/tls first") for d in rule2_details))
+        self.assertTrue(data.get("rejectionReason", "").startswith("hostname shop.example.com has no platform certificate; add it to deploy/platform/tls first"))
+
+    def test_21_tls_store_missing_secret_rejected(self):
+        """TLS-6: TLSStore listing secret with no Certificate is rejected with rule 2."""
+        rc, data, _ = self.run_preflight("tls_store_missing_secret.yaml", "valid_capacity.yaml")
+        self.assertEqual(rc, 1)
+        self.assertEqual(data.get("validationStatus"), "REJECTED_ISOLATION")
+        rule2_details = [v.get("detail", "") for v in data.get("violations", []) if v.get("rule") == 2]
+        self.assertTrue(any(d.startswith("certificate inventory:") for d in rule2_details))
+        self.assertTrue(data.get("rejectionReason", "").startswith("certificate inventory:"))
 
 
 if __name__ == "__main__":

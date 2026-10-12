@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: source-controller
+  namespace: flux-system
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: manager
+          image: ghcr.io/fluxcd/source-controller:v1.9.5
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+---
+apiVersion: traefik.io/v1alpha1
+kind: TLSStore
+metadata:
+  name: default
+  namespace: platform
+spec:
+  certificates:
+    - secretName: auth-tls
+    - secretName: pn-tls
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: auth-tls
+  namespace: platform
+spec:
+  secretName: auth-tls
+  dnsNames:
+    - auth.example.com
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pn-tls
+  namespace: platform
+spec:
+  secretName: pn-tls
+  dnsNames:
+    - pn.example.com
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pn-backend
+  namespace: proj-pn
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: backend
+          image: ghcr.io/nacfson/project-pn-backend@sha256:d3ab8644467bbbb2a49b0afc6631b2600ce344908ce15ddf99e8478c11ecaf21
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop:
+                - ALL
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: pn-backend
+  namespace: proj-pn
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: pn-isolation
+  namespace: proj-pn
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: platform
+      ports:
+        - port: 8080
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: pn-door
+  namespace: proj-pn
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`pn.example.com`)
+      middlewares:
+        - name: strip-forged-headers
+      services:
+        - name: pn-backend
+          port: 8080
+  tls: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: pn-tls
+  namespace: proj-pn
+spec:
+  secretName: pn-tls
+  dnsNames:
+    - pn.example.com
