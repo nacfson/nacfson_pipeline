@@ -8,8 +8,10 @@ metadata:
     app.kubernetes.io/part-of: project-pn
 spec:
   entryPoints:
-    - web
     - websecure
+  # Certificate proj-pn/pn-tls (deploy/platform/tls). HTTP is redirected by platform/http-to-https.
+  tls:
+    secretName: pn-tls
   routes:
     # Host route, then /api. Flux match patches address these indexes.
     - match: Host(`pn.example.com`)

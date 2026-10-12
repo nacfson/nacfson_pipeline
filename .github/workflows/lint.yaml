@@ -37,6 +37,7 @@ jobs:
             extends: default
             ignore: |
               **/gotk-components.yaml
+              deploy/platform/cert-manager/upstream/
             rules:
               line-length: disable
               truthy: disable

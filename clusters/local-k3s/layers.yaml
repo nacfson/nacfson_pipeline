@@ -148,6 +148,45 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
+  name: cert-manager
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: governance
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/cert-manager
+---
+# local-k3s keeps the base values: example.com hosts + self-signed issuer.
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: tls
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 10m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: cert-manager
+    - name: ingress
+    - name: project-boundaries
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/tls
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
   name: project-boundaries
   namespace: flux-system
 spec:

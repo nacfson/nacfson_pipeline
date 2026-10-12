@@ -1,0 +1,10 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Certificate issuers and the certificates Traefik serves.
+# Base values are safe placeholders (example.com + self-signed issuer).
+# clusters/<env>/layers.yaml patches real hostnames and the Let's Encrypt issuer.
+# See docs/tls-certificates.md.
+resources:
+  - cluster-issuers.yaml
+  - certificates.yaml

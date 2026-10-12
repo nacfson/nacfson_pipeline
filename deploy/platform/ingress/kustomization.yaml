@@ -4,3 +4,4 @@ kind: Kustomization
 resources:
   - traefik-middleware.yaml
   - ingress-allowlist.yaml
+  - http-redirect.yaml

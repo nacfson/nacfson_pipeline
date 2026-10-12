@@ -27,3 +27,16 @@ spec:
       X-User-Subject: ""
       X-User-Issuer: ""
       Authorization: ""
+---
+# Permanent HTTP -> HTTPS redirect. Used by IngressRoute platform/http-to-https.
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: redirect-to-https
+  namespace: platform
+  labels:
+    app.kubernetes.io/part-of: platform
+spec:
+  redirectScheme:
+    scheme: https
+    permanent: true
