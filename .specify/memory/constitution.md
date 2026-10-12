@@ -22,6 +22,10 @@ Initial persistent database storage MUST be operated via a standard PostgreSQL i
 ### VI. Environmental Portability Without Code Changes
 The platform deployment contract MUST run consistently across local native k3s, single VPS k3s, EKS, and GKE without modifying application source code. Differences in ingress controllers, persistent storage classes, external database endpoints, and image-pull secrets MUST be handled purely via environment-specific configuration. Colocated single-VPS deployment represents the initial footprint, not a structural barrier to future horizontal scale, separate database nodes, or high-availability migration.
 
+### VII. Distinct Lifecycle Signals for Dependent Project Workloads
+Always-on project HTTP workloads that include a site frontend depending on a project backend MUST declare three separate health roles: startup, readiness, and liveness. Startup MUST prove the frontend can reach the backend's process-availability signal at least once before the frontend is considered started. Readiness MUST continuously prove that same frontend-to-backend process-availability hop after startup; a readiness failure is the explicit "unconnected from backend" signal, withholds new traffic from that instance, and is the durable hook reserved for future operator notifications. Liveness MUST verify only that the local process is alive and MUST NOT depend on peer or data-store reachability. Backend readiness, when declared, MUST reflect required data-dependency readiness rather than process aliveness alone. Always-on project app containers MUST explicitly declare an always-restart policy. Readiness failures MUST NOT by themselves restart containers after startup has succeeded. Push notification delivery is not required by this principle; consumers MAY be added later that watch the readiness disconnect signal without inventing a parallel probe type.
+*Rationale:* Collapsing boot ordering, continuous disconnect detection, and process restart into one check either hides temporary unconnected states or causes restart storms. Separating startup from readiness keeps boot gating and the future notification surface explicit.
+
 ## Security, Isolation & Architectural Constraints
 
 - **Minimal Gateway Dependencies:** The authentication gateway MUST use Go standard-library cryptographic primitives, TLS, HTTP, and JSON functionality. Third-party Go modules, external gateway frameworks, Redis, or OAuth2 Proxy MUST NOT be introduced into the runtime image.
@@ -29,6 +33,7 @@ The platform deployment contract MUST run consistently across local native k3s, 
 - **Online Current-Session Revocation:** Users MUST be able to terminate their active platform session across all protected projects via an authenticated, CSRF-protected gateway endpoint. The revocation MUST invalidate subsequent requests immediately on the cluster network without waiting for access token expiration.
 - **Public Surface Allowlist:** Ingress routing rules MUST reject all traffic to internal endpoints, including Keycloak administrative consoles, management ports, and cluster internal JWKS/introspection channels.
 - **Controlled Ingress Bypass Prevention:** Platform admission controls and preflight validations MUST reject project manifests defining NodePort/LoadBalancer Services, hostPath mounts, host namespaces, or privileged container security contexts.
+- **Probe Role Separation:** For dependent project frontend/backend pairs, startup checks gate first backend reachability; readiness checks continuously expose frontend-to-backend unconnected state for traffic admission and future notifications; liveness checks remain process-local. Status endpoints used for these checks stay subject to the public-surface allowlist and MUST NOT imply that Keycloak or platform-admin health may be exposed publicly.
 
 ## Deployment Quality Gates & Verification Standards
 
@@ -67,4 +72,19 @@ The platform deployment contract MUST run consistently across local native k3s, 
 
 **Maintainer approval**: This major bump is written in the working tree and is not approved for commit. Do not commit version 2.0.0 until the repository maintainer approves it.
 
-**Version**: 2.0.0 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-10-09
+## Amendment 2.1.0
+
+**Rationale**: Project PN needs an explicit frontend-to-backend connection contract. Startup must wait for the first successful backend reachability hop. Readiness must continuously expose unconnected state as the operator-visible signal reserved for future notifications, without using liveness (and restart storms) for soft disconnects. Always-on app workloads must declare always-restart explicitly.
+
+**Impact**:
+
+- Security: Unchanged isolation and public-surface rules. Probe targets remain project status checks on the existing frontend-to-backend allowlist; platform-admin and Keycloak health stay private.
+- Resource quota: Negligible probe overhead only; no slice formula change.
+- Portability: Unchanged across environments; probe roles are workload declaration concerns, not cloud-specific services.
+- Operations: Frontend not-ready becomes the durable disconnect hook. Push notification delivery remains deferred.
+
+**Migration**: Update Project PN frontend to declare startup and readiness checks against the backend process-availability signal, keep frontend liveness process-local, point backend readiness at dependency readiness, and set explicit always-restart on frontend and backend. Align feature `007-pn-readiness-restart` with Principle VII. Do not ship notification sinks in the same migration.
+
+**Maintainer approval**: This minor bump is written in the working tree with Principle VII and depends on the still-unapproved 2.0.0 draft lineage. Do not commit version 2.1.0 until the repository maintainer approves the constitution revision set.
+
+**Version**: 2.1.0 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-10-12
