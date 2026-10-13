@@ -35,7 +35,9 @@ check() {
   if [ "$ok" = 1 ]; then
     echo "PASS  $label (HTTP $code)"
   else
-    echo "FAIL  $label: want HTTP $want${needle:+ containing '$needle'}, got HTTP $code  [$url]"
+    local hint=""
+    [ -z "$needle" ] || hint=" containing '$needle'"
+    echo "FAIL  $label: want HTTP ${want}${hint}, got HTTP $code  [$url]"
     FAILS=$((FAILS + 1))
   fi
   rm -f "$TMP.body"
