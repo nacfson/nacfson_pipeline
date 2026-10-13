@@ -84,7 +84,9 @@ spec:
             successThreshold: 1
           startupProbe:
             httpGet:
-              path: /healthz
+              # 007 amendment: exercise nginx `location /api/` -> backend auth router, not only the
+              # `location = /healthz` block (see specs/007-pn-readiness-restart/contracts/probe-matrix.md).
+              path: /api/auth/language-options
               port: 80
             periodSeconds: 5
             timeoutSeconds: 3

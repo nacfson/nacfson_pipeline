@@ -25,3 +25,5 @@ Post-merge expectation: after Flux applies `ALLOWED_ORIGINS` / `PUBLIC_APP_URL`,
 ## Constitution
 
 Principle VII / Amendment 2.1.0 expanded for browser origin allowlist; maintainer approval still required before treating the constitution bump as binding governance.
+
+**Amendment 2026-10-13**: FE `startupProbe` path changed from `/healthz` to `/api/auth/language-options` (auth-chain mismatch coverage). Readiness is unchanged on `/healthz`. Static check: `rg -n "language-options" deploy/projects/pn/workloads/frontend-deployment.yaml`. Live public checks: `scripts/smoke-auth-chain.sh`.
