@@ -1,8 +1,7 @@
 # Auth, Routing and GitOps Architecture
 
-Status: **proposal, documented before implementation.** Sections 1-4 describe
-how things work today. Section 5 is the change to make. Section 6 lists the
-login fixes that depend on it.
+Status: sections 1-4 describe how things work. Section 5 is implemented (auth route
+hostname substitution). Section 6 lists the remaining login fixes.
 
 ## 1. How a change reaches the cluster
 
@@ -82,45 +81,55 @@ base file is correct but has no effect.
 Rule that caused the bug: the cluster patch owned **both** the hostname and the
 path list.
 
-## 5. Change: cluster patches carry hostnames only
+## 5. Change: auth route paths live in one place (implemented)
 
-Ownership after the change:
+Status line at the top of this file applies to section 6. This section is
+implemented in the same change as spec 004 R3 amendment.
+
+Ownership:
 
 | Information | Owner |
 |---|---|
-| Which paths are routed or allowed | Base manifest in `deploy/` (one copy for all clusters) |
-| Which hostnames | `clusters/<cluster>/layers.yaml` (per cluster) |
-
-Mechanism: Flux variable substitution.
+| Which paths are routed or allowed | `deploy/platform/ingress/ingress-allowlist.yaml` (one copy for all clusters) |
+| Which hostname | `clusters/<cluster>/layers.yaml`, `ingress` layer, `postBuild.substitute.AUTH_HOST` |
 
 ```yaml
 # deploy/platform/ingress/ingress-allowlist.yaml (base)
 match: Host(`${AUTH_HOST}`) && (PathPrefix(`/oauth/start`) || PathPrefix(`/oauth/callback`))
 
-# clusters/vps-k3s/layers.yaml, ingress layer
+# clusters/vps-k3s/layers.yaml, ingress layer (local-k3s sets auth.example.com)
 postBuild:
   substitute:
     AUTH_HOST: auth.nacfson.cloud
-    PN_HOST: pn.nacfson.cloud
 ```
 
-Rules for this change:
-- Use `postBuild.substitute` only on layers whose manifests need it (`ingress`,
-  pn `workloads`). Flux replaces every `${VAR}` it sees, and undefined names
-  become empty. `deploy/platform/identity/gateway-deployment.yaml` contains shell
-  `${VAULT_TOKEN}` and similar, so do not enable substitution on `identity`, or
-  escape those as `$${VAR}`.
-- Remove the `/spec/routes/N/match` replace patches for the same routes.
-- Keep both clusters (`vps-k3s`, `local-k3s`) in step. Local uses `*.example.com`.
-- Add a CI check that renders both clusters and fails if a rendered route is
-  missing a path that the base lists.
+Why this is allowed although spec 004 R3 bans `postBuild`:
+- The ban is a **project rule**, not a Kubernetes or Flux limit. It exists because Flux
+  replaces every `${...}` in a layer, and other layers contain shell `${VAULT_TOKEN}`
+  and Keycloak `${VAULT:...}` placeholders that were corrupted in a dry run.
+- `deploy/platform/ingress/` contains no other `${`, so none of those cases apply.
+  R3 now has a narrow amendment: only layer `ingress`, only `AUTH_HOST`.
+
+Guard rails in `scripts/render-invariants.py`:
+- Invariant 1: `postBuild` allowed only on `ingress`, only `substitute`, only `AUTH_HOST`, non-empty.
+- Invariant 9: no rendered IngressRoute `match` with an unresolved `${` or an empty `Host()`.
+
+Verified with `scripts/render-validate.sh` on both clusters, plus negative tests
+(postBuild on `identity`, extra variable, empty `AUTH_HOST`, removed `postBuild`) that all fail.
+
+Side effect: the old `local-k3s` patch allowed `/realms/platform/broker/google/endpoint`,
+and the `vps-k3s` patch allowed `/realms/platform/broker/` (the base value). Local now
+follows the base, so its broker path is `/realms/platform/broker/`.
+
+Out of scope: `COOKIE_DOMAIN`, `PROJECT_RETURN_HOSTS`, `CENTRAL_AUTH_URL`, the pn
+route hosts and the Keycloak realm JSON still use per-cluster patches.
 
 ## 6. Login fixes that follow
 
 | # | Where | Change |
 |---|---|---|
-| A | `layers.yaml` (ingress) | Immediate fix, if section 5 is not done yet: `Host(...) && (PathPrefix(/oauth/start) \|\| PathPrefix(/oauth/callback))`. |
-| B | `layers.yaml` (identity, gateway env) | Set `PROJECT_RETURN_HOSTS=pn.nacfson.cloud`. Unset now, defaults to `pn.example.com`, so `/oauth/start` would return 400. |
+| A | `layers.yaml` / ingress base | Done (PR #34 and section 5): `/oauth/start` is routed. |
+| B | `layers.yaml` (identity, gateway env) | Done in PR #34. Set `PROJECT_RETURN_HOSTS=pn.nacfson.cloud`. Unset now, defaults to `pn.example.com`, so `/oauth/start` would return 400. |
 | C | pn `ingress-route.yaml` | Add `forward-auth` to `/api`. Add a protected `/login` route. Keep `/` public. Keep `/api/auth/language-options` public. |
 | D | `gateway/` `/auth` | Return `302` to `/oauth/start?return=<url>` for browser navigations. Keep `401` JSON for API calls. Add tests. |
 | E | Project_PN frontend | The sign-in button goes to `/login`, not `window.location.origin`. |
@@ -133,4 +142,3 @@ browser. Expected: redirect to Keycloak and Google sign-in.
 
 - Who starts the login redirect: gateway 302 (recommended, matches the spec) or
   the SPA calling `/oauth/start` directly.
-- Whether to do section 5 before or after fixes A and B.

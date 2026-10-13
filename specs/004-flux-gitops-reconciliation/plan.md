@@ -48,7 +48,7 @@ The manual `apply-release.sh`, `rollback-release.sh`, `preflight-budget.sh` path
 **Constraints**:
 - Reconciler memory reservation ≤ 256 MiB (memory limits of 128 MiB per controller).
 - No repository credential in the cluster; no inbound access to the API; no kubeconfig with write access off the node.
-- No postBuild substitution.
+- No postBuild substitution, except `AUTH_HOST` on the `ingress` layer (R3 amendment).
 - No source-content edits to workload manifests beyond annotations, explicit namespaces, the OpenBao probe correction ([R5](research.md#r5-sealed-vault-must-read-as-not-ready-without-being-killed)), resource bounds on `postgres-init-job` (the only unbounded container found by the render audit), and exact version tags for `postgres` and `keycloak` (constitution v1.4.1 Principle I). New governance files are additions, not edits.
 - The bootstrap never updates or downgrades an existing Flux.
 

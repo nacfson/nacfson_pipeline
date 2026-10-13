@@ -31,7 +31,7 @@ This maps the spec's Key Entities to concrete objects and files. No database is 
 | `capacity.yaml` | The Capacity Measurement (preflight input only, never applied) |
 | Root object | `Kustomization` `flux-system/flux-system`, `path: ./clusters/<env>`, `prune: true`, `interval: 10m` |
 
-**Validation**: CI fails if any Flux Kustomization has `spec.postBuild`, or if `capacity.yaml` is reachable from the entrypoint's `kustomization.yaml`.
+**Validation**: CI fails if any Flux Kustomization other than `ingress` has `spec.postBuild` (or `ingress` declares anything but `substitute.AUTH_HOST`), or if `capacity.yaml` is reachable from the entrypoint's `kustomization.yaml`.
 
 ### Reconciliation Layer
 
@@ -47,7 +47,7 @@ This maps the spec's Key Entities to concrete objects and files. No database is 
 | `spec.serviceAccountName` | Only on project workload layers (the Project Reconciliation Identity) |
 | `spec.targetNamespace` | MUST be absent on project layers |
 | `spec.patches` | Environment-specific values only |
-| `spec.postBuild` | MUST be absent |
+| `spec.postBuild` | MUST be absent, except layer `ingress`: `substitute.AUTH_HOST` only |
 
 **State transitions** (Flux `Ready` condition, per layer):
 

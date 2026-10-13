@@ -47,7 +47,7 @@ spec:
     kind: GitRepository
     name: flux-system
     namespace: flux-system   # explicit on project layers
-  # postBuild: FORBIDDEN (R3)
+  # postBuild: FORBIDDEN (R3), except the `ingress` layer may set postBuild.substitute AUTH_HOST only (R3 amendment)
   # targetNamespace: FORBIDDEN on project layers (R8)
 ```
 
@@ -126,11 +126,12 @@ Example shape (illustrative; values come from the environment):
 
 ## 5. Invariants checked by CI
 
-1. No Flux `Kustomization` has `spec.postBuild`.
+1. No Flux `Kustomization` has `spec.postBuild`, except `ingress`, which may declare `postBuild.substitute` with exactly `AUTH_HOST` (non-empty) and no `substituteFrom` ([R3 amendment](../research.md#r3-environment-differences-without-variable-substitution)).
 2. No `GitRepository` has `spec.secretRef`, and every URL starts with `https://`.
 3. Every rendered namespaced object has an explicit `metadata.namespace`.
 4. Every layer path builds with `flux build kustomization --dry-run` (CLI 2.9.5) and passes kubeconform.
 5. Every annotation in §3 is present in the rendered output.
 6. A project layer is declared under `clusters/<env>/projects/` (never in `layers.yaml`), has `serviceAccountName`, no `targetNamespace`, and its rendered objects are only of kinds Deployment, Service, ConfigMap or IngressRoute in its own namespace.
-7. The rendered count of `${` equals the source count for every layer (no hidden substitution).
+7. The rendered count of `${` equals the source count for every layer (no hidden substitution), except the `${AUTH_HOST}` occurrences in the `ingress` layer, which are resolved on purpose.
 8. The manual-change policy invariants in [manual-change-policy §5](manual-change-policy.md#5-invariants-checked-by-ci-render-validate) hold.
+9. No rendered `IngressRoute` `match` contains an unresolved `${` or an empty `Host()`.

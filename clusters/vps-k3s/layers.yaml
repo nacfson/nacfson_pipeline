@@ -134,20 +134,11 @@ spec:
     kind: GitRepository
     name: flux-system
   path: ./deploy/platform/ingress
-  patches:
-    - target:
-        kind: IngressRoute
-        name: public-auth-allowlist
-      patch: |
-        - op: replace
-          path: /spec/routes/0/match
-          value: Host(`auth.nacfson.cloud`) && (PathPrefix(`/realms/platform/protocol/openid-connect/auth`) || PathPrefix(`/realms/platform/login-actions`) || PathPrefix(`/realms/platform/broker/`) || PathPrefix(`/resources`))
-        - op: replace
-          path: /spec/routes/1/match
-          value: Host(`auth.nacfson.cloud`) && (PathPrefix(`/oauth/start`) || PathPrefix(`/oauth/callback`))
-        - op: replace
-          path: /spec/routes/2/match
-          value: Host(`auth.nacfson.cloud`) && PathPrefix(`/auth/logout`)
+  # Spec 004 R3 amendment: postBuild is allowed on this layer only, for AUTH_HOST only.
+  # Route paths live in deploy/platform/ingress/ingress-allowlist.yaml (single copy).
+  postBuild:
+    substitute:
+      AUTH_HOST: auth.nacfson.cloud
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
