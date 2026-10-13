@@ -23,6 +23,10 @@ CLUSTER_SCOPED_KINDS = {
 
 ALLOWED_PROJECT_KINDS = {"Deployment", "Service", "ConfigMap", "IngressRoute"}
 
+# Spec 004 R3 amendment: the only layer allowed postBuild, and the only variables it may substitute.
+INGRESS_LAYER_NAME = "ingress"
+ALLOWED_INGRESS_VARS = {"AUTH_HOST"}
+
 
 def load_yaml_docs(file_path):
     if not os.path.exists(file_path):
@@ -45,7 +49,8 @@ def main():
         sys.stderr.write(f"Error: cluster directory does not exist: {env_dir}\n")
         sys.exit(2)
 
-    # 1. Invariant 1: No Flux Kustomization in clusters/<env>/ has spec.postBuild
+    # 1. Invariant 1: No Flux Kustomization in clusters/<env>/ has spec.postBuild,
+    #    except the `ingress` layer, which may substitute exactly AUTH_HOST (spec 004 R3 amendment).
     # Invariant 2: No GitRepository has spec.secretRef, and every URL starts with https://
     for root, _, files in os.walk(env_dir):
         for file in files:
@@ -57,7 +62,19 @@ def main():
                     name = doc.get("metadata", {}).get("name", file)
                     if kind == "Kustomization":
                         if "postBuild" in spec:
-                            errors.append(f"Invariant 1 violation in {fpath}: Kustomization '{name}' declares forbidden spec.postBuild")
+                            post_build = spec["postBuild"] or {}
+                            substitute = post_build.get("substitute") or {}
+                            if (
+                                name != INGRESS_LAYER_NAME
+                                or set(post_build) != {"substitute"}
+                                or set(substitute) != ALLOWED_INGRESS_VARS
+                                or not all(substitute.values())
+                            ):
+                                errors.append(
+                                    f"Invariant 1 violation in {fpath}: Kustomization '{name}' declares forbidden spec.postBuild "
+                                    f"(only layer '{INGRESS_LAYER_NAME}' may declare postBuild.substitute with exactly "
+                                    f"{sorted(ALLOWED_INGRESS_VARS)} and no substituteFrom)"
+                                )
                     elif kind == "GitRepository":
                         if "secretRef" in spec:
                             errors.append(f"Invariant 2 violation in {fpath}: GitRepository '{name}' declares forbidden spec.secretRef")
@@ -77,6 +94,17 @@ def main():
 
     # Inspect rendered docs
     rendered_docs = load_yaml_docs(args.rendered)
+
+    # Invariant 9: Rendered IngressRoute matches have no unresolved ${...} and no empty Host().
+    # An undefined substitution variable would otherwise render a broken route silently.
+    for doc in rendered_docs:
+        if doc.get("kind") != "IngressRoute":
+            continue
+        route_name = doc.get("metadata", {}).get("name", "unnamed")
+        for idx, route in enumerate(doc.get("spec", {}).get("routes", []) or []):
+            match = route.get("match", "")
+            if "${" in match or "Host(``)" in match:
+                errors.append(f"Invariant 9 violation: IngressRoute/{route_name} routes[{idx}] match has an unresolved or empty host: {match}")
 
     # Invariant 3: Every rendered namespaced object has an explicit metadata.namespace
     for doc in rendered_docs:

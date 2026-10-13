@@ -13,7 +13,7 @@ spec:
   tls: {}
   routes:
     # 1. Keycloak Browser OIDC Login & Broker Callbacks
-    - match: Host(`auth.example.com`) && (PathPrefix(`/realms/platform/protocol/openid-connect/auth`) || PathPrefix(`/realms/platform/login-actions`) || PathPrefix(`/realms/platform/broker/`) || PathPrefix(`/resources`))
+    - match: Host(`${AUTH_HOST}`) && (PathPrefix(`/realms/platform/protocol/openid-connect/auth`) || PathPrefix(`/realms/platform/login-actions`) || PathPrefix(`/realms/platform/broker/`) || PathPrefix(`/resources`))
       kind: Rule
       services:
         - name: keycloak-service
@@ -21,7 +21,7 @@ spec:
           port: 8080
 
     # 2. Gateway OIDC Start & Callback
-    - match: Host(`auth.example.com`) && (PathPrefix(`/oauth/start`) || PathPrefix(`/oauth/callback`))
+    - match: Host(`${AUTH_HOST}`) && (PathPrefix(`/oauth/start`) || PathPrefix(`/oauth/callback`))
       kind: Rule
       services:
         - name: gateway
@@ -29,7 +29,7 @@ spec:
           port: 8080
 
     # 3. Gateway Synchronous Session Revocation
-    - match: Host(`auth.example.com`) && PathPrefix(`/auth/logout`)
+    - match: Host(`${AUTH_HOST}`) && PathPrefix(`/auth/logout`)
       kind: Rule
       services:
         - name: gateway
