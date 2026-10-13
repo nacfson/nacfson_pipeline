@@ -21,7 +21,7 @@ This guide proves the success criteria end to end, first on your local VM (the t
 | A2 | PR adding `type: NodePort` to a PN Service | `platform-preflight` fails with `REJECTED_ISOLATION`; merge is blocked |
 | A3 | PR lowering `pn-backend` memory limit | `REJECTED_MEMORY_SHRINK`; blocked |
 | A4 | PR raising `pn-backend` replicas past the slice | `REJECTED_OVER_BUDGET`; blocked |
-| A5 | PR adding `postBuild.substitute` to any layer | `render-validate` fails (invariant 1) |
+| A5 | PR adding `postBuild.substitute` to any layer other than `ingress`, or any variable other than `AUTH_HOST` | `render-validate` fails (invariant 1) |
 | A6 | PR deleting `capacity.yaml` | `REJECTED_NO_MEASUREMENT`; blocked |
 | A7 | `tests/preflight` fixture suite | All fixtures match the [contract table](contracts/platform-preflight.md#6-required-fixtures-testspreflight) |
 | A8 | gitleaks over full history | Zero findings |

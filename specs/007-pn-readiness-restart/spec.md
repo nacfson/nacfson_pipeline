@@ -16,7 +16,7 @@ Two different access paths exist. Both are in scope for Project PN "frontend can
 
 | Path | Who calls | What success means | Proved by |
 | --- | --- | --- | --- |
-| **Cluster hop** | kubelet → FE nginx → BE process | FE process can reach BE process-availability | FE `startupProbe` / `readinessProbe` on `/healthz` |
+| **Cluster hop** | kubelet → FE nginx → BE process | FE process can reach BE process-availability | FE `startupProbe` on `/api/auth/language-options` (amended 2026-10-13), `readinessProbe` on `/healthz` |
 | **Browser API path** | Browser JS → public door `/api` → BE | SPA can complete CORS-safe fetches to the API on the public origin | Backend `ALLOWED_ORIGINS` includes `PUBLIC_APP_URL` / public door origin; validated by Origin + preflight checks |
 
 A green cluster hop **MUST NOT** be treated as proof that the browser API path works. Proven failure mode: FE Ready + BE `/api/auth/me` answering 401, while browser `fetch` with `Cache-Control`/`Pragma` triggers CORS preflight that fails because `https://pn.nacfson.cloud` was not allowlisted → SPA shows connection error (non-401).
@@ -102,7 +102,7 @@ As a platform operator (and as an end user of the Project PN SPA), I want the ba
 
 1. **Given** Project PN backend workload env for an environment, **When** an operator inspects declarations, **Then** `PUBLIC_APP_URL` is set to that environment's public app origin and `ALLOWED_ORIGINS` is an explicit allowlist that **includes** that origin (plus any approved local/dev origins).
 2. **Given** `Origin` equals `PUBLIC_APP_URL`, **When** a CORS preflight `OPTIONS` is issued against a public `/api` route with `Access-Control-Request-Headers` including `cache-control` and `pragma`, **Then** the response includes `Access-Control-Allow-Origin` for that origin (and credentials allowlisting behavior remains consistent with the app's cookie/auth mode).
-3. **Given** FE `startupProbe`/`readinessProbe` on `/healthz` succeed, **When** `PUBLIC_APP_URL` is missing from `ALLOWED_ORIGINS`, **Then** the configuration is **non-compliant** with this feature even if pods are Ready—the cluster hop MUST NOT be accepted as sufficient proof of browser API access.
+3. **Given** FE `startupProbe` (`/api/auth/language-options`) and `readinessProbe` (`/healthz`) succeed, **When** `PUBLIC_APP_URL` is missing from `ALLOWED_ORIGINS`, **Then** the configuration is **non-compliant** with this feature even if pods are Ready—the cluster hop MUST NOT be accepted as sufficient proof of browser API access.
 4. **Given** environment-specific Flux patches (VPS vs local), **When** the public door host differs, **Then** each environment's patch sets `PUBLIC_APP_URL` / `ALLOWED_ORIGINS` for that host without changing IngressRoute path splitting rules.
 
 ---

@@ -140,6 +140,17 @@ Paths follow `specs/007-pn-readiness-restart/plan.md`: Project PN Deployments un
 
 ---
 
+## Phase 9: Amendment 2026-10-13 - Auth-chain mismatch coverage
+
+**Purpose**: Probes were green while sign-in was broken (nginx `/api/` proxy and the public auth chain were untested).
+
+- [x] T028 In `deploy/projects/pn/workloads/frontend-deployment.yaml`, change `startupProbe.httpGet.path` from `/healthz` to `/api/auth/language-options` (port 80, timings unchanged). Readiness and liveness are unchanged.
+- [x] T029 [P] Amend `research.md` R1, `contracts/probe-matrix.md` (row, Invariant 1, acceptance, coverage table), `plan.md`, `data-model.md`, `spec.md`, `quickstart.md`, `validation-note.md` to the new startup path.
+- [x] T030 [P] Add `scripts/smoke-auth-chain.sh` (public checks: pn `/`, `/api/auth/language-options` 200 via Traefik, `/api/auth/me` 401 JSON, auth `/oauth/start` 302 to Keycloak, `/oauth/start` without `return` 400) and document it in `quickstart.md` section 7.
+- [ ] T031 After merge and Flux reconcile, run `scripts/smoke-auth-chain.sh` against the VPS and confirm the new FE pod reaches Ready (startup probe on the new path).
+
+---
+
 ## Dependencies & Execution Order
 
 ### Phase Dependencies
