@@ -18,7 +18,7 @@ rg -n "startupProbe|readinessProbe|livenessProbe|restartPolicy|ALLOWED_ORIGINS|P
 
 | File | Must show |
 | --- | --- |
-| frontend | `restartPolicy: Always`; startup `/healthz`; readiness `/healthz`; liveness `/` |
+| frontend | `restartPolicy: Always`; startup `/api/auth/language-options`; readiness `/healthz`; liveness `/` |
 | backend | `restartPolicy: Always`; readiness `/readyz`; liveness `/healthz`; `ALLOWED_ORIGINS`; `PUBLIC_APP_URL` |
 | vps patch | `PUBLIC_APP_URL=https://pn.nacfson.cloud` and that origin in `ALLOWED_ORIGINS` |
 | local patch | `PUBLIC_APP_URL=https://pn.example.com` and that origin in `ALLOWED_ORIGINS` |
@@ -165,3 +165,13 @@ kubectl -n proj-pn get deploy pn-backend -o jsonpath='{range .spec.template.spec
 | SC-005 / SC-008 | §0 |
 | SC-009 | §6 |
 | SC-010 | §1 note + §5 + contracts |
+
+## 7. Auth-chain smoke (public, post-deploy; amendment 2026-10-13)
+
+```bash
+scripts/smoke-auth-chain.sh https://pn.nacfson.cloud https://auth.nacfson.cloud
+```
+
+**Expect**: every check prints `PASS` and the script exits 0. A `FAIL` names the broken link
+(Traefik route, gateway return host, backend `/api` proxy, or 401 shape). This covers what kubelet
+probes cannot see; see `contracts/probe-matrix.md` "Auth-chain mismatch coverage".

@@ -76,9 +76,9 @@ Independent of peer/DB reachability after startup.
 [Created]
     |
     v
-[Starting] --startup /healthz fail--> stay Starting (until window)
+[Starting] --startup /api/auth/language-options fail--> stay Starting (until window)
     |
-    | startup /healthz success
+    | startup /api/auth/language-options success
     v
 [Running]
     |-- readiness /healthz success --> Ready (in Endpoints)  [≠ CORS OK]

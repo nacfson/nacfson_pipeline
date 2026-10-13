@@ -8,7 +8,7 @@
 
 Project PN gets an explicit **two-path** access contract:
 
-1. **Cluster hop** — FE **startup** waits for first FE nginx → BE `/healthz`; FE **readiness** repeats that hop as the durable **unconnected** signal; FE **liveness** stays on `/`; BE **liveness** `/healthz`; BE **readiness** `/readyz`; both Deployments declare `restartPolicy: Always`.
+1. **Cluster hop** — FE **startup** waits for first FE nginx → BE auth router via `/api/auth/language-options` (amended 2026-10-13); FE **readiness** repeats that hop as the durable **unconnected** signal; FE **liveness** stays on `/`; BE **liveness** `/healthz`; BE **readiness** `/readyz`; both Deployments declare `restartPolicy: Always`.
 2. **Browser API path** — Backend declares `PUBLIC_APP_URL` and `ALLOWED_ORIGINS` such that the public app origin is allowlisted (env patches for VPS/local). This closes the proven gap where probes were green but SPA `fetch` preflight failed without `Access-Control-Allow-Origin`.
 
 No push notification sinks. No IngressRoute / NetworkPolicy edits. No image rebuild. Constitution Principle VII / Amendment 2.1.0 expanded for both paths. Research: [research.md](./research.md).
@@ -100,7 +100,8 @@ kubelet                                 Browser JS
 
 | Green signal | Proves | Does not prove |
 | --- | --- | --- |
-| FE startup/readiness `/healthz` | Cluster FE→BE process hop | Browser CORS / public `/api` success |
+| FE readiness `/healthz` | Cluster FE→BE process hop | Browser CORS / public `/api` success |
+| FE startup `/api/auth/language-options` | Cluster hop incl. nginx `/api/` proxy and BE auth router | Traefik routes, gateway, Keycloak, browser CORS (see `scripts/smoke-auth-chain.sh`) |
 | BE Ready `/readyz` | DB dependency | CORS allowlist |
 | `ALLOWED_ORIGINS` ∋ `PUBLIC_APP_URL` + ACAO on preflight | Browser-shaped Origin accepted | Every end-user network/extension |
 
@@ -120,7 +121,7 @@ Readiness does **not** restart the process. Startup failure after the window **d
 FE container start
         |
         v
- startupProbe /healthz  --fail (count < 36)--> retry; process stays up
+ startupProbe /api/auth/language-options  --fail (count < 36)--> retry; process stays up
         |
         | fail count reaches failureThreshold (36)
         v
@@ -140,7 +141,7 @@ Parallel config gate (not a kubelet probe):
 
 | Field | Value | Effect |
 | --- | --- | --- |
-| `startupProbe.httpGet.path` | `/healthz` | Must reach BE process-availability via nginx |
+| `startupProbe.httpGet.path` | `/api/auth/language-options` | Must reach the BE auth router via nginx `location /api/` (amended 2026-10-13) |
 | `periodSeconds` | `5` | Attempt cadence |
 | `timeoutSeconds` | `3` | Per-attempt timeout |
 | `failureThreshold` | `36` | `36 × 5s ≈ 180s` then **restart** |
@@ -182,7 +183,7 @@ spec:
             failureThreshold: 3
             successThreshold: 1
           startupProbe:
-            httpGet: { path: /healthz, port: 80 }
+            httpGet: { path: /api/auth/language-options, port: 80 }
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 36
@@ -191,7 +192,7 @@ spec:
 
 Notes:
 
-- FE `/healthz` is nginx → `pn-backend:8080/healthz` (process hop). Do **not** point FE readiness at `/readyz` (DB coupling).
+- FE `/healthz` is nginx → `pn-backend:8080/healthz` (process hop, readiness). FE startup uses `/api/auth/language-options` (nginx `location /api/` → backend router). Do **not** point FE readiness at `/readyz` (DB coupling).
 - Do **not** pretend FE Ready proves CORS.
 
 ### Backend probe + CORS env (required)

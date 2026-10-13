@@ -2,7 +2,9 @@
 
 ## R1. Frontend startup and readiness target path
 
-**Decision**: Both frontend `startupProbe` and `readinessProbe` use `httpGet` path `/healthz` on container port `80`.
+**Decision**: Frontend `readinessProbe` uses `httpGet` path `/healthz` on container port `80`. Frontend `startupProbe` uses `/api/auth/language-options` on port `80` (**amendment 2026-10-13**; originally `/healthz`).
+
+**Amendment 2026-10-13 (auth-chain mismatch)**: nginx serves `location = /healthz` and `location /api/` as separate blocks, so a passing `/healthz` does not prove the `/api/` proxy. During sign-in debugging, every probe was green while the SPA showed "Could not connect to the backend server". The startup probe now hits the public, DB-free `GET /api/auth/language-options` (backend `authRouter`, static `LanguageOptions()`), so FE boot also proves `/api/` proxy host/port/path wiring and the backend auth router. Readiness stays on `/healthz` so a later backend DB or router problem does not flip FE NotReady. Kubelet probes stay pod-local: Traefik routes, the gateway and Keycloak are covered by `scripts/smoke-auth-chain.sh` instead.
 
 **Rationale**: The Project PN frontend image renders nginx locations that proxy `/healthz` and `/readyz` to `PN_BACKEND_HOST:PN_BACKEND_PORT` without rewriting the path. `/healthz` on the backend is process-availability only, matching the cluster-hop disconnect signal. Hitting FE `/healthz` proves nginx is up **and** the FE→BE hop succeeds under NetworkPolicy.
 
