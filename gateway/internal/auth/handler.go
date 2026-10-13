@@ -228,13 +228,13 @@ func (h *Handler) returnHostAllowed(targetURL string) bool {
 	return false
 }
 
-// ProjectHostSessionCookie is the session cookie scoped to one project host.
-func ProjectHostSessionCookie(name, value, host string, expires time.Time) *http.Cookie {
+// ProjectHostSessionCookie is the session cookie scoped to the platform cookie domain.
+func ProjectHostSessionCookie(name, value, domain string, expires time.Time) *http.Cookie {
 	return &http.Cookie{
 		Name:     name,
 		Value:    value,
 		Path:     "/",
-		Domain:   host,
+		Domain:   domain,
 		Expires:  expires,
 		HttpOnly: true,
 		Secure:   true,
@@ -360,11 +360,11 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	cookieVal := h.encodeSessionCookie(sess)
 
-	// Cookie is scoped to the project host, not the platform parent domain.
+	// Cookie is scoped to the platform cookie domain so the browser accepts Set-Cookie from auth.<domain> and shares it with project hosts.
 	http.SetCookie(w, ProjectHostSessionCookie(
 		h.Config.CookieName,
 		cookieVal,
-		returnURL.Hostname(),
+		h.Config.CookieDomain,
 		time.Now().Add(h.Config.SessionTimeout),
 	))
 

@@ -34,7 +34,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: ghcr.io/nacfson/project-pn-backend@sha256:662c869b3c9e9559e518a844d8afc28b81844847081e00959e9b0f3c333a61a0
+          image: ghcr.io/nacfson/project-pn-backend@sha256:33a70e9e4768a7fdca786ecf7b0ac31710fcfa5ac8aabcf8e55a7aaca7b61d67
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -58,6 +58,8 @@ spec:
               value: "file:///app/db/migrations"
             - name: AUTH_JWT_JWKS_URL
               value: "http://gateway.identity.svc:8080/realms/platform/protocol/openid-connect/certs"
+            - name: GATEWAY_AUTH_URL
+              value: "http://gateway.identity.svc:8080/auth"
             - name: CENTRAL_AUTH_INTERNAL_URL
               value: "http://gateway.identity.svc:8080/realms/platform"
             - name: CENTRAL_AUTH_URL

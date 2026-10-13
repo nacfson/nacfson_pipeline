@@ -278,8 +278,9 @@ func TestSessionReturnCookieScopedToProjectHost(t *testing.T) {
 	if session == nil {
 		t.Fatal("expected a project session cookie")
 	}
-	if session.Domain != "pn.example.com" {
-		t.Fatalf("cookie must be scoped to the project host, got %q", session.Domain)
+	expectedDomain := strings.TrimPrefix(cfg.CookieDomain, ".")
+	if session.Domain != expectedDomain {
+		t.Fatalf("cookie must be scoped to the platform cookie domain, got %q, expected %q", session.Domain, expectedDomain)
 	}
 	if !session.HttpOnly || !session.Secure {
 		t.Fatalf("cookie must be HttpOnly and Secure, HttpOnly=%v Secure=%v", session.HttpOnly, session.Secure)
