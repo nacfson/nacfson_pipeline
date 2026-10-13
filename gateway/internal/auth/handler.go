@@ -6,7 +6,9 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"html"
 	"io"
+	"net"
 	"net/http"
 	"net/url"
 	"path"
@@ -228,7 +230,7 @@ func (h *Handler) returnHostAllowed(targetURL string) bool {
 	return false
 }
 
-// ProjectHostSessionCookie is the session cookie scoped to the platform cookie domain.
+// ProjectHostSessionCookie is the session cookie scoped to one project host (host-only when domain is empty).
 func ProjectHostSessionCookie(name, value, domain string, expires time.Time) *http.Cookie {
 	return &http.Cookie{
 		Name:     name,
@@ -360,15 +362,7 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 
 	cookieVal := h.encodeSessionCookie(sess)
 
-	// Cookie is scoped to the platform cookie domain so the browser accepts Set-Cookie from auth.<domain> and shares it with project hosts.
-	http.SetCookie(w, ProjectHostSessionCookie(
-		h.Config.CookieName,
-		cookieVal,
-		h.Config.CookieDomain,
-		time.Now().Add(h.Config.SessionTimeout),
-	))
-
-	// Clear temporary auth cookie
+	// Clear temporary auth cookie on auth host
 	http.SetCookie(w, &http.Cookie{
 		Name:     "OIDC_AUTH_STATE",
 		Value:    "",
@@ -378,7 +372,24 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		Secure:   true,
 	})
 
-	http.Redirect(w, r, state.TargetURL, http.StatusFound)
+	ticket := h.signTicket(FinishTicket{
+		Cookie: cookieVal,
+		Host:   returnURL.Hostname(),
+		Target: state.TargetURL,
+		Exp:    time.Now().Add(60 * time.Second).Unix(),
+	})
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html>
+<head><title>Completing sign-in...</title></head>
+<body>
+<form method="POST" action="https://%s/oauth/finish"><input type="hidden" name="ticket" value="%s"><noscript><button type="submit">Continue</button></noscript></form>
+<script>document.forms[0].submit();</script>
+</body>
+</html>`,
+		html.EscapeString(returnURL.Hostname()), html.EscapeString(ticket))
 }
 
 func (h *Handler) encodeSessionCookie(data SessionCookieData) string {
@@ -430,17 +441,123 @@ func (h *Handler) decodeSessionCookie(raw string) (*SessionCookieData, error) {
 }
 
 func (h *Handler) clearSessionCookie(w http.ResponseWriter) {
+	if h.Config.CookieDomain != "" {
+		http.SetCookie(w, &http.Cookie{
+			Name:     h.Config.CookieName,
+			Value:    "",
+			Path:     "/",
+			Domain:   h.Config.CookieDomain,
+			Expires:  time.Unix(0, 0),
+			MaxAge:   -1,
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
+		})
+	}
+	// Clear host-only cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:     h.Config.CookieName,
 		Value:    "",
 		Path:     "/",
-		Domain:   h.Config.CookieDomain,
 		Expires:  time.Unix(0, 0),
 		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   true,
 		SameSite: http.SameSiteLaxMode,
 	})
+}
+
+// FinishTicket carries signed session data across the handoff from auth host to project host.
+type FinishTicket struct {
+	Cookie string `json:"cookie"`
+	Host   string `json:"host"`
+	Target string `json:"target"`
+	Exp    int64  `json:"exp"`
+}
+
+func (h *Handler) signTicket(t FinishTicket) string {
+	b, _ := json.Marshal(t)
+	mac := hmac.New(sha256.New, h.Config.HMACSecret)
+	mac.Write(b)
+	sig := mac.Sum(nil)
+	return fmt.Sprintf("%s.%s",
+		base64.RawURLEncoding.EncodeToString(b),
+		base64.RawURLEncoding.EncodeToString(sig),
+	)
+}
+
+func (h *Handler) verifyTicket(raw string) (*FinishTicket, error) {
+	parts := strings.Split(raw, ".")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("malformed ticket")
+	}
+	b, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, err
+	}
+	sig, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, err
+	}
+
+	mac := hmac.New(sha256.New, h.Config.HMACSecret)
+	mac.Write(b)
+	if !hmac.Equal(sig, mac.Sum(nil)) {
+		valid := false
+		if len(h.Config.HMACSecretPrevious) > 0 {
+			prevMac := hmac.New(sha256.New, h.Config.HMACSecretPrevious)
+			prevMac.Write(b)
+			if hmac.Equal(sig, prevMac.Sum(nil)) {
+				valid = true
+			}
+		}
+		if !valid {
+			return nil, fmt.Errorf("invalid ticket signature")
+		}
+	}
+
+	var data FinishTicket
+	if err := json.Unmarshal(b, &data); err != nil {
+		return nil, err
+	}
+	return &data, nil
+}
+
+// HandleFinish runs on the project host (routed to the gateway by Traefik IngressRoute).
+// It verifies the signed hand-off ticket and sets a host-only cookie for the project host.
+func (h *Handler) HandleFinish(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	ticketVal := r.PostFormValue("ticket")
+	if ticketVal == "" {
+		http.Error(w, "missing sign-in ticket", http.StatusBadRequest)
+		return
+	}
+	t, err := h.verifyTicket(ticketVal)
+	if err != nil {
+		http.Error(w, "invalid sign-in hand-off", http.StatusBadRequest)
+		return
+	}
+
+	host := r.Host
+	if hh, _, splitErr := net.SplitHostPort(host); splitErr == nil {
+		host = hh
+	}
+
+	if time.Now().Unix() > t.Exp || !strings.EqualFold(t.Host, host) || !h.returnHostAllowed(t.Target) {
+		http.Error(w, "invalid sign-in hand-off", http.StatusBadRequest)
+		return
+	}
+
+	http.SetCookie(w, ProjectHostSessionCookie(
+		h.Config.CookieName,
+		t.Cookie,
+		"", // Host-only cookie: no Domain attribute, strictly scoped to this project host.
+		time.Now().Add(h.Config.SessionTimeout),
+	))
+	http.Redirect(w, r, t.Target, http.StatusSeeOther)
 }
 
 func deriveProjectAudience(host string) string {
