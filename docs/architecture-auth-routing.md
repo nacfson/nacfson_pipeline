@@ -132,7 +132,9 @@ route hosts and the Keycloak realm JSON still use per-cluster patches.
 | B | `layers.yaml` (identity, gateway env) | Done in PR #34. Set `PROJECT_RETURN_HOSTS=pn.nacfson.cloud`. Unset now, defaults to `pn.example.com`, so `/oauth/start` would return 400. |
 | C | pn `ingress-route.yaml` | Add `forward-auth` to `/api`. Add a protected `/login` route. Keep `/` public. Keep `/api/auth/language-options` public. |
 | D | `gateway/` `/auth` | Return `302` to `/oauth/start?return=<url>` for browser navigations. Keep `401` JSON for API calls. Add tests. |
-| E | Project_PN frontend | The sign-in button goes to `/login`, not `window.location.origin`. |
+| E | Project_PN frontend | Sign-in button navigates to `<EXPO_PUBLIC_AUTH_HOST>/oauth/start?return=<origin>/` (Project_PN PR #67, pending merge). Chosen over a `/login` route for now. |
+| F | Project_PN `packages/api/src/client.ts` | Read the response body once. A non-refreshed 401 used to throw `body stream already read`, so the SPA showed "Could not connect to the backend server" (Project_PN PR #67, pending merge). |
+| G | FE `startupProbe` and `scripts/smoke-auth-chain.sh` | Startup probe uses `/api/auth/language-options`; the smoke script checks the public chain (spec 007 amendment). |
 
 Verification after A and B: open
 `https://auth.nacfson.cloud/oauth/start?return=https://pn.nacfson.cloud/` in a
@@ -140,5 +142,20 @@ browser. Expected: redirect to Keycloak and Google sign-in.
 
 ## 7. Open decisions
 
-- Who starts the login redirect: gateway 302 (recommended, matches the spec) or
-  the SPA calling `/oauth/start` directly.
+- Who starts the login redirect. Interim answer: the SPA calls `/oauth/start`
+  directly (row E). Long term the gateway 302 (row D) keeps the SPA free of the auth
+  host and gives every project login for free. Revisit when row C (`forward-auth`
+  on `/api`) is done, because the backend needs the injected JWT either way.
+
+## 8. Publishing and pinning images
+
+The cluster pulls `ghcr.io/nacfson/project-pn-*:<git sha>@sha256:<registry digest>`
+(`deploy/projects/pn/workloads/*-deployment.yaml`).
+
+- A local image ID (`docker images --digests`, for example `project-pn-frontend:local`)
+  is **not** that digest and the image is not in GHCR. Pinning it gives `ImagePullBackOff`.
+- Flow: merge the Project_PN change to `main`, let Project_PN CI
+  (`publish-ghcr-images.yml`) build and push, take the digest it prints
+  (`...@sha256:<digest>`), then update the pin here in a PR.
+- Project_PN PR #67 changes frontend code only. The backend source is unchanged, so
+  the backend pin stays as it is.

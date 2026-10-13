@@ -116,10 +116,26 @@ Broken arrow 1, for three separate reasons:
 |---|---|---|---|
 | 1 | Traefik returns 404 for `/oauth/start`. The cluster patch lists only `/oauth/callback`. | `clusters/*/layers.yaml` | Allow both paths in the patch (PR #34) |
 | 2 | Gateway `PROJECT_RETURN_HOSTS` is unset and defaults to `pn.example.com`, so `return=https://pn.nacfson.cloud/` returns 400 | gateway env in `layers.yaml` | Set it to `pn.nacfson.cloud` (PR #34) |
-| 3 | Nothing sends the browser to `/oauth/start`. The Sign In button runs `window.location.href = window.location.origin`, which only reloads the SPA. The gateway's `/auth` returns 401 and never a 302. | SPA and gateway code | Gateway 302 for browser navigations, SPA button to `/login` |
+| 3 | Nothing sends the browser to `/oauth/start`. The Sign In button runs `window.location.href = window.location.origin`, which only reloads the SPA. The gateway's `/auth` returns 401 and never a 302. | SPA and gateway code | SPA button navigates to `/oauth/start?return=<origin>/` (Project_PN PR #67, pending merge). Optional later: gateway 302. |
 
 Also missing: the pn route has no `forward-auth` middleware, so even after login
 `/api` requests would reach the backend without the injected JWT.
+
+Separate frontend bug found on the way: a signed-out `401` from `/api/auth/me` showed
+"Could not connect to the backend server". The JSON helpers read the response body twice
+on a non-refreshed 401; the second read throws `TypeError: body stream already read`,
+which has no `.status`, so `checkAuth` took its connection-failure branch. Fixed in
+Project_PN PR #67 (pending merge).
+
+**Q: Why were all Kubernetes probes green while sign-in was broken?**
+Probes run inside the pod. FE `/healthz` is a separate nginx block from `/api/`, and the
+broken parts (Traefik route, gateway, Keycloak) are outside the pod. FE `startupProbe` now
+uses `/api/auth/language-options`, and `scripts/smoke-auth-chain.sh` checks the public chain.
+
+**Q: Can I pin the image digest from `docker images` in the manifests?**
+No. That is a local image ID, and the image is not in GHCR, so the pod would hit
+`ImagePullBackOff`. Merge to Project_PN `main`, let CI publish, then pin the registry
+digest it prints. See `architecture-auth-routing.md` section 8.
 
 ## 4. Which problem needs which file
 
