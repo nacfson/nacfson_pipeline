@@ -114,6 +114,8 @@ spec:
                       value: ".nacfson.cloud"
                     - name: KEYCLOAK_PUBLIC_URL
                       value: "https://auth.nacfson.cloud/realms/platform"
+                    - name: PROJECT_RETURN_HOSTS
+                      value: "pn.nacfson.cloud"
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -142,7 +144,7 @@ spec:
           value: Host(`auth.nacfson.cloud`) && (PathPrefix(`/realms/platform/protocol/openid-connect/auth`) || PathPrefix(`/realms/platform/login-actions`) || PathPrefix(`/realms/platform/broker/`) || PathPrefix(`/resources`))
         - op: replace
           path: /spec/routes/1/match
-          value: Host(`auth.nacfson.cloud`) && PathPrefix(`/oauth/callback`)
+          value: Host(`auth.nacfson.cloud`) && (PathPrefix(`/oauth/start`) || PathPrefix(`/oauth/callback`))
         - op: replace
           path: /spec/routes/2/match
           value: Host(`auth.nacfson.cloud`) && PathPrefix(`/auth/logout`)
