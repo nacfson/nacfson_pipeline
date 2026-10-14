@@ -8,55 +8,56 @@ This document tells a project how to **accept**, **verify**, and **authorize** u
 
 ---
 
-## 1. Trust path (do not invent another)
+## 1. Trust path (Spec 009: 4-Layer Cookie-Free BFF + Shared Verification Module)
 
 ```text
-Browser
-  → https://<project>.<domain>   (Traefik)
-    → ForwardAuth → Go gateway
-         → Keycloak (session / project-scoped access token)
-    → Project workload
-         ← Authorization: Bearer <JWT>
-         ← X-User-Subject: <sub>
-         ← X-User-Issuer: <issuer>
+Project Frontend (Owns 100% of Login UI, Zero Cookies)
+  → https://<project>.<domain>/api/*   (Project Backend + Shared Verification Module)
+    → Internal HTTP → http://gateway.identity.svc:8080 (/auth/exchange, /auth, /auth/logout)
+         → http://keycloak-service.identity.svc:8080 (PostgreSQL session store + OAuth token refresh)
+    ← Verified (X-User-Issuer, X-User-Subject, X-Project-Audience, Authorization: Bearer <JWT>)
+  ← JSON Response to Project Frontend
 ```
 
 | Layer | Responsibility |
 |-------|----------------|
-| Traefik + gateway | Login redirect, session cookie, session validity, inject headers |
-| Keycloak | Identity issuer, Google broker, SSO session, JWT signing |
-| **This project** | Verify JWT; map `(issuer, subject)` to ordinary/admin capabilities |
+| **4. Project Frontend** | Owns the entire Login UI; exchanges one-time pickup code at `POST /api/auth/session` for `{ session_handle, user, requirements }` and sends `Authorization: Bearer <session_handle>` on `/api/*` with **zero cookies**. |
+| **3. Project Backend (`gateway/pkg/projectauth`)** | Exposes `/api/auth/login`, `/api/auth/callback`, `/api/auth/session`, `/api/auth/logout` and `RequireAuth`; maps verified `(issuer, subject)` to project user data & capabilities. |
+| **2. Internal Gateway (`gateway.identity.svc:8080`)** | Headless login logic only (`kc_idp_hint=google` + AES-256-GCM encrypted PKCE `state`); seals OAuth/refresh tokens using its OpenBao Vault key into an opaque `session_handle`; validates canonical issuer and transparently refreshes expired short-lived tokens. |
+| **1. Keycloak (`keycloak-service.identity.svc:8080`)** | Root identity broker (Google OIDC) and PostgreSQL-backed session authority. |
 
 **Forbidden for the project**
 
-- Talking to Keycloak or Google for browser login
-- Trusting `X-User-*` or `Authorization` from the client without independent JWT verification
+- Rendering a pipeline-side or Keycloak username/password login form (`kc_idp_hint=google` bypasses it)
+- Emitting or relying on cross-subdomain `PLATFORM_SESSION` or `OIDC_AUTH_STATE` cookies
+- Trusting `X-User-*` or `Authorization` from the client without verifying against `gateway.identity.svc:8080` / JWKS
 - Accepting Google access tokens or OIDC ID tokens as API credentials
 - Minting or trusting business-role claims from the gateway
 - Using email as a permanent unique user id or account-link key
 
 ---
 
-## 2. What the project receives
+## 2. Shared Verification Contract (`gateway/pkg/projectauth` & Language-Agnostic HTTP)
 
-On every authenticated request that Traefik forwards upstream, expect:
+Go projects import `nacfson_pipeline/gateway/pkg/projectauth` directly (`NewVerifier` + `RegisterRoutes` + `RequireAuth`). Non-Go projects (Python, Node, Rust) call the exact same standard internal HTTP endpoints on `http://gateway.identity.svc:8080` (see [`specs/009-host-scoped-shared-auth/contracts/`](../specs/009-host-scoped-shared-auth/contracts/)):
 
-| Header | Meaning | Trust rule |
+| Endpoint / Header | Direction | Purpose |
 |--------|---------|------------|
-| `Authorization: Bearer <jwt>` | Keycloak **access token** for **this** project audience | Verify signature + claims yourself |
-| `X-User-Subject` | Keycloak `sub` (informational mirror) | Do **not** trust alone; must match JWT `sub` |
-| `X-User-Issuer` | Keycloak realm issuer URL | Do **not** trust alone; must match JWT `iss` |
-
-Strip or ignore any client-supplied identity headers before verification. Treat gateway-injected headers as hints only after the JWT validates.
+| `GET /api/auth/login` | Frontend ➔ Project Backend | Redirects to `https://auth.<domain>/oauth/start?return=https://<project>/api/auth/callback` (`kc_idp_hint=google`) |
+| `POST http://gateway.identity.svc:8080/auth/exchange` | Project Backend ➔ Internal Gateway | Exchanges one-time callback `ticket` for `{ session_handle, subject, issuer, audience }` |
+| `POST /api/auth/session` | Frontend ➔ Project Backend | Exchanges 30-second one-time pickup `code` for `{ session_handle, user, requirements }` JSON |
+| `GET http://gateway.identity.svc:8080/auth` | Project Backend ➔ Internal Gateway | Verifies `Authorization: Bearer <session_handle>` + `X-Forwarded-Host: <project-host>`; returns `X-User-Subject`, `X-User-Issuer`, `X-Project-Audience`, and `Authorization: Bearer <project-jwt>` |
+| `POST http://gateway.identity.svc:8080/auth/logout` | Project Backend ➔ Internal Gateway | Immediately revokes the underlying Keycloak session for `Authorization: Bearer <session_handle>` |
 
 Configure these values from deployment config (not hard-coded secrets in source):
 
 | Config | Example / rule |
 |--------|----------------|
-| Expected issuer (`iss`) | `https://auth.<domain>/realms/platform` |
-| Expected audience (`aud`) | This project's Keycloak client id (e.g. `project-pn`) |
-| JWKS URL | Realm JWKS over **cluster network** (not public ingress). Example shape: `http://keycloak.identity.svc:8080/realms/platform/protocol/openid-connect/certs` |
-| Allowed JWT alg | Explicit allowlist (typically `RS256`); reject others |
+| Expected issuer (`iss`) | Canonical public realm URL `https://auth.<domain>/realms/platform` (or internal `http://keycloak-service.identity.svc:8080/realms/platform`) |
+| Expected audience (`aud`) | This project's client id (e.g. `project-pn`) |
+| Internal Gateway URL | `http://gateway.identity.svc:8080` |
+| JWKS URL | `http://gateway.identity.svc:8080/realms/platform/protocol/openid-connect/certs` |
+| Allowed JWT alg | Explicit allowlist (`RS256`); reject others |
 
 Public JWKS keys are not client secrets. Do not embed Keycloak private keys.
 

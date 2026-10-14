@@ -36,14 +36,5 @@ spec:
           namespace: identity
           port: 8080
 
-    # 4. Gateway Session Finish (Host-only cookie setter on project hosts)
-    - match: PathPrefix(`/oauth/finish`)
-      kind: Rule
-      priority: 50
-      services:
-        - name: gateway
-          namespace: identity
-          port: 8080
-
 # NOTE: Administrative paths (/admin/), master realm (/realms/master/), health checks,
 # and metrics port 9000 are omitted from this allowlist and will return 404 from Traefik.

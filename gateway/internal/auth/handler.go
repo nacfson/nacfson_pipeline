@@ -6,50 +6,62 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"html"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"path"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"nacfson_pipeline/gateway/internal/config"
 	"nacfson_pipeline/gateway/internal/keycloak"
 )
 
-// StatePayload carries state information across OIDC redirection.
+// StatePayload carries PKCE and return state information across OIDC redirection.
 type StatePayload struct {
 	TargetURL      string `json:"target_url"`
+	CodeVerifier   string `json:"cv,omitempty"`
 	Nonce          string `json:"nonce"`
 	Timestamp      int64  `json:"ts"`
-	VerifierDigest string `json:"vd"`
+	VerifierDigest string `json:"vd,omitempty"`
 }
 
-// SessionCookieData stores authenticated session state in the encrypted/signed cookie.
+// SessionCookieData (and SessionHandleData) stores authenticated session state inside the Vault-sealed opaque session_handle.
 type SessionCookieData struct {
 	SessionID    string            `json:"sid"`
 	Subject      string            `json:"sub"`
 	Issuer       string            `json:"iss"`
+	Audience     string            `json:"aud,omitempty"`
 	Tokens       map[string]string `json:"tokens"` // audience -> project access token
 	RefreshToken string            `json:"rt"`
 	CreatedAt    int64             `json:"iat"`
 }
+
+// SessionHandleData is the canonical alias for the Vault-sealed opaque session handle payload.
+type SessionHandleData = SessionCookieData
 
 // CodeExchanger exchanges an authorization code for tokens.
 type CodeExchanger interface {
 	ExchangeCode(code, codeVerifier, redirectURI string) (*keycloak.TokenResponse, error)
 }
 
-// Handler handles session confirmation and OIDC return.
+// TokenRefreshValidator is an optional extension of keycloak.SessionValidator that validates actual OAuth access tokens
+// and transparently refreshes expired short-lived tokens using the session's refresh token.
+type TokenRefreshValidator interface {
+	ValidateAndRefresh(sessionID, accessToken, refreshToken, targetAudience string) (bool, *keycloak.TokenResponse, error)
+}
+
+// Handler handles headless OAuth redirection, ticket exchange, and session_handle confirmation.
 type Handler struct {
-	Config    *config.Config
-	Validator keycloak.SessionValidator
-	Client    *keycloak.Client
-	Revoker   keycloak.SessionTerminator
-	Exchanger CodeExchanger
+	Config         *config.Config
+	Validator      keycloak.SessionValidator
+	Client         *keycloak.Client
+	Revoker        keycloak.SessionTerminator
+	Exchanger      CodeExchanger
+	ticketInitOnce sync.Once
+	tickets        *TicketStore
 }
 
 // NewHandler creates a new Auth Handler.
@@ -63,6 +75,7 @@ func NewHandler(cfg *config.Config, validator keycloak.SessionValidator, client 
 		Validator: validator,
 		Client:    client,
 		Revoker:   revoker,
+		tickets:   newTicketStore(),
 	}
 }
 
@@ -71,10 +84,33 @@ func (h *Handler) SetRevoker(revoker keycloak.SessionTerminator) {
 	h.Revoker = revoker
 }
 
-// HandleForwardAuth confirms a session when a shared project asks.
-// A missing cookie does not redirect. Opening the project host does not require one.
+// SealSessionHandle encrypts and authenticates SessionHandleData using AES-256-GCM with the Gateway's Vault secret.
+func (h *Handler) SealSessionHandle(data SessionHandleData) (string, error) {
+	return sealJSON(data, h.Config.HMACSecret)
+}
+
+// UnsealSessionHandle decrypts or verifies a session_handle (supporting both AES-256-GCM v1 handles and HMAC-encoded handles).
+func (h *Handler) UnsealSessionHandle(raw string) (*SessionHandleData, error) {
+	if strings.HasPrefix(raw, sealedPrefix) {
+		var data SessionHandleData
+		if err := unsealJSON(raw, h.Config.HMACSecret, h.Config.HMACSecretPrevious, &data); err != nil {
+			return nil, err
+		}
+		return &data, nil
+	}
+	return h.decodeSessionCookie(raw)
+}
+
+// HandleForwardAuth confirms an opaque session_handle (via Authorization: Bearer <session_handle> or legacy cookie) when a shared project asks.
 func (h *Handler) HandleForwardAuth(w http.ResponseWriter, r *http.Request) {
-	// 1. Inbound Header Sanitization: Strip client-supplied identity headers
+	// Capture any inbound Bearer session_handle before stripping client-supplied headers
+	rawAuthHeader := strings.TrimSpace(r.Header.Get("Authorization"))
+	var bearerCandidate string
+	if strings.HasPrefix(strings.ToLower(rawAuthHeader), "bearer ") {
+		bearerCandidate = strings.TrimSpace(rawAuthHeader[7:])
+	}
+
+	// 1. Inbound Header Sanitization: Strip client-supplied identity headers from request
 	r.Header.Del("X-User-Subject")
 	r.Header.Del("X-User-Issuer")
 	r.Header.Del("Authorization")
@@ -84,15 +120,22 @@ func (h *Handler) HandleForwardAuth(w http.ResponseWriter, r *http.Request) {
 		targetHost = r.Host
 	}
 
-	// 2. A missing or unreadable session leaves the visitor unsigned-in.
-	cookie, err := r.Cookie(h.Config.CookieName)
-	if err != nil || cookie.Value == "" {
-		http.Error(w, `{"error":"unsigned_in","message":"No confirmed session"}`, http.StatusUnauthorized)
-		return
+	// 2. Resolve session from Bearer session_handle (primary) or legacy cookie (fallback for existing unit tests)
+	var session *SessionHandleData
+	if bearerCandidate != "" {
+		if s, err := h.UnsealSessionHandle(bearerCandidate); err == nil {
+			session = s
+		}
+	}
+	if session == nil && h.Config != nil && h.Config.CookieName != "" {
+		if cookie, err := r.Cookie(h.Config.CookieName); err == nil && cookie.Value != "" {
+			if s, err := h.UnsealSessionHandle(cookie.Value); err == nil {
+				session = s
+			}
+		}
 	}
 
-	session, err := h.decodeSessionCookie(cookie.Value)
-	if err != nil {
+	if session == nil {
 		http.Error(w, `{"error":"unsigned_in","message":"No confirmed session"}`, http.StatusUnauthorized)
 		return
 	}
@@ -101,21 +144,67 @@ func (h *Handler) HandleForwardAuth(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"unsigned_in","message":"Session expired"}`, http.StatusUnauthorized)
 		return
 	}
-	if h.Config.KeycloakIssuerURL != "" && session.Issuer != h.Config.KeycloakIssuerURL {
+	if !h.Config.IsAllowedIssuer(session.Issuer) {
 		http.Error(w, `{"error":"unsigned_in","message":"Session issuer does not match this sign-in service"}`, http.StatusUnauthorized)
 		return
 	}
 
-	// 3. Online Session Check against Keycloak (Fail-Closed)
+	projectAudience := deriveProjectAudience(targetHost)
+	if session.Audience != "" && session.Audience != projectAudience {
+		http.Error(w, `{"error":"unsigned_in","message":"Session is not confirmed for this project"}`, http.StatusUnauthorized)
+		return
+	}
+	projectToken := ""
+	if session.Tokens != nil {
+		projectToken = session.Tokens[projectAudience]
+	}
+
+	// 3. Online Session Check & Transparent Token Refresh against Keycloak (Fail-Closed)
+	var refreshedSessionHandle string
 	if h.Validator != nil {
-		active, err := h.Validator.ValidateSession(session.SessionID)
+		var active bool
+		var err error
+		if trv, ok := h.Validator.(TokenRefreshValidator); ok {
+			var refreshed *keycloak.TokenResponse
+			active, refreshed, err = trv.ValidateAndRefresh(session.SessionID, projectToken, session.RefreshToken, projectAudience)
+			if err == nil && active && refreshed != nil && refreshed.AccessToken != "" {
+				if session.Tokens == nil {
+					session.Tokens = make(map[string]string)
+				}
+				session.Tokens[projectAudience] = refreshed.AccessToken
+				projectToken = refreshed.AccessToken
+				if refreshed.RefreshToken != "" {
+					session.RefreshToken = refreshed.RefreshToken
+				}
+				if sealed, sealErr := h.SealSessionHandle(*session); sealErr == nil {
+					refreshedSessionHandle = sealed
+				}
+			}
+		} else {
+			active, err = h.Validator.ValidateSession(session.SessionID)
+			if err == nil && !active && session.RefreshToken != "" {
+				if refreshed, refreshErr := h.Validator.ExchangeTokenForProject(session.RefreshToken, projectAudience); refreshErr == nil && refreshed != nil && refreshed.AccessToken != "" {
+					active = true
+					if session.Tokens == nil {
+						session.Tokens = make(map[string]string)
+					}
+					session.Tokens[projectAudience] = refreshed.AccessToken
+					projectToken = refreshed.AccessToken
+					if refreshed.RefreshToken != "" {
+						session.RefreshToken = refreshed.RefreshToken
+					}
+					if sealed, sealErr := h.SealSessionHandle(*session); sealErr == nil {
+						refreshedSessionHandle = sealed
+					}
+				}
+			}
+		}
+
 		if err != nil {
-			// Fail-closed on dependency failure
 			http.Error(w, `{"error":"service_unavailable","message":"Authentication dependency unavailable"}`, http.StatusServiceUnavailable)
 			return
 		}
 		if !active {
-			// Session revoked or expired
 			h.clearSessionCookie(w)
 			http.Error(w, `{"error":"session_revoked","message":"Session revoked or expired"}`, http.StatusUnauthorized)
 			return
@@ -123,17 +212,19 @@ func (h *Handler) HandleForwardAuth(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 4. Confirm only a token issued for this project.
-	projectAudience := deriveProjectAudience(targetHost)
-	projectToken := session.Tokens[projectAudience]
 	if projectToken == "" {
 		http.Error(w, `{"error":"unsigned_in","message":"Session is not confirmed for this project"}`, http.StatusUnauthorized)
 		return
 	}
 
-	// Success: Inject headers for Traefik to forward upstream
+	// Success: Emit verified identity headers for the project backend
 	w.Header().Set("Authorization", "Bearer "+projectToken)
 	w.Header().Set("X-User-Subject", session.Subject)
 	w.Header().Set("X-User-Issuer", session.Issuer)
+	w.Header().Set("X-Project-Audience", projectAudience)
+	if refreshedSessionHandle != "" {
+		w.Header().Set("X-Refreshed-Session-Handle", refreshedSessionHandle)
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -145,48 +236,34 @@ func (h *Handler) initiateLogin(w http.ResponseWriter, r *http.Request, targetUR
 	}
 
 	now := time.Now().Unix()
+	nonce, err := generateRandomID()
+	if err != nil {
+		nonce = strconv.FormatInt(now, 10)
+	}
 	vHash := sha256.Sum256([]byte(verifier))
 	statePayload := StatePayload{
 		TargetURL:      targetURL,
-		Nonce:          strconv.FormatInt(now, 10),
+		CodeVerifier:   verifier,
+		Nonce:          nonce,
 		Timestamp:      now,
 		VerifierDigest: base64.RawURLEncoding.EncodeToString(vHash[:]),
 	}
 
-	stateBytes, _ := json.Marshal(statePayload)
-	mac := hmac.New(sha256.New, h.Config.HMACSecret)
-	mac.Write(stateBytes)
-	sig := mac.Sum(nil)
-
-	signedState := fmt.Sprintf("%s.%s",
-		base64.RawURLEncoding.EncodeToString(stateBytes),
-		base64.RawURLEncoding.EncodeToString(sig),
-	)
-
-	// Save verifier in temporary cookie (5-minute TTL)
-	http.SetCookie(w, &http.Cookie{
-		Name:     "OIDC_AUTH_STATE",
-		Value:    verifier,
-		Path:     "/",
-		Expires:  time.Now().Add(5 * time.Minute),
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
-	})
-
-	redirectURI := fmt.Sprintf("https://auth%s/oauth/callback", h.Config.CookieDomain)
-
-	loginIssuer := h.Config.KeycloakPublicURL
-	if loginIssuer == "" {
-		loginIssuer = h.Config.KeycloakIssuerURL
+	// Seal state with AES-256-GCM so no OIDC_AUTH_STATE browser cookie is required
+	signedState, err := sealJSON(statePayload, h.Config.HMACSecret)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
 	}
 
+	redirectURI := fmt.Sprintf("https://auth%s/oauth/callback", h.Config.CookieDomain)
+	loginIssuer := h.Config.CanonicalIssuer()
 	loginClientID := h.Config.ClientID
 	if loginClientID == "" {
 		loginClientID = deriveProjectAudience(targetHost)
 	}
 
-	loginURL := fmt.Sprintf("%s/protocol/openid-connect/auth?client_id=%s&response_type=code&scope=openid+profile+email&redirect_uri=%s&state=%s&code_challenge=%s&code_challenge_method=S256",
+	loginURL := fmt.Sprintf("%s/protocol/openid-connect/auth?client_id=%s&response_type=code&scope=openid+profile+email&redirect_uri=%s&state=%s&code_challenge=%s&code_challenge_method=S256&kc_idp_hint=google",
 		loginIssuer,
 		url.QueryEscape(loginClientID),
 		url.QueryEscape(redirectURI),
@@ -197,8 +274,8 @@ func (h *Handler) initiateLogin(w http.ResponseWriter, r *http.Request, targetUR
 	http.Redirect(w, r, loginURL, http.StatusFound)
 }
 
-// HandleSessionStart begins sign-in for a shared project.
-// return must already be an address on that project's door.
+// HandleSessionStart begins headless sign-in for a shared project.
+// return must already be an address on an allowed project door.
 func (h *Handler) HandleSessionStart(w http.ResponseWriter, r *http.Request) {
 	returnTo := r.URL.Query().Get("return")
 	if !h.returnHostAllowed(returnTo) {
@@ -230,21 +307,39 @@ func (h *Handler) returnHostAllowed(targetURL string) bool {
 	return false
 }
 
-// ProjectHostSessionCookie is the session cookie scoped to one project host (host-only when domain is empty).
-func ProjectHostSessionCookie(name, value, domain string, expires time.Time) *http.Cookie {
-	return &http.Cookie{
-		Name:     name,
-		Value:    value,
-		Path:     "/",
-		Domain:   domain,
-		Expires:  expires,
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteLaxMode,
+// unsealState parses either an AES-256-GCM sealed state (v1.) or a legacy HMAC-signed state.
+func (h *Handler) unsealState(stateParam string) (*StatePayload, error) {
+	if strings.HasPrefix(stateParam, sealedPrefix) {
+		var st StatePayload
+		if err := unsealJSON(stateParam, h.Config.HMACSecret, h.Config.HMACSecretPrevious, &st); err != nil {
+			return nil, err
+		}
+		return &st, nil
 	}
+
+	parts := strings.Split(stateParam, ".")
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid state format")
+	}
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil {
+		return nil, fmt.Errorf("invalid state payload")
+	}
+	sigBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
+	if err != nil {
+		return nil, fmt.Errorf("invalid state signature")
+	}
+	if !verifyLegacyHMAC(payloadBytes, sigBytes, h.Config.HMACSecret, h.Config.HMACSecretPrevious) {
+		return nil, fmt.Errorf("tampered state signature")
+	}
+	var st StatePayload
+	if err := json.Unmarshal(payloadBytes, &st); err != nil {
+		return nil, fmt.Errorf("corrupt state payload")
+	}
+	return &st, nil
 }
 
-// HandleCallback processes OIDC authorization code return from Keycloak.
+// HandleCallback processes OIDC authorization code return from Keycloak and redirects to the Project Backend with a one-time handoff ticket.
 func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	stateParam := r.URL.Query().Get("state")
@@ -253,66 +348,9 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stateCookie, err := r.Cookie("OIDC_AUTH_STATE")
-	if err != nil || stateCookie.Value == "" {
-		http.Error(w, "missing or expired auth state", http.StatusBadRequest)
-		return
-	}
-	verifier := stateCookie.Value
-
-	// Validate signed state
-	parts := strings.Split(stateParam, ".")
-	if len(parts) != 2 {
-		http.Error(w, "invalid state format", http.StatusBadRequest)
-		return
-	}
-
-	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	state, err := h.unsealState(stateParam)
 	if err != nil {
-		http.Error(w, "invalid state payload", http.StatusBadRequest)
-		return
-	}
-
-	sigBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		http.Error(w, "invalid state signature", http.StatusBadRequest)
-		return
-	}
-
-	mac := hmac.New(sha256.New, h.Config.HMACSecret)
-	mac.Write(payloadBytes)
-	expectedSig := mac.Sum(nil)
-	if !hmac.Equal(sigBytes, expectedSig) {
-		valid := false
-		if len(h.Config.HMACSecretPrevious) > 0 {
-			prevMac := hmac.New(sha256.New, h.Config.HMACSecretPrevious)
-			prevMac.Write(payloadBytes)
-			if hmac.Equal(sigBytes, prevMac.Sum(nil)) {
-				valid = true
-			}
-		}
-		if !valid {
-			http.Error(w, "tampered state signature", http.StatusBadRequest)
-			return
-		}
-	}
-
-	var state StatePayload
-	if err := json.Unmarshal(payloadBytes, &state); err != nil {
-		http.Error(w, "corrupt state payload", http.StatusBadRequest)
-		return
-	}
-
-	// Verify expiration (< 300 seconds)
-	if time.Now().Unix()-state.Timestamp > 300 {
-		http.Error(w, "state expired", http.StatusBadRequest)
-		return
-	}
-
-	// Verify code_verifier match
-	vHash := sha256.Sum256([]byte(verifier))
-	if base64.RawURLEncoding.EncodeToString(vHash[:]) != state.VerifierDigest {
-		http.Error(w, "code_verifier mismatch", http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -324,6 +362,32 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "return address is not on this project door", http.StatusBadRequest)
 		return
+	}
+
+	// Verify expiration (10-minute window); if expired on a valid allowed project return URL, gracefully restart sign-in (FR-004).
+	if time.Now().Unix()-state.Timestamp > maxStateAgeSecs {
+		http.Redirect(w, r, "/oauth/start?return="+url.QueryEscape(state.TargetURL), http.StatusFound)
+		return
+	}
+
+	// Resolve PKCE code_verifier from encrypted state (primary, cookie-free) or legacy OIDC_AUTH_STATE cookie fallback.
+	verifier := state.CodeVerifier
+	if verifier == "" {
+		stateCookie, cookieErr := r.Cookie("OIDC_AUTH_STATE")
+		if cookieErr != nil || stateCookie.Value == "" {
+			// Graceful restart when a legacy callback URL is reloaded after the state cookie was consumed (FR-004)
+			http.Redirect(w, r, "/oauth/start?return="+url.QueryEscape(state.TargetURL), http.StatusFound)
+			return
+		}
+		verifier = stateCookie.Value
+	}
+
+	if state.VerifierDigest != "" {
+		vHash := sha256.Sum256([]byte(verifier))
+		if base64.RawURLEncoding.EncodeToString(vHash[:]) != state.VerifierDigest {
+			http.Error(w, "code_verifier mismatch", http.StatusBadRequest)
+			return
+		}
 	}
 
 	// Exchange Code with Keycloak. Unreachable sign-in does not confirm the user.
@@ -342,17 +406,13 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sessionIssuer := h.Config.KeycloakPublicURL
-	if sessionIssuer == "" {
-		sessionIssuer = h.Config.KeycloakIssuerURL
-	}
-
-	// Build session data for the project that owns the return address.
+	sessionIssuer := h.Config.CanonicalIssuer()
 	audience := deriveProjectAudience(returnURL.Hostname())
-	sess := SessionCookieData{
+	sess := SessionHandleData{
 		SessionID: tokenResp.SessionState,
 		Subject:   parseSubjectFromJWT(tokenResp.AccessToken),
 		Issuer:    sessionIssuer,
+		Audience:  audience,
 		Tokens: map[string]string{
 			audience: tokenResp.AccessToken,
 		},
@@ -360,36 +420,65 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:    time.Now().Unix(),
 	}
 
-	cookieVal := h.encodeSessionCookie(sess)
+	sessionHandle, err := h.SealSessionHandle(sess)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
 
-	// Clear temporary auth cookie on auth host
-	http.SetCookie(w, &http.Cookie{
-		Name:     "OIDC_AUTH_STATE",
-		Value:    "",
-		Path:     "/",
-		Expires:  time.Unix(0, 0),
-		HttpOnly: true,
-		Secure:   true,
+	ticket, err := h.IssueTicket(returnURL.Hostname(), sessionHandle, sess.Subject, sess.Issuer, audience)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	// Redirect to the Project Backend callback URL with the one-time handoff ticket and zero cross-subdomain cookies.
+	q := returnURL.Query()
+	q.Set("ticket", ticket)
+	returnURL.RawQuery = q.Encode()
+	http.Redirect(w, r, returnURL.String(), http.StatusFound)
+}
+
+// HandleTicketExchange exchanges a one-time callback handoff ticket for a Vault-sealed opaque session_handle over internal HTTP (POST /auth/exchange).
+func (h *Handler) HandleTicketExchange(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
+		return
+	}
+
+	var reqBody struct {
+		Ticket string `json:"ticket"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&reqBody); err != nil || strings.TrimSpace(reqBody.Ticket) == "" {
+		http.Error(w, `{"error":"bad_request","message":"missing or malformed ticket"}`, http.StatusBadRequest)
+		return
+	}
+
+	callerHost := r.Header.Get("X-Forwarded-Host")
+	if callerHost == "" {
+		callerHost = r.Host
+	}
+
+	redeemed, err := h.RedeemTicket(strings.TrimSpace(reqBody.Ticket), callerHost)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"unauthorized","message":%q}`, err.Error()), http.StatusUnauthorized)
+		return
+	}
+
+	expiresIn := int(h.Config.SessionTimeout.Seconds())
+	if expiresIn <= 0 {
+		expiresIn = 28800
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"session_handle": redeemed.SessionHandle,
+		"subject":        redeemed.Subject,
+		"issuer":         redeemed.Issuer,
+		"audience":       redeemed.Audience,
+		"expires_in":     expiresIn,
 	})
-
-	ticket := h.signTicket(FinishTicket{
-		Cookie: cookieVal,
-		Host:   returnURL.Hostname(),
-		Target: state.TargetURL,
-		Exp:    time.Now().Add(60 * time.Second).Unix(),
-	})
-
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
-	fmt.Fprintf(w, `<!DOCTYPE html>
-<html>
-<head><title>Completing sign-in...</title></head>
-<body>
-<form method="POST" action="https://%s/oauth/finish"><input type="hidden" name="ticket" value="%s"><noscript><button type="submit">Continue</button></noscript></form>
-<script>document.forms[0].submit();</script>
-</body>
-</html>`,
-		html.EscapeString(returnURL.Hostname()), html.EscapeString(ticket))
 }
 
 func (h *Handler) encodeSessionCookie(data SessionCookieData) string {
@@ -417,20 +506,8 @@ func (h *Handler) decodeSessionCookie(raw string) (*SessionCookieData, error) {
 		return nil, err
 	}
 
-	mac := hmac.New(sha256.New, h.Config.HMACSecret)
-	mac.Write(b)
-	if !hmac.Equal(sig, mac.Sum(nil)) {
-		valid := false
-		if len(h.Config.HMACSecretPrevious) > 0 {
-			prevMac := hmac.New(sha256.New, h.Config.HMACSecretPrevious)
-			prevMac.Write(b)
-			if hmac.Equal(sig, prevMac.Sum(nil)) {
-				valid = true
-			}
-		}
-		if !valid {
-			return nil, fmt.Errorf("invalid cookie signature")
-		}
+	if !verifyLegacyHMAC(b, sig, h.Config.HMACSecret, h.Config.HMACSecretPrevious) {
+		return nil, fmt.Errorf("invalid cookie signature")
 	}
 
 	var data SessionCookieData
@@ -441,24 +518,14 @@ func (h *Handler) decodeSessionCookie(raw string) (*SessionCookieData, error) {
 }
 
 func (h *Handler) clearSessionCookie(w http.ResponseWriter) {
-	if h.Config.CookieDomain != "" {
-		http.SetCookie(w, &http.Cookie{
-			Name:     h.Config.CookieName,
-			Value:    "",
-			Path:     "/",
-			Domain:   h.Config.CookieDomain,
-			Expires:  time.Unix(0, 0),
-			MaxAge:   -1,
-			HttpOnly: true,
-			Secure:   true,
-			SameSite: http.SameSiteLaxMode,
-		})
+	if h.Config == nil || h.Config.CookieName == "" {
+		return
 	}
-	// Clear host-only cookie
 	http.SetCookie(w, &http.Cookie{
 		Name:     h.Config.CookieName,
 		Value:    "",
 		Path:     "/",
+		Domain:   h.Config.CookieDomain,
 		Expires:  time.Unix(0, 0),
 		MaxAge:   -1,
 		HttpOnly: true,
@@ -467,101 +534,9 @@ func (h *Handler) clearSessionCookie(w http.ResponseWriter) {
 	})
 }
 
-// FinishTicket carries signed session data across the handoff from auth host to project host.
-type FinishTicket struct {
-	Cookie string `json:"cookie"`
-	Host   string `json:"host"`
-	Target string `json:"target"`
-	Exp    int64  `json:"exp"`
-}
-
-func (h *Handler) signTicket(t FinishTicket) string {
-	b, _ := json.Marshal(t)
-	mac := hmac.New(sha256.New, h.Config.HMACSecret)
-	mac.Write(b)
-	sig := mac.Sum(nil)
-	return fmt.Sprintf("%s.%s",
-		base64.RawURLEncoding.EncodeToString(b),
-		base64.RawURLEncoding.EncodeToString(sig),
-	)
-}
-
-func (h *Handler) verifyTicket(raw string) (*FinishTicket, error) {
-	parts := strings.Split(raw, ".")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("malformed ticket")
-	}
-	b, err := base64.RawURLEncoding.DecodeString(parts[0])
-	if err != nil {
-		return nil, err
-	}
-	sig, err := base64.RawURLEncoding.DecodeString(parts[1])
-	if err != nil {
-		return nil, err
-	}
-
-	mac := hmac.New(sha256.New, h.Config.HMACSecret)
-	mac.Write(b)
-	if !hmac.Equal(sig, mac.Sum(nil)) {
-		valid := false
-		if len(h.Config.HMACSecretPrevious) > 0 {
-			prevMac := hmac.New(sha256.New, h.Config.HMACSecretPrevious)
-			prevMac.Write(b)
-			if hmac.Equal(sig, prevMac.Sum(nil)) {
-				valid = true
-			}
-		}
-		if !valid {
-			return nil, fmt.Errorf("invalid ticket signature")
-		}
-	}
-
-	var data FinishTicket
-	if err := json.Unmarshal(b, &data); err != nil {
-		return nil, err
-	}
-	return &data, nil
-}
-
-// HandleFinish runs on the project host (routed to the gateway by Traefik IngressRoute).
-// It verifies the signed hand-off ticket and sets a host-only cookie for the project host.
-func (h *Handler) HandleFinish(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	ticketVal := r.PostFormValue("ticket")
-	if ticketVal == "" {
-		http.Error(w, "missing sign-in ticket", http.StatusBadRequest)
-		return
-	}
-	t, err := h.verifyTicket(ticketVal)
-	if err != nil {
-		http.Error(w, "invalid sign-in hand-off", http.StatusBadRequest)
-		return
-	}
-
-	host := r.Host
-	if hh, _, splitErr := net.SplitHostPort(host); splitErr == nil {
-		host = hh
-	}
-
-	if time.Now().Unix() > t.Exp || !strings.EqualFold(t.Host, host) || !h.returnHostAllowed(t.Target) {
-		http.Error(w, "invalid sign-in hand-off", http.StatusBadRequest)
-		return
-	}
-
-	http.SetCookie(w, ProjectHostSessionCookie(
-		h.Config.CookieName,
-		t.Cookie,
-		"", // Host-only cookie: no Domain attribute, strictly scoped to this project host.
-		time.Now().Add(h.Config.SessionTimeout),
-	))
-	http.Redirect(w, r, t.Target, http.StatusSeeOther)
-}
-
 func deriveProjectAudience(host string) string {
-	subdomain := strings.Split(host, ".")[0]
+	cleanHost := strings.Split(strings.TrimSpace(host), ":")[0]
+	subdomain := strings.Split(cleanHost, ".")[0]
 	if subdomain == "pn" {
 		return "project-pn"
 	}
