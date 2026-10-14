@@ -277,8 +277,10 @@ func TestSessionReturnHandoffTicketAndExchangeZeroCookies(t *testing.T) {
 	if ticket == "" {
 		t.Fatal("expected one-time handoff ticket query parameter on callback redirect")
 	}
-	if len(rr.Result().Cookies()) != 0 {
-		t.Fatalf("expected zero cookies emitted on callback redirect, got %d", len(rr.Result().Cookies()))
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == "PLATFORM_SESSION" {
+			t.Fatalf("expected zero PLATFORM_SESSION cookies emitted on callback redirect, got %+v", c)
+		}
 	}
 
 	// Exchange ticket via POST /auth/exchange from Project Backend

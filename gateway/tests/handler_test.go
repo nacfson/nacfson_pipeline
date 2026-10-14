@@ -147,8 +147,8 @@ func TestDirectGoogleSignIn(t *testing.T) {
 	if want := "kc_idp_hint=google"; !containsSubstring(loc, want) {
 		t.Fatalf("expected %q in redirect URL, got %s", want, loc)
 	}
-	if len(rr.Result().Cookies()) != 0 {
-		t.Fatalf("expected zero browser cookies on /oauth/start, got %d", len(rr.Result().Cookies()))
+	if len(rr.Result().Cookies()) != 1 || rr.Result().Cookies()[0].Name != "OIDC_AUTH_STATE" || rr.Result().Cookies()[0].Domain != "" {
+		t.Fatalf("expected 1 host-only OIDC_AUTH_STATE cookie on /oauth/start, got %+v", rr.Result().Cookies())
 	}
 }
 
@@ -172,7 +172,7 @@ func TestStatelessEncryptedStateAndCallbackReloadGracefulRestart(t *testing.T) {
 		},
 	}
 
-	// 1. Start login and capture encrypted state parameter (with zero cookies)
+	// 1. Start login and capture encrypted state parameter + host-only OIDC_AUTH_STATE binding cookie
 	startReq := httptest.NewRequest(http.MethodGet, "/oauth/start?return=https://pn.nacfson.cloud/api/auth/callback", nil)
 	startRR := httptest.NewRecorder()
 	handler.HandleSessionStart(startRR, startReq)
@@ -187,13 +187,26 @@ func TestStatelessEncryptedStateAndCallbackReloadGracefulRestart(t *testing.T) {
 	if stateParam == "" {
 		t.Fatal("expected encrypted state query param")
 	}
+	startCookies := startRR.Result().Cookies()
+	if len(startCookies) != 1 || startCookies[0].Name != "OIDC_AUTH_STATE" {
+		t.Fatalf("expected host-only OIDC_AUTH_STATE binding cookie, got %+v", startCookies)
+	}
 
-	// 2. Callback WITHOUT any OIDC_AUTH_STATE cookie must succeed using the encrypted state
+	// 2. Callback WITHOUT the OIDC_AUTH_STATE binding cookie must be rejected (prevents Login CSRF)
+	csrfReq := httptest.NewRequest(http.MethodGet, "/oauth/callback?code=auth-code-1&state="+stateParam, nil)
+	csrfRR := httptest.NewRecorder()
+	handler.HandleCallback(csrfRR, csrfReq)
+	if csrfRR.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request on unbound Login CSRF callback, got %d", csrfRR.Code)
+	}
+
+	// 3. Callback WITH the host-only OIDC_AUTH_STATE binding cookie succeeds and emits zero PLATFORM_SESSION cookies
 	cbReq := httptest.NewRequest(http.MethodGet, "/oauth/callback?code=auth-code-1&state="+stateParam, nil)
+	cbReq.AddCookie(startCookies[0])
 	cbRR := httptest.NewRecorder()
 	handler.HandleCallback(cbRR, cbReq)
 	if cbRR.Code != http.StatusFound {
-		t.Fatalf("expected 302 Found on cookie-free callback, got %d: %s", cbRR.Code, cbRR.Body.String())
+		t.Fatalf("expected 302 Found on bound callback, got %d: %s", cbRR.Code, cbRR.Body.String())
 	}
 	cbLoc, err := cbRR.Result().Location()
 	if err != nil {
@@ -205,21 +218,23 @@ func TestStatelessEncryptedStateAndCallbackReloadGracefulRestart(t *testing.T) {
 	if cbLoc.Query().Get("ticket") == "" {
 		t.Fatalf("expected one-time handoff ticket in callback redirect URL, got %s", cbLoc.String())
 	}
-	if len(cbRR.Result().Cookies()) != 0 {
-		t.Fatalf("expected zero cookies emitted on callback, got %d", len(cbRR.Result().Cookies()))
+	for _, c := range cbRR.Result().Cookies() {
+		if c.Name == "PLATFORM_SESSION" {
+			t.Fatalf("expected zero PLATFORM_SESSION cookies on callback, got %+v", c)
+		}
 	}
 
-	// 3. Legacy callback with missing OIDC_AUTH_STATE cookie on a valid return URL restarts login gracefully (302) instead of 400
-	legacyState := signTestState(auth.StatePayload{
+	// 4. Expired callback on a valid return URL restarts login gracefully (302) instead of 400
+	expiredState := signTestState(auth.StatePayload{
 		TargetURL: "https://pn.nacfson.cloud/api/auth/callback",
-		Nonce:     "legacy-1",
-		Timestamp: time.Now().Unix(),
+		Nonce:     "expired-1",
+		Timestamp: time.Now().Add(-15 * time.Minute).Unix(),
 	}, secret)
-	reloadReq := httptest.NewRequest(http.MethodGet, "/oauth/callback?code=old&state="+legacyState, nil)
+	reloadReq := httptest.NewRequest(http.MethodGet, "/oauth/callback?code=old&state="+expiredState, nil)
 	reloadRR := httptest.NewRecorder()
 	handler.HandleCallback(reloadRR, reloadReq)
 	if reloadRR.Code != http.StatusFound {
-		t.Fatalf("expected 302 graceful restart on reloaded callback, got %d: %s", reloadRR.Code, reloadRR.Body.String())
+		t.Fatalf("expected 302 graceful restart on expired callback, got %d: %s", reloadRR.Code, reloadRR.Body.String())
 	}
 	if !containsSubstring(reloadRR.Header().Get("Location"), "/oauth/start?return=") {
 		t.Fatalf("expected graceful redirect to /oauth/start?return=..., got %q", reloadRR.Header().Get("Location"))

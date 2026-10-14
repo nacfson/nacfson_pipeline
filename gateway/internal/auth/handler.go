@@ -3,6 +3,7 @@ package auth
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -19,10 +20,9 @@ import (
 	"nacfson_pipeline/gateway/internal/keycloak"
 )
 
-// StatePayload carries PKCE and return state information across OIDC redirection.
+// StatePayload carries PKCE digest and return state information across OIDC redirection.
 type StatePayload struct {
 	TargetURL      string `json:"target_url"`
-	CodeVerifier   string `json:"cv,omitempty"`
 	Nonce          string `json:"nonce"`
 	Timestamp      int64  `json:"ts"`
 	VerifierDigest string `json:"vd,omitempty"`
@@ -243,18 +243,27 @@ func (h *Handler) initiateLogin(w http.ResponseWriter, r *http.Request, targetUR
 	vHash := sha256.Sum256([]byte(verifier))
 	statePayload := StatePayload{
 		TargetURL:      targetURL,
-		CodeVerifier:   verifier,
 		Nonce:          nonce,
 		Timestamp:      now,
 		VerifierDigest: base64.RawURLEncoding.EncodeToString(vHash[:]),
 	}
 
-	// Seal state with AES-256-GCM so no OIDC_AUTH_STATE browser cookie is required
 	signedState, err := sealJSON(statePayload, h.Config.HMACSecret)
 	if err != nil {
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
+
+	// Host-only browser binding cookie on auth.<domain> (prevents Login CSRF while keeping verifier out of the URL).
+	http.SetCookie(w, &http.Cookie{
+		Name:     "OIDC_AUTH_STATE",
+		Value:    verifier,
+		Path:     "/oauth/callback",
+		MaxAge:   maxStateAgeSecs,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
 
 	redirectURI := fmt.Sprintf("https://auth%s/oauth/callback", h.Config.CookieDomain)
 	loginIssuer := h.Config.CanonicalIssuer()
@@ -370,27 +379,27 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve PKCE code_verifier from encrypted state (primary, cookie-free) or legacy OIDC_AUTH_STATE cookie fallback.
-	verifier := state.CodeVerifier
-	if verifier == "" {
-		stateCookie, cookieErr := r.Cookie("OIDC_AUTH_STATE")
-		if cookieErr != nil || stateCookie.Value == "" {
-			// Graceful restart when a legacy callback URL is reloaded after the state cookie was consumed (FR-004)
-			http.Redirect(w, r, "/oauth/start?return="+url.QueryEscape(state.TargetURL), http.StatusFound)
-			return
-		}
-		verifier = stateCookie.Value
+	// Verify host-only browser binding cookie (prevents Login CSRF)
+	stateCookie, cookieErr := r.Cookie("OIDC_AUTH_STATE")
+	if cookieErr != nil || stateCookie.Value == "" {
+		http.Error(w, "missing or invalid auth state cookie", http.StatusBadRequest)
+		return
 	}
+	verifier := stateCookie.Value
 
-	if state.VerifierDigest != "" {
-		vHash := sha256.Sum256([]byte(verifier))
-		if base64.RawURLEncoding.EncodeToString(vHash[:]) != state.VerifierDigest {
-			http.Error(w, "code_verifier mismatch", http.StatusBadRequest)
-			return
-		}
+	if state.VerifierDigest == "" {
+		http.Error(w, "missing verifier digest", http.StatusBadRequest)
+		return
+	}
+	vHash := sha256.Sum256([]byte(verifier))
+	actualDigest := base64.RawURLEncoding.EncodeToString(vHash[:])
+	if subtle.ConstantTimeCompare([]byte(actualDigest), []byte(state.VerifierDigest)) != 1 {
+		http.Error(w, "code_verifier mismatch", http.StatusBadRequest)
+		return
 	}
 
 	// Exchange Code with Keycloak. Unreachable sign-in does not confirm the user.
+	// Note: OIDC_AUTH_STATE cookie is only cleared AFTER ExchangeCode succeeds so browser reloads within 10m succeed if Keycloak was transiently unavailable.
 	redirectURI := fmt.Sprintf("https://auth%s/oauth/callback", h.Config.CookieDomain)
 	var tokenResp *keycloak.TokenResponse
 	if h.Exchanger != nil {
@@ -405,6 +414,17 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"unsigned_in","message":"Sign-in service unreachable"}`, http.StatusServiceUnavailable)
 		return
 	}
+
+	// Clear OIDC_AUTH_STATE cookie now that code exchange succeeded
+	http.SetCookie(w, &http.Cookie{
+		Name:     "OIDC_AUTH_STATE",
+		Value:    "",
+		Path:     "/oauth/callback",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
 
 	sessionIssuer := h.Config.CanonicalIssuer()
 	audience := deriveProjectAudience(returnURL.Hostname())
@@ -446,6 +466,7 @@ func (h *Handler) HandleTicketExchange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 8<<10)
 	var reqBody struct {
 		Ticket string `json:"ticket"`
 	}

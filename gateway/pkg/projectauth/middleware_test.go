@@ -130,6 +130,10 @@ func TestSharedVerificationModuleFourLayerBFFEndToEnd(t *testing.T) {
 	if loginRR.Code != http.StatusFound {
 		t.Fatalf("expected 302 from /api/auth/login, got %d", loginRR.Code)
 	}
+	loginCookies := loginRR.Result().Cookies()
+	if len(loginCookies) != 1 || loginCookies[0].Name != "__Host-pa_nonce" {
+		t.Fatalf("expected __Host-pa_nonce cookie from /api/auth/login, got %+v", loginCookies)
+	}
 
 	// Step 2: Follow redirect to Gateway /oauth/start -> verify kc_idp_hint=google and encrypted state
 	startLoc, _ := loginRR.Result().Location()
@@ -144,28 +148,42 @@ func TestSharedVerificationModuleFourLayerBFFEndToEnd(t *testing.T) {
 		t.Fatalf("expected kc_idp_hint=google, got %q", kcLoc.Query().Get("kc_idp_hint"))
 	}
 	stateParam := kcLoc.Query().Get("state")
+	gwStartCookies := startRR.Result().Cookies()
 
-	// Step 3: Google + Keycloak returns to Gateway /oauth/callback (with ZERO cookies)
+	// Step 3: Google + Keycloak returns to Gateway /oauth/callback with host-only OIDC_AUTH_STATE binding cookie
 	cbGwReq := httptest.NewRequest(http.MethodGet, "/oauth/callback?code=kc-code-1&state="+stateParam, nil)
+	for _, c := range gwStartCookies {
+		cbGwReq.AddCookie(c)
+	}
 	cbGwRR := httptest.NewRecorder()
 	gwMux.ServeHTTP(cbGwRR, cbGwReq)
 	if cbGwRR.Code != http.StatusFound {
 		t.Fatalf("expected 302 from Gateway /oauth/callback, got %d: %s", cbGwRR.Code, cbGwRR.Body.String())
 	}
-	if len(cbGwRR.Result().Cookies()) != 0 {
-		t.Fatalf("expected 0 cookies on Gateway callback, got %d", len(cbGwRR.Result().Cookies()))
+
+	// Step 4: Follow redirect to Project Backend /api/auth/callback?ticket=...&pa_bind=...
+	beCbLoc, _ := cbGwRR.Result().Location()
+	// Verify that an unbound Login CSRF request without __Host-pa_nonce is rejected with 400
+	csrfBeReq := httptest.NewRequest(http.MethodGet, beCbLoc.String(), nil)
+	csrfBeRR := httptest.NewRecorder()
+	pnMux.ServeHTTP(csrfBeRR, csrfBeReq)
+	if csrfBeRR.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 Bad Request on unbound callback without __Host-pa_nonce, got %d", csrfBeRR.Code)
 	}
 
-	// Step 4: Follow redirect to Project Backend /api/auth/callback?ticket=...
-	beCbLoc, _ := cbGwRR.Result().Location()
 	beCbReq := httptest.NewRequest(http.MethodGet, beCbLoc.String(), nil)
+	for _, c := range loginCookies {
+		beCbReq.AddCookie(c)
+	}
 	beCbRR := httptest.NewRecorder()
 	pnMux.ServeHTTP(beCbRR, beCbReq)
 	if beCbRR.Code != http.StatusFound {
 		t.Fatalf("expected 302 from Project Backend /api/auth/callback, got %d: %s", beCbRR.Code, beCbRR.Body.String())
 	}
-	if len(beCbRR.Result().Cookies()) != 0 {
-		t.Fatalf("expected 0 cookies on Project Backend callback, got %d", len(beCbRR.Result().Cookies()))
+	for _, c := range beCbRR.Result().Cookies() {
+		if c.Name == "PLATFORM_SESSION" {
+			t.Fatalf("expected zero PLATFORM_SESSION cookies on Project Backend callback, got %+v", c)
+		}
 	}
 
 	// Step 5: Project Frontend exchanges one-time pickup code via POST /api/auth/session for JSON { session_handle, user }

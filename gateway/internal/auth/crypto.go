@@ -33,16 +33,14 @@ type HandoffTicket struct {
 	ExpiresAt     int64  `json:"exp"`
 }
 
-// TicketStore manages short-lived, single-use handoff tickets in memory in addition to stateless sealed tickets.
+// TicketStore tracks consumed single-use handoff ticket IDs until their TTL expires.
 type TicketStore struct {
 	mu       sync.Mutex
-	tickets  map[string]HandoffTicket
 	consumed map[string]int64
 }
 
 func newTicketStore() *TicketStore {
 	return &TicketStore{
-		tickets:  make(map[string]HandoffTicket),
 		consumed: make(map[string]int64),
 	}
 }
@@ -131,7 +129,7 @@ func generateRandomID() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// IssueTicket creates a single-use handoff ticket (both stored in-memory for single-use enforcement and AES-GCM sealed for stateless verification).
+// IssueTicket creates a single-use AES-256-GCM sealed handoff ticket bound to a specific project host.
 func (h *Handler) IssueTicket(host, sessionHandle, subject, issuer, audience string) (string, error) {
 	id, err := generateRandomID()
 	if err != nil {
@@ -147,11 +145,6 @@ func (h *Handler) IssueTicket(host, sessionHandle, subject, issuer, audience str
 		Audience:      audience,
 		ExpiresAt:     exp,
 	}
-	h.ensureTicketStore()
-	h.tickets.mu.Lock()
-	h.evictExpiredTicketsLocked(time.Now().Unix())
-	h.tickets.tickets[id] = t
-	h.tickets.mu.Unlock()
 
 	sealed, err := sealJSON(t, h.Config.HMACSecret)
 	if err != nil {
@@ -173,7 +166,7 @@ func (h *Handler) RedeemTicket(rawTicket, callerHost string) (*HandoffTicket, er
 	if t.ExpiresAt < now {
 		return nil, errors.New("ticket expired")
 	}
-	normCaller := strings.ToLower(strings.TrimSpace( strings.Split(callerHost, ":")[0] ))
+	normCaller := strings.ToLower(strings.TrimSpace(strings.Split(callerHost, ":")[0]))
 	if t.Host != "" && normCaller != "" && !strings.EqualFold(t.Host, normCaller) {
 		return nil, fmt.Errorf("ticket host mismatch: expected %s, got %s", t.Host, normCaller)
 	}
@@ -187,7 +180,6 @@ func (h *Handler) RedeemTicket(rawTicket, callerHost string) (*HandoffTicket, er
 		return nil, errors.New("ticket already consumed")
 	}
 	h.tickets.consumed[t.TicketID] = t.ExpiresAt
-	delete(h.tickets.tickets, t.TicketID)
 	return &t, nil
 }
 
@@ -200,11 +192,6 @@ func (h *Handler) ensureTicketStore() {
 }
 
 func (h *Handler) evictExpiredTicketsLocked(now int64) {
-	for k, v := range h.tickets.tickets {
-		if v.ExpiresAt < now {
-			delete(h.tickets.tickets, k)
-		}
-	}
 	for k, exp := range h.tickets.consumed {
 		if exp < now {
 			delete(h.tickets.consumed, k)

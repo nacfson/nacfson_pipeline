@@ -7,6 +7,9 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -117,11 +120,30 @@ func (v *Verifier) RegisterRoutes(mux *http.ServeMux) {
 
 // HandleLogin redirects the browser from the Project Backend (/api/auth/login) to the pipeline's headless /oauth/start endpoint.
 func (v *Verifier) HandleLogin(w http.ResponseWriter, r *http.Request) {
-	nextPath := sanitizeRelativePath(r.URL.Query().Get("next"))
-	callbackURL := v.cfg.PublicAppURL + "/api/auth/callback"
-	if nextPath != "/" {
-		callbackURL += "?next=" + url.QueryEscape(nextPath)
+	nonce, err := randomHex128()
+	if err != nil {
+		http.Error(w, `{"error":"internal_error"}`, http.StatusInternalServerError)
+		return
 	}
+	http.SetCookie(w, &http.Cookie{
+		Name:     "__Host-pa_nonce",
+		Value:    nonce,
+		Path:     "/",
+		MaxAge:   600,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
+	nh := sha256.Sum256([]byte(nonce))
+	bindDigest := base64.RawURLEncoding.EncodeToString(nh[:])
+
+	nextPath := sanitizeRelativePath(r.URL.Query().Get("next"))
+	q := url.Values{}
+	q.Set("pa_bind", bindDigest)
+	if nextPath != "/" {
+		q.Set("next", nextPath)
+	}
+	callbackURL := v.cfg.PublicAppURL + "/api/auth/callback?" + q.Encode()
 	startURL := v.cfg.PublicAuthURL + "/oauth/start?return=" + url.QueryEscape(callbackURL)
 	http.Redirect(w, r, startURL, http.StatusFound)
 }
@@ -133,6 +155,20 @@ func (v *Verifier) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	nextPath := sanitizeRelativePath(r.URL.Query().Get("next"))
 	if ticket == "" {
 		http.Redirect(w, r, v.cfg.PublicAppURL+nextPath, http.StatusFound)
+		return
+	}
+
+	// Verify browser login-binding nonce before redeeming the ticket (prevents Login CSRF)
+	expectedBind := strings.TrimSpace(r.URL.Query().Get("pa_bind"))
+	nonceCookie, cookieErr := r.Cookie("__Host-pa_nonce")
+	if cookieErr != nil || nonceCookie.Value == "" || expectedBind == "" {
+		http.Error(w, `{"error":"bad_request","message":"missing login binding"}`, http.StatusBadRequest)
+		return
+	}
+	nh := sha256.Sum256([]byte(nonceCookie.Value))
+	actualBind := base64.RawURLEncoding.EncodeToString(nh[:])
+	if subtle.ConstantTimeCompare([]byte(actualBind), []byte(expectedBind)) != 1 {
+		http.Error(w, `{"error":"bad_request","message":"login binding mismatch"}`, http.StatusBadRequest)
 		return
 	}
 
@@ -155,6 +191,17 @@ func (v *Verifier) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer resp.Body.Close()
+
+	// Clear login-binding nonce cookie now that ticket exchange succeeded
+	http.SetCookie(w, &http.Cookie{
+		Name:     "__Host-pa_nonce",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+	})
 
 	var exch struct {
 		SessionHandle string `json:"session_handle"`
@@ -216,16 +263,20 @@ func (v *Verifier) HandleSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, 4<<10)
 	var body struct {
 		Code string `json:"code"`
 	}
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Code) == "" {
-		http.Error(w, `{"error":"bad_request","message":"missing pickup code"}`, http.StatusBadRequest)
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		http.Error(w, `{"error":"bad_request","message":"missing or invalid pickup code"}`, http.StatusBadRequest)
 		return
 	}
-
-	now := time.Now()
 	code := strings.TrimSpace(body.Code)
+	if len(code) != 32 {
+		http.Error(w, `{"error":"bad_request","message":"missing or invalid pickup code"}`, http.StatusBadRequest)
+		return
+	}
+	now := time.Now()
 
 	v.mu.Lock()
 	v.evictExpiredPickupsLocked(now)
