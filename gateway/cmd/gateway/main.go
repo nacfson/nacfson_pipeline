@@ -49,6 +49,9 @@ func main() {
 	// OIDC callback from Keycloak
 	mux.HandleFunc("/oauth/callback", handler.HandleCallback)
 
+	// Host-only session cookie finish handoff on project door
+	mux.HandleFunc("/oauth/finish", handler.HandleFinish)
+
 	// User-initiated synchronous session revocation
 	mux.HandleFunc("/auth/logout", handler.HandleLogout)
 

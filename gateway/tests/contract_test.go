@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -261,15 +263,33 @@ func TestSessionReturnCookieScopedToProjectHost(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.HandleCallback(rr, req)
 
-	if rr.Code != http.StatusFound {
-		t.Fatalf("expected HTTP 302 back to the project, got %d body %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 HTML handoff form, got %d body %s", rr.Code, rr.Body.String())
 	}
-	if loc := rr.Header().Get("Location"); loc != returnTo {
+	body := rr.Body.String()
+	ticketMatch := regexp.MustCompile(`name="ticket" value="([^"]+)"`).FindStringSubmatch(body)
+	if len(ticketMatch) < 2 {
+		t.Fatalf("expected ticket input in response body, got %s", body)
+	}
+	ticket := ticketMatch[1]
+
+	// Finish handoff on the project host
+	form := url.Values{"ticket": {ticket}}
+	finishReq := httptest.NewRequest(http.MethodPost, "https://pn.example.com/oauth/finish", strings.NewReader(form.Encode()))
+	finishReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	finishReq.Host = "pn.example.com"
+	finishRR := httptest.NewRecorder()
+	handler.HandleFinish(finishRR, finishReq)
+
+	if finishRR.Code != http.StatusSeeOther {
+		t.Fatalf("expected HTTP 303 See Other back to project, got %d body %s", finishRR.Code, finishRR.Body.String())
+	}
+	if loc := finishRR.Header().Get("Location"); loc != returnTo {
 		t.Fatalf("expected return to %s, got %q", returnTo, loc)
 	}
 
 	var session *http.Cookie
-	for _, c := range rr.Result().Cookies() {
+	for _, c := range finishRR.Result().Cookies() {
 		if c.Name == cfg.CookieName && c.Value != "" {
 			session = c
 			break
@@ -278,8 +298,8 @@ func TestSessionReturnCookieScopedToProjectHost(t *testing.T) {
 	if session == nil {
 		t.Fatal("expected a project session cookie")
 	}
-	if session.Domain != "pn.example.com" {
-		t.Fatalf("cookie must be scoped to the project host, got %q", session.Domain)
+	if session.Domain != "" {
+		t.Fatalf("cookie must be host-only (Domain empty), got %q", session.Domain)
 	}
 	if !session.HttpOnly || !session.Secure {
 		t.Fatalf("cookie must be HttpOnly and Secure, HttpOnly=%v Secure=%v", session.HttpOnly, session.Secure)
