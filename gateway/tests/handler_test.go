@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"encoding/base64"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -165,7 +166,7 @@ func TestStatelessEncryptedStateAndCallbackReloadGracefulRestart(t *testing.T) {
 	handler := auth.NewHandler(cfg, nil, nil)
 	handler.Exchanger = &recordingExchanger{
 		token: &keycloak.TokenResponse{
-			AccessToken:  "hdr.eyJzdWIiOiJ1c2VyLWdvb2dsZS0xIn0.sig",
+			AccessToken:  "hdr." + base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"user-google-1"}`)) + ".sig",
 			RefreshToken: "refresh-token-1",
 			SessionState: "kc-session-1",
 		},
