@@ -101,19 +101,19 @@ func (c *Client) ExchangeCode(code, codeVerifier, redirectURI string) (*TokenRes
 	return &tr, nil
 }
 
-// ValidateSession verifies whether a user session remains active in Keycloak.
-func (c *Client) ValidateSession(sessionID string) (bool, error) {
-	if sessionID == "" {
+// ValidateSession verifies whether an OAuth token or user session remains active in Keycloak.
+func (c *Client) ValidateSession(tokenOrSessionID string) (bool, error) {
+	if tokenOrSessionID == "" {
 		return false, nil
 	}
-	// For online session validation, query Keycloak realm user session API
+	// Query Keycloak realm OIDC token introspection endpoint
 	checkURL := fmt.Sprintf("%s/realms/platform/protocol/openid-connect/token/introspect", c.AdminURL)
 	data := url.Values{}
 	data.Set("client_id", c.ClientID)
 	if c.ClientSecret != "" {
 		data.Set("client_secret", c.ClientSecret)
 	}
-	data.Set("token", sessionID)
+	data.Set("token", tokenOrSessionID)
 
 	req, err := http.NewRequest("POST", checkURL, strings.NewReader(data.Encode()))
 	if err != nil {
@@ -138,6 +138,30 @@ func (c *Client) ValidateSession(sessionID string) (bool, error) {
 		return false, err
 	}
 	return res.Active, nil
+}
+
+// ValidateAndRefresh verifies the OAuth access token against Keycloak introspection and, if expired,
+// attempts to transparently refresh it using the session's refresh token while the Keycloak session remains active.
+func (c *Client) ValidateAndRefresh(sessionID, accessToken, refreshToken, targetAudience string) (bool, *TokenResponse, error) {
+	tokenToCheck := accessToken
+	if tokenToCheck == "" {
+		tokenToCheck = sessionID
+	}
+	active, err := c.ValidateSession(tokenToCheck)
+	if err != nil {
+		return false, nil, err
+	}
+	if active {
+		return true, nil, nil
+	}
+	if refreshToken == "" {
+		return false, nil, nil
+	}
+	refreshed, refreshErr := c.ExchangeTokenForProject(refreshToken, targetAudience)
+	if refreshErr != nil || refreshed == nil || refreshed.AccessToken == "" {
+		return false, nil, nil
+	}
+	return true, refreshed, nil
 }
 
 // ExchangeTokenForProject requests an audience-scoped project access token using refresh flow.

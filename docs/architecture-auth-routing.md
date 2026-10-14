@@ -39,34 +39,39 @@ flowchart TD
 Layer order: `governance` -> `vault` -> `database` -> `identity` -> `ingress` -> `tls`;
 `project-boundaries` -> `projects`.
 
-## 3. Request path and auth components
+## 3. Request path and auth components (Spec 009: 4-Layer Cookie-Free BFF)
 
 | Component | Job |
 |---|---|
-| Traefik | Single entry point. Routes by host and path. Unmatched requests get 404. |
-| Gateway (`gateway/`, namespace `identity`) | Login flow (`/oauth/start`, `/oauth/callback`), ForwardAuth check (`/auth`), logout (`/auth/logout`), JWKS pass-through. It never proxies app traffic. |
-| Keycloak | Identity provider. Brokers Google sign-in, issues JWTs. |
-| PN backend | Verifies the JWT again (signature, issuer, audience). |
-| `forward-auth` middleware | Makes Traefik call the gateway's `/auth` before forwarding. 200 adds `Authorization`, `X-User-Subject`, `X-User-Issuer`. Anything else is returned to the browser unchanged. |
-| `strip-forged-headers` middleware | Removes client-sent identity headers. |
+| Traefik | Single entry point. Routes by host and path (`/api/*` -> project backend; `/*` -> project frontend). Unmatched requests get 404. |
+| Project Frontend (`pn-frontend`) | Owns 100% of the Login UI. Talks exclusively to its own Project Backend (`/api/auth/*` and `/api/*`) using `Authorization: Bearer <session_handle>` with **zero cookies**. |
+| Project Backend (`pn-backend` + `gateway/pkg/projectauth`) | Exposes `/api/auth/login`, `/api/auth/callback`, `/api/auth/session`, and `/api/auth/logout`; exchanges callback tickets and verifies `session_handle` against internal `gateway.identity.svc:8080`. |
+| Gateway (`gateway/`, namespace `identity`) | Headless login logic only: direct Google redirect (`/oauth/start` with `kc_idp_hint=google` + AES-256-GCM encrypted PKCE `state`), callback handoff (`/oauth/callback`), internal ticket exchange (`POST /auth/exchange`), `session_handle` verification & transparent token refresh (`GET /auth`), and online logout (`POST /auth/logout`). |
+| Keycloak | Internal identity broker (`keycloak-service.identity.svc:8080`). Brokers Google sign-in and maintains the root user session in PostgreSQL. |
+| `strip-forged-headers` middleware | Removes client-sent identity headers at the edge and inside `RequireAuth`. |
 
-Intended login flow:
+4-Layer Cookie-Free Login & API Flow:
 
 ```mermaid
 sequenceDiagram
-    participant B as Browser
-    participant T as Traefik
-    participant G as Gateway
-    participant K as Keycloak
-    participant PN as PN backend
-    B->>G: 1. GET auth host /oauth/start?return=<project url>
-    G->>K: 2. redirect to Keycloak (PKCE), Keycloak brokers Google
-    K->>G: 3. /oauth/callback?code=...
-    G->>B: 4. set session cookie, redirect to project
-    B->>T: 5. GET /api/... with cookie
-    T->>G: 6. ForwardAuth /auth
-    G->>T: 7. 200 + Authorization: Bearer JWT
-    T->>PN: 8. request + JWT
+    participant FE as Project Frontend (UI)
+    participant BE as Project Backend (/api/*)
+    participant G as Internal Gateway (gateway:8080)
+    participant K as Keycloak + Google OIDC
+    FE->>BE: 1. GET /api/auth/login
+    BE->>G: 2. Redirect /oauth/start?return=https://pn.*/api/auth/callback
+    G->>K: 3. 302 Direct to Google (kc_idp_hint=google + AES-GCM encrypted PKCE state)
+    K->>G: 4. GET /oauth/callback?code=...&state=...
+    G->>K: 5. Exchange code + decrypted PKCE verifier (:8080)
+    G->>BE: 6. Seal session_handle, redirect /api/auth/callback?ticket=... (0 cookies)
+    BE->>G: 7. POST http://gateway.identity.svc:8080/auth/exchange {ticket}
+    G-->>BE: 8. 200 OK {session_handle, subject, issuer, audience}
+    BE->>FE: 9. Prepare DB user & redirect /?code=<30s-pickup-code>
+    FE->>BE: 10. POST /api/auth/session {code} -> {session_handle, user, requirements}
+    FE->>BE: 11. GET /api/* (Authorization: Bearer <session_handle>)
+    BE->>G: 12. GET http://gateway.identity.svc:8080/auth (Bearer <session_handle>)
+    G-->>BE: 13. 200 OK (X-User-Subject, X-User-Issuer, auto-refreshes token if needed)
+    BE-->>FE: 14. 200 OK JSON response
 ```
 
 ## 4. Known problem: patches overwrite shared values

@@ -122,3 +122,37 @@ func getEnvOrDefault(key, fallback string) string {
 	}
 	return fallback
 }
+
+// CanonicalIssuer returns the canonical public realm issuer URL (KEYCLOAK_PUBLIC_URL falling back to KEYCLOAK_ISSUER_URL).
+func (c *Config) CanonicalIssuer() string {
+	if c == nil {
+		return ""
+	}
+	if u := strings.TrimSuffix(strings.TrimSpace(c.KeycloakPublicURL), "/"); u != "" {
+		return u
+	}
+	return strings.TrimSuffix(strings.TrimSpace(c.KeycloakIssuerURL), "/")
+}
+
+// IsAllowedIssuer verifies whether a session issuer matches the configured canonical public or internal Keycloak issuer.
+func (c *Config) IsAllowedIssuer(issuer string) bool {
+	if c == nil {
+		return false
+	}
+	pub := strings.TrimSuffix(strings.TrimSpace(c.KeycloakPublicURL), "/")
+	internal := strings.TrimSuffix(strings.TrimSpace(c.KeycloakIssuerURL), "/")
+	if pub == "" && internal == "" {
+		return true
+	}
+	norm := strings.TrimSuffix(strings.TrimSpace(issuer), "/")
+	if norm == "" {
+		return false
+	}
+	if pub != "" && strings.EqualFold(norm, pub) {
+		return true
+	}
+	if internal != "" && strings.EqualFold(norm, internal) {
+		return true
+	}
+	return false
+}

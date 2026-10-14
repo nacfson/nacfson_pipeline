@@ -189,3 +189,28 @@ func TestLogoutSuccessWithValidOriginAndRedirect(t *testing.T) {
 		t.Errorf("expected revocation for 'sess-redirect-789', got %v", terminator.revokedSessions)
 	}
 }
+
+func TestLogoutSuccessWithBearerSessionHandle(t *testing.T) {
+	handler, _, terminator := setupLogoutHandler()
+
+	handle, err := handler.SealSessionHandle(auth.SessionHandleData{
+		SessionID: "sess-bearer-999",
+		Subject:   "user-bearer",
+		CreatedAt: time.Now().Unix(),
+	})
+	if err != nil {
+		t.Fatalf("failed to seal session handle: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	req.Header.Set("Authorization", "Bearer "+handle)
+	rr := httptest.NewRecorder()
+	handler.HandleLogout(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected HTTP 200 OK for Bearer session_handle logout, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if len(terminator.revokedSessions) != 1 || terminator.revokedSessions[0] != "sess-bearer-999" {
+		t.Fatalf("expected revocation for 'sess-bearer-999', got %v", terminator.revokedSessions)
+	}
+}

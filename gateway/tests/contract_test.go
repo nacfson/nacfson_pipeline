@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"regexp"
 	"strings"
 	"testing"
 	"time"
@@ -240,7 +238,7 @@ func TestSessionReturnRejectsForeignHost(t *testing.T) {
 	}
 }
 
-func TestSessionReturnCookieScopedToProjectHost(t *testing.T) {
+func TestSessionReturnHandoffTicketAndExchangeZeroCookies(t *testing.T) {
 	secret := []byte("test-secret-key-that-is-at-least-32-bytes!")
 	cfg := &config.Config{
 		CookieName:         "PLATFORM_SESSION",
@@ -248,61 +246,167 @@ func TestSessionReturnCookieScopedToProjectHost(t *testing.T) {
 		HMACSecret:         secret,
 		SessionTimeout:     1 * time.Hour,
 		AllowedReturnHosts: []string{"pn.example.com"},
-		KeycloakIssuerURL:  "https://auth.example.com/realms/platform",
+		KeycloakPublicURL:  "https://auth.example.com/realms/platform",
+		KeycloakIssuerURL:  "http://keycloak-service.identity.svc:8080/realms/platform",
 	}
 	payload := base64.RawURLEncoding.EncodeToString([]byte(`{"sub":"user-1"}`))
 	exchanger := &recordingExchanger{token: &keycloak.TokenResponse{
 		AccessToken:  "hdr." + payload + ".sig",
+		RefreshToken: "refresh-tok-1",
 		SessionState: "sess-1",
 	}}
-	handler := auth.NewHandler(cfg, nil, nil)
+	handler := auth.NewHandler(cfg, &mockSessionValidator{active: true}, nil)
 	handler.Exchanger = exchanger
 
-	returnTo := "https://pn.example.com/dashboard"
+	returnTo := "https://pn.example.com/api/auth/callback"
 	req := callbackRequest(secret, returnTo)
 	rr := httptest.NewRecorder()
 	handler.HandleCallback(rr, req)
 
-	if rr.Code != http.StatusOK {
-		t.Fatalf("expected HTTP 200 HTML handoff form, got %d body %s", rr.Code, rr.Body.String())
+	if rr.Code != http.StatusFound {
+		t.Fatalf("expected HTTP 302 back to the project backend callback, got %d body %s", rr.Code, rr.Body.String())
 	}
-	body := rr.Body.String()
-	ticketMatch := regexp.MustCompile(`name="ticket" value="([^"]+)"`).FindStringSubmatch(body)
-	if len(ticketMatch) < 2 {
-		t.Fatalf("expected ticket input in response body, got %s", body)
+	locURL, err := rr.Result().Location()
+	if err != nil {
+		t.Fatalf("invalid redirect Location: %v", err)
 	}
-	ticket := ticketMatch[1]
-
-	// Finish handoff on the project host
-	form := url.Values{"ticket": {ticket}}
-	finishReq := httptest.NewRequest(http.MethodPost, "https://pn.example.com/oauth/finish", strings.NewReader(form.Encode()))
-	finishReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	finishReq.Host = "pn.example.com"
-	finishRR := httptest.NewRecorder()
-	handler.HandleFinish(finishRR, finishReq)
-
-	if finishRR.Code != http.StatusSeeOther {
-		t.Fatalf("expected HTTP 303 See Other back to project, got %d body %s", finishRR.Code, finishRR.Body.String())
+	if locURL.Host != "pn.example.com" || locURL.Path != "/api/auth/callback" {
+		t.Fatalf("expected return to %s, got %q", returnTo, locURL.String())
 	}
-	if loc := finishRR.Header().Get("Location"); loc != returnTo {
-		t.Fatalf("expected return to %s, got %q", returnTo, loc)
+	ticket := locURL.Query().Get("ticket")
+	if ticket == "" {
+		t.Fatal("expected one-time handoff ticket query parameter on callback redirect")
 	}
-
-	var session *http.Cookie
-	for _, c := range finishRR.Result().Cookies() {
-		if c.Name == cfg.CookieName && c.Value != "" {
-			session = c
-			break
+	for _, c := range rr.Result().Cookies() {
+		if c.Name == "PLATFORM_SESSION" {
+			t.Fatalf("expected zero PLATFORM_SESSION cookies emitted on callback redirect, got %+v", c)
 		}
 	}
-	if session == nil {
-		t.Fatal("expected a project session cookie")
+
+	// Exchange ticket via POST /auth/exchange from Project Backend
+	exchBody := fmt.Sprintf(`{"ticket":%q}`, ticket)
+	exchReq := httptest.NewRequest(http.MethodPost, "/auth/exchange", strings.NewReader(exchBody))
+	exchReq.Header.Set("Content-Type", "application/json")
+	exchReq.Header.Set("X-Forwarded-Host", "pn.example.com")
+	exchRR := httptest.NewRecorder()
+	handler.HandleTicketExchange(exchRR, exchReq)
+
+	if exchRR.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK from /auth/exchange, got %d: %s", exchRR.Code, exchRR.Body.String())
 	}
-	if session.Domain != "" {
-		t.Fatalf("cookie must be host-only (Domain empty), got %q", session.Domain)
+	var exchResp struct {
+		SessionHandle string `json:"session_handle"`
+		Subject       string `json:"subject"`
+		Issuer        string `json:"issuer"`
+		Audience      string `json:"audience"`
 	}
-	if !session.HttpOnly || !session.Secure {
-		t.Fatalf("cookie must be HttpOnly and Secure, HttpOnly=%v Secure=%v", session.HttpOnly, session.Secure)
+	if err := json.Unmarshal(exchRR.Body.Bytes(), &exchResp); err != nil {
+		t.Fatalf("failed to decode exchange response: %v", err)
+	}
+	if exchResp.SessionHandle == "" || exchResp.Subject != "user-1" || exchResp.Audience != "project-pn" {
+		t.Fatalf("unexpected exchange payload: %+v", exchResp)
+	}
+	if exchResp.Issuer != "https://auth.example.com/realms/platform" {
+		t.Fatalf("expected canonical public issuer, got %q", exchResp.Issuer)
+	}
+
+	// Replaying the same one-time ticket MUST be rejected with 401
+	replayReq := httptest.NewRequest(http.MethodPost, "/auth/exchange", strings.NewReader(exchBody))
+	replayReq.Header.Set("X-Forwarded-Host", "pn.example.com")
+	replayRR := httptest.NewRecorder()
+	handler.HandleTicketExchange(replayRR, replayReq)
+	if replayRR.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401 Unauthorized on replayed ticket, got %d", replayRR.Code)
+	}
+
+	// Verify GET /auth with Authorization: Bearer <session_handle> (zero cookies)
+	verifyReq := httptest.NewRequest(http.MethodGet, "/auth", nil)
+	verifyReq.Header.Set("X-Forwarded-Host", "pn.example.com")
+	verifyReq.Header.Set("Authorization", "Bearer "+exchResp.SessionHandle)
+	verifyRR := httptest.NewRecorder()
+	handler.HandleForwardAuth(verifyRR, verifyReq)
+
+	if verifyRR.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK for Bearer session_handle, got %d: %s", verifyRR.Code, verifyRR.Body.String())
+	}
+	if verifyRR.Header().Get("X-User-Subject") != "user-1" {
+		t.Fatalf("expected X-User-Subject 'user-1', got %q", verifyRR.Header().Get("X-User-Subject"))
+	}
+}
+
+func TestTransparentTokenRefreshAndRealKeycloakIntrospection(t *testing.T) {
+	// Mock Keycloak server that rejects the expired access token on /token/introspect
+	// and issues a fresh access token on /token (grant_type=refresh_token).
+	var introspectedTokens []string
+	mockKC := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		switch r.URL.Path {
+		case "/realms/platform/protocol/openid-connect/token/introspect":
+			tok := r.FormValue("token")
+			introspectedTokens = append(introspectedTokens, tok)
+			w.Header().Set("Content-Type", "application/json")
+			if tok == "fresh-access-token" {
+				_, _ = w.Write([]byte(`{"active":true}`))
+			} else {
+				_, _ = w.Write([]byte(`{"active":false}`))
+			}
+		case "/realms/platform/protocol/openid-connect/token":
+			if r.FormValue("grant_type") == "refresh_token" && r.FormValue("refresh_token") == "valid-refresh-token" {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"access_token":"fresh-access-token","refresh_token":"rotated-refresh-token","expires_in":300}`))
+				return
+			}
+			w.WriteHeader(http.StatusBadRequest)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer mockKC.Close()
+
+	cfg := &config.Config{
+		CookieName:        "PLATFORM_SESSION",
+		CookieDomain:      ".nacfson.cloud",
+		HMACSecret:        []byte("test-secret-key-that-is-at-least-32-bytes!"),
+		SessionTimeout:    8 * time.Hour,
+		KeycloakPublicURL: "https://auth.nacfson.cloud/realms/platform",
+		KeycloakIssuerURL: mockKC.URL + "/realms/platform",
+		KeycloakAdminURL:  mockKC.URL,
+		ClientID:          "gateway-client",
+		ClientSecret:      "gateway-secret",
+	}
+	kcClient := keycloak.NewClient(cfg.KeycloakIssuerURL, cfg.KeycloakAdminURL, cfg.ClientID, cfg.ClientSecret)
+	handler := auth.NewHandler(cfg, kcClient, kcClient)
+
+	handle, err := handler.SealSessionHandle(auth.SessionHandleData{
+		SessionID:    "session-uuid-not-a-token",
+		Subject:      "learner-42",
+		Issuer:       "https://auth.nacfson.cloud/realms/platform",
+		Audience:     "project-pn",
+		Tokens:       map[string]string{"project-pn": "expired-access-token"},
+		RefreshToken: "valid-refresh-token",
+		CreatedAt:    time.Now().Unix(),
+	})
+	if err != nil {
+		t.Fatalf("SealSessionHandle failed: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/auth", nil)
+	req.Header.Set("X-Forwarded-Host", "pn.nacfson.cloud")
+	req.Header.Set("Authorization", "Bearer "+handle)
+	rr := httptest.NewRecorder()
+	handler.HandleForwardAuth(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 OK after transparent refresh, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if len(introspectedTokens) == 0 || introspectedTokens[0] != "expired-access-token" {
+		t.Fatalf("expected Keycloak introspection to receive the OAuth access token (not session UUID), got %v", introspectedTokens)
+	}
+	if rr.Header().Get("Authorization") != "Bearer fresh-access-token" {
+		t.Fatalf("expected refreshed access token in Authorization header, got %q", rr.Header().Get("Authorization"))
+	}
+	if rr.Header().Get("X-Refreshed-Session-Handle") == "" {
+		t.Fatal("expected X-Refreshed-Session-Handle header when token was rotated")
 	}
 }
 

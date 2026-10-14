@@ -1,3 +1,4 @@
 # Gitleaks ignore file
 # Ignores false positive in test probe for negative authorization check
 b0759c915f9a1bfd1fb312ec715977f808798b57:tests/vault/test_registry_proxy.sh:curl-auth-header:48
+710c35346e02571100b0a9abfc29028e29a10742:gateway/tests/handler_test.go:generic-api-key:168

@@ -40,17 +40,17 @@ func main() {
 		w.Write([]byte("OK"))
 	})
 
-	// Traefik ForwardAuth verification endpoint
+	// Internal session verification endpoint
 	mux.HandleFunc("/auth", handler.HandleForwardAuth)
+
+	// Internal one-time callback ticket exchange endpoint for project backends
+	mux.HandleFunc("/auth/exchange", handler.HandleTicketExchange)
 
 	// Sign-in start. return must be an address already on the project door.
 	mux.HandleFunc("/oauth/start", handler.HandleSessionStart)
 
 	// OIDC callback from Keycloak
 	mux.HandleFunc("/oauth/callback", handler.HandleCallback)
-
-	// Host-only session cookie finish handoff on project door
-	mux.HandleFunc("/oauth/finish", handler.HandleFinish)
 
 	// User-initiated synchronous session revocation
 	mux.HandleFunc("/auth/logout", handler.HandleLogout)

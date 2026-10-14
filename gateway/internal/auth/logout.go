@@ -56,38 +56,61 @@ func (h *Handler) ValidateCSRF(r *http.Request, sessionID string) bool {
 }
 
 // HandleLogout processes user-initiated session termination on POST /auth/logout.
-// Strictly adheres to specs/001-project-platform/contracts/session-revocation.md
+// Supports both Authorization: Bearer <session_handle> (4-layer BFF flow) and legacy cookie revocation.
 func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
 		return
 	}
 
-	// 1. Authenticated Request Precondition
-	cookie, err := r.Cookie(h.Config.CookieName)
-	if err != nil || cookie.Value == "" {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(`{"error":"unauthenticated","message":"No active session found"}`))
-		return
+	var session *SessionHandleData
+	usedBearer := false
+
+	rawAuth := strings.TrimSpace(r.Header.Get("Authorization"))
+	if strings.HasPrefix(strings.ToLower(rawAuth), "bearer ") {
+		bearerVal := strings.TrimSpace(rawAuth[7:])
+		if bearerVal != "" {
+			s, err := h.UnsealSessionHandle(bearerVal)
+			if err != nil {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusBadRequest)
+				w.Write([]byte(`{"error":"invalid_session","message":"Malformed session"}`))
+				return
+			}
+			session = s
+			usedBearer = true
+		}
 	}
 
-	session, err := h.decodeSessionCookie(cookie.Value)
-	if err != nil {
-		h.clearSessionCookie(w)
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error":"invalid_session","message":"Malformed session"}`))
-		return
-	}
+	if session == nil {
+		// Legacy Cookie Precondition
+		cookie, err := r.Cookie(h.Config.CookieName)
+		if err != nil || cookie.Value == "" {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusUnauthorized)
+			w.Write([]byte(`{"error":"unauthenticated","message":"No active session found"}`))
+			return
+		}
 
-	// 2. CSRF Protection Precondition
-	if !h.ValidateCSRF(r, session.SessionID) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte(`{"error": "invalid_csrf_token", "message": "Cross-site request forgery validation failed."}`))
-		return
+		s, err := h.UnsealSessionHandle(cookie.Value)
+		if err != nil {
+			h.clearSessionCookie(w)
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			w.Write([]byte(`{"error":"invalid_session","message":"Malformed session"}`))
+			return
+		}
+		session = s
+
+		// CSRF Protection Precondition (required when browser cookies are used)
+		if !h.ValidateCSRF(r, session.SessionID) {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusForbidden)
+			w.Write([]byte(`{"error": "invalid_csrf_token", "message": "Cross-site request forgery validation failed."}`))
+			return
+		}
 	}
+	_ = usedBearer
 
 	// 3. Synchronous Backend Keycloak Session Invalidation
 	if h.Revoker != nil && session.SessionID != "" {

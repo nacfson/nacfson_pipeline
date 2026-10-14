@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Implementation Plan: 009 — Backend-First Headless Login Logic & Shared Project Authentication</title>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'dark' });
+  </script>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --surface: #1e293b;
+      --surface-2: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --success: #4ade80;
+      --warning: #fbbf24;
+      --danger: #f87171;
+      --border: #334155;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem;
+    }
+    .container {
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1.5rem;
+      margin-bottom: 2rem;
+    }
+    .badge {
+      display: inline-block;
+      padding: 0.25rem 0.75rem;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      margin-right: 0.5rem;
+    }
+    .badge.success {
+      background: rgba(74, 222, 128, 0.15);
+      color: var(--success);
+      border-color: rgba(74, 222, 128, 0.3);
+    }
+    h1, h2, h3 { color: var(--text); }
+    h1 { font-size: 2rem; margin: 0.75rem 0 0.5rem; }
+    h2 {
+      font-size: 1.35rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 0.5rem;
+      margin-top: 2.25rem;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 1rem 0;
+      font-size: 0.92rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.75rem 1rem;
+      border-bottom: 1px solid var(--border);
+    }
+    th {
+      background: rgba(51, 65, 85, 0.5);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    pre, code {
+      font-family: "JetBrains Mono", "Fira Code", monospace;
+      font-size: 0.86rem;
+    }
+    pre {
+      background: #090d16;
+      border: 1px solid var(--border);
+      border-radius: 0.5rem;
+      padding: 1rem;
+      overflow-x: auto;
+    }
+    .diff-add { color: var(--success); }
+    .diff-del { color: var(--danger); }
+    .mermaid {
+      background: #090d16;
+      padding: 1.25rem;
+      border-radius: 0.75rem;
+      border: 1px solid var(--border);
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <span class="badge">Branch: 009-host-scoped-shared-auth</span>
+      <span class="badge success">Constitution v2.2.0: PASS</span>
+      <span class="badge">Zero Cookies / 4-Layer BFF</span>
+      <h1>Implementation Plan: Backend-First Headless Login Logic &amp; Shared Project Authentication</h1>
+      <p style="color: var(--muted);">
+        Eliminates cross-subdomain cookie rejections (<code>PLATFORM_SESSION</code>) and <code>missing or expired auth state</code> errors by delegating the entire Login UI to the project Frontend, keeping all OAuth/Keycloak session tokens sealed inside the internal Gateway/Keycloak boundary, and routing all authentication via <strong>Frontend ➔ Project Backend ➔ Internal Gateway/Keycloak ➔ Project Backend ➔ Frontend</strong>.
+      </p>
+    </header>
+
+    <h2>1. 4-Layer Architecture &amp; Sequence Diagram</h2>
+    <div class="card">
+      <svg viewBox="0 0 960 210" width="100%" height="auto" style="margin-bottom: 1rem; background: #090d16; border-radius: 0.5rem; border: 1px solid #334155;">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="6" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+            <path d="M 0 0 L 10 5 L 0 10 z" fill="#38bdf8" />
+          </marker>
+        </defs>
+        <!-- Layer 4: Frontend -->
+        <rect x="20" y="35" width="190" height="140" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+        <text x="115" y="65" fill="#38bdf8" font-size="14" font-weight="bold" text-anchor="middle">4. Project Frontend</text>
+        <text x="115" y="90" fill="#f8fafc" font-size="12" text-anchor="middle">Owns 100% of Login UI</text>
+        <text x="115" y="112" fill="#94a3b8" font-size="11" text-anchor="middle">Holds: opaque session_handle</text>
+        <text x="115" y="132" fill="#4ade80" font-size="11" text-anchor="middle">Zero Browser Cookies</text>
+
+        <!-- Layer 3: Project Backend -->
+        <rect x="270" y="35" width="200" height="140" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+        <text x="370" y="65" fill="#38bdf8" font-size="14" font-weight="bold" text-anchor="middle">3. Project Backend</text>
+        <text x="370" y="90" fill="#f8fafc" font-size="12" text-anchor="middle">Shared Auth Module</text>
+        <text x="370" y="112" fill="#94a3b8" font-size="11" text-anchor="middle">/api/auth/login, /callback, /session</text>
+        <text x="370" y="132" fill="#94a3b8" font-size="11" text-anchor="middle">DB keyed by (issuer, subject)</text>
+
+        <!-- Layer 2: Internal Gateway -->
+        <rect x="530" y="35" width="200" height="140" rx="10" fill="#1e293b" stroke="#4ade80" stroke-width="2"/>
+        <text x="630" y="65" fill="#4ade80" font-size="14" font-weight="bold" text-anchor="middle">2. Internal Gateway</text>
+        <text x="630" y="90" fill="#f8fafc" font-size="12" text-anchor="middle">gateway.identity.svc:8080</text>
+        <text x="630" y="112" fill="#94a3b8" font-size="11" text-anchor="middle">Vault AES-GCM Sealed Handle</text>
+        <text x="630" y="132" fill="#94a3b8" font-size="11" text-anchor="middle">Stateless Encrypted PKCE State</text>
+
+        <!-- Layer 1: Keycloak -->
+        <rect x="780" y="35" width="160" height="140" rx="10" fill="#1e293b" stroke="#fbbf24" stroke-width="2"/>
+        <text x="860" y="65" fill="#fbbf24" font-size="14" font-weight="bold" text-anchor="middle">1. Keycloak + DB</text>
+        <text x="860" y="90" fill="#f8fafc" font-size="12" text-anchor="middle">Identity Broker</text>
+        <text x="860" y="112" fill="#94a3b8" font-size="11" text-anchor="middle">kc_idp_hint=google</text>
+        <text x="860" y="132" fill="#94a3b8" font-size="11" text-anchor="middle">Root Session in Postgres</text>
+
+        <!-- Arrows -->
+        <line x1="210" y1="90" x2="268" y2="90" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)" />
+        <line x1="268" y1="120" x2="210" y2="120" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)" />
+        <line x1="470" y1="90" x2="528" y2="90" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)" />
+        <line x1="528" y1="120" x2="470" y2="120" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)" />
+        <line x1="730" y1="90" x2="778" y2="90" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)" />
+        <line x1="778" y1="120" x2="730" y2="120" stroke="#38bdf8" stroke-width="2" marker-end="url(#arrow)" />
+      </svg>
+
+      <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant FE as Project Frontend (pn.*)
+    participant BE as Project Backend (/api/*)
+    participant GW as Internal Gateway (gateway:8080)
+    participant KC as Keycloak + Google OIDC
+
+    FE->>BE: GET /api/auth/login
+    BE->>GW: Redirect /oauth/start?return=https://pn.*/api/auth/callback
+    GW->>KC: 302 Redirect (kc_idp_hint=google + AES-GCM encrypted PKCE state)
+    KC->>GW: GET /oauth/callback?code=...&state=...
+    GW->>KC: Exchange code + decrypted PKCE verifier (:8080)
+    Note over GW: Seals {sid, sub, iss, aud, tokens, rt}<br/>into Vault-encrypted session_handle
+    GW->>BE: 302 Redirect /api/auth/callback?ticket=<one-time-ticket> (0 Cookies)
+    BE->>GW: POST http://gateway.identity.svc:8080/auth/exchange {ticket}
+    GW-->>BE: 200 OK {session_handle, subject, issuer, audience}
+    Note over BE: Resolves user & project requirements in DB<br/>Stores 30s one-time pickup code
+    BE->>FE: 302 Redirect https://pn.*/?code=<pickup-code>
+    FE->>BE: POST /api/auth/session {code}
+    BE-->>FE: 200 OK {session_handle, user, requirements}
+    FE->>BE: GET /api/* (Authorization: Bearer <session_handle>)
+    BE->>GW: GET http://gateway.identity.svc:8080/auth (Bearer <session_handle>)
+    GW-->>BE: 200 OK (X-User-Subject, X-User-Issuer, auto-refreshes token if needed)
+    BE-->>FE: 200 OK JSON Response
+      </div>
+    </div>
+
+    <h2>2. Scope Breakdown</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>1. Stateless Encrypted PKCE &amp; Direct Google Login</h3>
+        <p style="color: var(--muted); font-size: 0.9rem;">
+          In <code>gateway/internal/auth/</code>, add AES-256-GCM encryption for <code>StatePayload</code> (carrying the PKCE <code>code_verifier</code> inside <code>state</code> with a 10-minute TTL, eliminating <code>OIDC_AUTH_STATE</code> cookie failures) and append <code>kc_idp_hint=google</code> on <code>/oauth/start</code>.
+        </p>
+      </div>
+      <div class="card">
+        <h3>2. Vault-Sealed <code>session_handle</code> &amp; Ticket Exchange</h3>
+        <p style="color: var(--muted); font-size: 0.9rem;">
+          Replace cross-subdomain <code>PLATFORM_SESSION</code> cookies on <code>/oauth/callback</code> with a Vault-encrypted <code>session_handle</code> and a 60-second single-use handoff <code>ticket</code> redeemed by the Project Backend via <code>POST /auth/exchange</code>.
+        </p>
+      </div>
+      <div class="card">
+        <h3>3. Canonical Issuer &amp; Active Token Refresh</h3>
+        <p style="color: var(--muted); font-size: 0.9rem;">
+          Fix <code>HandleForwardAuth</code> (<code>/auth</code>) to validate against <code>CanonicalIssuer()</code> and introspect/refresh actual OAuth tokens sealed inside <code>session_handle</code> instead of passing a session UUID to token introspection.
+        </p>
+      </div>
+      <div class="card">
+        <h3>4. Shared Verification Package (<code>gateway/pkg/projectauth</code>)</h3>
+        <p style="color: var(--muted); font-size: 0.9rem;">
+          Provide a reusable Go 1.22 stdlib-only package implementing <code>/api/auth/login</code>, <code>/api/auth/callback</code>, <code>/api/auth/session</code>, <code>/api/auth/logout</code>, and <code>RequireAuth</code> middleware.
+        </p>
+      </div>
+    </div>
+
+    <h2>3. Key Code Diffs Preview</h2>
+    <div class="card">
+      <h3><code>gateway/internal/auth/handler.go</code> &amp; <code>gateway/internal/keycloak/oidc.go</code></h3>
+      <pre>
+<span class="diff-del">-	// Save verifier in temporary cookie (5-minute TTL)</span>
+<span class="diff-del">-	loginURL := fmt.Sprintf("%s/protocol/openid-connect/auth?client_id=%s&amp;response_type=code...", ...)</span>
+<span class="diff-add">+	// Seal PKCE verifier inside AES-256-GCM encrypted state (10-minute TTL, zero cookie dependency)</span>
+<span class="diff-add">+	encryptedState, err := h.sealState(StatePayload{TargetURL: targetURL, CodeVerifier: verifier, ...})</span>
+<span class="diff-add">+	loginURL := fmt.Sprintf("%s/protocol/openid-connect/auth?client_id=%s&amp;response_type=code&amp;scope=openid+profile+email&amp;redirect_uri=%s&amp;state=%s&amp;code_challenge=%s&amp;code_challenge_method=S256&amp;kc_idp_hint=google", ...)</span>
+
+<span class="diff-del">-	if h.Config.KeycloakIssuerURL != "" &amp;&amp; session.Issuer != h.Config.KeycloakIssuerURL {</span>
+<span class="diff-add">+	if !h.isAllowedIssuer(session.Issuer) {</span>
+ 		http.Error(w, `{"error":"unsigned_in","message":"Session issuer does not match this sign-in service"}`, http.StatusUnauthorized)
+ 		return
+ 	}
+
+<span class="diff-del">-	// Cookie is scoped to the project host, not the platform parent domain.</span>
+<span class="diff-del">-	http.SetCookie(w, ProjectHostSessionCookie(h.Config.CookieName, cookieVal, returnURL.Hostname(), ...))</span>
+<span class="diff-add">+	// Issue one-time handoff ticket to Project Backend (/api/auth/callback?ticket=...) with zero project cookies</span>
+<span class="diff-add">+	ticket := h.issueHandoffTicket(returnURL.Hostname(), sessionHandle, sess.Subject, sess.Issuer)</span>
+<span class="diff-add">+	http.Redirect(w, r, appendTicketParam(state.TargetURL, ticket), http.StatusFound)</span>
+      </pre>
+    </div>
+
+    <h2>4. Automated Verification Steps</h2>
+    <div class="card">
+      <pre>
+# 1. Run Go Auth Gateway &amp; Shared Verification Module unit and contract tests
+(cd gateway &amp;&amp; go test -v ./... &amp;&amp; go vet ./...)
+
+# 2. Run Go Vault Proxies test &amp; vet check
+(cd services/vault-proxies &amp;&amp; go test -v ./... &amp;&amp; go vet ./...)
+
+# 3. Run Platform Preflight unit tests
+python3 -m unittest discover tests/preflight
+
+# 4. Run full Kustomize render, kubeconform &amp; preflight validation for both clusters
+./scripts/render-validate.sh local-k3s
+./scripts/render-validate.sh vps-k3s
+      </pre>
+    </div>
+  </div>
+</body>
+</html>
