@@ -116,6 +116,22 @@ spec:
                       value: "https://auth.nacfson.cloud/realms/platform"
                     - name: PROJECT_RETURN_HOSTS
                       value: "pn.nacfson.cloud"
+    - target:
+        kind: Deployment
+        name: keycloak
+      patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: keycloak
+        spec:
+          template:
+            spec:
+              containers:
+                - name: keycloak
+                  env:
+                    - name: KC_HOSTNAME_URL
+                      value: "https://auth.nacfson.cloud"
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
