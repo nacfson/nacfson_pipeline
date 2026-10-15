@@ -78,8 +78,8 @@ spec:
               mountPath: /var/run/secrets/gateway
       containers:
         - name: gateway
-          image: ghcr.io/nacfson/platform-auth-gateway:latest
-          imagePullPolicy: Always
+          image: ghcr.io/nacfson/platform-auth-gateway@sha256:3a9d08b34523bcb050d01a4ae063a09a45d3a250294f06fb7bb37483a421882d
+          imagePullPolicy: IfNotPresent
           ports:
             - name: http
               containerPort: 8080

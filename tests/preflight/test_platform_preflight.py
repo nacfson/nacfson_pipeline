@@ -237,6 +237,7 @@ spec:
             "deploy/projects/pn/boundary/network-policy.yaml",
             "deploy/projects/pn/workloads/ingress-route.yaml",
             "deploy/projects/pn/workloads/backend-service.yaml",
+            "deploy/projects/pn/workloads/backend-deployment.yaml",
         ):
             with open(os.path.join(BASE_DIR, rel), encoding="utf-8") as fh:
                 parts.append(fh.read().strip())

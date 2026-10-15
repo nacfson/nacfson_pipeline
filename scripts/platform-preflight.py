@@ -242,6 +242,24 @@ def check_project_doors(projects_dict):
                             "object": obj,
                             "detail": f"route port {port} is not allowed from the platform namespace" + kept,
                         })
+        forbidden_auth_envs = {"AUTH_JWT_JWKS_URL", "CENTRAL_AUTH_URL", "CENTRAL_AUTH_INTERNAL_URL"}
+        for doc in docs:
+            pod_spec, _ = get_pod_spec_and_meta(doc)
+            if not pod_spec:
+                continue
+            obj = f"{proj_id}/{doc.get('kind', '')}/{(doc.get('metadata') or {}).get('name', '')}"
+            for c in (pod_spec.get("containers") or []) + (pod_spec.get("initContainers") or []):
+                for env_entry in c.get("env") or []:
+                    if not isinstance(env_entry, dict):
+                        continue
+                    ename = str(env_entry.get("name") or "").strip()
+                    eval_str = str(env_entry.get("value") or "").strip()
+                    if ename in forbidden_auth_envs or "keycloak-service" in eval_str:
+                        violations.append({
+                            "rule": 2,
+                            "object": f"{obj}:{c.get('name', '')}",
+                            "detail": f"project container must not hold Keycloak config or JWKS URL ({ename})" + kept,
+                        })
     return violations
 
 
