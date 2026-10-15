@@ -189,6 +189,24 @@ spec:
                 GRANT CONNECT ON DATABASE proj_pn TO user_pn;
                 GRANT CONNECT ON DATABASE keycloak TO backup_role;
                 GRANT CONNECT ON DATABASE proj_pn TO backup_role;
+
+                \connect keycloak
+                DO \$\$
+                BEGIN
+                  IF EXISTS (
+                    SELECT 1 FROM information_schema.tables
+                    WHERE table_schema = 'public' AND table_name = 'client_scope_client'
+                  ) THEN
+                    INSERT INTO client_scope_client (client_id, scope_id, default_scope)
+                    SELECT c.id, cs.id, true
+                    FROM client c
+                    JOIN realm r ON r.id = c.realm_id AND r.name = 'platform'
+                    JOIN client_scope cs ON cs.realm_id = r.id AND cs.name = 'project-pn-audience'
+                    WHERE c.client_id = 'gateway-client'
+                    ON CONFLICT (client_id, scope_id) DO UPDATE SET default_scope = true;
+                  END IF;
+                END
+                \$\$;
               EOSQL
 
               # Clear secrets from memory immediately upon completion
