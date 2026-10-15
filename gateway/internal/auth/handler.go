@@ -7,10 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
-	"path"
 	"strconv"
 	"strings"
 	"sync"
@@ -222,6 +220,9 @@ func (h *Handler) HandleForwardAuth(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("X-User-Subject", session.Subject)
 	w.Header().Set("X-User-Issuer", session.Issuer)
 	w.Header().Set("X-Project-Audience", projectAudience)
+	if email := parseEmailFromJWT(projectToken); email != "" {
+		w.Header().Set("X-User-Email", email)
+	}
 	if refreshedSessionHandle != "" {
 		w.Header().Set("X-Refreshed-Session-Handle", refreshedSessionHandle)
 	}
@@ -583,47 +584,18 @@ func parseSubjectFromJWT(token string) string {
 	return "unknown-subject"
 }
 
-// HandleJWKSProxy safely proxies public OIDC metadata and JWKS certs to Keycloak.
-// Only GET and HEAD requests to /.well-known/openid-configuration and /protocol/openid-connect/certs are allowed.
-func (h *Handler) HandleJWKSProxy(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
-		return
+func parseEmailFromJWT(token string) string {
+	parts := strings.Split(token, ".")
+	if len(parts) < 2 {
+		return ""
 	}
-
-	cleanPath := path.Clean(r.URL.Path)
-	subpath := strings.TrimPrefix(cleanPath, "/realms/platform")
-	if subpath != "/.well-known/openid-configuration" && subpath != "/protocol/openid-connect/certs" {
-		http.Error(w, `{"error":"forbidden","message":"access to this Keycloak path is forbidden"}`, http.StatusForbidden)
-		return
-	}
-
-	targetURL := fmt.Sprintf("%s%s", strings.TrimSuffix(h.Config.KeycloakIssuerURL, "/"), subpath)
-	if r.URL.RawQuery != "" {
-		targetURL = fmt.Sprintf("%s?%s", targetURL, r.URL.RawQuery)
-	}
-
-	req, err := http.NewRequestWithContext(r.Context(), r.Method, targetURL, nil)
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
-		http.Error(w, `{"error":"internal_error"}`, http.StatusInternalServerError)
-		return
+		return ""
 	}
-
-	client := http.DefaultClient
-	if h.Client != nil && h.Client.HTTPClient != nil {
-		client = h.Client.HTTPClient
+	var claims struct {
+		Email string `json:"email"`
 	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		http.Error(w, `{"error":"bad_gateway","message":"failed to contact Keycloak"}`, http.StatusBadGateway)
-		return
-	}
-	defer resp.Body.Close()
-
-	for k, v := range resp.Header {
-		w.Header()[k] = v
-	}
-	w.WriteHeader(resp.StatusCode)
-	_, _ = io.Copy(w, resp.Body)
+	_ = json.Unmarshal(payloadBytes, &claims)
+	return strings.TrimSpace(claims.Email)
 }

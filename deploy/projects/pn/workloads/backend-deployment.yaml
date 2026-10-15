@@ -34,7 +34,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: ghcr.io/nacfson/project-pn-backend@sha256:be69bc79bbb1446c807c83f78386861b58720c13addfc348563991acd73f038e
+          image: ghcr.io/nacfson/project-pn-backend@sha256:598d7d1f697b45e932cd0c781bdcb3c0a05619c114ab58a2413ab283fd6901ab
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -56,14 +56,8 @@ spec:
               value: "project:pn:workload:backend"
             - name: MIGRATIONS_PATH
               value: "file:///app/db/migrations"
-            - name: AUTH_JWT_JWKS_URL
-              value: "http://gateway.identity.svc:8080/realms/platform/protocol/openid-connect/certs"
             - name: GATEWAY_AUTH_URL
               value: "http://gateway.identity.svc:8080/auth"
-            - name: CENTRAL_AUTH_INTERNAL_URL
-              value: "http://gateway.identity.svc:8080/realms/platform"
-            - name: CENTRAL_AUTH_URL
-              value: "https://auth.example.com/realms/platform"
             # Browser SPA /api fetches may send Cache-Control/Pragma -> CORS preflight.
             # PUBLIC_APP_URL MUST appear in ALLOWED_ORIGINS (007 browser-api-access).
             # Flux env patches override these per cluster door host.
