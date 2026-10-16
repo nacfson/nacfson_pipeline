@@ -19,6 +19,7 @@ To maintain consistency across human engineers and AI coding agents, this reposi
 nacfson_pipeline/
 ├── README.md                                    # Tier 2: Master System Portal & Index
 ├── SPEC.md                                      # Tier 2: Initial Platform Specification Baseline
+├── TROUBLE_SHOOTING.md                          # Tier 4: OAuth Callback & Domain-Based Naming Troubleshooting
 ├── .specify/memory/constitution.md              # Tier 1: Authoritative Invariants & Governance Rules
 │
 ├── specs/                                       # Tier 3: Feature Specifications (SpecKit Packages)
@@ -106,6 +107,22 @@ flowchart TD
     class ZeroPlaintextBoundary boundary;
     class Gateway,Workload secure;
 ```
+
+### 3.1 Domain-Based Project Naming & Identity Rule
+
+All hosted projects and authentication handoffs MUST derive project names, return hosts, and OAuth/JWT audiences deterministically from the **configured public domain under the platform's main domain** (`nacfson.cloud` in `vps-k3s`, `example.com` in `local-k3s`), and **NEVER** from internal Kubernetes service hostnames (`pn-backend`, `pn-backend.proj-pn.svc:8080`, or `gateway.identity.svc:8080`):
+
+| Identifier | Naming Rule | Production (`vps-k3s`) Example | Local (`local-k3s`) Example |
+| :--- | :--- | :--- | :--- |
+| **Main Platform Domain** | `<main-domain>` | `nacfson.cloud` | `example.com` |
+| **Central Auth Domain** | `auth.<main-domain>` | `auth.nacfson.cloud` | `auth.example.com` |
+| **Canonical Issuer (`iss`)** | `https://auth.<main-domain>/realms/platform` | `https://auth.nacfson.cloud/realms/platform` | `https://auth.example.com/realms/platform` |
+| **Project Public Host** | `<project-slug>.<main-domain>` | `pn.nacfson.cloud` | `pn.example.com` |
+| **Project Origin (`PUBLIC_APP_URL`)** | `https://<project-slug>.<main-domain>` | `https://pn.nacfson.cloud` | `https://pn.example.com` |
+| **Gateway Host Header (`X-Forwarded-Host`)** | Must equal the hostname of `PUBLIC_APP_URL` (`<project-slug>.<main-domain>`) | `pn.nacfson.cloud` | `pn.example.com` |
+| **Project Audience (`aud` / `X-Project-Audience`)** | `project-<project-slug>` (first label of `<project-slug>.<main-domain>`) | `project-pn` | `project-pn` |
+
+> **Non-Negotiable Rule**: Project backends calling `http://gateway.identity.svc:8080/auth/exchange` or `http://gateway.identity.svc:8080/auth` MUST resolve their effective host from their configured `PUBLIC_APP_URL` (`<project-slug>.<main-domain>`) rather than raw `r.Host` headers. Using an internal service name (such as `pn-backend`) produces `project-pn-backend` instead of `project-pn` and causes session confirmation to fail. See [`TROUBLE_SHOOTING.md`](TROUBLE_SHOOTING.md) for full details.
 
 ---
 
