@@ -34,7 +34,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: ghcr.io/nacfson/project-pn-backend@sha256:45700889b468d0294bcc33d0d5393cd6314f7cf5bf9871f161a71ea00b12c83b
+          image: ghcr.io/nacfson/project-pn-backend@sha256:00e44572be8d722e6e0c805c126e4cec7eef31a949ab3a862a4127078d0f7969
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
