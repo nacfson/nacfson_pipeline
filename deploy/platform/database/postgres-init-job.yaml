@@ -85,9 +85,12 @@ spec:
       containers:
         - name: init-db
           image: postgres:16.8-alpine
+          # Short-lived psql bootstrap: request 25m so the Job can schedule next to postgres-0
+          # on the 2-OCPU vps-k3s node (it previously took the CPU postgres-0 needed and
+          # deadlocked waiting for it). Limit stays 100m.
           resources:
             requests:
-              cpu: 100m
+              cpu: 25m
               memory: 128Mi
             limits:
               cpu: 100m

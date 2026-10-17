@@ -27,7 +27,9 @@ spec:
           type: RuntimeDefault
       containers:
         - name: db-proxy
-          image: ghcr.io/nacfson/vault-db-proxy:latest
+          # Pinned to the build-images run for b8fd862 (#49), which adds the /readyz handler.
+          # The floating :latest + IfNotPresent kept a stale cached image without /readyz.
+          image: ghcr.io/nacfson/vault-db-proxy@sha256:4dd5c58111684aa7c5626d6ca60697aa6dfcd718f21be8fab76a601ca959e154
           imagePullPolicy: IfNotPresent
           ports:
             - name: postgresql

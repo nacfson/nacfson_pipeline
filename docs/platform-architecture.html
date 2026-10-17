@@ -942,16 +942,17 @@
             </div>
             <div class="flex justify-between text-slate-400">
               <span>Platform Reservation (sysReserved + Cilium/Hubble + Flux + Vault + PG + KC + GW + Cert):</span>
-              <span id="calc-plat" class="text-amber-300">1920m CPU · 5312 MiB</span>
+              <span id="calc-plat" class="text-amber-300">1595m CPU · 5312 MiB</span>
             </div>
             <div class="flex justify-between text-slate-300 border-t border-slate-800 pt-2">
               <span>Available Application Pool:</span>
-              <span id="calc-pool" class="text-cyan-300 font-bold">2080m CPU · 19264 MiB</span>
+              <span id="calc-pool" class="text-cyan-300 font-bold">2405m CPU · 19264 MiB</span>
             </div>
             <div class="flex justify-between text-slate-200">
               <span>Per-Project 1/n Slice (<code class="text-cyan-300">Pool / n</code>):</span>
-              <span id="calc-slice" class="text-emerald-300 font-bold">2080m CPU · 19264 MiB</span>
+              <span id="calc-slice" class="text-emerald-300 font-bold">2405m CPU · 19264 MiB</span>
             </div>
+            <p class="text-[11px] text-amber-300/90 border-t border-slate-800 pt-2">⚠ Observed 2026-10-17: the live vps-k3s node is 2 OCPU (2000m allocatable), not the 4000m in capacity.yaml. After Cilium + Hubble (+225m), scheduled CPU requests reached 1785m/2000m and postgres-0 deadlocked against postgres-init-job (Insufficient cpu). Keycloak's CPU request was lowered to 250m (limit 500m) and init-db to 25m; correcting capacity.yaml is pending.</p>
           </div>
 
           <!-- Preflight Gate Verdict -->
@@ -2188,7 +2189,7 @@
 
       const allocCpu = 4000;
       const allocMem = env === 'vps' ? 24576 : 8192;
-      const platCpu = 1920; // Shared Platform Reservation (including Cilium + Hubble + Vault + Identity + Cert-Manager)
+      const platCpu = 1595; // Shared Platform Reservation (including Cilium + Hubble + Vault + Identity + Cert-Manager); Keycloak CPU request 250m, postgres-init-job init-db 25m
       const platMem = 5312;
 
       const poolCpu = allocCpu - platCpu;
