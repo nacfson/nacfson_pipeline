@@ -125,8 +125,9 @@ run_verify() {
   echo "  ✓ Hubble UI responded with HTTP 200 on http://127.0.0.1:${PORT}/ and :9965/metrics is active"
 
   echo "=== [5/5] Verifying live flow visibility via Hubble Relay ==="
+  RELAY_POD_IP="$(kubectl -n kube-system get pod -l k8s-app=hubble-relay -o jsonpath='{.items[0].status.podIP}' 2>/dev/null || true)"
   FLOW_OUT="$(kubectl -n kube-system exec ds/cilium -c cilium-agent -- \
-    hubble observe --server hubble-relay.kube-system.svc.cluster.local:4245 --last 5 -o jsonpb 2>/dev/null || true)"
+    hubble observe --server "${RELAY_POD_IP:-hubble-relay.kube-system.svc.cluster.local}:4245" --last 5 -o jsonpb 2>/dev/null || true)"
   if ! printf '%s\n' "${FLOW_OUT}" | grep -Eq '"verdict":\s*"(FORWARDED|DROPPED)"'; then
     echo "FAIL: Did not observe FORWARDED or DROPPED flow verdicts from Hubble Relay" >&2
     exit 1
