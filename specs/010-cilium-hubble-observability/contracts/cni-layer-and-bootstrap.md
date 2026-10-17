@@ -37,6 +37,7 @@ The directory `deploy/platform/cni/` MUST contain:
    - `--set hubble.metrics.enabled="{dns,drop,tcp,flow}"`
    - `--set prometheus.enabled=true`
    - `--set operator.prometheus.enabled=true`
+   - Kustomize patch (equivalent to `--set operator.unmanagedPodWatcher.restart=false`): `cilium-config` `unmanaged-pod-watcher-interval: "0"`. Leaving the watcher on while any node is still Flannel-attached makes the operator delete CoreDNS every ~30s, and on a CPU-full node each replacement preempts lower-priority pods (incident 2026-10-17: `postgres-0`). Pods are moved onto Cilium explicitly during host migration.
 2. `kustomization.yaml`: References `upstream/cilium.yaml` and enforces explicit CPU/memory `requests` and `limits` across all containers and `initContainers`:
    - `DaemonSet/cilium` (`initContainers` × 6): `requests: {cpu: 10m, memory: 16Mi}`, `limits: {cpu: 100m, memory: 64Mi}`
    - `DaemonSet/cilium` (`cilium-agent`): `requests: {cpu: 100m, memory: 192Mi}`, `limits: {cpu: 500m, memory: 384Mi}`

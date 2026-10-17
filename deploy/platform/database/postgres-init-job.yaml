@@ -180,6 +180,9 @@ spec:
               EOSQL
 
               # Standardized Multi-Project Database & Role Provisioning (proj_<slug> / user_<slug>)
+              # NOTE: heredoc terminators (EOSQL) MUST start at the script's base indent. `<<-` only
+              # strips TABs and YAML indents with spaces, so an indented EOSQL inside this loop is
+              # never matched and the shell fails with "unexpected end of file (expecting done)".
               for SLUG in $(echo "${PROJECT_SLUGS:-pn}" | tr ',' ' '); do
                 DB_NAME="proj_${SLUG}"
                 ROLE_NAME="user_${SLUG}"
@@ -210,7 +213,7 @@ spec:
                   REVOKE CONNECT ON DATABASE ${DB_NAME} FROM keycloak_user;
                   GRANT CONNECT ON DATABASE ${DB_NAME} TO ${ROLE_NAME};
                   GRANT CONNECT ON DATABASE ${DB_NAME} TO backup_role;
-                EOSQL
+              EOSQL
                 unset PROJ_DB_PASS
               done
 

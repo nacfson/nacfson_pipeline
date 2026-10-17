@@ -31,6 +31,23 @@ resources:
   - upstream/cilium.yaml
 
 patches:
+  # Disable the operator's unmanaged-pods GC (Helm: operator.unmanagedPodWatcher.restart=false).
+  # Incident 2026-10-17 (vps-k3s): the node still ran Flannel (k3s unit not yet migrated to
+  # --flannel-backend=none), so Cilium managed zero pods. The GC deleted CoreDNS every ~30-45s;
+  # each replacement (system-cluster-critical) preempted postgres-0 on the CPU-full node.
+  # Pods are moved onto Cilium explicitly during the host migration instead.
+  - target:
+      kind: ConfigMap
+      name: cilium-config
+      namespace: kube-system
+    patch: |
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: cilium-config
+        namespace: kube-system
+      data:
+        unmanaged-pod-watcher-interval: "0"
   # Preflight Rule 4: every container and initContainer declares requests and limits.
   # Total CNI + Hubble platform reservation: +225m CPU request, +1248Mi memory limit.
   - target:
@@ -116,6 +133,11 @@ patches:
         namespace: kube-system
       spec:
         template:
+          metadata:
+            annotations:
+              # Bump when cilium-config changes: the operator only reads it at startup and the
+              # vendored static bundle carries no configmap checksum annotation.
+              platform.nacfson.io/cilium-config-rev: "2026-10-17-unmanaged-pod-watcher-off"
           spec:
             containers:
               - name: cilium-operator
