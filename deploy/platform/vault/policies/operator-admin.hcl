@@ -21,6 +21,10 @@ path "sys/mounts/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
 
+path "sys/storage/raft/snapshot" {
+  capabilities = ["read", "update"]
+}
+
 path "sys/health" {
   capabilities = ["read"]
 }

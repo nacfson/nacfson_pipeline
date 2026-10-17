@@ -1899,7 +1899,7 @@
         title: '2b. vault (OpenBao Server & Policies)',
         path: './deploy/platform/vault',
         deps: 'cni, governance',
-        desc: 'Deploys the OpenBao 2.0.0 StatefulSet in namespace vault, 8 HCL policies, vault NetworkPolicy + CiliumNetworkPolicy (kube-apiserver entity), and daily snapshot CronJob.',
+        desc: 'Deploys the OpenBao 2.0.0 StatefulSet in namespace vault, 8 HCL policies (including sys/storage/raft/snapshot on operator-admin), vault NetworkPolicy + CiliumNetworkPolicy (kube-apiserver entity), and daily Raft snapshot CronJob.',
         yaml: {
           'vps-k3s': `dependsOn: [cni, governance]\nhealthChecks:\n  - kind: StatefulSet, name: openbao, namespace: vault\npolicies:\n  - db-proxy, registry-proxy, gateway-transit, keycloak-broker,\n    postgres-init, postgres-server, backup-job, operator-admin`,
           'local-k3s': `dependsOn: [cni, governance]\nhealthChecks:\n  - kind: StatefulSet, name: openbao, namespace: vault`
