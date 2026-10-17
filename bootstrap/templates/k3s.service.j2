@@ -17,7 +17,7 @@ Restart=on-failure
 RestartSec=5s
 ExecStartPre=/sbin/modprobe overlay
 ExecStartPre=/sbin/modprobe br_netfilter
-ExecStart=/usr/local/bin/k3s server
+ExecStart=/usr/local/bin/k3s server --flannel-backend=none --disable-network-policy
 
 [Install]
 WantedBy=multi-user.target

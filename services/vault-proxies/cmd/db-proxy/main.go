@@ -20,16 +20,33 @@ import (
 
 // Config represents runtime settings for the Database Query Proxy.
 type Config struct {
-	ListenPort     string
-	HealthPort     string
-	UpstreamPGHost string
-	UpstreamPGPort string
-	VaultAddr      string
-	VaultToken     string
-	EnforcedDB     string
-	EnforcedRole   string
-	InternalDBPass string
-	PlatformSecret string
+	ListenPort      string
+	HealthPort      string
+	UpstreamPGHost  string
+	UpstreamPGPort  string
+	VaultAddr       string
+	VaultToken      string
+	EnforcedDB      string
+	EnforcedRole    string
+	AllowedProjects map[string]bool
+	InternalDBPass  string
+	PlatformSecret  string
+}
+
+func parseAllowedProjects(raw string) map[string]bool {
+	allowed := make(map[string]bool)
+	if strings.TrimSpace(raw) == "" {
+		raw = "pn"
+	}
+	for _, entry := range strings.Split(raw, ",") {
+		slug := strings.ToLower(strings.TrimSpace(entry))
+		slug = strings.TrimPrefix(slug, "proj-")
+		slug = strings.TrimPrefix(slug, "proj_")
+		if slug != "" {
+			allowed[slug] = true
+		}
+	}
+	return allowed
 }
 
 func loadConfig() *Config {
@@ -50,17 +67,84 @@ func loadConfig() *Config {
 		upstreamPort = "5432"
 	}
 	return &Config{
-		ListenPort:     listenPort,
-		HealthPort:     healthPort,
-		UpstreamPGHost: upstreamHost,
-		UpstreamPGPort: upstreamPort,
-		VaultAddr:      os.Getenv("VAULT_ADDR"),
-		VaultToken:     os.Getenv("VAULT_TOKEN"),
-		EnforcedDB:     os.Getenv("ENFORCED_DB"),
-		EnforcedRole:   os.Getenv("ENFORCED_ROLE"),
-		InternalDBPass: os.Getenv("PROJ_PN_DB_PASSWORD"),
-		PlatformSecret: os.Getenv("GATEWAY_HMAC_SECRET"),
+		ListenPort:      listenPort,
+		HealthPort:      healthPort,
+		UpstreamPGHost:  upstreamHost,
+		UpstreamPGPort:  upstreamPort,
+		VaultAddr:       os.Getenv("VAULT_ADDR"),
+		VaultToken:      os.Getenv("VAULT_TOKEN"),
+		EnforcedDB:      os.Getenv("ENFORCED_DB"),
+		EnforcedRole:    os.Getenv("ENFORCED_ROLE"),
+		AllowedProjects: parseAllowedProjects(os.Getenv("ALLOWED_PROJECTS")),
+		InternalDBPass:  os.Getenv("PROJ_PN_DB_PASSWORD"),
+		PlatformSecret:  os.Getenv("GATEWAY_HMAC_SECRET"),
 	}
+}
+
+func isValidProjectSlug(slug string) bool {
+	if slug == "" {
+		return false
+	}
+	for i := 0; i < len(slug); i++ {
+		c := slug[i]
+		if !((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// extractProjectSlug extracts the canonical project slug from a workload identity
+// (e.g. "project:pn:workload:backend" -> "pn", "pn-backend" -> "pn").
+func extractProjectSlug(sub string) (string, error) {
+	if strings.HasPrefix(sub, "project:") {
+		parts := strings.Split(sub, ":")
+		if len(parts) < 3 || parts[0] != "project" || !isValidProjectSlug(parts[1]) {
+			return "", fmt.Errorf("malformed project workload identity: %q", sub)
+		}
+		return parts[1], nil
+	}
+	if idx := strings.IndexByte(sub, '-'); idx > 0 {
+		candidate := sub[:idx]
+		if isValidProjectSlug(candidate) {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("unable to extract project slug from caller subject %q", sub)
+}
+
+// resolveProjectBinding maps a validated caller claim to its isolated (database, role) pair:
+// project:<slug>:workload:<component> -> (proj_<slug>, user_<slug>).
+func (p *DBProxy) resolveProjectBinding(claims *CallerClaims) (string, string, string, error) {
+	slug, err := extractProjectSlug(claims.Sub)
+	if err != nil {
+		if p.cfg.EnforcedDB != "" && p.cfg.EnforcedRole != "" {
+			return "pn", p.cfg.EnforcedDB, p.cfg.EnforcedRole, nil
+		}
+		return "", "", "", err
+	}
+
+	if len(p.cfg.AllowedProjects) > 0 && !p.cfg.AllowedProjects[slug] {
+		return "", "", "", fmt.Errorf("project %q is not registered in ALLOWED_PROJECTS", slug)
+	}
+
+	targetDB := "proj_" + slug
+	targetRole := "user_" + slug
+	if p.cfg.EnforcedDB != "" && slug == "pn" {
+		targetDB = p.cfg.EnforcedDB
+	}
+	if p.cfg.EnforcedRole != "" && slug == "pn" {
+		targetRole = p.cfg.EnforcedRole
+	}
+	return slug, targetDB, targetRole, nil
+}
+
+func (p *DBProxy) resolveRolePassword(slug string) string {
+	envKey := "PROJ_" + strings.ToUpper(slug) + "_DB_PASSWORD"
+	if val := os.Getenv(envKey); val != "" {
+		return val
+	}
+	return p.cfg.InternalDBPass
 }
 
 // CallerClaims represents validated payload from short-lived caller identity token.
@@ -128,11 +212,32 @@ func (p *DBProxy) isRevoked(sub string) bool {
 	return revoked
 }
 
-func (p *DBProxy) startHealthServer() {
+func (p *DBProxy) checkUpstreamReadiness() error {
+	addr := net.JoinHostPort(p.cfg.UpstreamPGHost, p.cfg.UpstreamPGPort)
+	conn, err := net.DialTimeout("tcp", addr, 2*time.Second)
+	if err != nil {
+		return err
+	}
+	_ = conn.Close()
+	return nil
+}
+
+func (p *DBProxy) buildAdminMux() *http.ServeMux {
 	mux := http.NewServeMux()
+	// Liveness probe (/healthz): process-local only; never depends on upstream DB.
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("OK"))
+		_, _ = w.Write([]byte("OK"))
+	})
+
+	// Readiness probe (/readyz): verifies upstream PostgreSQL TCP reachability.
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if err := p.checkUpstreamReadiness(); err != nil {
+			http.Error(w, fmt.Sprintf("upstream postgres unreachable: %v", err), http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("READY"))
 	})
 
 	// FR-020 & T025: Per-operation revocation management endpoint
@@ -172,18 +277,28 @@ func (p *DBProxy) startHealthServer() {
 			return true
 		})
 
+		var allowedList []string
+		for slug := range p.cfg.AllowedProjects {
+			allowedList = append(allowedList, slug)
+		}
+
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]interface{}{
 			"upstream_host":    p.cfg.UpstreamPGHost,
 			"enforced_db":      p.cfg.EnforcedDB,
 			"enforced_role":    p.cfg.EnforcedRole,
+			"allowed_projects": allowedList,
 			"revoked_subjects": revokedList,
 		})
 	})
 
+	return mux
+}
+
+func (p *DBProxy) startHealthServer() {
 	server := &http.Server{
 		Addr:    ":" + p.cfg.HealthPort,
-		Handler: mux,
+		Handler: p.buildAdminMux(),
 	}
 	_ = server.ListenAndServe()
 }
@@ -265,14 +380,22 @@ func (p *DBProxy) handleConnection(clientConn net.Conn) {
 		return
 	}
 
-	// 5. Enforce Target Scope & Isolation (Prevent peer-project or administrative access)
-	if p.cfg.EnforcedDB != "" && requestedDB != "" && requestedDB != p.cfg.EnforcedDB {
-		log.Printf("[DB-Proxy] Scope violation: caller requested '%s' but grant strictly binds '%s'", requestedDB, p.cfg.EnforcedDB)
+	// 5. Resolve Standardized Multi-Project Scope & Enforce Isolation
+	slug, targetDB, targetRole, err := p.resolveProjectBinding(claims)
+	if err != nil {
+		log.Printf("[DB-Proxy] Project binding resolution failed for '%s': %v", claims.Sub, err)
+		p.sendErrorResponse(clientConn, "42501", "Unauthorized project workload identity")
+		return
+	}
+
+	if requestedDB != "" && requestedDB != targetDB {
+		log.Printf("[DB-Proxy] Scope violation: caller '%s' requested '%s' but grant strictly binds '%s'", claims.Sub, requestedDB, targetDB)
 		p.sendErrorResponse(clientConn, "42501", "Unauthorized target database")
 		return
 	}
 
-	log.Printf("[DB-Proxy] Verified caller '%s'. Binding to upstream role '%s'\n", claims.Sub, p.cfg.EnforcedRole)
+	log.Printf("[DB-Proxy] Verified caller '%s' (project=%s). Binding to upstream role '%s' on db '%s'\n",
+		claims.Sub, slug, targetRole, targetDB)
 
 	// 6. Connect Upstream to PostgreSQL authenticated as enforced project role
 	upstreamConn, err := net.DialTimeout("tcp", net.JoinHostPort(p.cfg.UpstreamPGHost, p.cfg.UpstreamPGPort), 5*time.Second)
@@ -288,7 +411,7 @@ func (p *DBProxy) handleConnection(clientConn net.Conn) {
 	_ = upstreamConn.SetDeadline(time.Time{})
 
 	// 7. Perform Upstream PostgreSQL Startup Handshake using internal Vault credentials
-	if err := p.performUpstreamHandshake(upstreamConn, params); err != nil {
+	if err := p.performUpstreamHandshake(upstreamConn, targetDB, targetRole, p.resolveRolePassword(slug)); err != nil {
 		log.Printf("[DB-Proxy] Upstream handshake error: %v", err)
 		p.sendErrorResponse(clientConn, "28P01", "Upstream authentication failure")
 		return
@@ -342,20 +465,11 @@ func (p *DBProxy) validateCallerToken(rawToken string) (*CallerClaims, error) {
 	return nil, fmt.Errorf("unrecognized caller token format")
 }
 
-func (p *DBProxy) performUpstreamHandshake(upstream net.Conn, clientParams map[string]string) error {
-	user := p.cfg.EnforcedRole
-	if user == "" {
-		user = clientParams["user"]
-	}
-	db := p.cfg.EnforcedDB
-	if db == "" {
-		db = clientParams["database"]
-	}
-
+func (p *DBProxy) performUpstreamHandshake(upstream net.Conn, targetDB, targetRole, rolePassword string) error {
 	// Build upstream StartupMessage
 	var body []byte
 	body = binary.BigEndian.AppendUint32(body, 196608) // Protocol 3.0
-	body = append(body, []byte("user\x00"+user+"\x00database\x00"+db+"\x00client_encoding\x00UTF8\x00\x00")...)
+	body = append(body, []byte("user\x00"+targetRole+"\x00database\x00"+targetDB+"\x00client_encoding\x00UTF8\x00\x00")...)
 
 	msg := make([]byte, 4+len(body))
 	binary.BigEndian.PutUint32(msg[:4], uint32(len(msg)))
@@ -386,7 +500,7 @@ func (p *DBProxy) performUpstreamHandshake(upstream net.Conn, clientParams map[s
 		if authType == 3 {
 			// Cleartext password requested
 			passMsg := []byte{'p'}
-			passBody := []byte(p.cfg.InternalDBPass + "\x00")
+			passBody := []byte(rolePassword + "\x00")
 			passMsg = binary.BigEndian.AppendUint32(passMsg, uint32(4+len(passBody)))
 			passMsg = append(passMsg, passBody...)
 			if _, err := upstream.Write(passMsg); err != nil {

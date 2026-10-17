@@ -201,3 +201,30 @@
     owner: "{{ ansible_user }}"
     mode: "0600"
   when: legacy_conf_stat.stat.exists | default(false)
+
+# Stage and apply Git-committed Cilium + Hubble CNI bundle before verification & Flux
+- name: Ensure bootstrap CNI manifest directory exists
+  ansible.builtin.file:
+    path: "/var/lib/nacfson-bootstrap/cni"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: Stage Git-committed Cilium CNI kustomization bundle to target host
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../deploy/platform/cni/"
+    dest: "/var/lib/nacfson-bootstrap/cni/"
+    owner: root
+    group: root
+    mode: "0600"
+    directory_mode: "0700"
+
+- name: Apply Cilium CNI kustomization bundle via k3s kubectl
+  ansible.builtin.command:
+    cmd: "k3s kubectl apply --server-side --force-conflicts -k /var/lib/nacfson-bootstrap/cni"
+  register: cni_apply_check
+  until: cni_apply_check.rc == 0
+  retries: 24
+  delay: 5
+  changed_when: "'created' in cni_apply_check.stdout or 'configured' in cni_apply_check.stdout"

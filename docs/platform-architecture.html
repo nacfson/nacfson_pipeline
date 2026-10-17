@@ -1,0 +1,2684 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>nacfson_pipeline — Interactive System Architecture, Flows & Open-Source Stack</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Inter', sans-serif; background-color: #020617; color: #f1f5f9; }
+    code, pre, .font-mono { font-family: 'JetBrains Mono', monospace; }
+
+    @keyframes dashForward {
+      0% { stroke-dashoffset: 48; }
+      100% { stroke-dashoffset: 0; }
+    }
+    @keyframes pulseGlow {
+      0%, 100% { opacity: 0.55; }
+      50% { opacity: 1; }
+    }
+    .anim-edge {
+      stroke-dasharray: 6 6;
+      animation: dashForward 1.1s linear infinite;
+    }
+    .node-box {
+      transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: pointer;
+    }
+    .node-box:hover {
+      filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.45));
+    }
+    .node-selected rect.main-rect {
+      stroke-width: 3px !important;
+      filter: drop-shadow(0 0 12px rgba(34, 211, 238, 0.7));
+    }
+    .edge-line {
+      transition: opacity 0.25s ease, stroke-width 0.25s ease;
+    }
+    .dimmed {
+      opacity: 0.16 !important;
+    }
+    .highlighted-edge {
+      opacity: 1 !important;
+      stroke-width: 3px !important;
+    }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #0f172a; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #475569; }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200">
+
+  <!-- Top Header -->
+  <header class="sticky top-0 z-30 backdrop-blur-md bg-slate-950/90 border-b border-slate-800/80 px-4 lg:px-8 py-3.5">
+    <div class="max-w-[1440px] mx-auto flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+      <div class="flex items-start sm:items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500/20 to-emerald-500/20 border border-cyan-500/40 flex items-center justify-center text-lg shadow-inner">
+          🏗️
+        </div>
+        <div>
+          <div class="flex flex-wrap items-center gap-2">
+            <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-white">nacfson_pipeline Architecture &amp; Junior Engineer Handbook</h1>
+            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">Constitution v2.2.0</span>
+            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Specs 001–010</span>
+            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">Hook-Synced</span>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">Interactive topology, CNI/eBPF packet simulator, Gateway allow-vs-block auth tester, 7 lifecycle flows, Flux 10-layer DAG, 1/n budget &amp; junior mental models</p>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <nav class="flex flex-wrap items-center gap-1.5 bg-slate-900/90 p-1.5 rounded-xl border border-slate-800">
+        <button onclick="switchTab('topology')" id="tab-btn-topology" class="tab-btn px-2.5 py-1.5 rounded-lg text-xs font-bold transition bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20">
+          🗺️ 1. Topology
+        </button>
+        <button onclick="switchTab('flows')" id="tab-btn-flows" class="tab-btn px-2.5 py-1.5 rounded-lg text-xs font-bold transition text-slate-400 hover:text-slate-200">
+          ⚡ 2. Lifecycle Flows
+        </button>
+        <button onclick="switchTab('cni')" id="tab-btn-cni" class="tab-btn px-2.5 py-1.5 rounded-lg text-xs font-bold transition text-slate-400 hover:text-slate-200">
+          🌐 3. CNI &amp; eBPF Sim
+        </button>
+        <button onclick="switchTab('authsim')" id="tab-btn-authsim" class="tab-btn px-2.5 py-1.5 rounded-lg text-xs font-bold transition text-slate-400 hover:text-slate-200">
+          🛡️ 4. Auth Allow/Block
+        </button>
+        <button onclick="switchTab('dag')" id="tab-btn-dag" class="tab-btn px-2.5 py-1.5 rounded-lg text-xs font-bold transition text-slate-400 hover:text-slate-200">
+          🔀 5. Flux DAG
+        </button>
+        <button onclick="switchTab('oss')" id="tab-btn-oss" class="tab-btn px-2.5 py-1.5 rounded-lg text-xs font-bold transition text-slate-400 hover:text-slate-200">
+          📦 6. OSS &amp; Deps
+        </button>
+        <button onclick="switchTab('budget')" id="tab-btn-budget" class="tab-btn px-2.5 py-1.5 rounded-lg text-xs font-bold transition text-slate-400 hover:text-slate-200">
+          ⚖️ 7. 1/n Budget &amp; Specs
+        </button>
+        <button onclick="switchTab('junior')" id="tab-btn-junior" class="tab-btn px-2.5 py-1.5 rounded-lg text-xs font-bold transition text-slate-400 hover:text-slate-200">
+          🎓 8. Junior Guide
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="flex-1 max-w-[1440px] w-full mx-auto px-4 lg:px-8 py-6">
+
+    <!-- ===================================================================== -->
+    <!-- TAB 1: INTERACTIVE CLUSTER TOPOLOGY & CONNECTIONS                     -->
+    <!-- ===================================================================== -->
+    <section id="tab-topology" class="space-y-5">
+      <!-- Controls Bar -->
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-slate-900/60 border border-slate-800 rounded-2xl p-4">
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="text-xs font-bold uppercase tracking-wider text-slate-400 mr-1">Filter Layer:</span>
+          <button onclick="filterTopology('all')" id="filter-all" class="topo-filter px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-cyan-300 border border-cyan-500/40">
+            All Connections
+          </button>
+          <button onclick="filterTopology('auth')" id="filter-auth" class="topo-filter px-3 py-1 rounded-lg text-xs font-semibold bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200">
+            🔐 HTTP &amp; OIDC Auth
+          </button>
+          <button onclick="filterTopology('vault')" id="filter-vault" class="topo-filter px-3 py-1 rounded-lg text-xs font-semibold bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200">
+            🛡️ Zero-Plaintext Vault
+          </button>
+          <button onclick="filterTopology('cni')" id="filter-cni" class="topo-filter px-3 py-1 rounded-lg text-xs font-semibold bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200">
+            🌐 Cilium eBPF &amp; Hubble
+          </button>
+          <button onclick="filterTopology('gitops')" id="filter-gitops" class="topo-filter px-3 py-1 rounded-lg text-xs font-semibold bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200">
+            🔄 GitOps &amp; TLS
+          </button>
+          <button onclick="filterTopology('data')" id="filter-data" class="topo-filter px-3 py-1 rounded-lg text-xs font-semibold bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200">
+            🗄️ Database &amp; Persistence
+          </button>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-4 text-[11px] font-mono text-slate-400">
+          <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-cyan-400 inline-block"></span>HTTP/Auth</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-emerald-400 inline-block"></span>Vault/eBPF</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-amber-400 inline-block"></span>GitOps/TLS</span>
+          <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-purple-400 inline-block"></span>SQL/Storage</span>
+        </div>
+      </div>
+
+      <!-- Main Grid: SVG Canvas (Left 8 cols) + Component Inspector (Right 4 cols) -->
+      <div class="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
+        <!-- SVG Diagram -->
+        <div class="xl:col-span-8 bg-slate-900/40 border border-slate-800 rounded-2xl p-3 sm:p-4 shadow-2xl overflow-x-auto">
+          <svg id="topology-svg" viewBox="0 0 1060 760" class="w-full h-auto min-w-[780px] select-none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="arr-cyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#22d3ee" />
+              </marker>
+              <marker id="arr-emerald" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#34d399" />
+              </marker>
+              <marker id="arr-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#fbbf24" />
+              </marker>
+              <marker id="arr-purple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#c084fc" />
+              </marker>
+            </defs>
+
+            <!-- ======================== ZONE BACKGROUNDS ======================== -->
+            <!-- External Zone (Top) -->
+            <rect x="15" y="12" width="1030" height="92" rx="12" fill="#0f172a" fill-opacity="0.55" stroke="#334155" stroke-dasharray="5 4" />
+            <text x="28" y="30" fill="#94a3b8" font-size="10" font-family="'JetBrains Mono'" font-weight="700">EXTERNAL INTERNET &amp; UPSTREAM PROVIDERS</text>
+
+            <!-- K3s Single-Node Cluster Boundary -->
+            <rect x="15" y="118" width="1030" height="630" rx="16" fill="#090d16" stroke="#1e293b" stroke-width="2" />
+            <text x="30" y="140" fill="#38bdf8" font-size="11" font-family="'JetBrains Mono'" font-weight="700">SINGLE-NODE K3s CLUSTER (v1.35.9+k3s1 · --flannel-backend=none · Cilium v1.20.3 eBPF)</text>
+
+            <!-- Namespace: kube-system & platform & cert-manager (Left Column) -->
+            <rect x="30" y="155" width="310" height="390" rx="12" fill="#0f172a" fill-opacity="0.6" stroke="#0284c7" stroke-opacity="0.5" />
+            <text x="44" y="174" fill="#38bdf8" font-size="10" font-family="'JetBrains Mono'" font-weight="700">NS: kube-system / platform / cert-manager</text>
+
+            <!-- Namespace: flux-system & governance (Bottom Left) -->
+            <rect x="30" y="560" width="310" height="172" rx="12" fill="#0f172a" fill-opacity="0.6" stroke="#d97706" stroke-opacity="0.5" />
+            <text x="44" y="579" fill="#fbbf24" font-size="10" font-family="'JetBrains Mono'" font-weight="700">NS: flux-system &amp; governance</text>
+
+            <!-- Namespace: identity (Center Top) -->
+            <rect x="360" y="155" width="330" height="315" rx="12" fill="#0f172a" fill-opacity="0.6" stroke="#8b5cf6" stroke-opacity="0.5" />
+            <text x="374" y="174" fill="#c084fc" font-size="10" font-family="'JetBrains Mono'" font-weight="700">NS: identity (Auth, IdP &amp; Shared DB)</text>
+
+            <!-- Namespace: vault (Center Bottom - Zero-Plaintext Boundary) -->
+            <rect x="360" y="485" width="330" height="247" rx="12" fill="#022c22" fill-opacity="0.35" stroke="#10b981" stroke-width="1.5" stroke-dasharray="6 3" />
+            <text x="374" y="505" fill="#34d399" font-size="10" font-family="'JetBrains Mono'" font-weight="700">NS: vault (Zero-Plaintext Trust Boundary)</text>
+
+            <!-- Namespace: proj-pn (Right Column - Restricted Tenant Boundary) -->
+            <rect x="710" y="155" width="320" height="577" rx="12" fill="#0f172a" fill-opacity="0.6" stroke="#f43f5e" stroke-opacity="0.55" />
+            <text x="724" y="174" fill="#fb7185" font-size="10" font-family="'JetBrains Mono'" font-weight="700">NS: proj-pn (Restricted Pod Security)</text>
+            <text x="724" y="189" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">Peak: 400m CPU · 640Mi RAM | Quota: 850m · 1536Mi</text>
+
+            <!-- ======================== CONNECTIONS (EDGES) ======================== -->
+            <g id="topology-edges">
+              <!-- Browser -> Traefik -->
+              <path data-cat="auth" data-from="browser" data-to="traefik" class="edge-line anim-edge" d="M 145 90 L 145 190" stroke="#22d3ee" stroke-width="2.2" fill="none" marker-end="url(#arr-cyan)" />
+              <!-- Traefik -> TLSStore -->
+              <path data-cat="gitops" data-from="traefik" data-to="tlsstore" class="edge-line" d="M 185 250 L 185 280" stroke="#fbbf24" stroke-width="1.8" fill="none" marker-end="url(#arr-amber)" />
+              <!-- cert-manager -> TLSStore -->
+              <path data-cat="gitops" data-from="certmanager" data-to="tlsstore" class="edge-line anim-edge" d="M 185 375 L 185 342" stroke="#fbbf24" stroke-width="1.8" fill="none" marker-end="url(#arr-amber)" />
+              <!-- Let's Encrypt -> cert-manager -->
+              <path data-cat="gitops" data-from="letsencrypt" data-to="certmanager" class="edge-line anim-edge" d="M 380 90 L 290 190 L 290 385" stroke="#fbbf24" stroke-width="1.8" fill="none" marker-end="url(#arr-amber)" />
+
+              <!-- Traefik -> Gateway (/oauth/start, /oauth/callback, /auth/logout) -->
+              <path data-cat="auth" data-from="traefik" data-to="gateway" class="edge-line anim-edge" d="M 275 215 L 380 215" stroke="#22d3ee" stroke-width="2.2" fill="none" marker-end="url(#arr-cyan)" />
+              <!-- Traefik -> Keycloak (/realms/platform/...) -->
+              <path data-cat="auth" data-from="traefik" data-to="keycloak" class="edge-line" d="M 275 235 L 348 235 L 348 315 L 380 315" stroke="#22d3ee" stroke-width="1.8" fill="none" marker-end="url(#arr-cyan)" />
+              <!-- Traefik -> PN Frontend & Backend (Direct Project Door) -->
+              <path data-cat="auth" data-from="traefik" data-to="pn-frontend" class="edge-line anim-edge" d="M 275 200 L 700 200 L 700 245 L 735 245" stroke="#22d3ee" stroke-width="2.2" fill="none" marker-end="url(#arr-cyan)" />
+              <path data-cat="auth" data-from="traefik" data-to="pn-backend" class="edge-line anim-edge" d="M 275 207 L 692 207 L 692 355 L 735 355" stroke="#22d3ee" stroke-width="2" fill="none" marker-end="url(#arr-cyan)" />
+
+              <!-- Gateway <-> Keycloak -->
+              <path data-cat="auth" data-from="gateway" data-to="keycloak" class="edge-line anim-edge" d="M 525 256 L 525 285" stroke="#22d3ee" stroke-width="2" fill="none" marker-end="url(#arr-cyan)" />
+              <!-- Keycloak <-> Google OAuth -->
+              <path data-cat="auth" data-from="keycloak" data-to="google" class="edge-line anim-edge" d="M 580 285 L 580 90" stroke="#22d3ee" stroke-width="1.8" fill="none" marker-end="url(#arr-cyan)" />
+
+              <!-- PN Frontend -> PN Backend -->
+              <path data-cat="auth" data-from="pn-frontend" data-to="pn-backend" class="edge-line anim-edge" d="M 870 282 L 870 322" stroke="#22d3ee" stroke-width="2" fill="none" marker-end="url(#arr-cyan)" />
+              <!-- PN Backend -> Gateway (session/JWKS verification) -->
+              <path data-cat="auth" data-from="pn-backend" data-to="gateway" class="edge-line" d="M 735 340 L 665 225 L 650 225" stroke="#22d3ee" stroke-width="1.6" stroke-dasharray="4 4" fill="none" marker-end="url(#arr-cyan)" />
+
+              <!-- PN Backend -> Vault DB Proxy -->
+              <path data-cat="vault data" data-from="pn-backend" data-to="db-proxy" class="edge-line anim-edge" d="M 735 375 L 680 375 L 680 620 L 520 620" stroke="#34d399" stroke-width="2.3" fill="none" marker-end="url(#arr-emerald)" />
+              <!-- Vault DB Proxy -> Postgres -->
+              <path data-cat="data vault" data-from="db-proxy" data-to="postgres" class="edge-line anim-edge" d="M 450 585 L 450 448" stroke="#c084fc" stroke-width="2.2" fill="none" marker-end="url(#arr-purple)" />
+              <!-- Keycloak -> Postgres -->
+              <path data-cat="data" data-from="keycloak" data-to="postgres" class="edge-line anim-edge" d="M 525 352 L 525 382" stroke="#c084fc" stroke-width="2" fill="none" marker-end="url(#arr-purple)" />
+
+              <!-- OpenBao -> Gateway / Keycloak / Postgres / Proxies -->
+              <path data-cat="vault" data-from="openbao" data-to="db-proxy" class="edge-line anim-edge" d="M 495 570 L 460 588" stroke="#34d399" stroke-width="2" fill="none" marker-end="url(#arr-emerald)" />
+              <path data-cat="vault" data-from="openbao" data-to="reg-proxy" class="edge-line anim-edge" d="M 555 570 L 590 588" stroke="#34d399" stroke-width="2" fill="none" marker-end="url(#arr-emerald)" />
+              <path data-cat="vault" data-from="openbao" data-to="gateway" class="edge-line" d="M 380 540 L 352 540 L 352 242 L 380 242" stroke="#34d399" stroke-width="1.6" stroke-dasharray="3 3" fill="none" marker-end="url(#arr-emerald)" />
+              <path data-cat="vault" data-from="openbao" data-to="keycloak" class="edge-line" d="M 380 532 L 355 532 L 355 332 L 380 332" stroke="#34d399" stroke-width="1.6" stroke-dasharray="3 3" fill="none" marker-end="url(#arr-emerald)" />
+
+              <!-- Cilium eBPF & Hubble edges -->
+              <path data-cat="cni vault" data-from="k3s-runtime" data-to="openbao" class="edge-line anim-edge" d="M 300 495 L 380 540" stroke="#34d399" stroke-width="2" fill="none" marker-end="url(#arr-emerald)" />
+              <path data-cat="cni" data-from="k3s-runtime" data-to="pn-boundary" class="edge-line anim-edge" d="M 300 510 L 735 510" stroke="#22d3ee" stroke-width="1.8" stroke-dasharray="5 4" fill="none" marker-end="url(#arr-cyan)" />
+              <path data-cat="cni gitops" data-from="flux" data-to="k3s-runtime" class="edge-line anim-edge" d="M 185 590 L 185 528" stroke="#fbbf24" stroke-width="1.8" fill="none" marker-end="url(#arr-amber)" />
+
+              <!-- Kubelet -> Registry Proxy -> GHCR -->
+              <path data-cat="vault" data-from="k3s-runtime" data-to="reg-proxy" class="edge-line anim-edge" d="M 300 495 L 595 660" stroke="#34d399" stroke-width="1.8" fill="none" marker-end="url(#arr-emerald)" />
+              <path data-cat="vault" data-from="reg-proxy" data-to="github" class="edge-line anim-edge" d="M 665 620 L 1038 620 L 1038 60 L 970 60" stroke="#34d399" stroke-width="2" fill="none" marker-end="url(#arr-emerald)" />
+
+              <!-- GitHub -> Flux -> Governance & Cluster -->
+              <path data-cat="gitops" data-from="github" data-to="flux" class="edge-line anim-edge" d="M 830 90 L 830 112 L 22 112 L 22 620 L 50 620" stroke="#fbbf24" stroke-width="2.2" fill="none" marker-end="url(#arr-amber)" />
+              <path data-cat="gitops" data-from="flux" data-to="vap" class="edge-line anim-edge" d="M 185 645 L 185 670" stroke="#fbbf24" stroke-width="2" fill="none" marker-end="url(#arr-amber)" />
+            </g>
+
+            <!-- ======================== NODES (ACTORS & SERVICES) ======================== -->
+
+            <!-- 1. User Browser -->
+            <g class="node-box" id="node-browser" onclick="selectNode('browser')" transform="translate(50, 38)">
+              <rect class="main-rect" width="190" height="52" rx="10" fill="#0f172a" stroke="#22d3ee" stroke-width="1.8" />
+              <text x="14" y="22" font-size="14">🌐</text>
+              <text x="36" y="22" fill="#f8fafc" font-size="11" font-weight="700">User Browser</text>
+              <text x="14" y="40" fill="#94a3b8" font-size="9.5" font-family="'JetBrains Mono'">pn / auth.nacfson.cloud</text>
+            </g>
+
+            <!-- 2. Let's Encrypt ACME -->
+            <g class="node-box" id="node-letsencrypt" onclick="selectNode('letsencrypt')" transform="translate(285, 38)">
+              <rect class="main-rect" width="195" height="52" rx="10" fill="#0f172a" stroke="#fbbf24" stroke-width="1.8" />
+              <text x="14" y="22" font-size="14">🔏</text>
+              <text x="36" y="22" fill="#f8fafc" font-size="11" font-weight="700">Let's Encrypt ACME</text>
+              <text x="14" y="40" fill="#94a3b8" font-size="9.5" font-family="'JetBrains Mono'">HTTP-01 Challenge v2</text>
+            </g>
+
+            <!-- 3. Google OAuth2 -->
+            <g class="node-box" id="node-google" onclick="selectNode('google')" transform="translate(520, 38)">
+              <rect class="main-rect" width="195" height="52" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.8" />
+              <text x="14" y="22" font-size="14">🔑</text>
+              <text x="36" y="22" fill="#f8fafc" font-size="11" font-weight="700">Google OAuth 2.0</text>
+              <text x="14" y="40" fill="#94a3b8" font-size="9.5" font-family="'JetBrains Mono'">Identity Broker Upstream</text>
+            </g>
+
+            <!-- 4. GitHub (Git + Actions + GHCR) -->
+            <g class="node-box" id="node-github" onclick="selectNode('github')" transform="translate(755, 38)">
+              <rect class="main-rect" width="215" height="52" rx="10" fill="#0f172a" stroke="#a855f7" stroke-width="1.8" />
+              <text x="14" y="22" font-size="14">🐙</text>
+              <text x="36" y="22" fill="#f8fafc" font-size="11" font-weight="700">GitHub + Actions + GHCR</text>
+              <text x="14" y="40" fill="#94a3b8" font-size="9.5" font-family="'JetBrains Mono'">main branch · ghcr.io blobs</text>
+            </g>
+
+            <!-- 5. Traefik Ingress -->
+            <g class="node-box" id="node-traefik" onclick="selectNode('traefik')" transform="translate(50, 190)">
+              <rect class="main-rect" width="225" height="62" rx="10" fill="#0c192c" stroke="#38bdf8" stroke-width="2" />
+              <text x="14" y="23" font-size="14">🚦</text>
+              <text x="36" y="23" fill="#f8fafc" font-size="11.5" font-weight="700">Traefik Ingress (:80/:443)</text>
+              <text x="14" y="40" fill="#7dd3fc" font-size="9.5" font-family="'JetBrains Mono'">strip-forged-headers · SNI</text>
+              <text x="14" y="53" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">Direct Project Door &amp; Auth Allowlist</text>
+            </g>
+
+            <!-- 6. TLSStore & Certificates -->
+            <g class="node-box" id="node-tlsstore" onclick="selectNode('tlsstore')" transform="translate(50, 280)">
+              <rect class="main-rect" width="225" height="60" rx="10" fill="#172033" stroke="#fbbf24" stroke-width="1.8" />
+              <text x="14" y="22" font-size="13">🔒</text>
+              <text x="34" y="22" fill="#fef08a" font-size="11" font-weight="700">TLSStore platform/default</text>
+              <text x="14" y="38" fill="#cbd5e1" font-size="9.5" font-family="'JetBrains Mono'">Secrets: auth-tls, pn-tls</text>
+              <text x="14" y="51" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">ECDSA P-256 · renewBefore 720h</text>
+            </g>
+
+            <!-- 7. cert-manager -->
+            <g class="node-box" id="node-certmanager" onclick="selectNode('certmanager')" transform="translate(50, 375)">
+              <rect class="main-rect" width="225" height="60" rx="10" fill="#172033" stroke="#fbbf24" stroke-width="1.8" />
+              <text x="14" y="22" font-size="13">📜</text>
+              <text x="34" y="22" fill="#f8fafc" font-size="11" font-weight="700">cert-manager v1.21.2</text>
+              <text x="14" y="38" fill="#fde68a" font-size="9.5" font-family="'JetBrains Mono'">ClusterIssuer: letsencrypt-prod</text>
+              <text x="14" y="51" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">HTTP-01 solver: ClusterIP only</text>
+            </g>
+
+            <!-- 8. K3s + Cilium v1.20.3 eBPF + Hubble UI -->
+            <g class="node-box" id="node-k3s-runtime" onclick="selectNode('k3s-runtime')" transform="translate(50, 462)">
+              <rect class="main-rect" width="250" height="66" rx="10" fill="#064e3b" stroke="#34d399" stroke-width="2" />
+              <text x="14" y="22" font-size="13">🐝</text>
+              <text x="34" y="22" fill="#ecfdf5" font-size="10.5" font-weight="700">Cilium v1.20.3 eBPF + Hubble</text>
+              <text x="14" y="39" fill="#6ee7b7" font-size="9" font-family="'JetBrains Mono'">Hubble Relay + UI v0.13.6 (:12000)</text>
+              <text x="14" y="53" fill="#a7f3d0" font-size="8.5" font-family="'JetBrains Mono'">K3s containerd ➔ localhost:5000 · CoreDNS</text>
+            </g>
+
+            <!-- 9. FluxCD Controllers -->
+            <g class="node-box" id="node-flux" onclick="selectNode('flux')" transform="translate(50, 590)">
+              <rect class="main-rect" width="270" height="55" rx="10" fill="#1c1917" stroke="#f59e0b" stroke-width="2" />
+              <text x="14" y="22" font-size="13">🔄</text>
+              <text x="34" y="22" fill="#fef3c7" font-size="11" font-weight="700">FluxCD v1.9.5 (GitOps Engine)</text>
+              <text x="14" y="39" fill="#fcd34d" font-size="9.5" font-family="'JetBrains Mono'">source + kustomize-controller (prune)</text>
+            </g>
+
+            <!-- 10. ValidatingAdmissionPolicy -->
+            <g class="node-box" id="node-vap" onclick="selectNode('vap')" transform="translate(50, 670)">
+              <rect class="main-rect" width="270" height="50" rx="10" fill="#1c1917" stroke="#f43f5e" stroke-width="1.8" />
+              <text x="14" y="20" font-size="13">🛑</text>
+              <text x="34" y="20" fill="#fecdd3" font-size="11" font-weight="700">ValidatingAdmissionPolicy</text>
+              <text x="14" y="37" fill="#fda4af" font-size="9.5" font-family="'JetBrains Mono'">Denies manual kubectl changes</text>
+            </g>
+
+            <!-- 11. Go Auth Gateway -->
+            <g class="node-box" id="node-gateway" onclick="selectNode('gateway')" transform="translate(380, 190)">
+              <rect class="main-rect" width="270" height="66" rx="10" fill="#1e1b4b" stroke="#22d3ee" stroke-width="2" />
+              <text x="14" y="22" font-size="14">🛡️</text>
+              <text x="36" y="22" fill="#f8fafc" font-size="11.5" font-weight="700">Go Auth Gateway (:8080)</text>
+              <text x="14" y="39" fill="#67e8f9" font-size="9.5" font-family="'JetBrains Mono'">Go 1.22 Stdlib (Zero 3rd-Party Deps)</text>
+              <text x="14" y="53" fill="#cbd5e1" font-size="9" font-family="'JetBrains Mono'">/oauth/start · /callback · /auth · /logout</text>
+            </g>
+
+            <!-- 12. Keycloak IdP -->
+            <g class="node-box" id="node-keycloak" onclick="selectNode('keycloak')" transform="translate(380, 285)">
+              <rect class="main-rect" width="270" height="66" rx="10" fill="#1e1b4b" stroke="#a855f7" stroke-width="2" />
+              <text x="14" y="22" font-size="14">🪪</text>
+              <text x="36" y="22" fill="#f8fafc" font-size="11.5" font-weight="700">Keycloak IdP v24.0.5 (:8080)</text>
+              <text x="14" y="39" fill="#d8b4fe" font-size="9.5" font-family="'JetBrains Mono'">Realm: platform · Google Broker</text>
+              <text x="14" y="53" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">/admin &amp; :9000 blocked at Ingress</text>
+            </g>
+
+            <!-- 13. PostgreSQL StatefulSet -->
+            <g class="node-box" id="node-postgres" onclick="selectNode('postgres')" transform="translate(380, 382)">
+              <rect class="main-rect" width="270" height="66" rx="10" fill="#1e1b4b" stroke="#c084fc" stroke-width="2" />
+              <text x="14" y="22" font-size="14">🐘</text>
+              <text x="36" y="22" fill="#f8fafc" font-size="11.5" font-weight="700">PostgreSQL 16.8-alpine (:5432)</text>
+              <text x="14" y="39" fill="#e9d5ff" font-size="9.5" font-family="'JetBrains Mono'">Isolated DBs: keycloak | proj_pn</text>
+              <text x="14" y="53" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">10Gi PVC · 00:00 UTC Backup CronJob</text>
+            </g>
+
+            <!-- 14. OpenBao StatefulSet -->
+            <g class="node-box" id="node-openbao" onclick="selectNode('openbao')" transform="translate(380, 514)">
+              <rect class="main-rect" width="290" height="58" rx="10" fill="#064e3b" stroke="#10b981" stroke-width="2.2" />
+              <text x="14" y="22" font-size="14">🏦</text>
+              <text x="36" y="22" fill="#ecfdf5" font-size="11.5" font-weight="700">OpenBao Vault v2.0.0 (:8200)</text>
+              <text x="14" y="39" fill="#6ee7b7" font-size="9.5" font-family="'JetBrains Mono'">KV v2 + Transit + K8s Auth Engine</text>
+              <text x="14" y="51" fill="#a7f3d0" font-size="8.5" font-family="'JetBrains Mono'">8 HCL Policies · 10Gi PVC · Snapshot Cron</text>
+            </g>
+
+            <!-- 15. Vault DB Proxy -->
+            <g class="node-box" id="node-db-proxy" onclick="selectNode('db-proxy')" transform="translate(375, 590)">
+              <rect class="main-rect" width="145" height="66" rx="10" fill="#022c22" stroke="#34d399" stroke-width="1.8" />
+              <text x="10" y="21" font-size="12">🔌</text>
+              <text x="28" y="21" fill="#ecfdf5" font-size="10.5" font-weight="700">vault-db-proxy</text>
+              <text x="10" y="37" fill="#6ee7b7" font-size="9" font-family="'JetBrains Mono'">Go Wire Proxy :5432</text>
+              <text x="10" y="51" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">Injects user_pn auth</text>
+            </g>
+
+            <!-- 16. Vault Registry Proxy -->
+            <g class="node-box" id="node-reg-proxy" onclick="selectNode('reg-proxy')" transform="translate(530, 590)">
+              <rect class="main-rect" width="145" height="66" rx="10" fill="#022c22" stroke="#34d399" stroke-width="1.8" />
+              <text x="10" y="21" font-size="12">📦</text>
+              <text x="28" y="21" fill="#ecfdf5" font-size="10.5" font-weight="700">registry-proxy</text>
+              <text x="10" y="37" fill="#6ee7b7" font-size="9" font-family="'JetBrains Mono'">OCI Proxy :5000</text>
+              <text x="10" y="51" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">Injects GHCR PAT</text>
+            </g>
+
+            <!-- 17. initContainer Secret Pattern badge -->
+            <g class="node-box" id="node-init-fetcher" onclick="selectNode('init-fetcher')" transform="translate(375, 670)">
+              <rect class="main-rect" width="300" height="48" rx="8" fill="#042f2e" stroke="#14b8a6" stroke-width="1.5" />
+              <text x="12" y="19" fill="#5eead4" font-size="10" font-weight="700">⚡ Ephemeral InitContainer Secret Fetcher</text>
+              <text x="12" y="35" fill="#99f6e4" font-size="8.5" font-family="'JetBrains Mono'">curl:8.10.1 ➔ K8s SA JWT ➔ emptyDir (Memory tmpfs)</text>
+            </g>
+
+            <!-- 18. Project PN Frontend -->
+            <g class="node-box" id="node-pn-frontend" onclick="selectNode('pn-frontend')" transform="translate(735, 212)">
+              <rect class="main-rect" width="270" height="70" rx="10" fill="#1f1224" stroke="#fb7185" stroke-width="2" />
+              <text x="14" y="23" font-size="14">🖥️</text>
+              <text x="36" y="23" fill="#f8fafc" font-size="11.5" font-weight="700">pn-frontend (:80)</text>
+              <text x="14" y="40" fill="#fda4af" font-size="9.5" font-family="'JetBrains Mono'">Nginx + Expo Web SPA (UID 101)</text>
+              <text x="14" y="55" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">Pinned @sha256:a33d2401... · NET_BIND_SERVICE</text>
+            </g>
+
+            <!-- 19. Project PN Backend -->
+            <g class="node-box" id="node-pn-backend" onclick="selectNode('pn-backend')" transform="translate(735, 322)">
+              <rect class="main-rect" width="270" height="74" rx="10" fill="#1f1224" stroke="#fb7185" stroke-width="2" />
+              <text x="14" y="23" font-size="14">⚙️</text>
+              <text x="36" y="23" fill="#f8fafc" font-size="11.5" font-weight="700">pn-backend (:8080)</text>
+              <text x="14" y="40" fill="#fda4af" font-size="9.5" font-family="'JetBrains Mono'">Go API Server (UID 65532 non-root)</text>
+              <text x="14" y="54" fill="#cbd5e1" font-size="8.5" font-family="'JetBrains Mono'">Pinned @sha256:662c869b... · Zero DB Secrets</text>
+              <text x="14" y="66" fill="#34d399" font-size="8.5" font-family="'JetBrains Mono'">DB Host: vault-db-proxy.vault.svc:5432</text>
+            </g>
+
+            <!-- 20. Project PN Boundary Controls -->
+            <g class="node-box" id="node-pn-boundary" onclick="selectNode('pn-boundary')" transform="translate(735, 430)">
+              <rect class="main-rect" width="270" height="275" rx="10" fill="#0f172a" stroke="#f43f5e" stroke-width="1.5" stroke-dasharray="5 3" />
+              <text x="14" y="24" fill="#fb7185" font-size="11" font-weight="700">🔒 Tenant Sandbox Boundary</text>
+              <text x="14" y="46" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">1. Pod Security: Restricted (enforce)</text>
+              <text x="14" y="66" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">2. SA: project-pn-sa (no token mount)</text>
+              <text x="14" y="86" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">3. IngressRoute: tls: {} (SNI store)</text>
+              <text x="14" y="106" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">4. NetworkPolicy Ingress:</text>
+              <text x="24" y="122" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">• Traefik (kube-system) ➔ :80, :8080</text>
+              <text x="24" y="136" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">• pn-frontend ➔ pn-backend :8080</text>
+              <text x="14" y="156" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">5. NetworkPolicy Egress ONLY to:</text>
+              <text x="24" y="172" fill="#34d399" font-size="8.5" font-family="'JetBrains Mono'">• vault-db-proxy.vault.svc:5432</text>
+              <text x="24" y="186" fill="#38bdf8" font-size="8.5" font-family="'JetBrains Mono'">• gateway.identity.svc:8080</text>
+              <text x="24" y="200" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">• kube-dns (UDP/TCP :53)</text>
+              <text x="14" y="224" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">✗ Direct Postgres (:5432) BLOCKED</text>
+              <text x="14" y="240" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">✗ Direct OpenBao (:8200) BLOCKED</text>
+              <text x="14" y="256" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">✗ Direct Keycloak (:8080) BLOCKED</text>
+            </g>
+          </svg>
+        </div>
+
+        <!-- Component Inspector Panel -->
+        <aside class="xl:col-span-4 bg-slate-900/75 border border-slate-800 rounded-2xl p-5 shadow-2xl sticky top-20 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div>
+              <span id="insp-badge" class="px-2 py-0.5 text-[10px] font-mono font-bold uppercase rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">Interactive Inspector</span>
+              <h2 id="insp-title" class="text-base font-bold text-white mt-1">Click any node in the diagram</h2>
+            </div>
+            <button onclick="resetTopologySelection()" class="text-xs text-slate-400 hover:text-white px-2.5 py-1 rounded-lg bg-slate-800/80 border border-slate-700">
+              Reset
+            </button>
+          </div>
+
+          <p id="insp-desc" class="text-xs text-slate-300 leading-relaxed">
+            Select any component in the cluster topology to inspect its container image, open-source project license, Kubernetes namespace, inbound/outbound network dependencies, secret injection model, and source manifest path.
+          </p>
+
+          <div id="insp-meta" class="grid grid-cols-2 gap-2.5 text-xs">
+            <div class="bg-slate-950/80 border border-slate-800/90 rounded-xl p-2.5">
+              <div class="text-[10px] font-mono uppercase text-slate-500">Namespace / Zone</div>
+              <div id="insp-ns" class="font-mono font-semibold text-cyan-300 mt-0.5">All Namespaces</div>
+            </div>
+            <div class="bg-slate-950/80 border border-slate-800/90 rounded-xl p-2.5">
+              <div class="text-[10px] font-mono uppercase text-slate-500">Image / Version</div>
+              <div id="insp-image" class="font-mono font-semibold text-emerald-300 mt-0.5 truncate">12 Components</div>
+            </div>
+            <div class="bg-slate-950/80 border border-slate-800/90 rounded-xl p-2.5">
+              <div class="text-[10px] font-mono uppercase text-slate-500">OSS Project &amp; License</div>
+              <div id="insp-oss" class="font-mono font-semibold text-amber-300 mt-0.5">Apache-2.0 / MPL-2.0 / Go</div>
+            </div>
+            <div class="bg-slate-950/80 border border-slate-800/90 rounded-xl p-2.5">
+              <div class="text-[10px] font-mono uppercase text-slate-500">Resource Slice</div>
+              <div id="insp-res" class="font-mono font-semibold text-purple-300 mt-0.5">Strict req == lim</div>
+            </div>
+          </div>
+
+          <div class="space-y-2">
+            <div class="text-xs font-bold uppercase tracking-wider text-slate-400">Connected Flows &amp; Trust Boundaries</div>
+            <ul id="insp-bullets" class="space-y-1.5 text-xs text-slate-300 font-mono bg-slate-950/70 border border-slate-800/80 rounded-xl p-3">
+              <li>• Click a node on the left to highlight its live edges.</li>
+              <li>• Use the top filter bar to isolate Auth, Vault, GitOps, or Data paths.</li>
+            </ul>
+          </div>
+
+          <div class="pt-1">
+            <div class="text-[11px] font-mono text-slate-400 mb-1">Source Manifest / Code Path:</div>
+            <div id="insp-path" class="font-mono text-xs text-cyan-400 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 break-all">
+              clusters/vps-k3s/layers.yaml
+            </div>
+          </div>
+        </aside>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 2: END-TO-END PROTOCOL & LIFECYCLE FLOW SIMULATOR                 -->
+    <!-- ===================================================================== -->
+    <section id="tab-flows" class="hidden space-y-6">
+      <!-- Flow Selector Pills -->
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div class="flex flex-wrap gap-2">
+          <button onclick="selectFlow('oidc')" id="flow-btn-oidc" class="flow-btn px-3 py-2 rounded-xl text-xs font-bold bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20">
+            🔐 Flow A: Door &amp; OIDC Auth (001/006/009)
+          </button>
+          <button onclick="selectFlow('vault')" id="flow-btn-vault" class="flow-btn px-3 py-2 rounded-xl text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700">
+            🛡️ Flow B: Vault &amp; Proxies (002/005)
+          </button>
+          <button onclick="selectFlow('bootstrap')" id="flow-btn-bootstrap" class="flow-btn px-3 py-2 rounded-xl text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700">
+            🚀 Flow C: VM &amp; K3s Bootstrap (003/010)
+          </button>
+          <button onclick="selectFlow('gitops')" id="flow-btn-gitops" class="flow-btn px-3 py-2 rounded-xl text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700">
+            🔄 Flow D: GitOps &amp; Admission (004)
+          </button>
+          <button onclick="selectFlow('tls')" id="flow-btn-tls" class="flow-btn px-3 py-2 rounded-xl text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700">
+            🔒 Flow E: Platform TLS Store (008)
+          </button>
+          <button onclick="selectFlow('cni')" id="flow-btn-cni" class="flow-btn px-3 py-2 rounded-xl text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700">
+            🐝 Flow F: Cilium eBPF &amp; Hubble (010)
+          </button>
+          <button onclick="selectFlow('probes')" id="flow-btn-probes" class="flow-btn px-3 py-2 rounded-xl text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700">
+            🩺 Flow G: 3-Probe &amp; CORS (007)
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2 self-end md:self-auto shrink-0">
+          <button onclick="stepFlow(-1)" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700">◀ Prev Step</button>
+          <span id="flow-step-indicator" class="font-mono text-xs text-cyan-400 px-2">Step 1 / 7</span>
+          <button onclick="stepFlow(1)" class="px-3 py-1.5 rounded-lg bg-cyan-500 hover:bg-cyan-400 text-xs font-bold text-slate-950">Next Step ▶</button>
+        </div>
+      </div>
+
+      <!-- Flow Step Visualization Area -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <!-- Step Timeline List -->
+        <div class="lg:col-span-5 bg-slate-900/50 border border-slate-800 rounded-2xl p-4 space-y-2.5" id="flow-steps-list">
+          <!-- Populated by JS -->
+        </div>
+
+        <!-- Detailed Protocol Inspector Card -->
+        <div class="lg:col-span-7 bg-slate-900/70 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between space-y-5">
+          <div class="space-y-3">
+            <div class="flex items-center justify-between">
+              <span id="flow-detail-badge" class="px-2.5 py-1 text-xs font-mono font-bold rounded-lg bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">STEP 1</span>
+              <span id="flow-detail-spec" class="text-xs font-mono text-slate-400">Spec 001 / Spec 006</span>
+            </div>
+            <h3 id="flow-detail-title" class="text-xl font-extrabold text-white"></h3>
+            <p id="flow-detail-desc" class="text-sm text-slate-300 leading-relaxed"></p>
+          </div>
+
+          <!-- Actors Hop Banner -->
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 flex items-center justify-between gap-2 font-mono text-xs">
+            <div class="flex flex-col">
+              <span class="text-[10px] text-slate-500 uppercase">Source Actor</span>
+              <span id="flow-detail-from" class="text-cyan-300 font-bold text-sm mt-0.5"></span>
+            </div>
+            <div class="flex-1 flex flex-col items-center px-3">
+              <span id="flow-detail-proto" class="text-[11px] text-emerald-400 font-semibold mb-1"></span>
+              <div class="w-full h-0.5 bg-gradient-to-r from-cyan-500 via-emerald-400 to-cyan-500 relative"></div>
+            </div>
+            <div class="flex flex-col text-right">
+              <span class="text-[10px] text-slate-500 uppercase">Target Actor</span>
+              <span id="flow-detail-to" class="text-emerald-300 font-bold text-sm mt-0.5"></span>
+            </div>
+          </div>
+
+          <!-- Wire Payload / Code Snippet -->
+          <div>
+            <div class="text-xs font-mono uppercase text-slate-400 mb-1.5">Wire Protocol / Manifest Contract:</div>
+            <pre id="flow-detail-code" class="bg-slate-950 border border-slate-800 rounded-xl p-4 text-xs text-cyan-200 overflow-x-auto leading-relaxed"></pre>
+          </div>
+
+          <!-- Security Invariant Box -->
+          <div class="bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-3.5 flex items-start gap-3">
+            <span class="text-lg">🛡️</span>
+            <div>
+              <div class="text-xs font-bold text-emerald-300 uppercase tracking-wider">Constitutional Guardrail &amp; Verification</div>
+              <p id="flow-detail-guard" class="text-xs text-slate-300 mt-0.5 font-mono"></p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 3: CNI & eBPF PACKET PATH SIMULATOR (SPEC 010)                    -->
+    <!-- ===================================================================== -->
+    <section id="tab-cni" class="hidden space-y-6">
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <span class="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">SPEC 010 · CILIUM v1.20.3 + HUBBLE v0.13.6</span>
+          <h2 class="text-lg font-extrabold text-white mt-1">Interactive CNI Plugin &amp; eBPF Packet Path Simulator</h2>
+          <p class="text-xs text-slate-300 mt-0.5">
+            Understand how K3s <code class="text-cyan-300">--flannel-backend=none --disable-network-policy</code> hands packet routing &amp; firewalling to Cilium eBPF programs in the Linux kernel, and how CNI configuration changes affect every pod!
+          </p>
+        </div>
+        <div class="flex flex-wrap gap-2">
+          <button onclick="setCniMode('cilium')" id="cni-mode-cilium" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-emerald-500 text-slate-950">
+            🐝 Production: Cilium eBPF Active
+          </button>
+          <button onclick="setCniMode('flannel')" id="cni-mode-flannel" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800">
+            ⚠️ What-If: Default K3s Flannel
+          </button>
+          <button onclick="setCniMode('missing')" id="cni-mode-missing" class="px-3 py-1.5 rounded-xl text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800">
+            💥 What-If: CNI Not Applied at Boot
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <!-- Packet Scenario Picker -->
+        <div class="lg:col-span-5 bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
+          <div class="text-xs font-bold uppercase tracking-wider text-slate-400">Select Packet Flow Scenario</div>
+          <div id="cni-scenario-list" class="space-y-2">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- eBPF Pipeline Verdict & Junior Explanation -->
+        <div class="lg:col-span-7 bg-slate-900/75 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+            <div>
+              <span id="cni-verdict-badge" class="px-2.5 py-1 text-xs font-mono font-bold rounded-lg">VERDICT</span>
+              <h3 id="cni-sim-title" class="text-base font-extrabold text-white mt-1.5"></h3>
+            </div>
+            <span id="cni-hubble-tag" class="font-mono text-xs px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-cyan-300"></span>
+          </div>
+
+          <!-- 4-Stage Kernel eBPF Pipeline Visualization -->
+          <div id="cni-pipeline-stages" class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+            <!-- Populated by JS -->
+          </div>
+
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2">
+            <div class="text-xs font-bold text-cyan-300 uppercase tracking-wider">🎓 Junior Engineer Explanation: Why did this happen?</div>
+            <p id="cni-junior-explain" class="text-xs text-slate-300 leading-relaxed"></p>
+          </div>
+
+          <div>
+            <div class="text-xs font-mono uppercase text-slate-400 mb-1.5">Enforcing Manifest &amp; Live Hubble Observation:</div>
+            <pre id="cni-sim-code" class="bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs text-emerald-300 overflow-x-auto leading-relaxed"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 4: GATEWAY & EDGE AUTH ALLOW-VS-BLOCK SIMULATOR                   -->
+    <!-- ===================================================================== -->
+    <section id="tab-authsim" class="hidden space-y-6">
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <span class="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">SPECS 001 · 006 · 009 · CONTRACT_AUTH_DOOR.md</span>
+          <h2 class="text-lg font-extrabold text-white mt-1">Gateway &amp; Edge Auth: Allow-vs-Block Decision Simulator</h2>
+          <p class="text-xs text-slate-300 mt-0.5">
+            Test how Traefik, Project Door (<code class="text-cyan-300">sign-in.yaml</code>), the Pure-Stdlib Go Auth Gateway, and Keycloak decide whether to <strong>ALLOW</strong> or <strong>BLOCK</strong> every HTTP request.
+          </p>
+        </div>
+        <div class="flex items-center gap-2 text-xs font-mono">
+          <span class="px-2.5 py-1 rounded-lg bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">✓ 4 Allow Paths</span>
+          <span class="px-2.5 py-1 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/30">✗ 5 Block Paths</span>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <!-- Scenario Buttons -->
+        <div class="lg:col-span-5 bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-2.5">
+          <div class="text-xs font-bold uppercase tracking-wider text-slate-400">Choose Request Scenario (Allow vs Block)</div>
+          <div id="auth-scenario-list" class="space-y-2">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <!-- Gate-by-Gate Checkpoint Inspector -->
+        <div class="lg:col-span-7 bg-slate-900/75 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+            <div>
+              <span id="auth-verdict-badge" class="px-2.5 py-1 text-xs font-mono font-bold rounded-lg">HTTP STATUS</span>
+              <h3 id="auth-sim-title" class="text-base font-extrabold text-white mt-1.5"></h3>
+            </div>
+            <span id="auth-sim-door" class="font-mono text-xs px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300"></span>
+          </div>
+
+          <!-- Gate Checkpoints -->
+          <div id="auth-gates-chain" class="grid grid-cols-1 sm:grid-cols-4 gap-2.5">
+            <!-- Populated by JS -->
+          </div>
+
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2">
+            <div class="text-xs font-bold text-cyan-300 uppercase tracking-wider">🎓 Junior Engineer Walkthrough</div>
+            <p id="auth-junior-explain" class="text-xs text-slate-300 leading-relaxed"></p>
+          </div>
+
+          <div>
+            <div class="text-xs font-mono uppercase text-slate-400 mb-1.5">Exact HTTP Wire Trace &amp; Gateway / Ingress Code:</div>
+            <pre id="auth-sim-code" class="bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs text-cyan-200 overflow-x-auto leading-relaxed"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 3: FLUX GITOPS DEPENDENCY DAG & ENVIRONMENT COMPARATOR            -->
+    <!-- ===================================================================== -->
+    <section id="tab-dag" class="hidden space-y-6">
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-base font-bold text-white">FluxCD Kustomization Reconciliation DAG (<code class="text-cyan-300">clusters/&lt;env&gt;/layers.yaml</code>)</h2>
+          <p class="text-xs text-slate-400">Every 5m Flux reconciles these 10 layers in strict <code class="text-amber-300">dependsOn</code> order with <code class="text-rose-300">prune: true</code>. Click any layer to inspect its patches.</p>
+        </div>
+        <div class="flex items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+          <button onclick="setDagEnv('vps-k3s')" id="env-btn-vps" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-cyan-500 text-slate-950">
+            ☁️ vps-k3s (Oracle Prod)
+          </button>
+          <button onclick="setDagEnv('local-k3s')" id="env-btn-local" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 hover:text-white">
+            💻 local-k3s (Linux Dev)
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+        <!-- SVG DAG Diagram -->
+        <div class="lg:col-span-7 bg-slate-900/40 border border-slate-800 rounded-2xl p-4 overflow-x-auto">
+          <svg viewBox="0 0 720 500" class="w-full h-auto min-w-[560px] select-none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="dag-arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#64748b" />
+              </marker>
+            </defs>
+
+            <!-- DAG Edges (dependsOn) -->
+            <!-- cni -> vault -->
+            <path d="M 190 72 L 320 135" stroke="#34d399" stroke-width="2.2" fill="none" marker-end="url(#dag-arrow)" />
+            <!-- governance -> cert-manager, vault, project-boundaries -->
+            <path d="M 480 72 L 150 135" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
+            <path d="M 480 72 L 385 135" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
+            <path d="M 480 72 L 585 135" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
+
+            <!-- vault -> vault-proxies, database -->
+            <path d="M 330 190 L 250 245" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
+            <path d="M 390 190 L 430 245" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
+
+            <!-- database -> identity -> ingress -->
+            <path d="M 430 300 L 430 340" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
+            <path d="M 370 368 L 285 368" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
+
+            <!-- project-boundaries -> projects -->
+            <path d="M 585 190 L 585 245" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
+
+            <!-- cert-manager, ingress, project-boundaries -> tls -->
+            <path d="M 130 190 L 180 430" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5 3" fill="none" marker-end="url(#dag-arrow)" />
+            <path d="M 210 396 L 210 430" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5 3" fill="none" marker-end="url(#dag-arrow)" />
+            <path d="M 540 190 L 260 430" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5 3" fill="none" marker-end="url(#dag-arrow)" />
+
+            <!-- Layer 1a: cni -->
+            <g class="node-box" onclick="selectDagLayer('cni')" transform="translate(80, 20)">
+              <rect class="main-rect" width="215" height="52" rx="10" fill="#064e3b" stroke="#34d399" stroke-width="2" />
+              <text x="107" y="22" text-anchor="middle" fill="#ecfdf5" font-size="12" font-weight="700">1a. cni (Cilium + Hubble)</text>
+              <text x="107" y="39" text-anchor="middle" fill="#6ee7b7" font-size="9.5" font-family="'JetBrains Mono'">./deploy/platform/cni</text>
+            </g>
+
+            <!-- Layer 1b: governance -->
+            <g class="node-box" onclick="selectDagLayer('governance')" transform="translate(380, 20)">
+              <rect class="main-rect" width="210" height="52" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="2" />
+              <text x="105" y="22" text-anchor="middle" fill="#f8fafc" font-size="12" font-weight="700">1b. governance</text>
+              <text x="105" y="39" text-anchor="middle" fill="#94a3b8" font-size="9.5" font-family="'JetBrains Mono'">./deploy/platform/governance</text>
+            </g>
+
+            <!-- Layer 2a: cert-manager -->
+            <g class="node-box" onclick="selectDagLayer('cert-manager')" transform="translate(35, 138)">
+              <rect class="main-rect" width="190" height="52" rx="10" fill="#1e293b" stroke="#fbbf24" stroke-width="2" />
+              <text x="95" y="22" text-anchor="middle" fill="#f8fafc" font-size="12" font-weight="700">2a. cert-manager</text>
+              <text x="95" y="39" text-anchor="middle" fill="#94a3b8" font-size="9.5" font-family="'JetBrains Mono'">./deploy/platform/cert-manager</text>
+            </g>
+
+            <!-- Layer 2b: vault -->
+            <g class="node-box" onclick="selectDagLayer('vault')" transform="translate(265, 138)">
+              <rect class="main-rect" width="190" height="52" rx="10" fill="#064e3b" stroke="#10b981" stroke-width="2" />
+              <text x="95" y="22" text-anchor="middle" fill="#ecfdf5" font-size="12" font-weight="700">2b. vault (OpenBao)</text>
+              <text x="95" y="39" text-anchor="middle" fill="#6ee7b7" font-size="9.5" font-family="'JetBrains Mono'">dependsOn: [cni, governance]</text>
+            </g>
+
+            <!-- Layer 2c: project-boundaries -->
+            <g class="node-box" onclick="selectDagLayer('project-boundaries')" transform="translate(490, 138)">
+              <rect class="main-rect" width="195" height="52" rx="10" fill="#1f1224" stroke="#fb7185" stroke-width="2" />
+              <text x="97" y="22" text-anchor="middle" fill="#f8fafc" font-size="12" font-weight="700">2c. project-boundaries</text>
+              <text x="97" y="39" text-anchor="middle" fill="#fda4af" font-size="9.5" font-family="'JetBrains Mono'">./deploy/projects/pn/boundary</text>
+            </g>
+
+            <!-- Layer 3a: vault-proxies -->
+            <g class="node-box" onclick="selectDagLayer('vault-proxies')" transform="translate(155, 248)">
+              <rect class="main-rect" width="175" height="52" rx="10" fill="#022c22" stroke="#34d399" stroke-width="1.8" />
+              <text x="87" y="22" text-anchor="middle" fill="#ecfdf5" font-size="11.5" font-weight="700">3a. vault-proxies</text>
+              <text x="87" y="39" text-anchor="middle" fill="#6ee7b7" font-size="9" font-family="'JetBrains Mono'">db-proxy + registry-proxy</text>
+            </g>
+
+            <!-- Layer 3b: database -->
+            <g class="node-box" onclick="selectDagLayer('database')" transform="translate(350, 248)">
+              <rect class="main-rect" width="175" height="52" rx="10" fill="#1e1b4b" stroke="#c084fc" stroke-width="2" />
+              <text x="87" y="22" text-anchor="middle" fill="#f8fafc" font-size="11.5" font-weight="700">3b. database</text>
+              <text x="87" y="39" text-anchor="middle" fill="#d8b4fe" font-size="9" font-family="'JetBrains Mono'">healthCheck: StatefulSet/postgres</text>
+            </g>
+
+            <!-- Layer 3c: projects -->
+            <g class="node-box" onclick="selectDagLayer('projects')" transform="translate(490, 248)">
+              <rect class="main-rect" width="195" height="52" rx="10" fill="#1f1224" stroke="#fb7185" stroke-width="2" />
+              <text x="97" y="22" text-anchor="middle" fill="#f8fafc" font-size="11.5" font-weight="700">3c. projects (proj-pn)</text>
+              <text x="97" y="39" text-anchor="middle" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">wait: false · ./clusters/*/projects</text>
+            </g>
+
+            <!-- Layer 4: identity -->
+            <g class="node-box" onclick="selectDagLayer('identity')" transform="translate(370, 342)">
+              <rect class="main-rect" width="185" height="54" rx="10" fill="#1e1b4b" stroke="#22d3ee" stroke-width="2" />
+              <text x="92" y="22" text-anchor="middle" fill="#f8fafc" font-size="11.5" font-weight="700">4. identity</text>
+              <text x="92" y="39" text-anchor="middle" fill="#67e8f9" font-size="9" font-family="'JetBrains Mono'">Keycloak + Go Auth Gateway</text>
+            </g>
+
+            <!-- Layer 5: ingress -->
+            <g class="node-box" onclick="selectDagLayer('ingress')" transform="translate(100, 342)">
+              <rect class="main-rect" width="185" height="54" rx="10" fill="#0c192c" stroke="#38bdf8" stroke-width="2" />
+              <text x="92" y="22" text-anchor="middle" fill="#f8fafc" font-size="11.5" font-weight="700">5. ingress</text>
+              <text x="92" y="39" text-anchor="middle" fill="#7dd3fc" font-size="9" font-family="'JetBrains Mono'">postBuild: AUTH_HOST only</text>
+            </g>
+
+            <!-- Layer 6: tls -->
+            <g class="node-box" onclick="selectDagLayer('tls')" transform="translate(100, 432)">
+              <rect class="main-rect" width="230" height="54" rx="10" fill="#172033" stroke="#fbbf24" stroke-width="2" />
+              <text x="115" y="22" text-anchor="middle" fill="#fef08a" font-size="12" font-weight="700">6. tls (TLSStore + Certs)</text>
+              <text x="115" y="39" text-anchor="middle" fill="#fde68a" font-size="9" font-family="'JetBrains Mono'">dependsOn: cert-manager, ingress, boundary</text>
+            </g>
+          </svg>
+        </div>
+
+        <!-- Layer Details & Environment Diff -->
+        <div class="lg:col-span-5 bg-slate-900/70 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div>
+              <span id="dag-layer-badge" class="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">FLUX KUSTOMIZATION</span>
+              <h3 id="dag-layer-title" class="text-lg font-bold text-white mt-1">Select a layer in the DAG</h3>
+            </div>
+            <span id="dag-env-label" class="font-mono text-xs text-cyan-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">env: vps-k3s</span>
+          </div>
+
+          <p id="dag-layer-desc" class="text-xs text-slate-300 leading-relaxed"></p>
+
+          <div class="grid grid-cols-2 gap-2.5 text-xs font-mono">
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+              <div class="text-[10px] text-slate-500">Path</div>
+              <div id="dag-layer-path" class="text-cyan-300 mt-0.5 break-all"></div>
+            </div>
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5">
+              <div class="text-[10px] text-slate-500">dependsOn</div>
+              <div id="dag-layer-deps" class="text-amber-300 mt-0.5"></div>
+            </div>
+          </div>
+
+          <div>
+            <div class="text-xs font-mono uppercase text-slate-400 mb-1.5">Manifest Objects &amp; Environment Patch:</div>
+            <pre id="dag-layer-yaml" class="bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs text-emerald-300 overflow-x-auto leading-relaxed"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 6: OPEN-SOURCE PROJECTS, CUSTOM SERVICES & DEPENDENCY MATRIX      -->
+    <!-- ===================================================================== -->
+    <section id="tab-oss" class="hidden space-y-6">
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h2 class="text-base font-bold text-white">Open-Source Projects, Custom Services &amp; Dependency Matrix</h2>
+          <p class="text-xs text-slate-400">Complete bill of materials across host automation, Cilium eBPF CNI, cluster orchestration, identity, zero-plaintext secrets, and custom Go services.</p>
+        </div>
+        <div class="flex flex-wrap gap-1.5">
+          <button onclick="filterOss('all')" class="oss-filter px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500 text-slate-950">All (17)</button>
+          <button onclick="filterOss('oss')" class="oss-filter px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800">Open-Source Upstream</button>
+          <button onclick="filterOss('custom')" class="oss-filter px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800">Custom Zero-Dep Go</button>
+          <button onclick="filterOss('ci')" class="oss-filter px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800">Bootstrap &amp; CI Tooling</button>
+        </div>
+      </div>
+
+      <!-- Highlight Banner on Zero Third-Party Runtime Dependencies -->
+      <div class="bg-gradient-to-r from-cyan-950/50 via-slate-900 to-emerald-950/50 border border-cyan-500/30 rounded-2xl p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+        <div class="flex items-start gap-3">
+          <span class="text-2xl">🧬</span>
+          <div>
+            <h3 class="text-sm font-bold text-white">Constitutional Principle III &amp; V: Zero Third-Party Runtime Go Modules</h3>
+            <p class="text-xs text-slate-300 mt-0.5">
+              Both <code class="text-cyan-300">gateway/go.mod</code> and <code class="text-emerald-300">services/vault-proxies/go.mod</code> declare <code class="text-amber-300">go 1.22</code> with <strong>zero external `require` statements</strong>. OIDC PKCE, JWT RS256/ECDSA verification, CSRF HMAC tokens, PostgreSQL wire-protocol handshakes, and OCI registry reverse-proxying are implemented purely with the Go standard library (`crypto/*`, `net/http`, `net`, `encoding/json`).
+            </p>
+          </div>
+        </div>
+        <span class="px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 shrink-0">0 CVE Supply-Chain Surface</span>
+      </div>
+
+      <!-- Cards Grid -->
+      <div id="oss-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Populated by JS -->
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 7: 1/N RESOURCE BUDGET CALCULATOR & SPEC EVOLUTION (001-010)      -->
+    <!-- ===================================================================== -->
+    <section id="tab-budget" class="hidden space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Interactive 1/n Calculator -->
+        <div class="lg:col-span-6 bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-5">
+          <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+            <div>
+              <span class="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-purple-500/20 text-purple-300 border border-purple-500/30">PRINCIPLE IV · DEPLOY-04</span>
+              <h2 class="text-base font-bold text-white mt-1">Interactive 1/n Resource Budget Simulator</h2>
+            </div>
+            <select id="calc-env" onchange="updateBudgetCalc()" class="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-cyan-300">
+              <option value="vps">vps-k3s (4000m CPU / 24576 MiB)</option>
+              <option value="local">local-k3s (4000m CPU / 8192 MiB)</option>
+            </select>
+          </div>
+
+          <div class="space-y-4 text-xs">
+            <div>
+              <div class="flex justify-between mb-1">
+                <label class="font-semibold text-slate-300">Deployed Tenant Project Count (<code class="text-cyan-300">n</code>):</label>
+                <span id="calc-n-val" class="font-mono font-bold text-cyan-400">1 project (proj-pn)</span>
+              </div>
+              <input type="range" id="calc-n" min="1" max="5" value="1" oninput="updateBudgetCalc()" class="w-full accent-cyan-400 cursor-pointer" />
+            </div>
+
+            <div>
+              <div class="flex justify-between mb-1">
+                <label class="font-semibold text-slate-300">Candidate Project Peak Memory Limit (MiB):</label>
+                <span id="calc-mem-val" class="font-mono font-bold text-emerald-400">640 MiB</span>
+              </div>
+              <input type="range" id="calc-mem" min="128" max="8192" step="64" value="640" oninput="updateBudgetCalc()" class="w-full accent-emerald-400 cursor-pointer" />
+            </div>
+
+            <div>
+              <div class="flex justify-between mb-1">
+                <label class="font-semibold text-slate-300">Candidate Project Peak CPU Limit (millicores):</label>
+                <span id="calc-cpu-val" class="font-mono font-bold text-amber-400">400m</span>
+              </div>
+              <input type="range" id="calc-cpu" min="100" max="3000" step="50" value="400" oninput="updateBudgetCalc()" class="w-full accent-amber-400 cursor-pointer" />
+            </div>
+          </div>
+
+          <!-- Formula Breakdown -->
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2.5 font-mono text-xs">
+            <div class="flex justify-between text-slate-400">
+              <span>Node Allocatable (<code class="text-slate-300">capacity.yaml</code>):</span>
+              <span id="calc-alloc" class="text-white">4000m CPU · 24576 MiB</span>
+            </div>
+            <div class="flex justify-between text-slate-400">
+              <span>Platform Reservation (sysReserved + Cilium/Hubble + Flux + Vault + PG + KC + GW + Cert):</span>
+              <span id="calc-plat" class="text-amber-300">1920m CPU · 5312 MiB</span>
+            </div>
+            <div class="flex justify-between text-slate-300 border-t border-slate-800 pt-2">
+              <span>Available Application Pool:</span>
+              <span id="calc-pool" class="text-cyan-300 font-bold">2080m CPU · 19264 MiB</span>
+            </div>
+            <div class="flex justify-between text-slate-200">
+              <span>Per-Project 1/n Slice (<code class="text-cyan-300">Pool / n</code>):</span>
+              <span id="calc-slice" class="text-emerald-300 font-bold">2080m CPU · 19264 MiB</span>
+            </div>
+          </div>
+
+          <!-- Preflight Gate Verdict -->
+          <div id="calc-verdict-box" class="rounded-xl p-4 border bg-emerald-950/30 border-emerald-500/40">
+            <div class="flex items-center justify-between">
+              <span id="calc-verdict-title" class="text-xs font-mono font-bold uppercase text-emerald-300">✓ platform-preflight.py: PASS</span>
+              <span class="text-[11px] font-mono text-slate-400">Deployed Peak: 400m / 640Mi · Quota: 850m / 1536Mi</span>
+            </div>
+            <p id="calc-verdict-desc" class="text-xs text-slate-300 mt-1"></p>
+          </div>
+        </div>
+
+        <!-- Spec 001 - 010 Evolution & Constitutional Matrix -->
+        <div class="lg:col-span-6 bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-3">
+          <span class="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">SPEC-DRIVEN ARCHITECTURE (SPECS 001–010)</span>
+          <h2 class="text-base font-bold text-white">Architectural Evolution &amp; Feature Packages</h2>
+          <div class="space-y-2.5 max-h-[450px] overflow-y-auto pr-1">
+            <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
+              <div class="flex justify-between items-center">
+                <span class="font-mono text-xs font-bold text-cyan-300">Spec 001 — Core Project Platform</span>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/001-project-platform</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Establishes Traefik ingress, pure-stdlib Go Auth Gateway, Keycloak Google broker, PostgreSQL StatefulSet, Restricted PSS, and 1/n resource slicing.</p>
+            </div>
+            <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
+              <div class="flex justify-between items-center">
+                <span class="font-mono text-xs font-bold text-emerald-300">Spec 002 — Internal Cluster Vault (Zero-Plaintext)</span>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/002-internal-cluster-vault</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Introduces self-hosted OpenBao 2.0.0, <code class="text-emerald-300">vault-db-proxy</code> (PostgreSQL wire auth injector), and <code class="text-emerald-300">vault-registry-proxy</code> (GHCR PAT injector) so pods hold zero secrets.</p>
+            </div>
+            <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
+              <div class="flex justify-between items-center">
+                <span class="font-mono text-xs font-bold text-amber-300">Spec 003 — Minimal VM Bootstrap</span>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/003-minimal-vm-bootstrap</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Ansible playbook (<code class="text-amber-300">bootstrap/bootstrap.yml</code>) validating host preflight, installing pinned K3s <code class="text-amber-300">v1.35.9+k3s1</code>, and verifying CoreDNS + reconciler readiness.</p>
+            </div>
+            <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
+              <div class="flex justify-between items-center">
+                <span class="font-mono text-xs font-bold text-purple-300">Spec 004 — Flux GitOps Reconciliation &amp; Admission</span>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/004-flux-gitops-reconciliation</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Defines the Flux DAG, <code class="text-purple-300">ValidatingAdmissionPolicy</code> blocking manual kubectl edits, and R3 amendment allowing <code class="text-purple-300">postBuild.substitute.AUTH_HOST</code> on <code class="text-purple-300">ingress</code> only.</p>
+            </div>
+            <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
+              <div class="flex justify-between items-center">
+                <span class="font-mono text-xs font-bold text-teal-300">Spec 005 — Post-Vault Automation</span>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/005-post-vault-automation</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Automates Kubernetes SA auth binding (<code class="text-teal-300">vault-configure-k8s-auth.sh</code>), secret seeding, and initContainer memory secret hydration after OpenBao unseal.</p>
+            </div>
+            <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
+              <div class="flex justify-between items-center">
+                <span class="font-mono text-xs font-bold text-sky-300">Spec 006 &amp; 007 — Separate Project Auth &amp; 3-Probe + CORS</span>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/006-separate-project-auth &amp; 007-pn-readiness-restart</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Decouples project doors (<code class="text-sky-300">sign-in.yaml</code> <code class="text-sky-300">mode: none|shared</code>), separates <code class="text-sky-300">startupProbe</code> / <code class="text-sky-300">readinessProbe</code> / <code class="text-sky-300">livenessProbe</code>, and mandates <code class="text-sky-300">PUBLIC_APP_URL</code> in <code class="text-sky-300">ALLOWED_ORIGINS</code>.</p>
+            </div>
+            <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
+              <div class="flex justify-between items-center">
+                <span class="font-mono text-xs font-bold text-rose-300">Spec 008 — Platform-Owned TLS Termination</span>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/008-platform-tls-termination</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Centralizes all <code class="text-rose-300">cert-manager</code> Certificates (<code class="text-rose-300">auth-tls</code>, <code class="text-rose-300">pn-tls</code>) in namespace <code class="text-rose-300">platform</code> behind Traefik <code class="text-rose-300">TLSStore default</code>; projects declare <code class="text-rose-300">tls: {}</code> with zero TLS secrets.</p>
+            </div>
+            <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
+              <div class="flex justify-between items-center">
+                <span class="font-mono text-xs font-bold text-indigo-300">Spec 009 — Host-Scoped Session Cookies &amp; Direct Google Auth</span>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/009-host-scoped-shared-auth</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Redirects <code class="text-indigo-300">/oauth/start</code> straight to Google OAuth (<code class="text-indigo-300">kc_idp_hint=google</code>) skipping intermediate Keycloak screens, with host-scoped session confirmation.</p>
+            </div>
+            <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
+              <div class="flex justify-between items-center">
+                <span class="font-mono text-xs font-bold text-emerald-300">Spec 010 — Cilium + Hubble CNI &amp; Visual Network Observability</span>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/010-cilium-hubble-observability</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Replaces K3s Flannel with Git-vendored Cilium <code class="text-emerald-300">v1.20.3</code> + Hubble UI <code class="text-emerald-300">v0.13.6</code>, tightens OpenBao egress via <code class="text-emerald-300">CiliumNetworkPolicy</code> (<code class="text-emerald-300">toEntities: ["kube-apiserver"]</code>), and adds <code class="text-emerald-300">scripts/open-hubble-ui.sh</code>.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 8: JUNIOR ENGINEER GUIDE ("MENTAL MODELS & WHAT BREAKS IF...")    -->
+    <!-- ===================================================================== -->
+    <section id="tab-junior" class="hidden space-y-6">
+      <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <span class="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">JUNIOR ENGINEER ONBOARDING &amp; FAILURE DRILLS</span>
+          <h2 class="text-lg font-extrabold text-white mt-1">Mental Models, Plugin Glossary &amp; "What Breaks If..." Simulator</h2>
+          <p class="text-xs text-slate-300 mt-0.5">
+            Plain-English analogies for every component in the pipeline, plus interactive failure scenarios showing what breaks, why it breaks, and the exact command to fix it.
+          </p>
+        </div>
+        <div class="text-xs font-mono text-emerald-300 bg-emerald-950/40 border border-emerald-500/30 px-3 py-1.5 rounded-xl">
+          🔒 Enforced by AGENTS.md + Universal Agent &amp; Git Hooks
+        </div>
+      </div>
+
+      <!-- Mental Model Analogies Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4" id="junior-mental-grid">
+        <!-- Populated by JS -->
+      </div>
+
+      <!-- Interactive "What Breaks If..." Failure Drill Explorer -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+        <div class="lg:col-span-5 bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-2.5">
+          <div class="text-xs font-bold uppercase tracking-wider text-rose-400">💥 Click a "What Breaks If..." Failure Scenario</div>
+          <div id="junior-drill-list" class="space-y-2">
+            <!-- Populated by JS -->
+          </div>
+        </div>
+
+        <div class="lg:col-span-7 bg-slate-900/75 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+            <div>
+              <span id="drill-layer-badge" class="px-2.5 py-1 text-xs font-mono font-bold rounded-lg bg-rose-500/20 text-rose-300 border border-rose-500/30">FAILURE DRILL</span>
+              <h3 id="drill-title" class="text-base font-extrabold text-white mt-1.5"></h3>
+            </div>
+            <span id="drill-detector" class="font-mono text-xs px-2.5 py-1 rounded-lg bg-slate-950 border border-slate-800 text-amber-300"></span>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+            <div class="bg-rose-950/25 border border-rose-500/30 rounded-xl p-3.5">
+              <div class="font-bold text-rose-300 uppercase text-[11px] font-mono">1. What Symptom Do You See?</div>
+              <p id="drill-symptom" class="text-slate-300 mt-1 leading-relaxed"></p>
+            </div>
+            <div class="bg-cyan-950/25 border border-cyan-500/30 rounded-xl p-3.5">
+              <div class="font-bold text-cyan-300 uppercase text-[11px] font-mono">2. Why Does the Architecture React This Way?</div>
+              <p id="drill-why" class="text-slate-300 mt-1 leading-relaxed"></p>
+            </div>
+          </div>
+
+          <div>
+            <div class="text-xs font-mono uppercase text-emerald-400 mb-1.5">3. How to Diagnose &amp; Fix It (Runbook Command):</div>
+            <pre id="drill-fix" class="bg-slate-950 border border-slate-800 rounded-xl p-3.5 text-xs text-emerald-300 overflow-x-auto leading-relaxed"></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <script>
+    // =========================================================================
+    // 1. TOPOLOGY NODE METADATA
+    // =========================================================================
+    const NODES = {
+      'browser': {
+        badge: 'External Actor',
+        title: 'User Browser (Visitor / Authenticated User)',
+        ns: 'External Internet',
+        image: 'HTTPS TLS 1.3 Client',
+        oss: 'Web Standards (OIDC / PKCE)',
+        res: 'N/A (Client)',
+        desc: 'Reaches project subdomains (e.g. https://pn.nacfson.cloud) directly without forced login, or authenticates via https://auth.nacfson.cloud (/oauth/start -> Keycloak -> Google OAuth2). Holds HttpOnly Secure PLATFORM_SESSION cookie.',
+        bullets: [
+          '➔ GET https://pn.nacfson.cloud/ serves public SPA landing page via Traefik.',
+          '➔ GET https://auth.nacfson.cloud/oauth/start?return=... initiates PKCE login.',
+          '➔ POST https://auth.nacfson.cloud/auth/logout revokes current session with CSRF check.'
+        ],
+        path: 'docs/architecture-auth-routing.md'
+      },
+      'letsencrypt': {
+        badge: 'External CA',
+        title: "Let's Encrypt ACME v2 Directory",
+        ns: 'External Internet',
+        image: 'acme-v02.api.letsencrypt.org',
+        oss: 'ISRG / Let\'s Encrypt',
+        res: 'N/A (External)',
+        desc: 'Issues browser-trusted ECDSA P-256 certificates for auth.nacfson.cloud and pn.nacfson.cloud in vps-k3s via HTTP-01 challenge verification routed through Traefik port 80.',
+        bullets: [
+          '➔ Verifies /.well-known/acme-challenge/* on port 80 before HTTP->HTTPS redirect.',
+          '➔ Solver runs in namespace platform using serviceType: ClusterIP (NodePort forbidden).'
+        ],
+        path: 'deploy/platform/tls/cluster-issuers.yaml'
+      },
+      'google': {
+        badge: 'External Identity Provider',
+        title: 'Google OAuth 2.0 Identity Upstream',
+        ns: 'External Internet',
+        image: 'accounts.google.com',
+        oss: 'OpenID Connect 1.0',
+        res: 'N/A (External)',
+        desc: 'Trusted upstream identity provider brokered by Keycloak. Any Google account can self-register an ordinary platform identity on first sign-in without administrator approval (AUTH-01).',
+        bullets: [
+          '➔ Only Keycloak talks to Google OAuth; application workloads never receive Google tokens.',
+          '➔ Google client secret is stored in OpenBao and injected into Keycloak at startup.'
+        ],
+        path: 'specs/002-internal-cluster-vault/contracts/google-oauth-broker.md'
+      },
+      'github': {
+        badge: 'GitOps Source & OCI Registry',
+        title: 'GitHub Repository, Actions CI & GHCR',
+        ns: 'External Internet',
+        image: 'ghcr.io/nacfson/*',
+        oss: 'Git / OCI Distribution Spec',
+        res: 'GitHub Hosted Runners',
+        desc: 'Single source of desired state (main branch) watched by FluxCD, plus GitHub Container Registry hosting immutable SHA256-pinned multi-arch container images.',
+        bullets: [
+          '➔ Runs platform-preflight.py and render-validate.sh on every candidate PR.',
+          '➔ FluxCD source-controller pulls main branch every 5m.',
+          '➔ vault-registry-proxy pulls private OCI layers from ghcr.io using OpenBao PAT.'
+        ],
+        path: 'clusters/vps-k3s/flux-system/gotk-sync.yaml'
+      },
+      'traefik': {
+        badge: 'Edge Ingress Controller',
+        title: 'Traefik Proxy (:80 web / :443 websecure)',
+        ns: 'kube-system (CRDs in platform & proj-pn)',
+        image: 'Rancher K3s Bundled Traefik',
+        oss: 'Traefik Proxy (MIT License)',
+        res: 'System Reserved',
+        desc: 'Single cluster entry point. Terminates TLS using SNI matching against TLSStore platform/default, strips forged identity headers, enforces narrow route allowlists on auth host, and executes ForwardAuth checks.',
+        bullets: [
+          '➔ Port 80 redirects all HTTP traffic to HTTPS (except ACME HTTP-01 challenge path).',
+          '➔ Blocks /admin, /realms/master, and port 9000 on Keycloak by omission (returns 404).',
+          '➔ Applies strip-forged-headers middleware before forwarding to project services.'
+        ],
+        path: 'deploy/platform/ingress/ingress-allowlist.yaml'
+      },
+      'tlsstore': {
+        badge: 'Platform Edge TLS (Spec 008)',
+        title: 'Traefik TLSStore default & Certificates',
+        ns: 'platform',
+        image: 'traefik.io/v1alpha1 TLSStore',
+        oss: 'Traefik CRD + cert-manager Certificates',
+        res: 'Secret Storage Only',
+        desc: 'Centralized certificate store holding auth-tls and pn-tls Secrets in namespace platform. Traefik selects the matching certificate by SNI hostname automatically.',
+        bullets: [
+          '➔ defaultCertificate is intentionally unset so unknown hosts get Traefik default cert.',
+          '➔ Projects simply write tls: {} on their IngressRoute without owning TLS Secrets.',
+          '➔ ECDSA 256-bit keys with rotationPolicy: Always and renewBefore: 720h (30 days).'
+        ],
+        path: 'deploy/platform/tls/tls-store.yaml'
+      },
+      'certmanager': {
+        badge: 'Certificate Automation',
+        title: 'cert-manager v1.21.2 (Controller, Webhook, CAInjector)',
+        ns: 'cert-manager',
+        image: 'quay.io/jetstack/cert-manager-*:v1.21.2',
+        oss: 'CNCF cert-manager (Apache-2.0)',
+        res: '3 Deployments (Restricted non-root)',
+        desc: 'Watches Certificate objects in namespace platform and reconciles ACME HTTP-01 orders with Let\'s Encrypt (vps-k3s) or selfsigned ClusterIssuer (local-k3s).',
+        bullets: [
+          '➔ Configured with serviceType: ClusterIP on HTTP-01 solver to obey Principle II.',
+          '➔ Scoped exception in ValidatingAdmissionPolicy allows solver Pods/Services in platform.'
+        ],
+        path: 'deploy/platform/cert-manager/upstream/cert-manager.yaml'
+      },
+      'k3s-runtime': {
+        badge: 'CNI & Node Runtime (Spec 003 & 010)',
+        title: 'K3s v1.35.9+k3s1 + Cilium v1.20.3 eBPF + Hubble UI v0.13.6',
+        ns: 'Host OS / kube-system',
+        image: 'quay.io/cilium/cilium:v1.20.3 · hubble-ui:v0.13.6',
+        oss: 'CNCF K3s, Cilium & Hubble (Apache-2.0)',
+        res: 'sysReserved 200m/512Mi + Cilium/Hubble 225m/1248Mi',
+        desc: 'K3s boots with --flannel-backend=none --disable-network-policy. Ansible applies Git-vendored Cilium v1.20.3 eBPF CNI before Flux starts, enforcing both standard NetworkPolicies and identity-aware CiliumNetworkPolicies while streaming flow verdicts to Hubble Relay & Hubble UI.',
+        bullets: [
+          '➔ Replaces Flannel + kube-router iptables policy with kernel eBPF programs.',
+          '➔ Hubble UI & Relay are ClusterIP-only; accessed privately via ./scripts/open-hubble-ui.sh (:12000).',
+          '➔ Worker node holds ZERO GHCR pull tokens; containerd mirrors ghcr.io to localhost:5000.'
+        ],
+        path: 'deploy/platform/cni/kustomization.yaml'
+      },
+      'flux': {
+        badge: 'GitOps Reconciler (Spec 004 & 010)',
+        title: 'FluxCD v1.9.5 (source-controller & kustomize-controller)',
+        ns: 'flux-system',
+        image: 'ghcr.io/fluxcd/*-controller:v1.9.5',
+        oss: 'CNCF FluxCD (Apache-2.0)',
+        res: '2 Controllers in flux-system',
+        desc: 'Continuously pulls git repository main branch and reconciles 10 ordered Kustomization layers (cni + governance roots -> vault / cert-manager / project-boundaries -> vault-proxies / database / projects -> identity -> ingress -> tls) with prune: true.',
+        bullets: [
+          '➔ Automatically reverts any manual cluster drift.',
+          '➔ Uses postBuild.substitute.AUTH_HOST exclusively on the ingress layer (Spec 004 R3).'
+        ],
+        path: 'clusters/vps-k3s/layers.yaml'
+      },
+      'vap': {
+        badge: 'Cluster Governance Gate',
+        title: 'Kubernetes ValidatingAdmissionPolicy',
+        ns: 'Cluster-wide & Namespaced',
+        image: 'admissionregistration.k8s.io/v1',
+        oss: 'Kubernetes CEL Admission (Apache-2.0)',
+        res: 'API Server In-Process CEL',
+        desc: 'Enforces GitOps exclusivity by rejecting any CREATE, UPDATE, or DELETE from human kubectl users across managed namespaces unless the user belongs to platform:break-glass.',
+        bullets: [
+          '➔ Allows system:serviceaccount:flux-system:* and proj-pn:pn-reconciler.',
+          '➔ Allows cert-manager SA only within namespaces platform and cert-manager.'
+        ],
+        path: 'deploy/platform/governance/manual-change-policy.yaml'
+      },
+      'gateway': {
+        badge: 'Custom Go Service (Principle III)',
+        title: 'Platform Auth Gateway (:8080)',
+        ns: 'identity',
+        image: 'ghcr.io/nacfson/platform-auth-gateway:latest',
+        oss: 'Custom Go 1.22 (Zero 3rd-Party Runtime Deps)',
+        res: '100m CPU / 64Mi RAM (req == lim)',
+        desc: 'Pure Go standard-library authentication service implementing OIDC Authorization Code + PKCE flow (with kc_idp_hint=google direct redirect per Spec 009), on-demand session confirmation (/auth), and CSRF-protected synchronous session revocation (/auth/logout).',
+        bullets: [
+          '➔ initContainer (curl:8.10.1) authenticates to OpenBao via K8s SA JWT and writes secrets to tmpfs.',
+          '➔ Validates return_to host against PROJECT_RETURN_HOSTS before starting OIDC.',
+          '➔ Performs online session check against Keycloak on /auth and /auth/logout (fails closed).'
+        ],
+        path: 'gateway/cmd/gateway/main.go'
+      },
+      'keycloak': {
+        badge: 'Identity Provider & Broker',
+        title: 'Keycloak v24.0.5 (:8080)',
+        ns: 'identity',
+        image: 'quay.io/keycloak/keycloak:24.0.5',
+        oss: 'CNCF Keycloak (Apache-2.0)',
+        res: '500m CPU / 768Mi RAM (req == lim)',
+        desc: 'Central OIDC identity provider and session authority for the platform realm. Brokers Google OAuth2 sign-in and issues project-scoped JWT access tokens.',
+        bullets: [
+          '➔ InitContainer fetches DB credentials and Google OAuth broker secret from OpenBao into memory.',
+          '➔ Public ingress exposes ONLY login-actions, OIDC auth, broker callback, and /resources.',
+          '➔ Admin console (/admin) and metrics (:9000) are strictly internal.'
+        ],
+        path: 'deploy/platform/identity/keycloak-deployment.yaml'
+      },
+      'postgres': {
+        badge: 'Shared Persistent Database',
+        title: 'PostgreSQL 16.8-alpine StatefulSet (:5432)',
+        ns: 'identity',
+        image: 'postgres:16.8-alpine',
+        oss: 'PostgreSQL Global Dev Group (PostgreSQL License)',
+        res: '250m CPU / 256Mi RAM · 10Gi PVC',
+        desc: 'Single shared PostgreSQL instance hosting isolated databases and restricted roles for Keycloak (keycloak) and tenant projects (proj_pn / user_pn).',
+        bullets: [
+          '➔ postgres-init-job provisions per-project databases and roles using credentials from OpenBao.',
+          '➔ Tenant pods CANNOT reach Postgres directly; NetworkPolicy forces traffic through vault-db-proxy.',
+          '➔ Daily 00:00 UTC CronJob performs logical backups with 7-day retention.'
+        ],
+        path: 'deploy/platform/database/postgres-statefulset.yaml'
+      },
+      'openbao': {
+        badge: 'Zero-Plaintext Secret Authority (Spec 002 & 010)',
+        title: 'OpenBao v2.0.0 StatefulSet (:8200)',
+        ns: 'vault',
+        image: 'openbao/openbao:2.0.0',
+        oss: 'Linux Foundation OpenBao (MPL-2.0)',
+        res: '50m-200m CPU / 64Mi-128Mi RAM · 10Gi PVC',
+        desc: 'Self-hosted open-source Vault fork providing KV v2 secret storage, Transit cryptographic signing engine, and Kubernetes ServiceAccount JWT authentication.',
+        bullets: [
+          '➔ Egress tightened via CiliumNetworkPolicy/openbao-apiserver-egress (toEntities: ["kube-apiserver"]).',
+          '➔ Zero plaintext secrets ever touch Git, Helm values, or application pod env vars.',
+          '➔ Reconciled and rotated live via scripts/vault-reconcile.sh and scripts/vault-rotate.sh.'
+        ],
+        path: 'deploy/platform/vault/network-policy.yaml'
+      },
+      'db-proxy': {
+        badge: 'Custom Go Wire Proxy (Spec 002)',
+        title: 'vault-db-proxy (:5432)',
+        ns: 'vault',
+        image: 'ghcr.io/nacfson/vault-db-proxy:latest',
+        oss: 'Custom Go 1.22 Stdlib (Zero External Deps)',
+        res: '25m-100m CPU / 32Mi-64Mi RAM',
+        desc: 'Intercepts PostgreSQL wire-protocol connections from tenant workloads (proj-pn), fetches the latest user_pn password from OpenBao in memory, completes upstream MD5/SCRAM auth with Postgres, and streams SQL traffic.',
+        bullets: [
+          '➔ Enforces ENFORCED_DB=proj_pn and ENFORCED_ROLE=user_pn.',
+          '➔ Application pods connect without passwords and never see DB credentials.',
+          '➔ Supports zero-downtime credential rotation in OpenBao.'
+        ],
+        path: 'services/vault-proxies/cmd/db-proxy/main.go'
+      },
+      'reg-proxy': {
+        badge: 'Custom Go OCI Proxy (Spec 002)',
+        title: 'vault-registry-proxy (:5000)',
+        ns: 'vault',
+        image: 'ghcr.io/nacfson/vault-registry-proxy:latest',
+        oss: 'Custom Go 1.22 Stdlib (Zero External Deps)',
+        res: '25m-100m CPU / 32Mi-64Mi RAM',
+        desc: 'Intercepts containerd OCI registry pull requests from the K3s node, injects the read:packages GitHub PAT from OpenBao upstream to ghcr.io, strips auth headers on return, and streams clean OCI layers.',
+        bullets: [
+          '➔ Eliminates Kubernetes imagePullSecrets from tenant namespaces.',
+          '➔ Confines GHCR token strictly inside the vault namespace memory.'
+        ],
+        path: 'services/vault-proxies/cmd/registry-proxy/main.go'
+      },
+      'init-fetcher': {
+        badge: 'Ephemeral Secret Hydration (Spec 005)',
+        title: 'InitContainer Secret Fetcher Pattern',
+        ns: 'identity (gateway, keycloak, postgres)',
+        image: 'curlimages/curl:8.10.1',
+        oss: 'cURL Project (MIT/curl License)',
+        res: '25m-100m CPU / 32Mi-64Mi RAM',
+        desc: 'Platform pods authenticate their Kubernetes ServiceAccount JWT against OpenBao (/v1/auth/kubernetes/login) inside a locked-down initContainer and write secrets to an in-memory emptyDir (medium: Memory) volume.',
+        bullets: [
+          '➔ chmod 0400 /var/run/secrets/* inside RAM-backed tmpfs (1Mi sizeLimit).',
+          '➔ Main container mounts /var/run/secrets read-only with readOnlyRootFilesystem: true.'
+        ],
+        path: 'deploy/platform/identity/gateway-deployment.yaml'
+      },
+      'pn-frontend': {
+        badge: 'Tenant Workload (proj-pn)',
+        title: 'Project PN Frontend (:80)',
+        ns: 'proj-pn',
+        image: 'ghcr.io/nacfson/project-pn-frontend@sha256:84af4c4c...',
+        oss: 'Nginx Unprivileged + React Native / Expo Web',
+        res: '100m CPU / 128Mi RAM (req == lim)',
+        desc: 'Digest-pinned frontend web application running under Kubernetes Restricted Pod Security profile (non-root UID 10001, drops ALL capabilities, restartPolicy: Always).',
+        bullets: [
+          '➔ Separates startupProbe (/api/auth/language-options), readinessProbe (/healthz -> BE), and livenessProbe (/).',
+          '➔ Sign-in button navigates browser to https://auth.nacfson.cloud/oauth/start?return=...'
+        ],
+        path: 'deploy/projects/pn/workloads/frontend-deployment.yaml'
+      },
+      'pn-backend': {
+        badge: 'Tenant Workload (proj-pn)',
+        title: 'Project PN Backend API (:8080)',
+        ns: 'proj-pn',
+        image: 'ghcr.io/nacfson/project-pn-backend@sha256:00e44572...',
+        oss: 'Go Application Server (Non-root UID 10001)',
+        res: '300m CPU / 512Mi RAM (req == lim)',
+        desc: 'Digest-pinned backend API server running with readOnlyRootFilesystem: true, automountServiceAccountToken: false, PUBLIC_APP_URL in ALLOWED_ORIGINS, and zero database or OAuth secrets in its environment.',
+        bullets: [
+          '➔ Connects to PostgreSQL exclusively via vault-db-proxy.vault.svc:5432 (sslmode=disable internal).',
+          '➔ Confirms user sessions via http://gateway.identity.svc:8080/auth (mode: shared in sign-in.yaml).'
+        ],
+        path: 'deploy/projects/pn/workloads/backend-deployment.yaml'
+      },
+      'pn-boundary': {
+        badge: 'Tenant Isolation Contract (ISOLATE-01)',
+        title: 'proj-pn Namespace Security & Network Boundary',
+        ns: 'proj-pn',
+        image: 'PSS Restricted + NetworkPolicy + ResourceQuota',
+        oss: 'Kubernetes Native Isolation Controls',
+        res: 'Peak: 400m/640Mi · Quota: 850m CPU · 1536Mi RAM · 10 Pods',
+        desc: 'Platform-owned boundary layer reconciled before tenant workloads. Enforces Restricted Pod Security Admission, zero ServiceAccount token mounts, strict egress firewalling, and 1/n ResourceQuota.',
+        bullets: [
+          '➔ services.nodeports: "0" and services.loadbalancers: "0" enforced at quota admission.',
+          '➔ Egress allowed ONLY to kube-dns (:53), vault-db-proxy (:5432), gateway (:8080), and intra-namespace.',
+          '➔ Reconciler RBAC (pn-reconciler) cannot modify Quotas, NetworkPolicies, or RoleBindings.'
+        ],
+        path: 'deploy/projects/pn/boundary/network-policy.yaml'
+      }
+    };
+
+    function selectNode(nodeId) {
+      const data = NODES[nodeId];
+      if (!data) return;
+
+      document.querySelectorAll('#topology-svg .node-box').forEach(el => el.classList.remove('node-selected', 'dimmed'));
+      document.querySelectorAll('#topology-edges .edge-line').forEach(el => {
+        const from = el.getAttribute('data-from');
+        const to = el.getAttribute('data-to');
+        if (from === nodeId || to === nodeId) {
+          el.classList.add('highlighted-edge');
+          el.classList.remove('dimmed');
+        } else {
+          el.classList.remove('highlighted-edge');
+          el.classList.add('dimmed');
+        }
+      });
+
+      const targetEl = document.getElementById('node-' + nodeId);
+      if (targetEl) targetEl.classList.add('node-selected');
+
+      document.getElementById('insp-badge').textContent = data.badge;
+      document.getElementById('insp-title').textContent = data.title;
+      document.getElementById('insp-desc').textContent = data.desc;
+      document.getElementById('insp-ns').textContent = data.ns;
+      document.getElementById('insp-image').textContent = data.image;
+      document.getElementById('insp-oss').textContent = data.oss;
+      document.getElementById('insp-res').textContent = data.res;
+      document.getElementById('insp-path').textContent = data.path;
+
+      const ul = document.getElementById('insp-bullets');
+      ul.innerHTML = data.bullets.map(b => `<li>${b}</li>`).join('');
+    }
+
+    function resetTopologySelection() {
+      document.querySelectorAll('#topology-svg .node-box').forEach(el => el.classList.remove('node-selected', 'dimmed'));
+      document.querySelectorAll('#topology-edges .edge-line').forEach(el => el.classList.remove('highlighted-edge', 'dimmed'));
+      document.getElementById('insp-badge').textContent = 'Interactive Inspector';
+      document.getElementById('insp-title').textContent = 'Click any node in the diagram';
+      document.getElementById('insp-desc').textContent = 'Select any component in the cluster topology to inspect its container image, open-source project license, Kubernetes namespace, inbound/outbound network dependencies, secret injection model, and source manifest path.';
+      document.getElementById('insp-ns').textContent = 'All Namespaces';
+      document.getElementById('insp-image').textContent = '12 Components';
+      document.getElementById('insp-oss').textContent = 'Apache-2.0 / MPL-2.0 / Go';
+      document.getElementById('insp-res').textContent = 'Strict req == lim';
+      document.getElementById('insp-path').textContent = 'clusters/vps-k3s/layers.yaml';
+      document.getElementById('insp-bullets').innerHTML = `
+        <li>• Click a node on the left to highlight its live edges.</li>
+        <li>• Use the top filter bar to isolate Auth, Vault, GitOps, or Data paths.</li>
+      `;
+    }
+
+    function filterTopology(category) {
+      document.querySelectorAll('.topo-filter').forEach(btn => {
+        btn.className = 'topo-filter px-3 py-1 rounded-lg text-xs font-semibold bg-slate-900 text-slate-400 border border-slate-800 hover:text-slate-200';
+      });
+      const activeBtn = document.getElementById('filter-' + category);
+      if (activeBtn) {
+        activeBtn.className = 'topo-filter px-3 py-1 rounded-lg text-xs font-semibold bg-slate-800 text-cyan-300 border border-cyan-500/40';
+      }
+
+      document.querySelectorAll('#topology-edges .edge-line').forEach(el => {
+        const cats = (el.getAttribute('data-cat') || '').split(' ');
+        if (category === 'all' || cats.includes(category)) {
+          el.classList.remove('dimmed');
+        } else {
+          el.classList.add('dimmed');
+          el.classList.remove('highlighted-edge');
+        }
+      });
+    }
+
+    // =========================================================================
+    // 2. END-TO-END PROTOCOL FLOW SIMULATOR DATA
+    // =========================================================================
+    const FLOWS = {
+      oidc: [
+        {
+          title: '1. Public Door Entry (No Forced Login)',
+          spec: 'Spec 006 · AUTH-03',
+          from: 'User Browser',
+          to: 'pn-frontend (via Traefik)',
+          proto: 'GET https://pn.nacfson.cloud/',
+          desc: 'A visitor opens the project domain. Traefik terminates TLS via TLSStore platform/default, strips any client-supplied X-User-* headers, and routes directly to pn-frontend without requiring an existing session.',
+          code: `match: Host(\`pn.nacfson.cloud\`)\nmiddlewares:\n  - name: strip-forged-headers\n    namespace: platform\nservices:\n  - name: pn-frontend (port 80)`,
+          guard: 'ISOLATE-01: Opening a project door never exposes Keycloak admin routes or forces authentication until the user or project requests sign-in.'
+        },
+        {
+          title: '2. Initiate OIDC PKCE Flow (/oauth/start) + kc_idp_hint=google',
+          spec: 'Spec 001, 006 & 009 · AUTH-03',
+          from: 'User Browser',
+          to: 'Go Auth Gateway (:8080)',
+          proto: 'GET https://auth.nacfson.cloud/oauth/start?return=https://pn.nacfson.cloud/',
+          desc: 'Clicking Sign In sends the browser to the central auth host. The Go Gateway validates the return host against PROJECT_RETURN_HOSTS, sets PKCE cookies, and appends kc_idp_hint=google (Spec 009) so Keycloak skips its native username/password form and jumps straight to Google OAuth.',
+          code: `GET /oauth/start?return=https://pn.nacfson.cloud/ HTTP/1.1\nHost: auth.nacfson.cloud\n\n<-- 302 Found\nLocation: https://auth.nacfson.cloud/realms/platform/protocol/openid-connect/auth?client_id=gateway-client&kc_idp_hint=google&code_challenge=...&code_challenge_method=S256`,
+          guard: 'Open-redirect prevention: Gateway strictly validates return URL host against configured PROJECT_RETURN_HOSTS (pn.nacfson.cloud).'
+        },
+        {
+          title: '3. Keycloak Brokers Google OAuth 2.0',
+          spec: 'Spec 001 & 002 · AUTH-01',
+          from: 'Keycloak IdP',
+          to: 'Google OAuth 2.0',
+          proto: 'OIDC Broker Redirect (/realms/platform/broker/google/endpoint)',
+          desc: 'Keycloak redirects the browser to Google OAuth 2.0 using the broker client secret injected into Keycloak from OpenBao at pod startup. First-time Google users are automatically registered as ordinary platform identities.',
+          code: `# Publicly allowed Keycloak paths in ingress-allowlist.yaml:\nPathPrefix(\`/realms/platform/protocol/openid-connect/auth\`) ||\nPathPrefix(\`/realms/platform/login-actions\`) ||\nPathPrefix(\`/realms/platform/broker/\`) || PathPrefix(\`/resources\`)`,
+          guard: 'AUTH-01: Automatic registration grants zero Keycloak admin, K8s API, or application admin rights.'
+        },
+        {
+          title: '4. OIDC Callback & Host-Scoped Session Cookie Issuance',
+          spec: 'Spec 001 & 009 · AUTH-03',
+          from: 'Go Auth Gateway',
+          to: 'Keycloak Token Endpoint (Internal)',
+          proto: 'POST http://keycloak-service.identity.svc:8080/.../token',
+          desc: 'Browser returns to /oauth/callback with authorization code. Gateway exchanges the code + PKCE verifier over the private cluster network with Keycloak, signs an HMAC session cookie (PLATFORM_SESSION), and redirects back to pn.nacfson.cloud.',
+          code: `Set-Cookie: PLATFORM_SESSION=<hmac-signed-payload>;\n  Domain=.nacfson.cloud; Path=/; Secure; HttpOnly; SameSite=Lax\nLocation: https://pn.nacfson.cloud/`,
+          guard: 'Principle III: Token exchange happens strictly on cluster-internal HTTP (identity.svc); tokens are never placed in URLs or logs.'
+        },
+        {
+          title: '5. Traefik ForwardAuth Verification (/auth)',
+          spec: 'Spec 001 · Contract gateway-forwardauth.md',
+          from: 'Traefik Ingress',
+          to: 'Go Auth Gateway (:8080)',
+          proto: 'GET http://gateway.identity.svc:8080/auth',
+          desc: 'On protected requests, Traefik invokes the forward-auth middleware. The Gateway validates the session cookie, performs a live session/introspection check against Keycloak, and returns HTTP 200 with target-project Bearer JWT and identity headers.',
+          code: `HTTP/1.1 200 OK\nAuthorization: Bearer <Keycloak-Project-Scoped-JWT>\nX-User-Subject: f:ba91c8...:10928374\nX-User-Issuer: https://auth.nacfson.cloud/realms/platform\nX-Auth-CSRF-Token: <hmac-csrf-token>`,
+          guard: 'Fail-Closed Guarantee: If Keycloak is unreachable or session is revoked, Gateway returns 401/503 and Traefik blocks the request.'
+        },
+        {
+          title: '6. Project Backend Independent JWT Verification',
+          spec: 'Spec 001 · AUTH-04 & AUTH-06',
+          from: 'pn-backend (:8080)',
+          to: 'Go Auth Gateway (/jwks)',
+          proto: 'GET http://gateway.identity.svc:8080/jwks',
+          desc: 'The project backend does not blindly trust headers; it independently verifies the Bearer JWT signature (via JWKS fetched from Gateway), issuer, audience, and expiration, then maps (issuer, subject) to ordinary-user permissions.',
+          code: `// AUTH-04 Project-side verification checks:\n1. RS256 signature against realm JWKS\n2. iss == "https://auth.nacfson.cloud/realms/platform"\n3. aud contains target project client\n4. exp & nbf timestamps valid`,
+          guard: 'NetworkPolicy in proj-pn allows egress to gateway.identity.svc:8080 for JWKS/session confirmation while blocking direct Keycloak access.'
+        },
+        {
+          title: '7. Synchronous Current-Session Revocation (/auth/logout)',
+          spec: 'Spec 001 · AUTH-05',
+          from: 'User Browser',
+          to: 'Go Auth Gateway -> Keycloak',
+          proto: 'POST https://auth.nacfson.cloud/auth/logout',
+          desc: 'User triggers logout. Gateway authenticates the current session cookie, verifies the CSRF token (X-CSRF-Token / Origin), calls Keycloak over the private cluster network using a dedicated session-revocation client credential, and clears the cookie.',
+          code: `POST /auth/logout HTTP/1.1\nHost: auth.nacfson.cloud\nCookie: PLATFORM_SESSION=...\nX-CSRF-Token: <valid-hmac>\n\n--> Gateway calls Keycloak DELETE session & invalidates cache immediately`,
+          guard: 'AUTH-05: Next protected request with an old unexpired JWT is immediately rejected (401) while other device sessions stay active.'
+        }
+      ],
+      vault: [
+        {
+          title: '1. Pod InitContainer Authenticates via K8s ServiceAccount JWT',
+          spec: 'Spec 002 & 005',
+          from: 'secret-fetcher (curl:8.10.1)',
+          to: 'OpenBao (:8200)',
+          proto: 'POST http://openbao-service.vault.svc:8200/v1/auth/kubernetes/login',
+          desc: 'When Gateway, Keycloak, or Postgres pods start, their locked-down initContainer reads its Kubernetes SA token and authenticates to OpenBao\'s Kubernetes Auth Engine to obtain a short-lived client_token.',
+          code: `SA_TOKEN=$(cat /var/run/secrets/kubernetes.io/serviceaccount/token)\ncurl -fsSL -X POST "$VAULT_ADDR/v1/auth/kubernetes/login" \\\n  -d "{\\"jwt\\": \\"$SA_TOKEN\\", \\"role\\": \\"gateway\\"}"`,
+          guard: 'Each ServiceAccount is bound to a narrow HCL policy (gateway-transit.hcl, keycloak-broker.hcl, postgres-server.hcl).'
+        },
+        {
+          title: '2. Ephemeral RAM tmpfs Secret Hydration',
+          spec: 'Spec 002 & 005',
+          from: 'secret-fetcher initContainer',
+          to: 'emptyDir (medium: Memory)',
+          proto: 'GET /v1/kv/data/gateway/* -> /var/run/secrets/gateway/*',
+          desc: 'The initContainer fetches secrets over HTTP, writes them into a 1Mi RAM-backed tmpfs mount (/var/run/secrets), sets chmod 0400, and exits. The main container reads the files read-only without curl or shell access.',
+          code: `volumes:\n  - name: gateway-secrets\n    emptyDir:\n      medium: Memory\n      sizeLimit: 1Mi`,
+          guard: 'Principle V: Secrets never touch host disk or Kubernetes Secret objects in application namespaces.'
+        },
+        {
+          title: '3. Tenant Workload Sends Unauthenticated SQL Connection',
+          spec: 'Spec 002 · Contract database-proxy.md',
+          from: 'pn-backend (ns: proj-pn)',
+          to: 'vault-db-proxy (ns: vault)',
+          proto: 'TCP PostgreSQL Wire Protocol (:5432)',
+          desc: 'pn-backend connects to vault-db-proxy.vault.svc:5432 without holding any database password. NetworkPolicy in proj-pn blocks direct connections to postgres-service.identity.svc.',
+          code: `DATABASE_URL=postgres://user_pn@vault-db-proxy.vault.svc:5432/proj_pn?sslmode=disable`,
+          guard: 'Even if pn-backend is compromised, the attacker cannot extract PostgreSQL credentials from env vars, files, or memory.'
+        },
+        {
+          title: '4. vault-db-proxy Injects Credentials & Authenticates Upstream',
+          spec: 'Spec 002 · services/vault-proxies/cmd/db-proxy',
+          from: 'vault-db-proxy',
+          to: 'OpenBao (:8200) & PostgreSQL (:5432)',
+          proto: 'Wire StartupMessage Override + SCRAM/MD5 Auth',
+          desc: 'vault-db-proxy intercepts the client StartupMessage, forces database=proj_pn and user=user_pn, retrieves the current password from OpenBao KV in memory, completes upstream authentication with PostgreSQL, and relays SQL packets transparently.',
+          code: `// Enforced by vault-db-proxy environment:\nENFORCED_DB:   "proj_pn"\nENFORCED_ROLE: "user_pn"\nUPSTREAM_PG_HOST: "postgres-service.identity.svc:5432"`,
+          guard: 'Prevents cross-database escalation: pn-backend cannot request database=keycloak even if it alters its connection string.'
+        },
+        {
+          title: '5. K3s Kubelet Pulls Private Image via vault-registry-proxy',
+          spec: 'Spec 002 · Contract registry-proxy.md',
+          from: 'K3s containerd',
+          to: 'vault-registry-proxy (:5000) -> ghcr.io',
+          proto: 'HTTP OCI Distribution API (/v2/nacfson/project-pn-*/manifests/sha256:...)',
+          desc: 'When scheduling a pod, containerd mirrors ghcr.io requests to localhost:5000 (vault-registry-proxy). The proxy fetches the read:packages PAT from OpenBao, injects Authorization: Bearer upstream to ghcr.io, strips auth headers, and streams blobs back.',
+          code: `# /etc/rancher/k3s/registries.yaml\nmirrors:\n  "ghcr.io":\n    endpoint:\n      - "http://localhost:5000"`,
+          guard: 'Zero GHCR pull tokens exist in proj-pn or on worker node disk; rotating the PAT in OpenBao updates pulls cluster-wide.'
+        }
+      ],
+      bootstrap: [
+        {
+          title: '1. Stage 1 & 2: Request Validation & Host Preflight',
+          spec: 'Spec 003 · bootstrap/bootstrap.yml',
+          from: 'Operator Laptop (Ansible 2.21.4)',
+          to: 'Target Linux VM (Oracle ARM64 / Local)',
+          proto: 'SSH + Ansible Playbook',
+          desc: 'Validates environment variables (cluster_environment, gitops_repo_url, gitops_branch) and checks OS kernel, swap disabled, required ports (6443, 80, 443), and disk/memory capacity before installing anything.',
+          code: `ansible-playbook -i bootstrap/inventory/hosts.ini bootstrap/bootstrap.yml \\\n  -e cluster_environment=vps-k3s`,
+          guard: 'Spec 003 Scope Boundary: Bootstrap NEVER creates application namespaces, secrets, or tenant workloads.'
+        },
+        {
+          title: '2. Stage 3: Install K3s v1.35.9+k3s1 (Flannel & Kube-Router Disabled)',
+          spec: 'Spec 003 & 010 · bootstrap/roles/k3s_runtime',
+          from: 'Ansible k3s_runtime Role',
+          to: 'K3s Systemd Service',
+          proto: '--flannel-backend=none --disable-network-policy',
+          desc: 'Installs K3s with pinned version v1.35.9+k3s1, configures /etc/rancher/k3s/registries.yaml to mirror ghcr.io -> localhost:5000, and disables bundled Flannel and kube-router so Cilium eBPF owns CNI networking.',
+          code: `INSTALL_K3S_VERSION: "v1.35.9+k3s1"\nK3S_EXEC: "server --flannel-backend=none --disable-network-policy"`,
+          guard: 'Before Cilium reconciles in Stage 5, non-hostNetwork pods stay Pending (ContainerCreating) by design.'
+        },
+        {
+          title: '3. Stage 4 & 5: Control-Plane Readiness & FluxCD GitOps Hand-off',
+          spec: 'Spec 003 & 004 · bootstrap/roles/gitops_reconciler',
+          from: 'Ansible gitops_reconciler Role',
+          to: 'Namespace flux-system',
+          proto: 'kubectl apply clusters/<env>/flux-system',
+          desc: 'Verifies Kubernetes API readiness, applies FluxCD v1.9.5 controllers (which use hostNetwork or start as soon as cni layer applies), and registers the GitRepository and root Kustomization.',
+          code: `# Flux immediately begins reconciling Layer 1a (cni) & Layer 1b (governance)\nkubectl get kustomizations -n flux-system`,
+          guard: 'Once Flux is running, Ansible exits permanently; all further cluster state is 100% pull-based from Git.'
+        },
+        {
+          title: '4. Day-1 Post-Vault Initialization & Unseal',
+          spec: 'Spec 002 & 005 · scripts/vault-init.sh',
+          from: 'Operator Break-Glass CLI',
+          to: 'OpenBao StatefulSet (ns: vault)',
+          proto: 'scripts/vault-init.sh & scripts/vault-seed.sh',
+          desc: 'On initial cluster creation (or after a VM reboot), the operator runs vault-init.sh / vault-unseal.sh to unseal OpenBao in memory and seeds KV v2 paths and Kubernetes Auth roles via vault-seed.sh.',
+          code: `./scripts/vault-unseal.sh\n./scripts/vault-seed.sh --env vps-k3s`,
+          guard: 'Unseal keys and root token are stored offline by the operator — never in Git, Kubernetes Secrets, or host files.'
+        }
+      ],
+      gitops: [
+        {
+          title: '1. Candidate Revision & CI Invariant Validation',
+          spec: 'Spec 004 · DEPLOY-04',
+          from: 'Developer / PR',
+          to: 'GitHub Actions (gitops.yaml)',
+          proto: 'scripts/render-validate.sh & scripts/render-invariants.py',
+          desc: 'Every pull request renders the Kustomize layers for both local-k3s and vps-k3s and checks 9 structural invariants (e.g., postBuild restricted solely to ingress AUTH_HOST, no unresolved ${...} in IngressRoutes).',
+          code: `# Invariant 1 & 9 in scripts/render-invariants.py:\n- postBuild allowed ONLY on layer 'ingress', ONLY key 'AUTH_HOST'\n- Zero unresolved '\${' or empty Host() in rendered IngressRoutes`,
+          guard: 'Prevents Flux variable substitution from corrupting ${VAULT_TOKEN} shell scripts in initContainers.'
+        },
+        {
+          title: '2. 1/n Resource Budget & Peak Memory Envelope Gate',
+          spec: 'Spec 001 & 004 · RESOURCE-02',
+          from: 'GitHub Actions',
+          to: 'scripts/platform-preflight.py',
+          proto: 'Python Preflight Check against clusters/*/capacity.yaml',
+          desc: 'platform-preflight.py calculates peak concurrent CPU and memory (including Deployment rollout surge and CronJob concurrency) and verifies every project fits its 1/n slice without shrinking existing peak memory limits.',
+          code: `Application Capacity = Node Allocatable - Shared Platform Allocation\nPer-Project Budget   = Application Capacity / Deployed Project Count (n)`,
+          guard: 'Fails closed if committed allocatable capacity exceeds observed node capacity or if requests != limits.'
+        },
+        {
+          title: '3. FluxCD Pull-Based 10-Layer DAG Reconciliation',
+          spec: 'Spec 004 & 010 · Principle I',
+          from: 'FluxCD (flux-system)',
+          to: 'Kubernetes API Server',
+          proto: 'GitRepository -> 10 Ordered Kustomizations (interval: 5m)',
+          desc: 'Once merged to main, source-controller fetches the revision and kustomize-controller applies 10 layers in dependency order: (cni, governance) -> (vault, cert-manager, project-boundaries) -> (vault-proxies, database, projects) -> identity -> ingress -> tls.',
+          code: `spec:\n  interval: 5m\n  prune: true\n  wait: true\n  sourceRef:\n    kind: GitRepository\n    name: flux-system`,
+          guard: 'prune: true ensures deleted manifests in Git are garbage-collected in the cluster.'
+        },
+        {
+          title: '4. ValidatingAdmissionPolicy Blocks Manual Drift',
+          spec: 'Spec 004 · deploy/platform/governance/manual-change-policy.yaml',
+          from: 'Operator kubectl',
+          to: 'Kubernetes API Server (CEL Admission)',
+          proto: 'ValidatingAdmissionPolicy: gitops-managed-namespaces',
+          desc: 'If an operator attempts kubectl edit/apply/delete directly in managed namespaces, the CEL admission policy rejects the request immediately unless the user authenticates with the platform:break-glass group.',
+          code: `message: "Manual change rejected: merge to main in github.com/nacfson/nacfson_pipeline, or use the break-glass procedure (operations §12)."`,
+          guard: 'Guarantees Git remains the single source of truth at runtime.'
+        }
+      ],
+      tls: [
+        {
+          title: '1. Platform Declares All Certificates in Namespace platform',
+          spec: 'Spec 008 · FR-001',
+          from: 'Flux tls Layer',
+          to: 'Namespace platform',
+          proto: 'cert-manager.io/v1 Certificate (auth-tls, pn-tls)',
+          desc: 'Instead of placing Certificate objects inside tenant namespaces (where ResourceQuota forbids NodePorts and NetworkPolicy blocks solvers), all edge certificates live in namespace platform.',
+          code: `apiVersion: cert-manager.io/v1\nkind: Certificate\nmetadata:\n  name: pn-tls\n  namespace: platform\nspec:\n  secretName: pn-tls\n  dnsNames: ["pn.nacfson.cloud"]\n  issuerRef: { kind: ClusterIssuer, name: letsencrypt-prod }`,
+          guard: 'Tenant namespaces (proj-pn) hold zero TLS Secrets and zero cert-manager solver pods.'
+        },
+        {
+          title: '2. ACME HTTP-01 Challenge via ClusterIP Solver',
+          spec: 'Spec 008 · FR-004',
+          from: 'cert-manager',
+          to: "Let's Encrypt ACME v2 (via Traefik :80)",
+          proto: 'HTTP-01 /.well-known/acme-challenge/<token>',
+          desc: 'cert-manager spawns a transient HTTP-01 solver Pod and ClusterIP Service in namespace platform. Traefik routes port 80 challenge requests to the solver before the priority-1 HTTP->HTTPS redirect.',
+          code: `solvers:\n  - http01:\n      ingress:\n        ingressClassName: traefik\n        serviceType: ClusterIP # NodePort forbidden by Principle II`,
+          guard: 'Validates domain ownership without opening NodePorts or relaxing tenant NetworkPolicies.'
+        },
+        {
+          title: '3. Traefik TLSStore default Matches SNI Automatically',
+          spec: 'Spec 008 · FR-002 & FR-003',
+          from: 'TLSStore platform/default',
+          to: 'Traefik :443 EntryPoint (websecure)',
+          proto: 'SNI Hostname Lookup (auth.nacfson.cloud | pn.nacfson.cloud)',
+          desc: 'Traefik loads auth-tls and pn-tls into its default TLSStore. Project IngressRoutes simply declare tls: {} and Traefik serves the matching Let\'s Encrypt certificate based on the TLS ClientHello SNI.',
+          code: `apiVersion: traefik.io/v1alpha1\nkind: TLSStore\nmetadata:\n  name: default\n  namespace: platform\nspec:\n  certificates:\n    - secretName: auth-tls\n    - secretName: pn-tls`,
+          guard: 'spec.defaultCertificate is unset so unknown SNI requests never leak a project certificate.'
+        }
+      ],
+      cni: [
+        {
+          title: '1. Flux Layer 1a Deploys Cilium v1.20.3 eBPF Datapath',
+          spec: 'Spec 010 · deploy/platform/cni/cilium.yaml',
+          from: 'Flux cni Layer',
+          to: 'Namespace kube-system (DaemonSet/cilium)',
+          proto: 'eBPF tc/socket hooks + VXLAN overlay',
+          desc: 'Flux reconciles deploy/platform/cni before vault or tenant pods start. Cilium attaches eBPF programs directly to Linux kernel network hooks and assigns cryptographic security identities to every pod.',
+          code: `image: quay.io/cilium/cilium:v1.20.3\nargs:\n  - --enable-ipv4=true\n  - --enable-hubble=true\n  - --hubble-metrics=dns,drop,tcp,flow,icmp,http`,
+          guard: 'Vault layer dependsOn: [cni, governance] guarantees pod networking and policy enforcement exist before StatefulSets start.'
+        },
+        {
+          title: '2. L3/L4 NetworkPolicy Isolates Tenant Namespace (proj-pn)',
+          spec: 'Spec 001 & 010 · deploy/projects/pn/boundary/networkpolicy.yaml',
+          from: 'Cilium eBPF Policy Engine',
+          to: 'Namespace proj-pn',
+          proto: 'Default-Deny Ingress/Egress + Explicit Allowlist',
+          desc: 'Cilium compiles proj-pn NetworkPolicy into kernel eBPF maps: ingress is allowed ONLY from Traefik (kube-system) and intra-namespace pods; egress is allowed ONLY to CoreDNS (:53), vault-db-proxy (:5432), and gateway (:8080).',
+          code: `# Allowed egress from proj-pn:\n1. kube-system CoreDNS (UDP/TCP 53)\n2. vault/vault-db-proxy (TCP 5432)\n3. identity/gateway (TCP 8080)\n# Everything else (postgres:5432, openbao:8200, internet) -> eBPF DROP`,
+          guard: 'Blocks lateral movement to PostgreSQL, OpenBao, or external internet hosts at the kernel socket/tc layer.'
+        },
+        {
+          title: '3. CiliumNetworkPolicy Resolves kube-apiserver Entity for OpenBao',
+          spec: 'Spec 010 · deploy/platform/vault/networkpolicy.yaml',
+          from: 'OpenBao (:8200)',
+          to: 'Kubernetes API Server (TokenReview)',
+          proto: 'CiliumNetworkPolicy toEntities: ["kube-apiserver"]',
+          desc: 'On single-node K3s, the API server resides on the host IP where standard CIDR NetworkPolicies fail after SNAT. Cilium tracks the API server dynamically via the reserved kube-apiserver entity so OpenBao can validate ServiceAccount JWTs.',
+          code: `apiVersion: cilium.io/v2\nkind: CiliumNetworkPolicy\nmetadata:\n  name: vault-apiserver-egress\n  namespace: vault\nspec:\n  endpointSelector:\n    matchLabels: { app: openbao }\n  egress:\n    - toEntities: ["kube-apiserver"]`,
+          guard: 'Eliminates brittle node-IP hardcoding while keeping vault egress default-deny.'
+        },
+        {
+          title: '4. Hubble Relay & UI Stream Real-Time Flow Verdicts',
+          spec: 'Spec 010 · deploy/platform/cni/',
+          from: 'Hubble Relay (v1.20.3)',
+          to: 'Hubble UI (v0.13.6, ClusterIP :80)',
+          proto: 'gRPC Flow Stream (:4245) -> kubectl port-forward',
+          desc: 'Every FORWARDED or DROPPED packet is recorded in Cilium ring buffers with source/destination pod names, labels, and policy drop reasons, viewable privately via kubectl port-forward svc/hubble-ui -n kube-system 12000:80.',
+          code: `kubectl -n kube-system exec ds/cilium -- hubble observe --namespace proj-pn --verdict DROPPED`,
+          guard: 'Hubble UI has zero public IngressRoute; it is strictly ClusterIP-only for operator diagnostics.'
+        }
+      ],
+      probes: [
+        {
+          title: '1. StartupProbe Verifies Initial Cluster Hop (pn-frontend -> pn-backend)',
+          spec: 'Spec 007 · CONTRACT_PROBES_READINESS.md',
+          from: 'Kubelet',
+          to: 'pn-frontend -> pn-backend (/readyz)',
+          proto: 'startupProbe exec / HTTP hop check',
+          desc: 'When pn-frontend starts, its startupProbe verifies that the frontend process is up AND can reach pn-backend over the cluster network before accepting initial traffic.',
+          code: `startupProbe:\n  httpGet: { path: /readyz, port: 8080 }\n  failureThreshold: 30\n  periodSeconds: 2`,
+          guard: 'Prevents routing user traffic to a newly started frontend before its backend dependency is reachable.'
+        },
+        {
+          title: '2. ReadinessProbe Continuously Checks Backend Reachability',
+          spec: 'Spec 007 · contracts/probe-matrix.md',
+          from: 'Kubelet / pn-frontend',
+          to: 'pn-backend (:8080/readyz) -> vault-db-proxy (:5432)',
+          proto: 'Continuous Dependency Readiness Check',
+          desc: 'If pn-backend or vault-db-proxy becomes unreachable, readinessProbe fails within seconds. Kubernetes removes the pod from Service endpoints and the frontend surfaces a structured disconnect signal.',
+          code: `readinessProbe:\n  httpGet: { path: /readyz, port: 8080 }\n  periodSeconds: 5\n  failureThreshold: 2`,
+          guard: 'Failing readiness removes the pod from load balancing but NEVER kills or restarts a healthy frontend container.'
+        },
+        {
+          title: '3. LivenessProbe Checks Process-Local Health Only (No Cascading Restarts)',
+          spec: 'Spec 007 · CONTRACT_PROBES_READINESS.md',
+          from: 'Kubelet',
+          to: 'Container Local Process (/healthz)',
+          proto: 'Process-Local HTTP 200 Check',
+          desc: 'Liveness probes ONLY test whether the local Nginx or Go process is deadlocked. They never call downstream services (like pn-backend or Postgres), preventing cascading restart storms during brief DB maintenance.',
+          code: `livenessProbe:\n  httpGet: { path: /healthz, port: 8080 } # Local process check only!\n  periodSeconds: 10\n  failureThreshold: 3`,
+          guard: 'Rule 6: livenessProbe MUST be process-local only; restartPolicy: Always recovers true process crashes.'
+        },
+        {
+          title: '4. Browser CORS Pre-Flight & PUBLIC_APP_URL Alignment',
+          spec: 'Spec 007 · contracts/browser-api-access.md',
+          from: 'User Browser (https://pn.nacfson.cloud)',
+          to: 'pn-backend (:8080)',
+          proto: 'CORS Origin Check (ALLOWED_ORIGINS)',
+          desc: 'When the SPA makes API calls from https://pn.nacfson.cloud, pn-backend validates the Origin header against ALLOWED_ORIGINS. Platform preflight enforces that PUBLIC_APP_URL is always present inside ALLOWED_ORIGINS.',
+          code: `env:\n  - name: PUBLIC_APP_URL\n    value: "https://pn.nacfson.cloud"\n  - name: ALLOWED_ORIGINS\n    value: "https://pn.nacfson.cloud"`,
+          guard: 'platform-preflight.py rejects any manifest where PUBLIC_APP_URL is missing from ALLOWED_ORIGINS.'
+        }
+      ]
+    };
+
+    let currentFlowKey = 'oidc';
+    let currentStepIdx = 0;
+
+    function selectFlow(flowKey) {
+      currentFlowKey = flowKey;
+      currentStepIdx = 0;
+      document.querySelectorAll('.flow-btn').forEach(btn => {
+        btn.className = 'flow-btn px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700';
+      });
+      const activeBtn = document.getElementById('flow-btn-' + flowKey);
+      if (activeBtn) {
+        activeBtn.className = 'flow-btn px-3.5 py-2 rounded-xl text-xs font-bold bg-cyan-500 text-slate-950 shadow-lg shadow-cyan-500/20';
+      }
+      renderFlow();
+    }
+
+    function stepFlow(delta) {
+      const steps = FLOWS[currentFlowKey];
+      currentStepIdx = (currentStepIdx + delta + steps.length) % steps.length;
+      renderFlow();
+    }
+
+    function selectStepIndex(idx) {
+      currentStepIdx = idx;
+      renderFlow();
+    }
+
+    function renderFlow() {
+      const steps = FLOWS[currentFlowKey];
+      const step = steps[currentStepIdx];
+      document.getElementById('flow-step-indicator').textContent = `Step ${currentStepIdx + 1} / ${steps.length}`;
+
+      const listEl = document.getElementById('flow-steps-list');
+      listEl.innerHTML = steps.map((s, idx) => {
+        const active = idx === currentStepIdx;
+        return `
+          <div onclick="selectStepIndex(${idx})" class="cursor-pointer rounded-xl p-3 border transition ${
+            active
+              ? 'bg-cyan-500/15 border-cyan-400 text-white shadow-md'
+              : 'bg-slate-950/70 border-slate-800/80 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+          }">
+            <div class="flex items-center justify-between text-[11px] font-mono">
+              <span class="${active ? 'text-cyan-300 font-bold' : 'text-slate-500'}">${s.spec}</span>
+              <span class="${active ? 'text-emerald-300' : 'text-slate-600'}">${s.from} ➔ ${s.to}</span>
+            </div>
+            <div class="text-xs font-bold mt-1">${s.title}</div>
+          </div>
+        `;
+      }).join('');
+
+      document.getElementById('flow-detail-badge').textContent = `STEP ${currentStepIdx + 1} OF ${steps.length}`;
+      document.getElementById('flow-detail-spec').textContent = step.spec;
+      document.getElementById('flow-detail-title').textContent = step.title;
+      document.getElementById('flow-detail-desc').textContent = step.desc;
+      document.getElementById('flow-detail-from').textContent = step.from;
+      document.getElementById('flow-detail-to').textContent = step.to;
+      document.getElementById('flow-detail-proto').textContent = step.proto;
+      document.getElementById('flow-detail-code').textContent = step.code;
+      document.getElementById('flow-detail-guard').textContent = step.guard;
+    }
+
+    // =========================================================================
+    // 3. FLUX GITOPS DAG EXPLORER DATA
+    // =========================================================================
+    let currentDagEnv = 'vps-k3s';
+    let currentDagLayer = 'ingress';
+
+    const DAG_LAYERS = {
+      'cni': {
+        title: '1a. cni (Root Layer — Cilium eBPF & Hubble)',
+        path: './deploy/platform/cni',
+        deps: 'None (Root)',
+        desc: 'Deploys Cilium v1.20.3 eBPF CNI DaemonSet, Cilium Operator, Hubble Relay v1.20.3, and Hubble UI v0.13.6 in namespace kube-system. Replaces K3s Flannel and kube-router.',
+        yaml: {
+          'vps-k3s': `dependsOn: [] (Root Layer)\npath: ./deploy/platform/cni\nimages:\n  - quay.io/cilium/cilium:v1.20.3\n  - quay.io/cilium/operator-generic:v1.20.3\n  - quay.io/cilium/hubble-relay:v1.20.3\n  - quay.io/cilium/hubble-ui:v0.13.6`,
+          'local-k3s': `dependsOn: [] (Root Layer)\npath: ./deploy/platform/cni (identical Cilium v1.20.3 manifest)`
+        }
+      },
+      'governance': {
+        title: '1b. governance (Root Layer)',
+        path: './deploy/platform/governance',
+        deps: 'None (Root)',
+        desc: 'Establishes core namespaces (identity, platform, governance), base NetworkPolicies, break-glass RBAC, operator access, and the ValidatingAdmissionPolicies that block manual kubectl changes.',
+        yaml: {
+          'vps-k3s': `resources:\n  - namespaces.yaml (identity, platform, governance)\n  - base-network-policy.yaml\n  - manual-change-policy.yaml (ValidatingAdmissionPolicy)\n  - break-glass-rbac.yaml & operator-access.yaml\n  - openbao-rbac.yaml`,
+          'local-k3s': `resources:\n  - Identical base governance manifests\n  - Enforces ValidatingAdmissionPolicy across all 8 namespaces`
+        }
+      },
+      'cert-manager': {
+        title: '2a. cert-manager',
+        path: './deploy/platform/cert-manager',
+        deps: 'governance',
+        desc: 'Deploys upstream cert-manager v1.21.2 (controller, webhook, cainjector) and CRDs with Restricted Pod Security compliance (runAsNonRoot: true, seccompProfile: RuntimeDefault, drop ALL capabilities).',
+        yaml: {
+          'vps-k3s': `dependsOn: [governance]\nimages:\n  - quay.io/jetstack/cert-manager-controller:v1.21.2\n  - quay.io/jetstack/cert-manager-webhook:v1.21.2\n  - quay.io/jetstack/cert-manager-cainjector:v1.21.2`,
+          'local-k3s': `dependsOn: [governance]\nimages:\n  - Same pinned v1.21.2 upstream manifest`
+        }
+      },
+      'vault': {
+        title: '2b. vault (OpenBao Server & Policies)',
+        path: './deploy/platform/vault',
+        deps: 'cni, governance',
+        desc: 'Deploys the OpenBao 2.0.0 StatefulSet in namespace vault, 8 HCL policies, vault NetworkPolicy + CiliumNetworkPolicy (kube-apiserver entity), and daily snapshot CronJob.',
+        yaml: {
+          'vps-k3s': `dependsOn: [cni, governance]\nhealthChecks:\n  - kind: StatefulSet, name: openbao, namespace: vault\npolicies:\n  - db-proxy, registry-proxy, gateway-transit, keycloak-broker,\n    postgres-init, postgres-server, backup-job, operator-admin`,
+          'local-k3s': `dependsOn: [cni, governance]\nhealthChecks:\n  - kind: StatefulSet, name: openbao, namespace: vault`
+        }
+      },
+      'project-boundaries': {
+        title: '2c. project-boundaries (Tenant Sandbox)',
+        path: './deploy/projects/pn/boundary',
+        deps: 'governance',
+        desc: 'Creates namespace proj-pn with Pod Security Restricted labels, ResourceQuota (850m CPU, 1536Mi RAM, 0 NodePorts/LBs), strict NetworkPolicy, project-pn-sa (no token mount), and pn-reconciler RBAC.',
+        yaml: {
+          'vps-k3s': `dependsOn: [governance]\npath: ./deploy/projects/pn/boundary\nobjects:\n  - Namespace proj-pn (pod-security.kubernetes.io/enforce: restricted)\n  - ResourceQuota project-pn-quota (850m / 1536Mi)\n  - NetworkPolicy project-pn-isolation`,
+          'local-k3s': `dependsOn: [governance]\npath: ./deploy/projects/pn/boundary (identical isolation contract)`
+        }
+      },
+      'vault-proxies': {
+        title: '3a. vault-proxies (Zero-Plaintext Proxies)',
+        path: './deploy/platform/vault-proxies',
+        deps: 'vault',
+        desc: 'Deploys vault-db-proxy (:5432 PostgreSQL wire proxy) and vault-registry-proxy (:5000 GHCR image pull proxy) inside namespace vault.',
+        yaml: {
+          'vps-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml (ENFORCED_DB=proj_pn, ENFORCED_ROLE=user_pn)\n  - registry-proxy.yaml (UPSTREAM_REGISTRY=ghcr.io)`,
+          'local-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml & registry-proxy.yaml`
+        }
+      },
+      'database': {
+        title: '3b. database (PostgreSQL 16.8 & Init Job)',
+        path: './deploy/platform/database',
+        deps: 'vault',
+        desc: 'Deploys PostgreSQL 16.8-alpine StatefulSet, 10Gi PVC, postgres-init-job (which provisions keycloak and proj_pn databases using secrets from OpenBao), and the daily backup CronJob.',
+        yaml: {
+          'vps-k3s': `dependsOn: [vault]\nhealthChecks:\n  - kind: StatefulSet, name: postgres, namespace: identity\nresources:\n  - postgres-statefulset.yaml, postgres-init-job.yaml, backup-cronjob.yaml`,
+          'local-k3s': `dependsOn: [vault]\nhealthChecks:\n  - kind: StatefulSet, name: postgres, namespace: identity`
+        }
+      },
+      'projects': {
+        title: '3c. projects (Tenant Workloads)',
+        path: './clusters/<env>/projects',
+        deps: 'project-boundaries',
+        desc: 'Reconciles tenant project Kustomizations (proj-pn) using targetServiceAccount: pn-reconciler. Patches IngressRoute hostnames and frontend/backend environment per cluster.',
+        yaml: {
+          'vps-k3s': `dependsOn: [project-boundaries]\nwait: false\n# clusters/vps-k3s/projects/proj-pn.yaml patches:\n- IngressRoute match: Host(\`pn.nacfson.cloud\`)\n- pn-backend env: KEYCLOAK_ISSUER_URL=https://auth.nacfson.cloud/realms/platform`,
+          'local-k3s': `dependsOn: [project-boundaries]\nwait: false\n# clusters/local-k3s/projects/proj-pn.yaml:\n- Uses base Host(\`pn.example.com\`)`
+        }
+      },
+      'identity': {
+        title: '4. identity (Keycloak & Go Auth Gateway)',
+        path: './deploy/platform/identity',
+        deps: 'database',
+        desc: 'Deploys Keycloak 24.0.5 and the custom Go Auth Gateway in namespace identity, with per-environment patches for cookie domain, public URL, and allowed project return hosts.',
+        yaml: {
+          'vps-k3s': `dependsOn: [database]\npatches (Deployment/gateway):\n  COOKIE_DOMAIN: ".nacfson.cloud"\n  KEYCLOAK_PUBLIC_URL: "https://auth.nacfson.cloud/realms/platform"\n  PROJECT_RETURN_HOSTS: "pn.nacfson.cloud"`,
+          'local-k3s': `dependsOn: [database]\npatches (Deployment/gateway):\n  COOKIE_DOMAIN: ".example.com"\n  # Uses base KEYCLOAK_PUBLIC_URL (https://auth.example.com/realms/platform)`
+        }
+      },
+      'ingress': {
+        title: '5. ingress (Traefik Middlewares & Auth Allowlist)',
+        path: './deploy/platform/ingress',
+        deps: 'identity',
+        desc: 'Configures Traefik middlewares (http-to-https, strip-forged-headers, forward-auth) and public-auth-allowlist IngressRoute. Uses Spec 004 R3 narrow postBuild substitution for AUTH_HOST.',
+        yaml: {
+          'vps-k3s': `dependsOn: [identity]\npostBuild:\n  substitute:\n    AUTH_HOST: auth.nacfson.cloud\n# Single-source routes in ingress-allowlist.yaml:\n# /oauth/start, /oauth/callback, /auth/logout, /realms/platform/...`,
+          'local-k3s': `dependsOn: [identity]\npostBuild:\n  substitute:\n    AUTH_HOST: auth.example.com`
+        }
+      },
+      'tls': {
+        title: '6. tls (Centralized TLSStore & Certificates)',
+        path: './deploy/platform/tls',
+        deps: 'cert-manager, ingress, project-boundaries',
+        desc: 'Creates ClusterIssuers (selfsigned, letsencrypt-staging, letsencrypt-prod), TLSStore platform/default, and Certificates (auth-tls, pn-tls) in namespace platform.',
+        yaml: {
+          'vps-k3s': `dependsOn: [cert-manager, ingress, project-boundaries]\npatches:\n  - Certificate/auth-tls: dnsNames=[auth.nacfson.cloud], issuer=letsencrypt-prod\n  - Certificate/pn-tls:   dnsNames=[pn.nacfson.cloud],   issuer=letsencrypt-prod`,
+          'local-k3s': `dependsOn: [cert-manager, ingress, project-boundaries]\n# Uses base values:\n  - Certificate/auth-tls: dnsNames=[auth.example.com], issuer=selfsigned\n  - Certificate/pn-tls:   dnsNames=[pn.example.com],   issuer=selfsigned`
+        }
+      }
+    };
+
+    function setDagEnv(env) {
+      currentDagEnv = env;
+      document.getElementById('env-btn-vps').className = env === 'vps-k3s'
+        ? 'px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-cyan-500 text-slate-950'
+        : 'px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 hover:text-white';
+      document.getElementById('env-btn-local').className = env === 'local-k3s'
+        ? 'px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-cyan-500 text-slate-950'
+        : 'px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 hover:text-white';
+      document.getElementById('dag-env-label').textContent = 'env: ' + env;
+      selectDagLayer(currentDagLayer);
+    }
+
+    function selectDagLayer(layerKey) {
+      currentDagLayer = layerKey;
+      const d = DAG_LAYERS[layerKey];
+      if (!d) return;
+      document.getElementById('dag-layer-title').textContent = d.title;
+      document.getElementById('dag-layer-desc').textContent = d.desc;
+      document.getElementById('dag-layer-path').textContent = d.path;
+      document.getElementById('dag-layer-deps').textContent = d.deps;
+      document.getElementById('dag-layer-yaml').textContent = d.yaml[currentDagEnv];
+    }
+
+    // =========================================================================
+    // 4. OPEN-SOURCE PROJECTS & DEPENDENCY CATALOG
+    // =========================================================================
+    const OSS_ITEMS = [
+      {
+        cat: 'oss',
+        name: 'K3s Kubernetes',
+        ver: 'v1.35.9+k3s1',
+        license: 'Apache-2.0 (CNCF)',
+        role: 'Single-Node Kubernetes Control Plane & Kubelet',
+        where: 'bootstrap/bootstrap.yml',
+        details: 'Lightweight certified Kubernetes distribution bundling containerd, CoreDNS, local-path-provisioner, and Traefik ingress.'
+      },
+      {
+        cat: 'oss',
+        name: 'FluxCD (GitOps Toolkit)',
+        ver: 'v1.9.5',
+        license: 'Apache-2.0 (CNCF)',
+        role: 'source-controller & kustomize-controller',
+        where: 'clusters/*/flux-system/gotk-components.yaml',
+        details: 'Continuously reconciles Git state from main branch every 5 minutes across 9 ordered Kustomization layers with prune: true.'
+      },
+      {
+        cat: 'oss',
+        name: 'OpenBao',
+        ver: '2.0.0',
+        license: 'MPL-2.0 (Linux Foundation)',
+        role: 'Centralized Internal Cluster Vault',
+        where: 'deploy/platform/vault/openbao-statefulset.yaml',
+        details: 'Community-driven open-source fork of HashiCorp Vault providing KV v2 secrets, Transit signing engine, and Kubernetes SA JWT authentication.'
+      },
+      {
+        cat: 'oss',
+        name: 'Keycloak',
+        ver: '24.0.5',
+        license: 'Apache-2.0 (CNCF)',
+        role: 'OIDC Identity Provider & Google Broker',
+        where: 'deploy/platform/identity/keycloak-deployment.yaml',
+        details: 'Manages the platform realm, brokers Google OAuth 2.0 sign-in, issues project-scoped access tokens, and handles session termination.'
+      },
+      {
+        cat: 'oss',
+        name: 'PostgreSQL',
+        ver: '16.8-alpine',
+        license: 'PostgreSQL License',
+        role: 'Shared Relational Database StatefulSet',
+        where: 'deploy/platform/database/postgres-statefulset.yaml',
+        details: 'Provides persistent storage on a 10Gi volume with isolated databases and roles for Keycloak and tenant projects (proj_pn).'
+      },
+      {
+        cat: 'oss',
+        name: 'Traefik Proxy',
+        ver: 'K3s Bundled (v2/v3 CRD)',
+        license: 'MIT License',
+        role: 'Edge Ingress Controller & SNI Termination',
+        where: 'deploy/platform/ingress/* & deploy/platform/tls/*',
+        details: 'Routes traffic via IngressRoute CRDs, strips forged identity headers, triggers ForwardAuth, and serves certificates from TLSStore default.'
+      },
+      {
+        cat: 'oss',
+        name: 'cert-manager',
+        ver: 'v1.21.2',
+        license: 'Apache-2.0 (CNCF)',
+        role: 'Automated X.509 Certificate Controller',
+        where: 'deploy/platform/cert-manager/upstream/cert-manager.yaml',
+        details: 'Automates Let\'s Encrypt ACME v2 HTTP-01 challenges (using ClusterIP solver services) and self-signed local certificates.'
+      },
+      {
+        cat: 'custom',
+        name: 'Platform Auth Gateway',
+        ver: 'Go 1.22 (0 external deps)',
+        license: 'First-Party (Pure Go Stdlib)',
+        role: 'OIDC PKCE Client, ForwardAuth & Session Revocation',
+        where: 'gateway/cmd/gateway/main.go',
+        details: 'Built with zero third-party Go modules (go.mod has 0 require lines). Implements OIDC PKCE, HMAC cookies, online session validation, and CSRF-safe logout.'
+      },
+      {
+        cat: 'custom',
+        name: 'vault-db-proxy',
+        ver: 'Go 1.22 (0 external deps)',
+        license: 'First-Party (Pure Go Stdlib)',
+        role: 'Zero-Plaintext PostgreSQL Wire-Protocol Proxy',
+        where: 'services/vault-proxies/cmd/db-proxy/main.go',
+        details: 'Intercepts PostgreSQL protocol handshakes on :5432, fetches dynamic credentials from OpenBao in memory, and enforces ENFORCED_DB=proj_pn.'
+      },
+      {
+        cat: 'custom',
+        name: 'vault-registry-proxy',
+        ver: 'Go 1.22 (0 external deps)',
+        license: 'First-Party (Pure Go Stdlib)',
+        role: 'Zero-Plaintext OCI Container Registry Proxy',
+        where: 'services/vault-proxies/cmd/registry-proxy/main.go',
+        details: 'Mirrors ghcr.io on :5000 for K3s containerd, injecting the GitHub PAT from OpenBao upstream and stripping auth headers on return.'
+      },
+      {
+        cat: 'oss',
+        name: 'cURL (curlimages/curl)',
+        ver: '8.10.1',
+        license: 'curl / MIT License',
+        role: 'Ephemeral InitContainer Secret Fetcher',
+        where: 'deploy/platform/identity/* & database/*',
+        details: 'Exchanges K8s ServiceAccount JWTs with OpenBao at pod startup and populates secrets into in-memory tmpfs (/var/run/secrets).'
+      },
+      {
+        cat: 'ci',
+        name: 'Ansible Core',
+        ver: '2.21.4',
+        license: 'GPL-3.0',
+        role: 'Minimal VM Bootstrap & Reconciler Installer',
+        where: 'bootstrap/requirements.txt & bootstrap/bootstrap.yml',
+        details: 'Executes 5-stage VM bootstrap: request validation, host preflight, K3s v1.35.9+k3s1 installation, readiness verification, and Flux reconciler setup.'
+      },
+      {
+        cat: 'ci',
+        name: 'Python 3 + PyYAML',
+        ver: 'PyYAML 6.0.3',
+        license: 'MIT License',
+        role: 'CI Preflight & Render Invariant Engine',
+        where: 'scripts/platform-preflight.py & render-invariants.py',
+        details: 'Computes 1/n resource slices from capacity.yaml, enforces Peak Memory Envelope Freeze, and verifies rendered Kustomize invariants.'
+      },
+      {
+        cat: 'oss',
+        name: 'Cilium eBPF CNI',
+        ver: 'v1.20.3',
+        license: 'Apache-2.0 (CNCF)',
+        role: 'Kernel eBPF Pod Networking & NetworkPolicy Engine',
+        where: 'deploy/platform/cni/cilium.yaml',
+        details: 'Replaces K3s Flannel and kube-router with eBPF datapath programs and CiliumNetworkPolicy (including kube-apiserver entity tracking).'
+      },
+      {
+        cat: 'oss',
+        name: 'Hubble Relay & Hubble UI',
+        ver: 'v1.20.3 / v0.13.6',
+        license: 'Apache-2.0 (CNCF)',
+        role: 'Real-Time Network Flow & Policy Drop Observability',
+        where: 'deploy/platform/cni/cilium.yaml',
+        details: 'Streams FORWARDED and DROPPED packet verdicts with pod identity and policy reason labels over a private ClusterIP UI.'
+      },
+      {
+        cat: 'custom',
+        name: 'Project PN (Frontend & Backend)',
+        ver: 'SHA256 Digest Pinned',
+        license: 'First-Party Tenant Workload',
+        role: 'Expo Web SPA (Nginx :80) + Go API (:8080)',
+        where: 'deploy/projects/pn/workloads/*',
+        details: 'First tenant workload running under Restricted Pod Security, verifying platform JWTs and querying PostgreSQL through vault-db-proxy.'
+      }
+    ];
+
+    function filterOss(cat) {
+      const grid = document.getElementById('oss-grid');
+      const items = cat === 'all' ? OSS_ITEMS : OSS_ITEMS.filter(i => i.cat === cat);
+      grid.innerHTML = items.map(item => {
+        const badgeColor = item.cat === 'custom'
+          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+          : item.cat === 'ci'
+          ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+          : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/30';
+        return `
+          <div class="bg-slate-900/70 border border-slate-800 hover:border-slate-700 rounded-2xl p-4 flex flex-col justify-between space-y-3 transition">
+            <div>
+              <div class="flex items-center justify-between gap-2">
+                <span class="px-2 py-0.5 text-[10px] font-mono font-bold rounded border ${badgeColor}">${item.license}</span>
+                <span class="font-mono text-xs font-bold text-slate-300">${item.ver}</span>
+              </div>
+              <h3 class="text-base font-bold text-white mt-2">${item.name}</h3>
+              <div class="text-xs font-medium text-cyan-400 mt-0.5">${item.role}</div>
+              <p class="text-xs text-slate-300 mt-2 leading-relaxed">${item.details}</p>
+            </div>
+            <div class="pt-2 border-t border-slate-800/80 font-mono text-[11px] text-slate-400 truncate">
+              📁 ${item.where}
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+
+    // =========================================================================
+    // 5. 1/N RESOURCE BUDGET CALCULATOR (Exact platform-preflight.py Formula)
+    // =========================================================================
+    function updateBudgetCalc() {
+      const env = document.getElementById('calc-env').value;
+      const n = parseInt(document.getElementById('calc-n').value, 10);
+      const candMem = parseInt(document.getElementById('calc-mem').value, 10);
+      const candCpu = parseInt(document.getElementById('calc-cpu').value, 10);
+
+      const allocCpu = 4000;
+      const allocMem = env === 'vps' ? 24576 : 8192;
+      const platCpu = 1920; // Shared Platform Reservation (including Cilium + Hubble + Vault + Identity + Cert-Manager)
+      const platMem = 5312;
+
+      const poolCpu = allocCpu - platCpu;
+      const poolMem = allocMem - platMem;
+
+      const sliceCpu = Math.floor(poolCpu / n);
+      const sliceMem = Math.floor(poolMem / n);
+
+      document.getElementById('calc-n-val').textContent = `${n} project${n > 1 ? 's' : ''}`;
+      document.getElementById('calc-mem-val').textContent = `${candMem} MiB`;
+      document.getElementById('calc-cpu-val').textContent = `${candCpu}m`;
+
+      document.getElementById('calc-alloc').textContent = `${allocCpu}m CPU · ${allocMem} MiB`;
+      document.getElementById('calc-plat').textContent = `${platCpu}m CPU · ${platMem} MiB`;
+      document.getElementById('calc-pool').textContent = `${poolCpu}m CPU · ${poolMem} MiB`;
+      document.getElementById('calc-slice').textContent = `${sliceCpu}m CPU · ${sliceMem} MiB`;
+
+      const vbox = document.getElementById('calc-verdict-box');
+      const vtitle = document.getElementById('calc-verdict-title');
+      const vdesc = document.getElementById('calc-verdict-desc');
+
+      const deployedPeakMem = 640; // Current proj-pn deployed peak memory envelope (128Mi FE + 512Mi BE)
+
+      if (candMem < deployedPeakMem) {
+        vbox.className = 'rounded-xl p-4 border bg-rose-950/40 border-rose-500/50';
+        vtitle.className = 'text-xs font-mono font-bold uppercase text-rose-300';
+        vtitle.textContent = '✗ platform-preflight.py: REJECTED (Memory Envelope Shrink)';
+        vdesc.textContent = `Candidate peak memory (${candMem} MiB) is below deployed peak memory envelope (${deployedPeakMem} MiB). SPEC.md §6 RESOURCE-02 forbids shrinking deployed memory limits.`;
+      } else if (candCpu > sliceCpu || candMem > sliceMem) {
+        vbox.className = 'rounded-xl p-4 border bg-rose-950/40 border-rose-500/50';
+        vtitle.className = 'text-xs font-mono font-bold uppercase text-rose-300';
+        vtitle.textContent = '✗ platform-preflight.py: REJECTED (Exceeds 1/n Slice)';
+        vdesc.textContent = `Candidate peak (${candCpu}m CPU / ${candMem} MiB) exceeds the 1/${n} per-project budget slice (${sliceCpu}m CPU / ${sliceMem} MiB). Promotion to main is blocked.`;
+      } else {
+        vbox.className = 'rounded-xl p-4 border bg-emerald-950/30 border-emerald-500/40';
+        vtitle.className = 'text-xs font-mono font-bold uppercase text-emerald-300';
+        vtitle.textContent = '✓ platform-preflight.py: PASS (Promotable to main)';
+        vdesc.textContent = `Candidate peak (${candCpu}m CPU / ${candMem} MiB) fits within the 1/${n} slice (${sliceCpu}m CPU / ${sliceMem} MiB) and preserves the ${deployedPeakMem} MiB deployed memory envelope.`;
+      }
+    }
+
+    // =========================================================================
+    // 6. CNI & eBPF PACKET PATH SIMULATOR (Spec 010)
+    // =========================================================================
+    let currentCniMode = 'cilium';
+    let currentCniScenario = 'pn-db-proxy';
+
+    const CNI_SCENARIOS = {
+      'pn-db-proxy': {
+        title: 'pn-backend ➔ vault-db-proxy (:5432)',
+        src: 'proj-pn/pn-backend (app=pn-backend)',
+        dst: 'vault/vault-db-proxy (:5432)',
+        allowed: true,
+        policy: 'NetworkPolicy: project-pn-isolation (deploy/projects/pn/boundary/networkpolicy.yaml)',
+        kernelHook: 'eBPF tc egress (proj-pn) + tc ingress (vault) -> Identity Match -> ALLOWED',
+        hubble: `TIMESTAMP             SOURCE                        DESTINATION                   TYPE          VERDICT     SUMMARY\nOct 17 09:42:11.104   proj-pn/pn-backend:49182      vault/vault-db-proxy:5432     policy-verdict FORWARDED   TCP SYN (Egress allowed by project-pn-isolation)`,
+        yaml: `# deploy/projects/pn/boundary/networkpolicy.yaml\negress:\n  - to:\n      - namespaceSelector:\n          matchLabels: { kubernetes.io/metadata.name: vault }\n        podSelector:\n          matchLabels: { app: vault-db-proxy }\n    ports:\n      - protocol: TCP\n        port: 5432`,
+        why: 'Tenant workloads never talk to PostgreSQL directly. They are only permitted to reach vault-db-proxy:5432, which injects the DB password in memory.'
+      },
+      'pn-direct-pg': {
+        title: 'pn-backend ➔ postgres-service (:5432) [Bypass Attempt]',
+        src: 'proj-pn/pn-backend (app=pn-backend)',
+        dst: 'identity/postgres-service (:5432)',
+        allowed: false,
+        policy: 'NetworkPolicy: project-pn-isolation (Egress Default-Deny)',
+        kernelHook: 'eBPF tc egress hook on lxc_pn_backend -> Policy Map Lookup Miss -> EPERM DROP',
+        hubble: `TIMESTAMP             SOURCE                        DESTINATION                   TYPE            VERDICT   SUMMARY\nOct 17 09:42:15.802   proj-pn/pn-backend:51044      identity/postgres-0:5432      Policy denied   DROPPED   TCP SYN (Drop reason: Policy denied by egress rule)`,
+        yaml: `# Egress to namespace 'identity' port 5432 is NOT in the allowlist.\n# Cilium drops the SYN packet inside the kernel before it leaves the pod veth!`,
+        why: 'Even if an attacker compromises pn-backend and discovers postgres-service.identity.svc, Cilium drops the packet at the eBPF socket/tc hook and logs a DROPPED verdict in Hubble.'
+      },
+      'pn-direct-bao': {
+        title: 'pn-backend ➔ openbao-service (:8200) [Secret Theft Attempt]',
+        src: 'proj-pn/pn-backend (app=pn-backend)',
+        dst: 'vault/openbao-service (:8200)',
+        allowed: false,
+        policy: 'NetworkPolicy: project-pn-isolation + vault-network-policy',
+        kernelHook: 'eBPF tc egress hook -> Port 8200 & pod app=openbao not in egress map -> DROP',
+        hubble: `TIMESTAMP             SOURCE                        DESTINATION                   TYPE            VERDICT   SUMMARY\nOct 17 09:42:19.012   proj-pn/pn-backend:38910      vault/openbao-0:8200          Policy denied   DROPPED   TCP SYN (Drop reason: Policy denied)`,
+        yaml: `# deploy/platform/vault/networkpolicy.yaml\n# OpenBao ingress only allows: vault-db-proxy, vault-registry-proxy,\n# gateway, keycloak, postgres-init, postgres, and operator-admin.`,
+        why: 'Two independent policies block this: proj-pn egress blocks :8200, and vault ingress only accepts traffic from platform proxies and identity/database init containers.'
+      },
+      'bao-apiserver': {
+        title: 'openbao ➔ kube-apiserver (:6443) [TokenReview Auth]',
+        src: 'vault/openbao-0 (app=openbao)',
+        dst: 'reserved:kube-apiserver (:6443)',
+        allowed: true,
+        policy: 'CiliumNetworkPolicy: vault-apiserver-egress (deploy/platform/vault/networkpolicy.yaml)',
+        kernelHook: 'eBPF toEntities: ["kube-apiserver"] -> Host IP / SNAT Identity Match -> FORWARDED',
+        hubble: `TIMESTAMP             SOURCE                        DESTINATION                   TYPE            VERDICT     SUMMARY\nOct 17 09:42:22.410   vault/openbao-0:44218         reserved:kube-apiserver:6443  policy-verdict  FORWARDED   TCP TLSv1.3 (TokenReview validation)`,
+        yaml: `apiVersion: cilium.io/v2\nkind: CiliumNetworkPolicy\nmetadata:\n  name: vault-apiserver-egress\n  namespace: vault\nspec:\n  endpointSelector:\n    matchLabels: { app: openbao }\n  egress:\n    - toEntities:\n        - kube-apiserver`,
+        why: 'On single-node K3s, the Kubernetes API server runs on the host IP. Standard K8s NetworkPolicies break when DNAT/SNAT rewrites the IP, whereas Cilium tracks reserved:kube-apiserver natively.'
+      },
+      'pn-gateway': {
+        title: 'pn-backend ➔ gateway (:8080/jwks) [JWT Verification]',
+        src: 'proj-pn/pn-backend (app=pn-backend)',
+        dst: 'identity/gateway (:8080)',
+        allowed: true,
+        policy: 'NetworkPolicy: project-pn-isolation (Explicit Gateway Allow)',
+        kernelHook: 'eBPF tc egress (proj-pn) -> Match ns=identity, app=gateway, port=8080 -> FORWARDED',
+        hubble: `TIMESTAMP             SOURCE                        DESTINATION                   TYPE            VERDICT     SUMMARY\nOct 17 09:42:28.115   proj-pn/pn-backend:40212      identity/gateway:8080         policy-verdict  FORWARDED   HTTP GET /jwks -> 200 OK`,
+        yaml: `# deploy/projects/pn/boundary/networkpolicy.yaml\n  - to:\n      - namespaceSelector:\n          matchLabels: { kubernetes.io/metadata.name: identity }\n        podSelector:\n          matchLabels: { app: gateway }\n    ports:\n      - protocol: TCP\n        port: 8080`,
+        why: 'Allows pn-backend to fetch public RS256 JWKS keys from the Gateway without exposing Keycloak (:8080) directly to tenant pods.'
+      },
+      'pn-internet': {
+        title: 'pn-backend ➔ External Internet (1.1.1.1:443) [Exfiltration Attempt]',
+        src: 'proj-pn/pn-backend (app=pn-backend)',
+        dst: 'world / 1.1.1.1:443',
+        allowed: false,
+        policy: 'NetworkPolicy: project-pn-isolation (Zero External Egress)',
+        kernelHook: 'eBPF tc egress -> Destination reserved:world not in policy map -> DROP',
+        hubble: `TIMESTAMP             SOURCE                        DESTINATION                   TYPE            VERDICT   SUMMARY\nOct 17 09:42:33.901   proj-pn/pn-backend:55190      1.1.1.1:443 (world)           Policy denied   DROPPED   TCP SYN (Drop reason: Policy denied)`,
+        yaml: `# policyTypes: [Ingress, Egress]\n# Because Egress is listed in policyTypes and no 0.0.0.0/0 rule exists,\n# all outbound internet connections from proj-pn are blocked.`,
+        why: 'Prevents data exfiltration or reverse shells from tenant containers to external command-and-control servers.'
+      }
+    };
+
+    function setCniMode(mode) {
+      currentCniMode = mode;
+      ['cilium', 'flannel', 'nocni'].forEach(m => {
+        const btn = document.getElementById('cni-mode-' + m);
+        if (!btn) return;
+        btn.className = m === mode
+          ? 'px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-teal-500 text-slate-950'
+          : 'px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 hover:text-white';
+      });
+      renderCniSim();
+    }
+
+    function selectCniScenario(key) {
+      currentCniScenario = key;
+      document.querySelectorAll('.cni-scen-btn').forEach(btn => {
+        btn.className = 'cni-scen-btn w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700';
+      });
+      const active = document.getElementById('cni-scen-' + key);
+      if (active) {
+        active.className = 'cni-scen-btn w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold bg-teal-500/15 border border-teal-400 text-white';
+      }
+      renderCniSim();
+    }
+
+    function renderCniSim() {
+      const s = CNI_SCENARIOS[currentCniScenario];
+      if (!s) return;
+
+      const badge = document.getElementById('cni-verdict-badge');
+      const title = document.getElementById('cni-sim-title');
+      const modeDesc = document.getElementById('cni-mode-desc');
+      const srcEl = document.getElementById('cni-sim-src');
+      const dstEl = document.getElementById('cni-sim-dst');
+      const hookEl = document.getElementById('cni-sim-hook');
+      const hubbleEl = document.getElementById('cni-sim-hubble');
+      const yamlEl = document.getElementById('cni-sim-yaml');
+      const whyEl = document.getElementById('cni-sim-why');
+
+      title.textContent = s.title;
+      srcEl.textContent = s.src;
+      dstEl.textContent = s.dst;
+
+      if (currentCniMode === 'nocni') {
+        badge.className = 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40';
+        badge.textContent = '⚠ POD PENDING (ContainerCreating)';
+        modeDesc.textContent = 'What-If Mode: K3s started with --flannel-backend=none, and Flux Layer 1a (cni) has NOT reconciled yet. Kubelet cannot allocate pod IPs or veth pairs for non-hostNetwork pods.';
+        hookEl.textContent = 'No CNI binary in /opt/cni/bin -> Pod sandbox creation blocked until cilium DaemonSet starts';
+        hubbleEl.textContent = 'kubectl get pods -A\nNAMESPACE   NAME                          READY   STATUS              RESTARTS\nvault       openbao-0                     0/1     ContainerCreating   0\nproj-pn     pn-backend-6d8f9b7c4-x92lk    0/1     ContainerCreating   0';
+        yamlEl.textContent = '# Why Layer 1a (cni) is a Root Layer in clusters/*/layers.yaml:\n# vault dependsOn: [cni, governance] so OpenBao waits for Cilium Ready!';
+        whyEl.textContent = 'Because K3s disables built-in Flannel, Cilium MUST be deployed in Root Layer 1a before Vault, Database, or Tenant pods can obtain IP addresses.';
+        return;
+      }
+
+      if (currentCniMode === 'flannel') {
+        if (currentCniScenario === 'bao-apiserver') {
+          badge.className = 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40';
+          badge.textContent = '✗ BROKEN under Flannel + kube-router';
+          modeDesc.textContent = 'What-If Mode: Legacy K3s Flannel + kube-router iptables. CiliumNetworkPolicy CRD is ignored, and host-IP SNAT breaks OpenBao -> kube-apiserver TokenReview!';
+          hookEl.textContent = 'iptables KUBE-NWPLCY chain -> CiliumNetworkPolicy CRD unrecognized -> Egress to 10.43.0.1:443 SNATs to node IP and times out!';
+          hubbleEl.textContent = '[No Hubble in Flannel mode] Operator is blind: packets silently timeout during OpenBao Kubernetes Auth login.';
+          yamlEl.textContent = s.yaml;
+          whyEl.textContent = 'This exact failure is why Spec 010 replaced Flannel/kube-router with Cilium v1.20.3: Cilium natively tracks reserved:kube-apiserver and provides Hubble drop visibility.';
+        } else {
+          badge.className = s.allowed
+            ? 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+            : 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40';
+          badge.textContent = s.allowed ? '✓ ALLOWED (Legacy iptables)' : '✗ DROPPED (Silent iptables drop — No Hubble)';
+          modeDesc.textContent = 'What-If Mode: Legacy K3s Flannel + kube-router. Linear O(n) iptables chains evaluate rules, but zero Hubble flow logs exist when a packet is dropped.';
+          hookEl.textContent = 'Netfilter iptables chain traversal (no eBPF identity map, no L7/flow telemetry)';
+          hubbleEl.textContent = '[Hubble unavailable under Flannel] To debug a drop, you would have to tcpdump raw veth interfaces on the host.';
+          yamlEl.textContent = s.yaml;
+          whyEl.textContent = s.why;
+        }
+        return;
+      }
+
+      // Default: Cilium v1.20.3 eBPF Mode
+      modeDesc.textContent = 'Live Architecture Mode (Spec 010): K3s runs with --flannel-backend=none --disable-network-policy. Cilium v1.20.3 enforces policies in eBPF and streams verdicts to Hubble.';
+      if (s.allowed) {
+        badge.className = 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+        badge.textContent = '✓ eBPF VERDICT: FORWARDED';
+      } else {
+        badge.className = 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40';
+        badge.textContent = '✗ eBPF VERDICT: DROPPED (Policy Denied)';
+      }
+      hookEl.textContent = s.kernelHook;
+      hubbleEl.textContent = s.hubble;
+      yamlEl.textContent = s.yaml;
+      whyEl.textContent = s.why;
+    }
+
+    // =========================================================================
+    // 7. GATEWAY & EDGE AUTH ALLOW-VS-BLOCK SIMULATOR (Specs 001, 006, 009)
+    // =========================================================================
+    let currentAuthScenario = 'door-open';
+
+    const AUTH_SCENARIOS = {
+      'door-open': {
+        title: '1. Public Project Door Entry (GET https://pn.nacfson.cloud/)',
+        status: '200 OK (ALLOW)',
+        allowed: true,
+        layer: 'Traefik IngressRoute (proj-pn) + strip-forged-headers Middleware',
+        req: `GET / HTTP/1.1\nHost: pn.nacfson.cloud\nX-User-Subject: forged-admin-id`,
+        res: `HTTP/1.1 200 OK (Served by pn-frontend :80)\n[Traefik stripped X-User-Subject before forwarding]`,
+        checks: [
+          '✓ TLS SNI matches pn-tls in TLSStore platform/default',
+          '✓ strip-forged-headers middleware removes client-supplied X-User-* headers',
+          '✓ sign-in.yaml mode: shared allows public door entry without forcing login redirect'
+        ],
+        code: `# deploy/projects/pn/sign-in.yaml\nmode: shared # Visitor reaches project door directly; sign-in is user-initiated`
+      },
+      'admin-block': {
+        title: '2. Keycloak Admin Console Probe (GET https://auth.nacfson.cloud/admin)',
+        status: '404 Not Found (BLOCK)',
+        allowed: false,
+        layer: 'Traefik Public Auth Allowlist (deploy/platform/ingress/ingress-allowlist.yaml)',
+        req: `GET /admin/master/console/ HTTP/1.1\nHost: auth.nacfson.cloud`,
+        res: `HTTP/1.1 404 Not Found\n[Dropped at Edge: Path /admin is absent from ingress-allowlist.yaml]`,
+        checks: [
+          '✓ Only /oauth/start, /oauth/callback, /auth/logout, and /realms/platform/{protocol/openid-connect/auth,login-actions,broker,resources} are routed',
+          '✗ /admin, /metrics, /health, and port 9000 have zero public IngressRoute match'
+        ],
+        code: `# deploy/platform/ingress/ingress-allowlist.yaml\nmatch: Host(\`auth.nacfson.cloud\`) && (\n  Path(\`/oauth/start\`) || Path(\`/oauth/callback\`) || Path(\`/auth/logout\`) ||\n  PathPrefix(\`/realms/platform/protocol/openid-connect/auth\`) || ...)`
+      },
+      'open-redirect': {
+        title: '3. Untrusted Return Host Attack (/oauth/start?return=https://evil.example/)',
+        status: '400 Bad Request (BLOCK)',
+        allowed: false,
+        layer: 'Go Auth Gateway (gateway/cmd/gateway/main.go — validateReturnURL)',
+        req: `GET /oauth/start?return=https://evil.example/steal HTTP/1.1\nHost: auth.nacfson.cloud`,
+        res: `HTTP/1.1 400 Bad Request\n{"error": "invalid return URL: host evil.example not in PROJECT_RETURN_HOSTS"}`,
+        checks: [
+          '✓ Parses return query parameter as absolute HTTPS URL',
+          '✗ Host evil.example is NOT in PROJECT_RETURN_HOSTS (pn.nacfson.cloud)',
+          '✓ Blocks open-redirect phishing before touching Keycloak'
+        ],
+        code: `// gateway/cmd/gateway/main.go\nif !allowedReturnHosts[u.Hostname()] {\n    http.Error(w, "invalid return host", http.StatusBadRequest)\n    return\n}`
+      },
+      'google-start': {
+        title: '4. Valid Shared Sign-In Start (/oauth/start?return=https://pn.nacfson.cloud/)',
+        status: '302 Found -> Google OIDC (ALLOW)',
+        allowed: true,
+        layer: 'Go Auth Gateway (Spec 009 Direct Google Broker Hint)',
+        req: `GET /oauth/start?return=https://pn.nacfson.cloud/ HTTP/1.1\nHost: auth.nacfson.cloud`,
+        res: `HTTP/1.1 302 Found\nSet-Cookie: OAUTH_STATE=...; HttpOnly; Secure\nLocation: https://auth.nacfson.cloud/realms/platform/protocol/openid-connect/auth?...&kc_idp_hint=google`,
+        checks: [
+          '✓ return host pn.nacfson.cloud matches PROJECT_RETURN_HOSTS',
+          '✓ Generates PKCE S256 code_challenge + HMAC state cookie',
+          '✓ Appends kc_idp_hint=google (Spec 009) so user never sees a Keycloak password box'
+        ],
+        code: `q.Set("kc_idp_hint", "google") // Spec 009: Direct Google OAuth redirect`
+      },
+      'forward-ok': {
+        title: '5. Authenticated API Call with Active Session (ForwardAuth /auth)',
+        status: '200 OK + Bearer JWT (ALLOW)',
+        allowed: true,
+        layer: 'Go Auth Gateway (/auth) + Keycloak Online Session Check',
+        req: `GET /auth HTTP/1.1\nHost: gateway.identity.svc:8080\nCookie: PLATFORM_SESSION=<valid-hmac-session>`,
+        res: `HTTP/1.1 200 OK\nAuthorization: Bearer <RS256-Project-Scoped-JWT>\nX-User-Subject: f:ba91c8:109283\nX-User-Issuer: https://auth.nacfson.cloud/realms/platform`,
+        checks: [
+          '✓ Verifies PLATFORM_SESSION HMAC signature using OpenBao Transit/KV key',
+          '✓ Confirms session is still active in Keycloak over internal cluster HTTP',
+          '✓ Injects project-scoped Bearer JWT for pn-backend to verify independently via /jwks'
+        ],
+        code: `// Traefik forward-auth middleware copies these headers to upstream:\nauthResponseHeaders:\n  - Authorization\n  - X-User-Subject\n  - X-User-Issuer\n  - X-Auth-CSRF-Token`
+      },
+      'revoked-session': {
+        title: '6. Request with Logged-Out / Revoked Session or Unreachable IdP',
+        status: '401 Unauthorized / 503 Fail-Closed (BLOCK)',
+        allowed: false,
+        layer: 'Go Auth Gateway (/auth — Synchronous Revocation & Fail-Closed Guard)',
+        req: `GET /auth HTTP/1.1\nCookie: PLATFORM_SESSION=<session-after-logout>`,
+        res: `HTTP/1.1 401 Unauthorized (or 503 Service Unavailable if Keycloak is down)\n[Traefik blocks upstream request immediately]`,
+        checks: [
+          '✗ Session ID was revoked via POST /auth/logout (or Keycloak is unreachable)',
+          '✓ Even if the cached JWT exp timestamp is still in the future, Gateway rejects immediately',
+          '✓ Fail-Closed (Principle III): Never falls back to trusting unverified cookies'
+        ],
+        code: `// Spec 001 AUTH-05: Current-session revocation takes effect immediately\nif !sessionActiveInKeycloak(ctx, sess.SessionID) {\n    w.WriteHeader(http.StatusUnauthorized)\n    return\n}`
+      },
+      'csrf-logout': {
+        title: '7. Cross-Site Forged Logout Attempt (POST /auth/logout without CSRF)',
+        status: '403 Forbidden (BLOCK)',
+        allowed: false,
+        layer: 'Go Auth Gateway (POST /auth/logout CSRF & Origin Guard)',
+        req: `POST /auth/logout HTTP/1.1\nHost: auth.nacfson.cloud\nOrigin: https://evil.example\nCookie: PLATFORM_SESSION=<valid-session>`,
+        res: `HTTP/1.1 403 Forbidden\n{"error": "CSRF validation failed: missing or invalid X-CSRF-Token / Origin"}`,
+        checks: [
+          '✗ Missing X-CSRF-Token header matching session HMAC and untrusted Origin header',
+          '✓ Prevents malicious third-party sites from forcibly logging out the user'
+        ],
+        code: `if !verifyCSRFToken(r.Header.Get("X-CSRF-Token"), sess) {\n    http.Error(w, "CSRF token mismatch", http.StatusForbidden)\n    return\n}`
+      }
+    };
+
+    function selectAuthScenario(key) {
+      currentAuthScenario = key;
+      document.querySelectorAll('.auth-scen-btn').forEach(btn => {
+        btn.className = 'auth-scen-btn w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700';
+      });
+      const active = document.getElementById('auth-scen-' + key);
+      if (active) {
+        active.className = 'auth-scen-btn w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold bg-emerald-500/15 border border-emerald-400 text-white';
+      }
+      renderAuthSim();
+    }
+
+    function renderAuthSim() {
+      const s = AUTH_SCENARIOS[currentAuthScenario];
+      if (!s) return;
+      const badge = document.getElementById('auth-verdict-badge');
+      badge.className = s.allowed
+        ? 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+        : 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40';
+      badge.textContent = s.status;
+
+      document.getElementById('auth-sim-title').textContent = s.title;
+      document.getElementById('auth-sim-layer').textContent = 'Enforcing Checkpoint: ' + s.layer;
+      document.getElementById('auth-sim-req').textContent = s.req;
+      document.getElementById('auth-sim-res').textContent = s.res;
+      document.getElementById('auth-sim-checks').innerHTML = s.checks.map(c => `<li class="text-xs text-slate-200">${c}</li>`).join('');
+      document.getElementById('auth-sim-code').textContent = s.code;
+    }
+
+    // =========================================================================
+    // 8. JUNIOR ENGINEER HANDBOOK: MENTAL MODELS & FAILURE DRILLS
+    // =========================================================================
+    const JUNIOR_MENTAL_MODELS = [
+      {
+        icon: '🏢',
+        name: 'K3s (v1.35.9+k3s1)',
+        analogy: 'The Apartment Building Foundation',
+        plain: 'Runs containers on your single Linux VM. We turn off its default networking (Flannel) so Cilium can install high-security smart doors on every room.',
+        file: 'bootstrap/roles/k3s_runtime'
+      },
+      {
+        icon: '🐝',
+        name: 'Cilium eBPF + Hubble (v1.20.3)',
+        analogy: 'Kernel-Level Smart Badge Doors + CCTV',
+        plain: 'Attaches tiny security programs (eBPF) directly to the Linux kernel. Every pod gets a cryptographic badge; if pn-backend tries to talk to Postgres directly, the kernel drops the packet and Hubble records it on camera.',
+        file: 'deploy/platform/cni/cilium.yaml'
+      },
+      {
+        icon: '🔄',
+        name: 'FluxCD + ValidatingAdmissionPolicy',
+        analogy: 'Automated Blueprint Robot + Locked Fusebox',
+        plain: 'Flux reads Git every 5 minutes and makes the cluster match main across 10 ordered layers. If you try to run kubectl edit by hand, the Admission Policy rejects your command so Git never drifts.',
+        file: 'clusters/vps-k3s/layers.yaml'
+      },
+      {
+        icon: '🚦',
+        name: 'Traefik + cert-manager + TLSStore',
+        analogy: 'Front Desk Receptionist & SSL Notary',
+        plain: 'cert-manager renews Let\'s Encrypt certificates in the platform lobby (namespace platform). Traefik terminates HTTPS using TLSStore default and strips any fake X-User-* headers from visitors.',
+        file: 'deploy/platform/tls/'
+      },
+      {
+        icon: '🛂',
+        name: 'Go Auth Gateway + Keycloak',
+        analogy: 'Passport Control & Google Visa Broker',
+        plain: 'Visitors can enter pn.nacfson.cloud freely (mode: shared). When they click Sign In, the Go Gateway sends them straight to Google login via Keycloak (kc_idp_hint=google) and issues an HMAC cookie.',
+        file: 'gateway/cmd/gateway/main.go'
+      },
+      {
+        icon: '🏦',
+        name: 'OpenBao + vault-db-proxy + vault-registry-proxy',
+        analogy: 'The Bank Vault & Armored Couriers',
+        plain: 'App pods hold ZERO passwords. When pn-backend connects to vault-db-proxy:5432 without a password, the proxy fetches the real password from OpenBao in RAM and logs into Postgres on its behalf.',
+        file: 'services/vault-proxies/'
+      }
+    ];
+
+    let currentJuniorDrill = 'sealed-vault';
+
+    const JUNIOR_DRILLS = {
+      'sealed-vault': {
+        title: 'Scenario 1: The Host VM Reboots — Why Are Pods Stuck in Init:CrashLoopBackOff?',
+        symptom: 'After an Oracle VPS reboot, OpenBao is Running (0/1 Ready), and gateway, keycloak, and postgres pods sit in Init:0/1 or CrashLoopBackOff.',
+        why: 'By Constitution Principle V, OpenBao stores its master unseal key in RAM only — never on disk. When the VM reboots, OpenBao starts in a "Sealed" state, so initContainers cannot fetch secrets.',
+        fix: `# 1. Unseal OpenBao in memory using your offline unseal key:\n./scripts/vault-unseal.sh\n\n# 2. Verify OpenBao is Sealed=false and Ready 1/1:\nkubectl get pods -n vault\n# Kubernetes will automatically retry the initContainers and bring all pods Ready!`
+      },
+      'cors-mismatch': {
+        title: 'Scenario 2: Frontend Loads Fine, But Browser API Calls Fail with CORS Error',
+        symptom: 'https://pn.nacfson.cloud renders the UI, but browser DevTools shows: Access to fetch at https://pn.nacfson.cloud/api/... has been blocked by CORS policy.',
+        why: 'pn-backend checks the browser Origin header against its ALLOWED_ORIGINS env var. If PUBLIC_APP_URL is missing from ALLOWED_ORIGINS, the backend rejects browser preflight requests.',
+        fix: `# Ensure clusters/<env>/projects/proj-pn.yaml sets matching URLs:\n- name: PUBLIC_APP_URL\n  value: "https://pn.nacfson.cloud"\n- name: ALLOWED_ORIGINS\n  value: "https://pn.nacfson.cloud"\n# Run ./scripts/render-validate.sh vps-k3s — preflight enforces this automatically!`
+      },
+      'backend-down': {
+        title: 'Scenario 3: pn-backend Crashes — Why Doesn\'t Kubernetes Restart pn-frontend?',
+        symptom: 'pn-backend is down. pn-frontend goes to 0/1 Ready and shows a disconnect banner, but RESTARTS stays 0.',
+        why: 'Spec 007 separates probe roles! readinessProbe checks the cluster hop to pn-backend (marking frontend NotReady when backend is down), while livenessProbe ONLY checks local Nginx health so Kubernetes never restart-loops a healthy frontend.',
+        fix: `# Inspect why pn-backend or vault-db-proxy is failing:\nkubectl logs -n proj-pn deploy/pn-backend\nkubectl logs -n vault deploy/vault-db-proxy\n# Once pn-backend recovers, pn-frontend readinessProbe turns 1/1 Ready automatically.`
+      },
+      'kubectl-rejected': {
+        title: 'Scenario 4: You Run "kubectl edit deployment" and Get Forbidden by Admission Policy',
+        symptom: 'Error from server (Forbidden): deployments.apps is forbidden: ValidatingAdmissionPolicy "gitops-managed-namespaces" denied request: Manual change rejected.',
+        why: 'Spec 004 enforces strict GitOps: manual imperative edits in managed namespaces are blocked by CEL admission rules so cluster state never drifts from Git.',
+        fix: `# Normal path: Commit your change to Git and let Flux reconcile it.\n# Emergency Break-Glass path (documented in docs/operations-runbook.md §12):\nkubectl apply -f fix.yaml --as=admin --as-group=platform:break-glass`
+      },
+      'hook-blocked': {
+        title: 'Scenario 5: Your AI Agent or git commit Is Blocked by arch-doc-sync',
+        symptom: '[ARCH-DOC-SYNC BLOCKED] Architecture-affecting files were modified without updating docs/platform-architecture.html.',
+        why: 'AGENTS.md + universal multi-agent hooks (.agents, .claude, .codex, .omp, .opencode, .grok, .githooks/pre-commit) require docs/platform-architecture.html to stay 100% synchronized with code/manifest changes.',
+        fix: `# 1. Update docs/platform-architecture.html to reflect your change\n# 2. Run the sync verifier:\npython3 scripts/check-arch-doc-sync.py\n# 3. Stage docs/platform-architecture.html alongside your code changes`
+      }
+    };
+
+    function selectJuniorDrill(key) {
+      currentJuniorDrill = key;
+      document.querySelectorAll('.junior-drill-btn').forEach(btn => {
+        btn.className = 'junior-drill-btn w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700';
+      });
+      const active = document.getElementById('junior-drill-' + key);
+      if (active) {
+        active.className = 'junior-drill-btn w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold bg-amber-500/15 border border-amber-400 text-white';
+      }
+      renderJuniorDrill();
+    }
+
+    function renderJuniorDrill() {
+      const d = JUNIOR_DRILLS[currentJuniorDrill];
+      if (!d) return;
+      document.getElementById('junior-drill-title').textContent = d.title;
+      document.getElementById('junior-drill-symptom').textContent = d.symptom;
+      document.getElementById('junior-drill-why').textContent = d.why;
+      document.getElementById('junior-drill-fix').textContent = d.fix;
+    }
+
+    function renderJuniorGuide() {
+      const grid = document.getElementById('junior-models-grid');
+      if (grid) {
+        grid.innerHTML = JUNIOR_MENTAL_MODELS.map(m => `
+          <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-4 space-y-2">
+            <div class="flex items-center justify-between">
+              <span class="text-lg">${m.icon}</span>
+              <span class="text-[11px] font-mono text-amber-300 bg-amber-500/10 border border-amber-500/30 px-2 py-0.5 rounded">${m.analogy}</span>
+            </div>
+            <h4 class="text-sm font-bold text-white">${m.name}</h4>
+            <p class="text-xs text-slate-300 leading-relaxed">${m.plain}</p>
+            <div class="text-[11px] font-mono text-slate-500 pt-1">📁 ${m.file}</div>
+          </div>
+        `).join('');
+      }
+      renderJuniorDrill();
+    }
+
+    // =========================================================================
+    // TAB SWITCHER
+    // =========================================================================
+    function switchTab(tabId) {
+      ['topology', 'flows', 'cni', 'authsim', 'dag', 'oss', 'budget', 'junior'].forEach(id => {
+        const tabEl = document.getElementById('tab-' + id);
+        if (tabEl) tabEl.classList.toggle('hidden', id !== tabId);
+        const btn = document.getElementById('tab-btn-' + id);
+        if (btn) {
+          if (id === tabId) {
+            btn.className = 'tab-btn px-3 py-1.5 rounded-lg text-xs font-bold transition bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/20';
+          } else {
+            btn.className = 'tab-btn px-3 py-1.5 rounded-lg text-xs font-bold transition text-slate-400 hover:text-slate-200';
+          }
+        }
+      });
+    }
+
+    // Initialize all views on load
+    window.addEventListener('DOMContentLoaded', () => {
+      renderFlow();
+      renderCniSim();
+      renderAuthSim();
+      selectDagLayer('ingress');
+      filterOss('all');
+      updateBudgetCalc();
+      renderJuniorGuide();
+    });
+  </script>
+</body>
+</html>

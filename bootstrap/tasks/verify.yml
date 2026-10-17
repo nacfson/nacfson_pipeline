@@ -48,6 +48,27 @@
       'readiness_outcomes': bootstrap_result.readiness_outcomes | combine({'management_api_ready': true})
     }) }}"
 
+# Check 2b: Cilium CNI readiness (within 300s rollout bound)
+- name: Await Cilium DaemonSet rollout completion
+  ansible.builtin.command:
+    cmd: "k3s kubectl --request-timeout=5s -n kube-system rollout status daemonset/cilium --timeout=300s"
+  register: cilium_ds_rollout
+  changed_when: false
+  failed_when: cilium_ds_rollout.rc != 0
+
+- name: Await Cilium Operator deployment rollout completion
+  ansible.builtin.command:
+    cmd: "k3s kubectl --request-timeout=5s -n kube-system rollout status deployment/cilium-operator --timeout=300s"
+  register: cilium_op_rollout
+  changed_when: false
+  failed_when: cilium_op_rollout.rc != 0
+
+- name: Record CNI readiness outcome
+  ansible.builtin.set_fact:
+    bootstrap_result: "{{ bootstrap_result | combine({
+      'readiness_outcomes': bootstrap_result.readiness_outcomes | combine({'cni_ready': true})
+    }) }}"
+
 # Check 3: Node readiness (within 300s deadline, exactly one Ready node)
 - name: Poll node readiness until exactly one Ready node is reported
   ansible.builtin.shell:

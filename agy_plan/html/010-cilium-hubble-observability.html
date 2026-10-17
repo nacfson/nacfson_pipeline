@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Implementation Plan — 010: Cilium + Hubble CNI &amp; Visual Platform Network Observability</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'dark',
+      securityLevel: 'loose',
+      flowchart: { useMaxWidth: true, htmlLabels: true, curve: 'basis' }
+    });
+  </script>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #131b31;
+      --panel-alt: #182340;
+      --border: #28365e;
+      --text: #e6edf7;
+      --muted: #9fb0d0;
+      --accent: #4cc9f0;
+      --accent-2: #72efdd;
+      --pass: #2ec4b6;
+      --warn: #ffbe0b;
+      --drop: #ff595e;
+      --code-bg: #080c18;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+      background: radial-gradient(circle at top right, #162447 0%, var(--bg) 60%);
+      color: var(--text);
+      line-height: 1.6;
+      padding: 2rem 1.25rem 4rem;
+    }
+    .container {
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+    header {
+      background: linear-gradient(135deg, rgba(76, 201, 240, 0.14), rgba(114, 239, 221, 0.06));
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 2rem;
+      margin-bottom: 2rem;
+    }
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.6rem;
+      margin-bottom: 0.8rem;
+    }
+    .badge {
+      font-size: 0.78rem;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 0.3rem 0.7rem;
+      border-radius: 999px;
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      color: var(--accent);
+    }
+    .badge.pass {
+      color: var(--pass);
+      border-color: rgba(46, 196, 182, 0.45);
+    }
+    h1 {
+      margin: 0 0 0.5rem;
+      font-size: 1.95rem;
+      letter-spacing: -0.02em;
+    }
+    h2 {
+      font-size: 1.35rem;
+      margin-top: 0;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid var(--border);
+      color: var(--accent-2);
+    }
+    h3 {
+      font-size: 1.05rem;
+      color: var(--accent);
+      margin-top: 1.25rem;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 1.6rem;
+      margin-bottom: 1.5rem;
+    }
+    .grid-2 {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+      gap: 1.2rem;
+    }
+    .card {
+      background: var(--panel-alt);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.1rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 0.8rem 0;
+      font-size: 0.92rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 0.65rem 0.8rem;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+    th {
+      background: var(--panel-alt);
+      color: var(--accent);
+      font-weight: 600;
+    }
+    pre, code {
+      font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+      font-size: 0.86rem;
+    }
+    code {
+      background: var(--code-bg);
+      padding: 0.15rem 0.4rem;
+      border-radius: 5px;
+      color: var(--accent-2);
+    }
+    pre {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      overflow-x: auto;
+    }
+    .diff-add { color: #72efdd; }
+    .diff-del { color: #ff595e; }
+    .mermaid {
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1rem;
+      margin: 1rem 0;
+      text-align: center;
+    }
+    .pill-pass { color: var(--pass); font-weight: 700; }
+    .pill-drop { color: var(--drop); font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <div class="badge-row">
+        <span class="badge">Branch: 010-cilium-hubble-observability</span>
+        <span class="badge">Date: 2026-10-16</span>
+        <span class="badge">Cilium v1.20.3 + Hubble UI v0.13.6</span>
+        <span class="badge pass">Constitution v2.2.0: 7/7 PASS</span>
+      </div>
+      <h1>Cilium + Hubble CNI &amp; Visual Platform Network Observability</h1>
+      <p style="color: var(--muted); margin: 0;">
+        Replace K3s Flannel &amp; <code>kube-router</code> with a Git-owned Cilium eBPF CNI layer (<code>deploy/platform/cni/</code>),
+        deliver live service-map &amp; <code>Forwarded</code>/<code>Dropped</code> verdict visibility via Hubble UI alone now (<code>http://127.0.0.1:12000</code>),
+        tighten OpenBao's API server egress to <code>toEntities: ["kube-apiserver"]</code>, and pre-wire Prometheus/gRPC endpoints for future Grafana expansion.
+      </p>
+    </header>
+
+    <section>
+      <h2>1. Visual Architecture &amp; FluxCD Layer DAG</h2>
+      <div class="grid-2">
+        <div>
+          <h3>Runtime eBPF Datapath &amp; Phased Observability</h3>
+          <div class="mermaid">
+flowchart TD
+    subgraph KubeSystem["kube-system (Platform CNI Layer)"]
+        Agent["Cilium Agent DaemonSet (v1.20.3)<br/>eBPF Policy &amp; Ring Buffer (4095)"]
+        Op["Cilium Operator (v1.20.3)<br/>CRD &amp; Identity Reconciler"]
+        Relay["Hubble Relay (:4245 gRPC)"]
+        UI["Hubble UI (v0.13.6)<br/>ClusterIP :80"]
+        Metrics["Service/hubble-metrics<br/>(:9965/metrics OpenMetrics)"]
+    end
+
+    subgraph VaultNS["vault Namespace"]
+        Bao["OpenBao StatefulSet<br/>CiliumNetworkPolicy: toEntities [kube-apiserver]"]
+        DBP["vault-db-proxy (:5432)"]
+    end
+
+    subgraph ProjPN["proj-pn Namespace (Standard K8s NetworkPolicy)"]
+        FE["pn-frontend (:80)"]
+        BE["pn-backend (:8080)"]
+    end
+
+    APIServer["Kubernetes API Server<br/>(Identity 7: kube-apiserver)"]
+    OperatorBrowser["Operator Browser<br/>http://127.0.0.1:12000<br/>(scripts/open-hubble-ui.sh)"]
+    FutureGrafana["Phase 2 (Future EXPAND-01)<br/>Prometheus / Grafana"]
+
+    FE -->|"FORWARDED (:8080)"| BE
+    BE -->|"FORWARDED (:5432)"| DBP
+    Bao -->|"FORWARDED (:443/:6443)"| APIServer
+    Agent -->|"Flow Events (:4244)"| Relay
+    Relay -->|"gRPC (:4245)"| UI
+    UI -.->|"kubectl port-forward"| OperatorBrowser
+    Agent --> Metrics
+    Metrics -.->|"Pre-wired Scrape"| FutureGrafana
+          </div>
+        </div>
+        <div>
+          <h3>Updated FluxCD Reconciliation DAG (<code>clusters/*/layers.yaml</code>)</h3>
+          <div class="mermaid">
+flowchart LR
+    CNI["1a. cni<br/>(./deploy/platform/cni)<br/>[wait: true]"]
+    Gov["1b. governance<br/>(./deploy/platform/governance)"]
+    Vault["2a. vault<br/>(./deploy/platform/vault)"]
+    CertMgr["2b. cert-manager"]
+    ProjBound["2c. project-boundaries"]
+    VProxies["3a. vault-proxies"]
+    DB["3b. database"]
+    Projects["3c. projects"]
+    Identity["4. identity"]
+    Ingress["5. ingress"]
+    TLS["6. tls"]
+
+    CNI --> Vault
+    Gov --> Vault
+    Gov --> CertMgr
+    Gov --> ProjBound
+    Vault --> VProxies
+    Vault --> DB
+    DB --> Identity
+    Identity --> Ingress
+    CertMgr --> TLS
+    Ingress --> TLS
+    ProjBound --> TLS
+    ProjBound --> Projects
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>2. Key Architectural Decisions &amp; Clarifications</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Area</th>
+            <th>Decision</th>
+            <th>Why It Matters</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>Phased Observability</strong><br/>(<code>FR-003</code>, <code>FR-004</code>, <code>FR-005</code>, <code>FR-008</code>)</td>
+            <td>Deploy <strong>Cilium + Hubble Relay + Hubble UI alone</strong> in Phase 1 (<code>0</code> Grafana/Prometheus/Loki pods, bounded ring buffer <code>4095</code>); enable <code>:9965/metrics</code> (<code>dns,drop,tcp,flow</code>) and <code>:4245</code> gRPC now.</td>
+            <td>Provides immediate visual network topology and policy drop debugging with minimal RAM overhead while keeping Phase 2 Grafana attachment zero-touch.</td>
+          </tr>
+          <tr>
+            <td><strong>GitOps + Bootstrap CNI</strong><br/>(<code>FR-001</code>, <code>FR-002</code>, <code>FR-009</code>)</td>
+            <td>Single Git-owned manifest bundle (<code>deploy/platform/cni/</code>) applied during Ansible bootstrap (<code>bootstrap/tasks/install.yml</code>) and reconciled by FluxCD (<code>cni</code> layer).</td>
+            <td>When K3s boots with <code>--flannel-backend=none --disable-network-policy</code>, applying <code>deploy/platform/cni/</code> brings the node and CoreDNS to <code>Ready</code> while keeping 100% of CNI resources in Git and budgeted by <code>platform-preflight.py</code>.</td>
+          </tr>
+          <tr>
+            <td><strong>OpenBao API Server Egress</strong><br/>(<code>FR-006</code>, <code>SC-003</code>)</td>
+            <td>Replace <code>ipBlock: 0.0.0.0/0</code> in <code>deploy/platform/vault/network-policy.yaml</code> with <code>CiliumNetworkPolicy</code> <code>toEntities: ["kube-apiserver"]</code> on TCP <code>443</code>/<code>6443</code>.</td>
+            <td>Under Cilium, <code>ipBlock: 0.0.0.0/0</code> matches only <code>reserved:world</code> (external internet) and drops DNATted <code>kube-apiserver</code> traffic. <code>toEntities: ["kube-apiserver"]</code> fixes <code>TokenReview</code> and blocks external internet egress from OpenBao.</td>
+          </tr>
+          <tr>
+            <td><strong>Private Tunnel &amp; Automated Verification</strong><br/>(<code>FR-010</code>, <code>FR-013</code>, <code>SC-005</code>)</td>
+            <td>Keep <code>svc/hubble-ui</code> as <code>ClusterIP</code> only and provide <code>scripts/open-hubble-ui.sh</code> (tunneling to <code>http://127.0.0.1:12000</code> by default, and running all 5 <code>FR-013</code> checks via <code>--verify</code>).</td>
+            <td>Preserves the strict public-surface allowlist (Constitution Principle III) and gives a single command for both interactive browsing and automated verification.</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>3. Resource Footprint &amp; $1/n$ Budget Impact (<code>scripts/platform-preflight.py</code> — <code>FR-009</code>, <code>SC-004</code>)</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Workload (<code>kube-system</code>)</th>
+            <th>Containers</th>
+            <th>CPU Request</th>
+            <th>CPU Limit</th>
+            <th>Memory Request</th>
+            <th>Memory Limit</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>DaemonSet/cilium</code></td>
+            <td>6 × <code>initContainers</code></td>
+            <td><code>10m</code> × 6 (<code>60m</code>)</td>
+            <td><code>100m</code> × 6</td>
+            <td><code>16Mi</code> × 6</td>
+            <td><code>64Mi</code> × 6 (<code>384Mi</code>)</td>
+          </tr>
+          <tr>
+            <td><code>DaemonSet/cilium</code></td>
+            <td><code>cilium-agent</code></td>
+            <td><code>100m</code></td>
+            <td><code>500m</code></td>
+            <td><code>192Mi</code></td>
+            <td><code>384Mi</code></td>
+          </tr>
+          <tr>
+            <td><code>Deployment/cilium-operator</code></td>
+            <td><code>cilium-operator</code> (1 replica)</td>
+            <td><code>25m</code></td>
+            <td><code>200m</code></td>
+            <td><code>64Mi</code></td>
+            <td><code>192Mi</code></td>
+          </tr>
+          <tr>
+            <td><code>Deployment/hubble-relay</code></td>
+            <td><code>hubble-relay</code> (1 replica)</td>
+            <td><code>15m</code></td>
+            <td><code>150m</code></td>
+            <td><code>48Mi</code></td>
+            <td><code>128Mi</code></td>
+          </tr>
+          <tr>
+            <td><code>Deployment/hubble-ui</code></td>
+            <td><code>frontend</code> + <code>backend</code> (1 replica)</td>
+            <td><code>10m</code> + <code>15m</code> (<code>25m</code>)</td>
+            <td><code>100m</code> + <code>100m</code></td>
+            <td><code>32Mi</code> + <code>48Mi</code></td>
+            <td><code>64Mi</code> + <code>96Mi</code> (<code>160Mi</code>)</td>
+          </tr>
+          <tr>
+            <td><strong>Total CNI + Hubble Delta</strong></td>
+            <td><strong>All containers + initContainers</strong></td>
+            <td><strong><code>+225m</code></strong></td>
+            <td>—</td>
+            <td>—</td>
+            <td><strong><code>+1248Mi</code></strong></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="grid-2" style="margin-top: 1rem;">
+        <div class="card">
+          <h3><code>local-k3s</code> Budget Outcome</h3>
+          <ul>
+            <li>Allocatable: <code>4000m</code> CPU / <code>8192Mi</code> RAM</li>
+            <li>Platform Reservation: <code>1695m → 1920m</code> CPU / <code>4064Mi → 5312Mi</code> RAM</li>
+            <li>Per-Project Slice (<code>n=1</code>): <code>2080m</code> CPU / <code>2880Mi</code> RAM</li>
+            <li><code>proj-pn</code> Peak: <code>400m</code> CPU / <code>640Mi</code> RAM → <span class="pill-pass">PASSED</span></li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3><code>vps-k3s</code> Budget Outcome</h3>
+          <ul>
+            <li>Allocatable: <code>4000m</code> CPU / <code>24576Mi</code> RAM</li>
+            <li>Platform Reservation: <code>1695m → 1920m</code> CPU / <code>4064Mi → 5312Mi</code> RAM</li>
+            <li>Per-Project Slice (<code>n=1</code>): <code>2080m</code> CPU / <code>19264Mi</code> RAM</li>
+            <li><code>proj-pn</code> Peak: <code>400m</code> CPU / <code>640Mi</code> RAM → <span class="pill-pass">PASSED</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <h2>4. Scope Breakdown &amp; Key Code Diffs</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>File Path</th>
+            <th>Action</th>
+            <th>Responsibility</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>deploy/platform/cni/upstream/cilium.yaml</code><br/><code>deploy/platform/cni/kustomization.yaml</code></td>
+            <td><strong>CREATE</strong></td>
+            <td>Pinned Cilium <code>v1.20.3</code> + Hubble Relay + Hubble UI <code>v0.13.6</code> manifests with zero <code>Secret</code>/<code>Namespace</code> objects, bounded ring buffer (<code>4095</code>), and explicit container resource bounds.</td>
+          </tr>
+          <tr>
+            <td><code>deploy/platform/vault/network-policy.yaml</code></td>
+            <td><strong>MODIFY</strong></td>
+            <td>Remove <code>ipBlock: 0.0.0.0/0</code> from <code>openbao-ingress-policy</code>; add <code>CiliumNetworkPolicy/openbao-apiserver-egress</code> (<code>toEntities: ["kube-apiserver"]</code>) and <code>NetworkPolicy/openbao-backup-policy</code>.</td>
+          </tr>
+          <tr>
+            <td><code>clusters/local-k3s/layers.yaml</code><br/><code>clusters/vps-k3s/layers.yaml</code></td>
+            <td><strong>MODIFY</strong></td>
+            <td>Add root <code>cni</code> Flux Kustomization (<code>./deploy/platform/cni</code>, <code>wait: true</code>) and add <code>cni</code> to <code>vault.spec.dependsOn</code>.</td>
+          </tr>
+          <tr>
+            <td><code>bootstrap/bootstrap.yml</code><br/><code>bootstrap/templates/k3s.service.j2</code><br/><code>bootstrap/tasks/{preflight,install,verify}.yml</code></td>
+            <td><strong>MODIFY</strong></td>
+            <td>Clean up legacy <code>flannel.1</code>/<code>cni0</code> interfaces; pass <code>--flannel-backend=none --disable-network-policy</code> to K3s; stage &amp; apply <code>deploy/platform/cni/</code> during install; verify Cilium readiness before CoreDNS check.</td>
+          </tr>
+          <tr>
+            <td><code>scripts/open-hubble-ui.sh</code></td>
+            <td><strong>CREATE</strong></td>
+            <td>Port-forward <code>svc/hubble-ui</code> to <code>http://127.0.0.1:12000</code> by default, and execute all 5 <code>FR-013</code> automated verification assertions with <code>--verify</code>.</td>
+          </tr>
+          <tr>
+            <td><code>tests/preflight/test_platform_preflight.py</code><br/><code>.github/workflows/lint.yaml</code></td>
+            <td><strong>MODIFY</strong></td>
+            <td>Add preflight test coverage for CNI reservation accounting, OpenBao CNP, and Hubble privacy; ignore upstream vendored <code>deploy/platform/cni/upstream/</code> in yamllint.</td>
+          </tr>
+          <tr>
+            <td><code>SPEC.md</code>, <code>ARCHITECTURE.md</code>, <code>DEPENDENCIES.md</code>, <code>docs/bootstrap-scope.md</code>, <code>INDEX.md</code></td>
+            <td><strong>MODIFY</strong></td>
+            <td>Synchronize platform documentation with Cilium + Hubble UI initial architecture and Phase 2 Grafana expansion path (<code>FR-012</code>).</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <h3>Diff Preview: <code>deploy/platform/vault/network-policy.yaml</code></h3>
+      <pre><code><span class="diff-del">-    # Kubernetes API Server TokenReview egress (auth/kubernetes)
+-    - to:
+-        - ipBlock:
+-            cidr: 0.0.0.0/0
+-      ports:
+-        - protocol: TCP
+-          port: 443
+-        - protocol: TCP
+-          port: 6443</span>
+<span class="diff-add">+---
++apiVersion: cilium.io/v2
++kind: CiliumNetworkPolicy
++metadata:
++  name: openbao-apiserver-egress
++  namespace: vault
++spec:
++  endpointSelector:
++    matchLabels:
++      app.kubernetes.io/name: openbao
++  egress:
++    - toEntities:
++        - kube-apiserver
++      toPorts:
++        - ports:
++            - port: "443"
++              protocol: TCP
++            - port: "6443"
++              protocol: TCP</span></code></pre>
+    </section>
+
+    <section>
+      <h2>5. Automated Verification Steps</h2>
+      <pre><code># 1. Run preflight unit test suite
+python3 -m unittest discover tests/preflight
+
+# 2. Render &amp; validate both environments (flux build + kubeconform + render-invariants)
+CAND_LOCAL=$(./scripts/render-validate.sh local-k3s | tail -n 1)
+CAND_VPS=$(./scripts/render-validate.sh vps-k3s | tail -n 1)
+
+# 3. Verify 1/n budget math with Cilium + Hubble in platformReservations
+python3 ./scripts/platform-preflight.py --environment local-k3s --candidate "$CAND_LOCAL" --capacity clusters/local-k3s/capacity.yaml --json
+python3 ./scripts/platform-preflight.py --environment vps-k3s --candidate "$CAND_VPS" --capacity clusters/vps-k3s/capacity.yaml --json
+
+# 4. Validate shell scripts, Ansible bootstrap syntax &amp; runtime verification (FR-013)
+shellcheck scripts/open-hubble-ui.sh
+ansible-playbook -i 'syntax-check-vm,' -u ubuntu -e 'k3s_version=v1.35.9+k3s1' -e 'gitops_environment=local-k3s' bootstrap/bootstrap.yml --syntax-check
+./scripts/open-hubble-ui.sh --verify</code></pre>
+    </section>
+  </div>
+</body>
+</html>

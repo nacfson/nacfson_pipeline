@@ -73,4 +73,15 @@ if [ "$LEAKS_FOUND" -ne 0 ]; then
 fi
 
 echo -e "${GREEN}✓ Secret scan passed: No leaked credentials found.${NC}"
+
+echo "==> Running architecture handbook sync check (docs/platform-architecture.html)..."
+if ! python3 scripts/check-arch-doc-sync.py --staged; then
+  echo "" >&2
+  echo -e "${RED}================================================================================${NC}" >&2
+  echo -e "${RED}COMMIT REJECTED: docs/platform-architecture.html is out of sync!${NC}" >&2
+  echo -e "${YELLOW}Update docs/platform-architecture.html and stage it before committing.${NC}" >&2
+  echo -e "${RED}================================================================================${NC}" >&2
+  exit 1
+fi
+echo -e "${GREEN}✓ Architecture handbook sync check passed.${NC}"
 exit 0

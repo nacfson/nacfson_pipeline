@@ -84,6 +84,8 @@ spec:
               value: /var/lib/postgresql/data/pgdata
             - name: POSTGRES_PASSWORD_FILE
               value: /var/run/secrets/database/admin_password
+            - name: PROJECT_SLUGS
+              value: "pn"
           resources:
             requests:
               cpu: 250m
@@ -104,9 +106,19 @@ spec:
                   - /bin/sh
                   - -c
                   - |
-                    if [ -f /var/lib/postgresql/data/pgdata/pg_hba.conf ] && ! grep -q "host proj_pn user_pn" /var/lib/postgresql/data/pgdata/pg_hba.conf; then
-                      sed -i '/host all all all scram-sha-256/i host proj_pn user_pn all trust' /var/lib/postgresql/data/pgdata/pg_hba.conf
-                      pg_ctl reload -D /var/lib/postgresql/data/pgdata || true
+                    if [ -f /var/lib/postgresql/data/pgdata/pg_hba.conf ]; then
+                      CHANGED=0
+                      for SLUG in $(echo "${PROJECT_SLUGS:-pn}" | tr ',' ' '); do
+                        DB_NAME="proj_${SLUG}"
+                        ROLE_NAME="user_${SLUG}"
+                        if ! grep -q "host ${DB_NAME} ${ROLE_NAME}" /var/lib/postgresql/data/pgdata/pg_hba.conf; then
+                          sed -i "/host all all all scram-sha-256/i host ${DB_NAME} ${ROLE_NAME} all trust" /var/lib/postgresql/data/pgdata/pg_hba.conf
+                          CHANGED=1
+                        fi
+                      done
+                      if [ "$CHANGED" -eq 1 ]; then
+                        pg_ctl reload -D /var/lib/postgresql/data/pgdata || true
+                      fi
                     fi
           volumeMounts:
             - name: postgres-data

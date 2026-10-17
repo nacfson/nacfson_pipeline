@@ -317,6 +317,103 @@ spec:
         details = [v.get("detail", "") for v in data.get("violations", []) if v.get("rule") == 2]
         self.assertTrue(any(d.startswith("route must declare tls: {} and let the platform select the certificate") for d in details))
 
+    def test_23_db_contract_and_readiness_probe_enforced(self):
+        """Database-backed project containers must route via vault-db-proxy and use /readyz for readinessProbe."""
+        bad_db_and_probe = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pn-backend
+  namespace: proj-pn
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  template:
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: backend
+          image: ghcr.io/nacfson/project-pn-backend@sha256:d3ab8644467bbbb2a49b0afc6631b2600ce344908ce15ddf99e8478c11ecaf21
+          env:
+            - name: DB_HOST
+              value: "postgres-service.identity.svc"
+            - name: DB_NAME
+              value: "keycloak"
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 200m
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+            capabilities:
+              drop:
+                - ALL
+"""
+        rc, data = self._run_yaml(bad_db_and_probe)
+        self.assertEqual(rc, 1)
+        self.assertEqual(data.get("validationStatus"), "REJECTED_ISOLATION")
+        details = [v.get("detail", "") for v in data.get("violations", []) if v.get("rule") == 2]
+        self.assertTrue(any("vault-db-proxy.vault.svc" in d for d in details))
+        self.assertTrue(any("proj_pn" in d for d in details))
+        self.assertTrue(any("readinessProbe.httpGet.path: /readyz" in d for d in details))
+
+    def test_24_cni_reservation_and_openbao_cnp_accepted(self):
+        """CNI kustomization (+225m CPU / +1248Mi memory), OpenBao CiliumNetworkPolicy, and Hubble ClusterIP invariants pass."""
+        import yaml
+
+        kustomize_res = subprocess.run(
+            ["kubectl", "kustomize", os.path.join(BASE_DIR, "deploy", "platform", "cni")],
+            capture_output=True,
+            text=True,
+            check=True,
+        )
+        cni_yaml = kustomize_res.stdout
+        with open(os.path.join(BASE_DIR, "deploy", "platform", "vault", "network-policy.yaml"), encoding="utf-8") as fh:
+            vault_np_yaml = fh.read()
+
+        rc, data = self._run_yaml(cni_yaml + "\n---\n" + vault_np_yaml)
+        self.assertEqual(rc, 0, data.get("rejectionReason"))
+        self.assertEqual(data.get("validationStatus"), "PASSED")
+        # valid_capacity.yaml has systemReserved: 200m CPU, 512Mi memory.
+        # CNI adds +225m CPU (total 425m) and +1248Mi memory (total 1760Mi).
+        self.assertEqual(data.get("platformReservations", {}).get("cpuMillicores"), 425)
+        self.assertEqual(data.get("platformReservations", {}).get("memoryMib"), 1760)
+
+        # Verify OpenBao network policy invariants
+        vault_docs = [d for d in yaml.safe_load_all(vault_np_yaml) if d]
+        openbao_ingress = next(d for d in vault_docs if d.get("metadata", {}).get("name") == "openbao-ingress-policy")
+        self.assertNotIn("0.0.0.0/0", yaml.dump(openbao_ingress))
+        openbao_cnp = next(d for d in vault_docs if d.get("kind") == "CiliumNetworkPolicy" and d.get("metadata", {}).get("name") == "openbao-apiserver-egress")
+        self.assertEqual(openbao_cnp["spec"]["egress"][0]["toEntities"], ["kube-apiserver"])
+        openbao_backup = next(d for d in vault_docs if d.get("metadata", {}).get("name") == "openbao-backup-policy")
+        self.assertEqual(openbao_backup["spec"]["podSelector"]["matchLabels"]["app.kubernetes.io/name"], "openbao-backup")
+
+        # Verify Hubble services are strictly ClusterIP and have zero IngressRoutes
+        cni_docs = [d for d in yaml.safe_load_all(cni_yaml) if d]
+        hubble_svcs = {
+            d["metadata"]["name"]: d["spec"].get("type", "ClusterIP")
+            for d in cni_docs
+            if d.get("kind") == "Service" and d.get("metadata", {}).get("name", "").startswith("hubble-")
+        }
+        self.assertEqual(hubble_svcs.get("hubble-ui"), "ClusterIP")
+        self.assertEqual(hubble_svcs.get("hubble-relay"), "ClusterIP")
+        self.assertEqual(hubble_svcs.get("hubble-metrics"), "ClusterIP")
+        self.assertFalse(any(d.get("kind") == "IngressRoute" for d in cni_docs))
+
 
 if __name__ == "__main__":
     unittest.main()
+

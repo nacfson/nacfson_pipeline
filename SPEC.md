@@ -17,10 +17,11 @@ In this document, MUST identifies a required behavior, SHOULD identifies a recom
 | Area | Selection |
 | --- | --- |
 | Kubernetes | Native k3s locally and on one production VPS; EKS/GKE deployment compatibility |
+| CNI & Network observability | Cilium CNI with **Hubble UI alone** for initial visual network-flow and policy-drop debugging; Hubble metrics/flow interfaces enabled for future **Grafana** expansion |
 | Application packaging | Helm charts |
 | Deployment reconciliation | Automated FluxCD reconciliation and platform-preflight promotion; direct manual changes rejected |
 | Application image delivery | GitHub Actions and GHCR; immutable deployment references |
-| Ingress | Traefik; Cilium is not part of the initial design |
+| Ingress | Traefik |
 | Authentication gateway | Custom Go service using the standard library, without third-party Go modules at runtime |
 | Identity provider | Keycloak with Google identity brokering |
 | Registration | Any Google account may register; no administrator approval |
@@ -274,7 +275,7 @@ Physical backups or continuous WAL archiving MAY be chosen later, but a usable b
 
 The deployment MUST remain colocated on a single node and MUST NOT require an HA topology, a dedicated external PostgreSQL node, or separate identity infrastructure hosts.
 
-Configuration SHOULD permit later additional application/Keycloak replicas and independent PostgreSQL standby nodes. This is an expansion path, not an initial availability guarantee. Single-host volumes may need migration, and applications may need appropriate connection recovery behavior when HA is introduced.
+Configuration SHOULD permit later additional application/Keycloak replicas, independent PostgreSQL standby nodes, and expansion of network/log observability from **Hubble UI alone** (initial deployment) to a full **Grafana** stack (Prometheus metrics and Loki historical flow/container logs) consuming Hubble's telemetry endpoints without changing the CNI datapath. This is an expansion path, not an initial availability guarantee. Single-host volumes may need migration, and applications may need appropriate connection recovery behavior when HA is introduced.
 
 There is no current downtime SLO. Future HA can reduce downtime; the platform MUST NOT promise that scaling replicas eliminates every outage.
 
