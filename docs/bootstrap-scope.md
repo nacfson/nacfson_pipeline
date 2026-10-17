@@ -33,13 +33,13 @@ architecture. It must not silently claim support for other combinations.
 
 ## Required actions
 
-1. Validate prerequisites and report missing requirements before installation.
-2. Install the selected K3s version and enable its service.
-3. Verify the service, Kubernetes API, node Ready condition, and CoreDNS readiness.
-4. Install and verify the in-cluster GitOps reconciler (FluxCD 2.9.5) as the final stage, so a clean VM reaches continuous reconciliation with no separate manual step.
+1. Validate prerequisites (including controller-side presence of the Flux entrypoint and [`deploy/platform/cni/`](../deploy/platform/cni/) manifest bundle) and report missing requirements before installation.
+2. Install the selected K3s version with `--flannel-backend=none --disable-network-policy`, enable its service, and idempotently apply the Git-committed [`deploy/platform/cni/`](../deploy/platform/cni/) Kustomization bundle (`k3s kubectl apply --server-side --force-conflicts -k /var/lib/nacfson-bootstrap/cni`) so Cilium initializes pod networking before CoreDNS and Flux start.
+3. Verify the service, Kubernetes API, Cilium DaemonSet and Operator rollout, node Ready condition, and CoreDNS readiness.
+4. Install and verify the in-cluster GitOps reconciler (FluxCD 2.9.5) as the final stage, so a clean VM reaches continuous reconciliation (including the Flux `cni` Kustomization layer) with no separate manual step.
 
 Use K3s defaults unless a documented project requirement makes an override
-necessary. Do not expose the API broadly or copy administrative kubeconfig into Git.
+necessary (`--flannel-backend=none --disable-network-policy` is required so Cilium eBPF owns pod networking and network policy enforcement). Do not expose the API broadly or copy administrative kubeconfig into Git.
 
 Rerunning bootstrap must preserve existing cluster state and data. If an existing
 installation has a different version or conflicting configuration, stop and report

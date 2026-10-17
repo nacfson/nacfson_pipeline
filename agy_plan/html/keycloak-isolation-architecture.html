@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>nacfson_pipeline — Vault-Backed Internal Keycloak & Zero-Config Project Auth Architecture</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true, theme: 'dark', securityLevel: 'loose' });
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #020617;
+      color: #f8fafc;
+      margin: 0;
+    }
+    code, pre, .font-mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    @keyframes dashFlow {
+      0% { stroke-dashoffset: 36; }
+      100% { stroke-dashoffset: 0; }
+    }
+    .anim-flow {
+      stroke-dasharray: 6 6;
+      animation: dashFlow 1s linear infinite;
+    }
+    .node-card {
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    .node-card:hover {
+      filter: drop-shadow(0 0 12px rgba(34, 211, 238, 0.45));
+    }
+    .active-step-node rect.box {
+      stroke-width: 3px !important;
+      filter: drop-shadow(0 0 14px rgba(52, 211, 153, 0.75));
+    }
+    .blocked-line {
+      stroke-dasharray: 4 4;
+    }
+    .mermaid {
+      background: #090d16;
+      border: 1px solid #1e293b;
+      border-radius: 0.75rem;
+      padding: 1.25rem;
+      overflow-x: auto;
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200">
+
+  <!-- Sticky Header -->
+  <header class="sticky top-0 z-40 backdrop-blur-md bg-slate-950/90 border-b border-slate-800 px-4 lg:px-8 py-3.5">
+    <div class="max-w-[1520px] mx-auto flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-500/20 to-cyan-500/20 border border-emerald-500/40 flex items-center justify-center text-lg">
+          🔐
+        </div>
+        <div>
+          <div class="flex flex-wrap items-center gap-2">
+            <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-white">Vault + Internal Keycloak/Gateway + Zero-Secret Project Auth</h1>
+            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">Vault Holds 100% API Keys</span>
+            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Projects Hold 0 Secrets / 0 Configs</span>
+          </div>
+          <p class="text-xs text-slate-400 mt-0.5">OpenBao Vault holds all Google OAuth &amp; signing secrets · Keycloak/Gateway is the internal Google OAuth intermediate · Projects only call internal HTTP to verify auth</p>
+        </div>
+      </div>
+
+      <!-- Path Switcher -->
+      <div class="flex flex-wrap items-center gap-1.5 bg-slate-900 p-1.5 rounded-xl border border-slate-800">
+        <button onclick="setPathMode('path1')" id="btn-path1" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20">
+          ✅ Target Architecture (Vault ➔ Keycloak/Gateway ➔ Zero-Config Project)
+        </button>
+        <button onclick="setPathMode('path2')" id="btn-path2" class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition text-slate-400 hover:text-white">
+          ⚠️ Current Live Issue (Why proj-pn Redirected to Keycloak UI)
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Workspace -->
+  <main class="flex-1 max-w-[1520px] w-full mx-auto px-4 lg:px-8 py-6 space-y-6">
+
+    <!-- 3-Pillar Principle Cards -->
+    <section class="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div class="bg-slate-900/70 border border-amber-500/30 rounded-2xl p-4 space-y-1.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-mono font-bold text-amber-400 uppercase tracking-wider">1. OpenBao Cluster Vault (ns: vault)</span>
+          <span class="px-2 py-0.5 text-[10px] font-mono rounded bg-amber-500/15 text-amber-300">100% of Secrets</span>
+        </div>
+        <p class="text-xs text-slate-300 leading-relaxed">
+          Holds all API keys &amp; credentials: <code class="text-amber-300">identity/google-oauth</code> (Google Client ID &amp; Secret), <code class="text-amber-300">gateway/hmac-secret</code>, <code class="text-amber-300">gateway/client-secret</code>, and <code class="text-amber-300">database/*</code>.
+        </p>
+      </div>
+
+      <div class="bg-slate-900/70 border border-emerald-500/30 rounded-2xl p-4 space-y-1.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-mono font-bold text-emerald-400 uppercase tracking-wider">2. Keycloak + Gateway (ns: identity)</span>
+          <span class="px-2 py-0.5 text-[10px] font-mono rounded bg-emerald-500/15 text-emerald-300">Google OAuth Intermediate</span>
+        </div>
+        <p class="text-xs text-slate-300 leading-relaxed">
+          Fetches Google OAuth keys from Vault on startup, orchestrates headless Google OAuth (<code class="text-emerald-300">kc_idp_hint=google</code>, zero Keycloak login UI), and exposes internal HTTP verification (<code class="text-emerald-300">gateway.identity.svc:8080</code>).
+        </p>
+      </div>
+
+      <div class="bg-slate-900/70 border border-cyan-500/30 rounded-2xl p-4 space-y-1.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-mono font-bold text-cyan-400 uppercase tracking-wider">3. Hosted Projects (ns: proj-pn, etc.)</span>
+          <span class="px-2 py-0.5 text-[10px] font-mono rounded bg-cyan-500/15 text-cyan-300">0 Secrets · 0 OAuth Config</span>
+        </div>
+        <p class="text-xs text-slate-300 leading-relaxed">
+          Holds <strong>zero secrets</strong>, <strong>zero Google API keys</strong>, and <strong>zero Keycloak/JWKS URLs</strong>. Only calls <code class="text-cyan-300">http://gateway.identity.svc:8080/auth</code> over internal cluster HTTP to verify user identity.
+        </p>
+      </div>
+    </section>
+
+    <!-- Status Callout Banner -->
+    <div id="mode-banner" class="rounded-2xl border border-emerald-500/40 bg-emerald-950/25 p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div class="space-y-1">
+        <div class="flex items-center gap-2">
+          <span id="banner-badge" class="px-2 py-0.5 text-xs font-mono font-bold rounded bg-emerald-500 text-slate-950">TARGET ARCHITECTURE</span>
+          <span id="banner-title" class="text-sm font-bold text-white">Vault Holds All Keys · Keycloak Brokers Google Invisibly · Projects Only Call Internal Gateway HTTP to Verify Auth</span>
+        </div>
+        <p id="banner-desc" class="text-xs text-slate-300">
+          Projects do not verify Keycloak JWTs or fetch JWKS keys (<code class="text-rose-300">/realms/platform/*</code> removed from projects). <code class="text-cyan-300">pn-backend</code> only calls <code class="text-emerald-300">http://gateway.identity.svc:8080</code> (<code class="text-emerald-300">/auth/exchange</code>, <code class="text-emerald-300">/auth</code>, <code class="text-emerald-300">/auth/logout</code>).
+        </p>
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <button onclick="prevStep()" class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-mono text-slate-200">← Prev Step</button>
+        <button onclick="toggleAutoPlay()" id="btn-autoplay" class="px-3 py-1.5 rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-xs font-mono text-cyan-300 font-semibold">▶ Auto-Play</button>
+        <button onclick="nextStep()" class="px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-mono text-slate-200">Next Step →</button>
+      </div>
+    </div>
+
+    <!-- =================================================================== -->
+    <!-- INTERACTIVE TOPOLOGY & STEP SIMULATOR                               -->
+    <!-- =================================================================== -->
+    <section id="topology-section" class="grid grid-cols-1 xl:grid-cols-12 gap-6 items-start">
+
+      <!-- Left 8 Cols: Interactive SVG Cluster Topology -->
+      <div class="xl:col-span-8 bg-slate-900/50 border border-slate-800 rounded-2xl p-4 shadow-2xl space-y-3">
+        <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800 pb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-mono uppercase tracking-wider text-cyan-400 font-bold">Kubernetes Cluster Architecture Map</span>
+            <span id="svg-mode-pill" class="px-2 py-0.5 rounded text-[11px] font-mono bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Zero-Secret / Zero-Config Projects</span>
+          </div>
+          <div class="flex flex-wrap items-center gap-4 text-[11px] font-mono text-slate-400">
+            <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-amber-400 inline-block"></span>Vault Secret Injection</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-emerald-400 inline-block"></span>Verify-Only Internal HTTP</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-cyan-400 inline-block"></span>Headless Google OAuth Hop</span>
+            <span class="flex items-center gap-1.5"><span class="w-3 h-0.5 bg-rose-500 inline-block"></span>Prohibited Path</span>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <svg id="arch-svg" viewBox="0 0 1020 620" class="w-full h-auto min-w-[760px] select-none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <marker id="arrow-cyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#22d3ee" />
+              </marker>
+              <marker id="arrow-emerald" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#34d399" />
+              </marker>
+              <marker id="arrow-rose" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#f43f5e" />
+              </marker>
+              <marker id="arrow-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 1 L 10 5 L 0 9 z" fill="#fbbf24" />
+              </marker>
+            </defs>
+
+            <!-- ZONE 1: External Internet -->
+            <rect x="14" y="16" width="205" height="588" rx="14" fill="#090d16" stroke="#334155" stroke-dasharray="5 4" />
+            <text x="28" y="40" fill="#94a3b8" font-size="11" font-family="'JetBrains Mono'" font-weight="700">PUBLIC INTERNET</text>
+
+            <!-- Node: Visitor Browser -->
+            <g id="node-browser" class="node-card" onclick="selectNode('browser')">
+              <rect class="box" x="28" y="65" width="177" height="125" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+              <text x="116" y="92" fill="#38bdf8" font-size="13" font-weight="700" text-anchor="middle">🌐 Visitor Browser</text>
+              <text x="116" y="114" fill="#e2e8f0" font-size="11" text-anchor="middle">Project Login UI Only</text>
+              <text x="116" y="136" fill="#94a3b8" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">0 Cross-Domain Cookies</text>
+              <text x="116" y="156" fill="#34d399" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">Bearer v1.&lt;handle&gt;</text>
+              <text x="116" y="176" fill="#f43f5e" font-size="9.5" font-family="'JetBrains Mono'" text-anchor="middle">🚫 Never sees Keycloak UI</text>
+            </g>
+
+            <!-- Node: Google OAuth -->
+            <g id="node-google" class="node-card" onclick="selectNode('google')">
+              <rect class="box" x="28" y="325" width="177" height="115" rx="10" fill="#0f172a" stroke="#fbbf24" stroke-width="2" />
+              <text x="116" y="355" fill="#fbbf24" font-size="13" font-weight="700" text-anchor="middle">🔑 Google OIDC</text>
+              <text x="116" y="377" fill="#e2e8f0" font-size="11" text-anchor="middle">accounts.google.com</text>
+              <text x="116" y="399" fill="#94a3b8" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">kc_idp_hint=google</text>
+              <text x="116" y="419" fill="#34d399" font-size="9.5" font-family="'JetBrains Mono'" text-anchor="middle">Direct Account Selection</text>
+            </g>
+
+            <!-- ZONE 2: Platform Edge (Traefik) -->
+            <rect x="236" y="16" width="165" height="440" rx="14" fill="#090d16" stroke="#0284c7" stroke-opacity="0.6" />
+            <text x="250" y="40" fill="#38bdf8" font-size="11" font-family="'JetBrains Mono'" font-weight="700">NS: platform (EDGE)</text>
+
+            <g id="node-traefik" class="node-card" onclick="selectNode('traefik')">
+              <rect class="box" x="248" y="120" width="141" height="240" rx="10" fill="#0f172a" stroke="#0284c7" stroke-width="2" />
+              <text x="318" y="152" fill="#38bdf8" font-size="13" font-weight="700" text-anchor="middle">🛡️ Traefik Edge</text>
+              <text x="318" y="174" fill="#e2e8f0" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">TLSStore: default</text>
+              <text x="318" y="204" fill="#94a3b8" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">pn.nacfson.cloud/*</text>
+              <text x="318" y="224" fill="#94a3b8" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">auth.nacfson.cloud</text>
+              <text id="traefik-rule-tag" x="318" y="262" fill="#34d399" font-size="10" font-family="'JetBrains Mono'" font-weight="700" text-anchor="middle">Headless OAuth Hop</text>
+              <text id="traefik-block-tag" x="318" y="284" fill="#38bdf8" font-size="9.5" font-family="'JetBrains Mono'" text-anchor="middle">strip-forged-headers</text>
+            </g>
+
+            <!-- ZONE 3: Project Namespace (proj-pn) -->
+            <rect x="418" y="16" width="586" height="215" rx="14" fill="#090d16" stroke="#38bdf8" stroke-opacity="0.7" />
+            <text x="434" y="40" fill="#38bdf8" font-size="11" font-family="'JetBrains Mono'" font-weight="700">NS: proj-pn (ZERO SECRETS · ZERO KEYCLOAK CONFIGS · signIn: shared)</text>
+
+            <!-- Node: pn-frontend -->
+            <g id="node-fe" class="node-card" onclick="selectNode('fe')">
+              <rect class="box" x="436" y="58" width="250" height="152" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+              <text x="561" y="86" fill="#38bdf8" font-size="13" font-weight="700" text-anchor="middle">🖥️ pn-frontend (:80)</text>
+              <text x="561" y="108" fill="#f8fafc" font-size="11" text-anchor="middle">Owns 100% of Project Login UI</text>
+              <text x="561" y="130" fill="#94a3b8" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">• GET  /api/auth/login</text>
+              <text x="561" y="148" fill="#94a3b8" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">• POST /api/auth/session</text>
+              <text x="561" y="166" fill="#34d399" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">• /api/* (Bearer v1.&lt;handle&gt;)</text>
+              <text x="561" y="190" fill="#f43f5e" font-size="9.5" font-family="'JetBrains Mono'" text-anchor="middle">🚫 0 Secrets · 0 Auth Host Config</text>
+            </g>
+
+            <!-- Node: pn-backend -->
+            <g id="node-be" class="node-card" onclick="selectNode('be')">
+              <rect class="box" x="730" y="58" width="256" height="152" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="2" />
+              <text x="858" y="86" fill="#38bdf8" font-size="13" font-weight="700" text-anchor="middle">⚙️ pn-backend (:8080)</text>
+              <text x="858" y="108" fill="#f8fafc" font-size="11" text-anchor="middle">Zero-Config Project Backend</text>
+              <text id="be-auth-mode" x="858" y="132" fill="#34d399" font-size="10" font-family="'JetBrains Mono'" font-weight="700" text-anchor="middle">ONLY: gateway.identity.svc:8080</text>
+              <text x="858" y="152" fill="#94a3b8" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">Trusts Gateway Verified Identity</text>
+              <text id="be-kc-status" x="858" y="174" fill="#f43f5e" font-size="9.5" font-family="'JetBrains Mono'" text-anchor="middle">🚫 No JWKS · No Keycloak URLs</text>
+              <text x="858" y="192" fill="#f43f5e" font-size="9.5" font-family="'JetBrains Mono'" text-anchor="middle">🚫 No OAuth Client Secrets</text>
+            </g>
+
+            <!-- ZONE 4: Identity Namespace (Internal Intermediate) -->
+            <rect x="418" y="248" width="586" height="208" rx="14" fill="#090d16" stroke="#10b981" stroke-width="1.5" stroke-dasharray="6 4" />
+            <text x="434" y="272" fill="#34d399" font-size="11" font-family="'JetBrains Mono'" font-weight="700">NS: identity (INTERNAL GOOGLE OAUTH INTERMEDIATE &amp; VERIFIER)</text>
+
+            <!-- Node: Gateway -->
+            <g id="node-gw" class="node-card" onclick="selectNode('gw')">
+              <rect class="box" x="436" y="290" width="250" height="150" rx="10" fill="#0f172a" stroke="#34d399" stroke-width="2" />
+              <text x="561" y="316" fill="#34d399" font-size="13" font-weight="700" text-anchor="middle">🚪 Auth Gateway (:8080)</text>
+              <text x="561" y="336" fill="#e2e8f0" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">gateway.identity.svc:8080</text>
+              <text x="561" y="358" fill="#34d399" font-size="10" font-family="'JetBrains Mono'" font-weight="700" text-anchor="middle">Project Verify HTTP Endpoints:</text>
+              <text x="561" y="376" fill="#e2e8f0" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">• POST /auth/exchange (Ticket)</text>
+              <text x="561" y="394" fill="#e2e8f0" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">• GET  /auth (Verify Session)</text>
+              <text x="561" y="412" fill="#e2e8f0" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">• POST /auth/logout (Revoke)</text>
+              <text id="gw-jwks-label" x="561" y="430" fill="#f43f5e" font-size="9.5" font-family="'JetBrains Mono'" text-anchor="middle">🚫 /realms/* JWKS proxy removed</text>
+            </g>
+
+            <!-- Node: Keycloak (Internal Intermediate) -->
+            <g id="node-kc" class="node-card" onclick="selectNode('kc')">
+              <rect id="kc-rect" class="box" x="730" y="290" width="256" height="150" rx="10" fill="#0f172a" stroke="#10b981" stroke-width="2" />
+              <text x="858" y="316" fill="#f8fafc" font-size="13" font-weight="700" text-anchor="middle">🏛️ Keycloak + Postgres</text>
+              <text x="858" y="336" fill="#94a3b8" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">keycloak-service.identity.svc:8080</text>
+              <text id="kc-exposure-badge" x="858" y="360" fill="#34d399" font-size="10" font-family="'JetBrains Mono'" font-weight="700" text-anchor="middle">🔒 GOOGLE OAUTH INTERMEDIATE</text>
+              <text x="858" y="382" fill="#e2e8f0" font-size="10" text-anchor="middle">Brokers Google OIDC (kc_idp_hint=google)</text>
+              <text x="858" y="400" fill="#94a3b8" font-size="10" text-anchor="middle">Holds Root Session in PostgreSQL</text>
+              <text id="kc-ui-status" x="858" y="424" fill="#f43f5e" font-size="9.5" font-family="'JetBrains Mono'" text-anchor="middle">🚫 Prohibited from Project Access</text>
+            </g>
+
+            <!-- ZONE 5: OpenBao Vault Namespace (Holds All API Keys) -->
+            <rect x="236" y="472" width="768" height="132" rx="14" fill="#022c22" fill-opacity="0.35" stroke="#fbbf24" stroke-width="1.8" stroke-dasharray="6 4" />
+            <text x="254" y="496" fill="#fbbf24" font-size="11" font-family="'JetBrains Mono'" font-weight="700">NS: vault (OPENBAO CLUSTER VAULT — HOLDS 100% OF API KEYS &amp; OAUTH SECRETS)</text>
+
+            <g id="node-vault" class="node-card" onclick="selectNode('vault')">
+              <rect class="box" x="254" y="510" width="450" height="80" rx="10" fill="#0f172a" stroke="#fbbf24" stroke-width="2" />
+              <text x="479" y="535" fill="#fbbf24" font-size="13" font-weight="700" text-anchor="middle">🏦 OpenBao Vault (openbao-service.vault.svc:8200)</text>
+              <text x="479" y="556" fill="#e2e8f0" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">kv/identity/google-oauth (Google Client ID &amp; Secret)</text>
+              <text x="479" y="574" fill="#34d399" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">kv/gateway/hmac-secret · kv/gateway/client-secret · kv/database/*</text>
+            </g>
+
+            <g id="node-dbproxy" class="node-card" onclick="selectNode('vault')">
+              <rect class="box" x="730" y="510" width="256" height="80" rx="10" fill="#0f172a" stroke="#fbbf24" stroke-width="1.5" />
+              <text x="858" y="538" fill="#fbbf24" font-size="12" font-weight="700" text-anchor="middle">🔌 vault-db-proxy (:5432)</text>
+              <text x="858" y="558" fill="#94a3b8" font-size="10" font-family="'JetBrains Mono'" text-anchor="middle">Injects DB credentials from Vault</text>
+              <text x="858" y="575" fill="#34d399" font-size="9.5" font-family="'JetBrains Mono'" text-anchor="middle">proj-pn holds 0 DB passwords</text>
+            </g>
+
+            <!-- ======================== EDGES ======================== -->
+            <!-- Browser <-> Traefik -->
+            <path class="anim-flow" d="M 205 125 L 248 190" stroke="#22d3ee" stroke-width="2.2" fill="none" marker-end="url(#arrow-cyan)" />
+
+            <!-- Traefik -> pn-frontend -->
+            <path class="anim-flow" d="M 389 165 L 436 130" stroke="#22d3ee" stroke-width="2" fill="none" marker-end="url(#arrow-cyan)" />
+
+            <!-- pn-frontend <-> pn-backend -->
+            <path class="anim-flow" d="M 686 130 L 730 130" stroke="#22d3ee" stroke-width="2.2" fill="none" marker-end="url(#arrow-cyan)" />
+
+            <!-- Traefik -> Gateway -->
+            <path class="anim-flow" d="M 389 280 L 436 345" stroke="#22d3ee" stroke-width="2.2" fill="none" marker-end="url(#arrow-cyan)" />
+
+            <!-- SPECIFIC HTTP VERIFY CONNECTION: pn-backend -> Gateway (:8080) -->
+            <path class="anim-flow" d="M 790 210 L 620 290" stroke="#34d399" stroke-width="3" fill="none" marker-end="url(#arrow-emerald)" />
+            <rect x="615" y="232" width="185" height="22" rx="5" fill="#022c22" stroke="#10b981" stroke-width="1" />
+            <text x="707" y="247" fill="#34d399" font-size="9.5" font-family="'JetBrains Mono'" font-weight="700" text-anchor="middle">ONLY Verify HTTP (:8080)</text>
+
+            <!-- Internal Gateway <-> Keycloak (:8080) -->
+            <path class="anim-flow" d="M 686 365 L 730 365" stroke="#34d399" stroke-width="2.2" fill="none" marker-end="url(#arrow-emerald)" />
+
+            <!-- Prohibited Direct Project -> Keycloak Egress -->
+            <path class="blocked-line" d="M 885 210 L 885 290" stroke="#f43f5e" stroke-width="2" fill="none" marker-end="url(#arrow-rose)" />
+            <rect x="822" y="232" width="130" height="20" rx="4" fill="#4c0519" stroke="#f43f5e" stroke-width="1" />
+            <text x="887" y="246" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'" font-weight="700" text-anchor="middle">🚫 PROHIBITED</text>
+
+            <!-- Vault -> Gateway & Keycloak Secret Injection -->
+            <path class="anim-flow" d="M 520 510 L 545 440" stroke="#fbbf24" stroke-width="2.2" fill="none" marker-end="url(#arrow-amber)" />
+            <path class="anim-flow" d="M 640 510 L 810 440" stroke="#fbbf24" stroke-width="2.2" fill="none" marker-end="url(#arrow-amber)" />
+
+            <!-- Browser <-> Google OIDC -->
+            <path class="anim-flow" d="M 116 190 L 116 325" stroke="#fbbf24" stroke-width="2.2" fill="none" marker-end="url(#arrow-amber)" />
+          </svg>
+        </div>
+      </div>
+
+      <!-- Right 4 Cols: Interactive Step Walkthrough & HTTP Inspector -->
+      <div class="xl:col-span-4 space-y-4">
+        <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono uppercase tracking-wider text-emerald-400 font-bold">Step-by-Step Flow Simulator</span>
+            <span id="step-counter" class="px-2.5 py-0.5 rounded-full text-xs font-mono font-bold bg-slate-800 text-cyan-300 border border-slate-700">Step 1 / 7</span>
+          </div>
+
+          <div class="grid grid-cols-7 gap-1.5" id="step-pills"></div>
+
+          <div class="space-y-2 pt-1">
+            <div class="text-xs font-mono text-cyan-400" id="step-direction"></div>
+            <h3 class="text-base font-bold text-white" id="step-title"></h3>
+            <p class="text-xs text-slate-300 leading-relaxed" id="step-body"></p>
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="text-[11px] font-mono uppercase tracking-wider text-slate-400">Wire Contract / Payload</div>
+            <pre id="step-http" class="bg-slate-950 border border-slate-800 rounded-xl p-3 text-[11px] text-emerald-300 overflow-x-auto leading-relaxed"></pre>
+          </div>
+        </div>
+
+        <!-- Responsibility Matrix Card -->
+        <div class="bg-slate-900/70 border border-slate-800 rounded-2xl p-5 space-y-3">
+          <h3 class="text-xs font-mono uppercase tracking-wider text-amber-400 font-bold">Strict Separation of Concerns</h3>
+          <div class="space-y-2 text-xs">
+            <div class="p-2.5 rounded-xl bg-amber-950/25 border border-amber-500/30">
+              <div class="font-bold text-amber-300">🏦 OpenBao Vault: Holds All Secrets</div>
+              <div class="text-slate-400 mt-0.5">Stores Google OAuth Client ID/Secret, Gateway AES/HMAC keys, and DB passwords. Projects hold 0 secrets.</div>
+            </div>
+            <div class="p-2.5 rounded-xl bg-emerald-950/25 border border-emerald-500/30">
+              <div class="font-bold text-emerald-300">🏛️ Keycloak + Gateway: Google OAuth Intermediate</div>
+              <div class="text-slate-400 mt-0.5">Redirects straight to Google (<code class="text-slate-200">kc_idp_hint=google</code>), exchanges tokens, and seals sessions. Never shows a Keycloak login UI.</div>
+            </div>
+            <div class="p-2.5 rounded-xl bg-cyan-950/25 border border-cyan-500/30">
+              <div class="font-bold text-cyan-300">⚙️ Projects (proj-pn): Verify-Only HTTP Client</div>
+              <div class="text-slate-400 mt-0.5">Zero Keycloak URLs, zero JWKS keys, zero JWT parsing. Only calls <code class="text-cyan-300">http://gateway.identity.svc:8080/auth</code> to verify identity.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================================================================== -->
+    <!-- SEQUENCE DIAGRAMS                                                   -->
+    <!-- =================================================================== -->
+    <section class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div class="bg-slate-900/50 border border-emerald-500/30 rounded-2xl p-5 space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">TARGET FLOW</span>
+          <span class="text-xs font-mono text-slate-400">Vault Keys ➔ Keycloak/Gateway Intermediate ➔ Zero-Config Project</span>
+        </div>
+        <div class="mermaid">
+sequenceDiagram
+    autonumber
+    participant V as OpenBao Vault
+    participant KC as Keycloak + Gateway (identity)
+    participant G as Google OAuth
+    participant BE as pn-backend (0 Secrets / 0 Config)
+    participant FE as pn-frontend (Login UI)
+
+    V->>KC: Inject Google OAuth Keys & Gateway HMAC Secret (tmpfs)
+    FE->>BE: 1. Click Sign In -> GET /api/auth/login
+    BE->>KC: 2. 302 Redirect -> /oauth/start?return=...
+    KC->>G: 3. 302 Direct to Google (kc_idp_hint=google, 0 Keycloak UI)
+    G->>KC: 4. Callback -> Exchange Google Code & Seal v1.<session_handle>
+    KC->>BE: 5. 302 /api/auth/callback?ticket=v1.<ticket>
+    BE->>KC: 6. POST http://gateway.identity.svc:8080/auth/exchange {ticket}
+    KC-->>BE: 7. 200 OK {session_handle, subject, issuer, audience, email}
+    BE->>FE: 8. 302 /?code=<pickup> -> POST /api/auth/session -> v1.<session_handle>
+    FE->>BE: 9. GET /api/* (Authorization: Bearer v1.<session_handle>)
+    BE->>KC: 10. GET http://gateway.identity.svc:8080/auth (Verify Only)
+    KC-->>BE: 11. 200 OK (X-User-Subject, X-User-Issuer, X-User-Email)
+        </div>
+      </div>
+
+      <div class="bg-slate-900/50 border border-rose-500/30 rounded-2xl p-5 space-y-3">
+        <div class="flex items-center justify-between">
+          <span class="px-2.5 py-0.5 rounded text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30">WHY LIVE CLUSTER FAILED TODAY</span>
+          <span class="text-xs font-mono text-slate-400">2 Concrete Causes Fixed by This Change</span>
+        </div>
+        <div class="space-y-3 text-xs text-slate-300 pt-1">
+          <div class="p-4 rounded-xl bg-rose-950/30 border border-rose-500/30 space-y-1.5">
+            <div class="font-bold text-rose-300 font-mono">Cause #1: Stale gateway:latest Pod in vps-k3s</div>
+            <p class="leading-relaxed">
+              <code class="text-slate-200">deploy/platform/identity/gateway-deployment.yaml</code> used a floating tag (<code class="text-rose-300">image: ghcr.io/nacfson/platform-auth-gateway:latest</code>). When Spec 009 merged, the YAML file had no diff, so FluxCD never restarted the pod. The live cluster is still running the old Gateway binary that redirects to <code class="text-rose-300">/realms/platform/protocol/openid-connect/auth</code> <strong>without</strong> <code class="text-emerald-300">kc_idp_hint=google</code>, causing Keycloak to render its username/password login form!
+            </p>
+          </div>
+          <div class="p-4 rounded-xl bg-rose-950/30 border border-rose-500/30 space-y-1.5">
+            <div class="font-bold text-rose-300 font-mono">Cause #2: Project Backend Still Configured with Keycloak URLs &amp; JWKS</div>
+            <p class="leading-relaxed">
+              <code class="text-slate-200">deploy/projects/pn/workloads/backend-deployment.yaml</code> still injected <code class="text-rose-300">AUTH_JWT_JWKS_URL</code>, <code class="text-rose-300">CENTRAL_AUTH_INTERNAL_URL</code>, and <code class="text-rose-300">CENTRAL_AUTH_URL</code> into <code class="text-slate-200">pn-backend</code>, and <code class="text-slate-200">Project_PN</code>'s <code class="text-slate-200">auth_middleware.go</code> still called <code class="text-rose-300">verifier.Verify()</code> against Keycloak's JWKS endpoint even after <code class="text-emerald-300">gateway.ConfirmSessionHandle()</code> already verified the session with <code class="text-emerald-300">gateway.identity.svc:8080/auth</code>!
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let currentMode = 'path1';
+    let currentStep = 0;
+    let autoPlayTimer = null;
+
+    const stepsData = {
+      path1: [
+        {
+          dir: 'OpenBao Vault (ns: vault) ➔ Keycloak & Gateway (ns: identity)',
+          title: '1. Vault Injects All Google OAuth & Gateway Secrets into RAM (tmpfs)',
+          body: 'OpenBao Vault holds 100% of secrets: Google OAuth client_id & client_secret, Gateway AES-GCM/HMAC secret, and client secrets. InitContainers fetch them into memory-backed tmpfs. Projects (proj-pn) hold zero secrets and zero OAuth configs.',
+          http: 'POST http://openbao-service.vault.svc:8200/v1/auth/kubernetes/login\nGET  http://openbao-service.vault.svc:8200/v1/kv/data/identity/google-oauth\nGET  http://openbao-service.vault.svc:8200/v1/kv/data/gateway/hmac-secret\n\n-> Mounted in RAM (/opt/keycloak/conf/secrets & /var/run/secrets/gateway)',
+          nodes: ['vault', 'kc', 'gw']
+        },
+        {
+          dir: 'Browser ➔ pn-frontend ➔ pn-backend',
+          title: '2. Visitor Clicks Sign In on Project PN UI',
+          body: 'Project PN renders its own Login UI. Clicking Sign In calls GET /api/auth/login on pn-backend, which redirects to https://auth.nacfson.cloud/oauth/start?return=https://pn.nacfson.cloud/api/auth/callback.',
+          http: 'GET https://pn.nacfson.cloud/api/auth/login\n\nHTTP/1.1 302 Found\nSet-Cookie: __Host-pa_nonce=<16B-hex>; Path=/; HttpOnly; Secure\nLocation: https://auth.nacfson.cloud/oauth/start?return=...',
+          nodes: ['browser', 'fe', 'be']
+        },
+        {
+          dir: 'Browser ➔ Gateway ➔ Keycloak (kc_idp_hint=google) ➔ Google',
+          title: '3. Headless Intermediate Redirects Straight to Google (0 Keycloak UI)',
+          body: 'Gateway seals the PKCE state using its Vault secret and instructs Keycloak (kc_idp_hint=google) to redirect 303 directly to accounts.google.com without ever displaying a Keycloak username/password screen.',
+          http: 'GET https://auth.nacfson.cloud/oauth/start?return=...\n\nHTTP/1.1 302 Found -> kc_idp_hint=google\nHTTP/1.1 303 See Other\nLocation: https://accounts.google.com/o/oauth2/v2/auth?client_id=...',
+          nodes: ['browser', 'traefik', 'gw', 'kc', 'google']
+        },
+        {
+          dir: 'Google ➔ Keycloak ➔ Gateway (/oauth/callback)',
+          title: '4. Gateway Exchanges Code with Keycloak & Seals v1.<session_handle>',
+          body: 'After Google sign-in, Gateway exchanges the code with internal keycloak-service.identity.svc:8080, seals {sid, sub, iss, aud, email, tokens, rt} into a Vault-encrypted v1.<session_handle>, and redirects to pn-backend with a single-use ticket.',
+          http: 'POST http://keycloak-service.identity.svc:8080/realms/platform/protocol/openid-connect/token\n\nHTTP/1.1 302 Found\nLocation: https://pn.nacfson.cloud/api/auth/callback?pa_bind=...&ticket=v1.<ticket>',
+          nodes: ['google', 'kc', 'gw', 'be']
+        },
+        {
+          dir: 'pn-backend ➔ Gateway (POST /auth/exchange)',
+          title: '5. Project Backend Calls Internal Gateway to Exchange Ticket',
+          body: 'pn-backend calls POST http://gateway.identity.svc:8080/auth/exchange. Gateway returns the opaque v1.<session_handle> plus verified (subject, issuer, audience, email). pn-backend needs zero Keycloak URLs or JWKS keys.',
+          http: 'POST http://gateway.identity.svc:8080/auth/exchange\nX-Forwarded-Host: pn.nacfson.cloud\n{"ticket": "v1.<ticket>"}\n\nHTTP/1.1 200 OK\n{"session_handle": "v1.<handle>", "subject": "f47ac10b...", "issuer": "https://auth.nacfson.cloud/realms/platform", "audience": "project-pn", "email": "user@example.com"}',
+          nodes: ['be', 'gw']
+        },
+        {
+          dir: 'pn-frontend ➔ pn-backend ➔ Gateway (GET /auth)',
+          title: '6. Every /api/* Request Verifies Auth via Internal Gateway HTTP Only',
+          body: 'pn-frontend sends Authorization: Bearer v1.<session_handle>. pn-backend calls GET http://gateway.identity.svc:8080/auth. Gateway validates the session with Keycloak internally (auto-refreshing if needed) and returns verified X-User-* headers.',
+          http: 'GET http://gateway.identity.svc:8080/auth\nAuthorization: Bearer v1.<session_handle>\nX-Forwarded-Host: pn.nacfson.cloud\n\nHTTP/1.1 200 OK\nX-User-Subject: f47ac10b-58cc-4372-a567-0e02b2c3d479\nX-User-Issuer: https://auth.nacfson.cloud/realms/platform\nX-Project-Audience: project-pn\nX-User-Email: user@example.com',
+          nodes: ['fe', 'be', 'gw', 'kc']
+        },
+        {
+          dir: 'pn-backend ➔ Gateway (POST /auth/logout)',
+          title: '7. Online Logout Revokes Root Session in Keycloak via Gateway',
+          body: 'When the user logs out, pn-backend calls POST http://gateway.identity.svc:8080/auth/logout with Bearer v1.<session_handle>. Gateway uses its Vault revocation secret to terminate the Keycloak session immediately.',
+          http: 'POST http://gateway.identity.svc:8080/auth/logout\nAuthorization: Bearer v1.<session_handle>\n\nHTTP/1.1 200 OK\n{"status": "revoked"}',
+          nodes: ['be', 'gw', 'kc']
+        }
+      ],
+      path2: [
+        {
+          dir: 'deploy/platform/identity/gateway-deployment.yaml',
+          title: '1. Cause #1: Floating :latest Tag Left Old Gateway Pod Running',
+          body: 'gateway-deployment.yaml used ghcr.io/nacfson/platform-auth-gateway:latest. When PR #40 merged, FluxCD saw no manifest change in gateway-deployment.yaml and never restarted the pod. The old pod omitted kc_idp_hint=google and showed the Keycloak login UI!',
+          http: 'curl -I "https://auth.nacfson.cloud/oauth/start?return=https://pn.nacfson.cloud/api/auth/callback"\n\nLocation: https://auth.nacfson.cloud/realms/platform/protocol/openid-connect/auth?client_id=gateway-client... (MISSING kc_idp_hint=google!)\n\n-> Renders Keycloak HTML Login Page (HTTP 200)',
+          nodes: ['browser', 'traefik', 'gw', 'kc']
+        },
+        {
+          dir: 'deploy/projects/pn/workloads/backend-deployment.yaml',
+          title: '2. Cause #2: Project Backend Still Held Keycloak & JWKS Configs',
+          body: 'backend-deployment.yaml still injected AUTH_JWT_JWKS_URL, CENTRAL_AUTH_INTERNAL_URL, and CENTRAL_AUTH_URL, and Project_PN auth_middleware.go still ran verifier.Verify() against Keycloak JWKS after Gateway had already confirmed the session.',
+          http: 'AUTH_JWT_JWKS_URL="http://gateway.identity.svc:8080/realms/platform/protocol/openid-connect/certs"\nCENTRAL_AUTH_INTERNAL_URL="http://gateway.identity.svc:8080/realms/platform"\nCENTRAL_AUTH_URL="https://auth.nacfson.cloud/realms/platform"',
+          nodes: ['be', 'gw', 'kc']
+        }
+      ]
+    };
+
+    function setPathMode(mode) {
+      currentMode = mode;
+      currentStep = 0;
+
+      const btn1 = document.getElementById('btn-path1');
+      const btn2 = document.getElementById('btn-path2');
+
+      if (mode === 'path1') {
+        btn1.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-emerald-500 text-slate-950 shadow-md shadow-emerald-500/20';
+        btn2.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition text-slate-400 hover:text-white';
+      } else {
+        btn1.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition text-slate-400 hover:text-white';
+        btn2.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition bg-rose-500 text-white shadow-md shadow-rose-500/20';
+      }
+
+      renderStep();
+    }
+
+    function renderStep() {
+      const list = stepsData[currentMode];
+      const step = list[currentStep];
+      document.getElementById('step-counter').textContent = `Step ${currentStep + 1} / ${list.length}`;
+      document.getElementById('step-direction').textContent = step.dir;
+      document.getElementById('step-title').textContent = step.title;
+      document.getElementById('step-body').textContent = step.body;
+      document.getElementById('step-http').textContent = step.http;
+
+      const pillsContainer = document.getElementById('step-pills');
+      pillsContainer.innerHTML = '';
+      list.forEach((_, idx) => {
+        const btn = document.createElement('button');
+        btn.className = idx === currentStep
+          ? 'h-2 rounded-full bg-emerald-400 transition-all'
+          : 'h-2 rounded-full bg-slate-800 hover:bg-slate-700 transition-all';
+        btn.onclick = () => { currentStep = idx; renderStep(); };
+        pillsContainer.appendChild(btn);
+      });
+
+      ['browser', 'google', 'traefik', 'fe', 'be', 'gw', 'kc', 'vault'].forEach(id => {
+        const el = document.getElementById('node-' + id);
+        if (!el) return;
+        if (step.nodes.includes(id)) {
+          el.classList.add('active-step-node');
+        } else {
+          el.classList.remove('active-step-node');
+        }
+      });
+    }
+
+    function nextStep() {
+      const list = stepsData[currentMode];
+      currentStep = (currentStep + 1) % list.length;
+      renderStep();
+    }
+
+    function prevStep() {
+      const list = stepsData[currentMode];
+      currentStep = (currentStep - 1 + list.length) % list.length;
+      renderStep();
+    }
+
+    function toggleAutoPlay() {
+      const btn = document.getElementById('btn-autoplay');
+      if (autoPlayTimer) {
+        clearInterval(autoPlayTimer);
+        autoPlayTimer = null;
+        btn.textContent = '▶ Auto-Play';
+      } else {
+        autoPlayTimer = setInterval(nextStep, 2800);
+        btn.textContent = '⏸ Pause';
+      }
+    }
+
+    function selectNode(nodeId) {
+      const list = stepsData[currentMode];
+      const idx = list.findIndex(s => s.nodes.includes(nodeId));
+      if (idx !== -1) {
+        currentStep = idx;
+        renderStep();
+      }
+    }
+
+    renderStep();
+  </script>
+</body>
+</html>

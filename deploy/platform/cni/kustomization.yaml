@@ -1,0 +1,185 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Cilium + Hubble CNI & Visual Platform Network Observability (Spec 010).
+#
+# upstream/cilium.yaml is rendered from the official Cilium Helm chart v1.20.3:
+#   helm template cilium cilium/cilium --version 1.20.3 --namespace kube-system \
+#     --set operator.replicas=1 \
+#     --set ipam.mode=kubernetes \
+#     --set kubeProxyReplacement=false \
+#     --set envoy.enabled=false \
+#     --set tls.secretsNamespace.create=false \
+#     --set tls.secretsNamespace.name=kube-system \
+#     --set tls.secretSync.enabled=false \
+#     --set hubble.enabled=true \
+#     --set hubble.tls.enabled=false \
+#     --set hubble.eventBufferCapacity=4095 \
+#     --set hubble.relay.enabled=true \
+#     --set hubble.relay.servicePort=4245 \
+#     --set hubble.ui.enabled=true \
+#     --set hubble.metrics.enabled="{dns,drop,tcp,flow}" \
+#     --set prometheus.enabled=true \
+#     --set operator.prometheus.enabled=true
+#   sha256 f7eacca4a1fd7bd2a2a4de9d707d17ba809fbf4ae712f6287fb64e64df43c225
+#
+# Flux runs only source-controller and kustomize-controller (no helm-controller),
+# so the static manifest bundle is vendored in Git instead of a HelmRelease.
+# All Hubble services (hubble-relay, hubble-ui, hubble-metrics, hubble-peer)
+# remain strictly internal ClusterIP services with zero public IngressRoute.
+resources:
+  - upstream/cilium.yaml
+
+patches:
+  # Preflight Rule 4: every container and initContainer declares requests and limits.
+  # Total CNI + Hubble platform reservation: +225m CPU request, +1248Mi memory limit.
+  - target:
+      kind: DaemonSet
+      name: cilium
+      namespace: kube-system
+    patch: |
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: cilium
+        namespace: kube-system
+      spec:
+        template:
+          spec:
+            initContainers:
+              - name: config
+                resources:
+                  requests:
+                    cpu: "10m"
+                    memory: "16Mi"
+                  limits:
+                    cpu: "100m"
+                    memory: "64Mi"
+              - name: mount-cgroup
+                resources:
+                  requests:
+                    cpu: "10m"
+                    memory: "16Mi"
+                  limits:
+                    cpu: "100m"
+                    memory: "64Mi"
+              - name: apply-sysctl-overwrites
+                resources:
+                  requests:
+                    cpu: "10m"
+                    memory: "16Mi"
+                  limits:
+                    cpu: "100m"
+                    memory: "64Mi"
+              - name: mount-bpf-fs
+                resources:
+                  requests:
+                    cpu: "10m"
+                    memory: "16Mi"
+                  limits:
+                    cpu: "100m"
+                    memory: "64Mi"
+              - name: clean-cilium-state
+                resources:
+                  requests:
+                    cpu: "10m"
+                    memory: "16Mi"
+                  limits:
+                    cpu: "100m"
+                    memory: "64Mi"
+              - name: install-cni-binaries
+                resources:
+                  requests:
+                    cpu: "10m"
+                    memory: "16Mi"
+                  limits:
+                    cpu: "100m"
+                    memory: "64Mi"
+            containers:
+              - name: cilium-agent
+                resources:
+                  requests:
+                    cpu: "100m"
+                    memory: "192Mi"
+                  limits:
+                    cpu: "500m"
+                    memory: "384Mi"
+  - target:
+      kind: Deployment
+      name: cilium-operator
+      namespace: kube-system
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: cilium-operator
+        namespace: kube-system
+      spec:
+        template:
+          spec:
+            containers:
+              - name: cilium-operator
+                resources:
+                  requests:
+                    cpu: "25m"
+                    memory: "64Mi"
+                  limits:
+                    cpu: "200m"
+                    memory: "192Mi"
+  - target:
+      kind: Deployment
+      name: hubble-relay
+      namespace: kube-system
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: hubble-relay
+        namespace: kube-system
+      spec:
+        template:
+          spec:
+            containers:
+              - name: hubble-relay
+                resources:
+                  requests:
+                    cpu: "15m"
+                    memory: "48Mi"
+                  limits:
+                    cpu: "150m"
+                    memory: "128Mi"
+  - target:
+      kind: Deployment
+      name: hubble-ui
+      namespace: kube-system
+    patch: |
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: hubble-ui
+        namespace: kube-system
+      spec:
+        template:
+          spec:
+            containers:
+              - name: frontend
+                resources:
+                  requests:
+                    cpu: "10m"
+                    memory: "32Mi"
+                  limits:
+                    cpu: "100m"
+                    memory: "64Mi"
+              - name: backend
+                env:
+                  - name: EVENTS_SERVER_PORT
+                    value: "8090"
+                  - name: FLOWS_API_ADDR
+                    value: "hubble-relay:4245"
+                resources:
+                  requests:
+                    cpu: "15m"
+                    memory: "48Mi"
+                  limits:
+                    cpu: "100m"
+                    memory: "96Mi"

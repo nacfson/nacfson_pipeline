@@ -46,6 +46,8 @@ spec:
               value: "http://openbao-service.vault.svc:8200"
             - name: VAULT_ROLE
               value: "postgres-init"
+            - name: PROJECT_SLUGS
+              value: "pn"
           command:
             - /bin/sh
             - -c
@@ -67,8 +69,10 @@ spec:
               curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/database/keycloak-user" | \
                 sed -n 's/.*"password":"\([^"]*\)".*/\1/p' > /var/run/secrets/database/keycloak_password
 
-              curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/database/pn-user" | \
-                sed -n 's/.*"password":"\([^"]*\)".*/\1/p' > /var/run/secrets/database/pn_password
+              for SLUG in $(echo "${PROJECT_SLUGS:-pn}" | tr ',' ' '); do
+                curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/database/${SLUG}-user" | \
+                  sed -n 's/.*"password":"\([^"]*\)".*/\1/p' > "/var/run/secrets/database/${SLUG}_password"
+              done
 
               curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/database/backup-user" | \
                 sed -n 's/.*"password":"\([^"]*\)".*/\1/p' > /var/run/secrets/database/backup_password
@@ -105,6 +109,8 @@ spec:
               value: postgres
             - name: VAULT_ADDR
               value: "http://openbao-service.vault.svc:8200"
+            - name: PROJECT_SLUGS
+              value: "pn"
           command:
             - /bin/sh
             - -c
@@ -153,20 +159,6 @@ spec:
                 SELECT 'CREATE DATABASE keycloak OWNER keycloak_user'
                 WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'keycloak')\gexec
 
-                -- Provision Project PN Role & Database
-                DO \$\$
-                BEGIN
-                  IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = 'user_pn') THEN
-                    CREATE ROLE user_pn WITH LOGIN PASSWORD '${PROJ_PN_DB_PASSWORD}';
-                  ELSE
-                    ALTER ROLE user_pn WITH PASSWORD '${PROJ_PN_DB_PASSWORD}';
-                  END IF;
-                END
-                \$\$;
-
-                SELECT 'CREATE DATABASE proj_pn OWNER user_pn'
-                WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = 'proj_pn')\gexec
-
                 -- Provision Dedicated Backup Role (Least Privilege pg_read_all_data)
                 DO \$\$
                 BEGIN
@@ -178,18 +170,48 @@ spec:
                 END
                 \$\$;
                 GRANT pg_read_all_data TO backup_role;
-                REVOKE CREATE, TEMPORARY ON DATABASE keycloak, proj_pn FROM backup_role;
-
-                -- Enforce strict database isolation
                 REVOKE ALL ON DATABASE keycloak FROM PUBLIC;
-                REVOKE ALL ON DATABASE proj_pn FROM PUBLIC;
-                REVOKE CONNECT ON DATABASE keycloak FROM user_pn;
-                REVOKE CONNECT ON DATABASE proj_pn FROM keycloak_user;
+                REVOKE CREATE, TEMPORARY ON DATABASE keycloak FROM backup_role;
                 GRANT CONNECT ON DATABASE keycloak TO keycloak_user;
-                GRANT CONNECT ON DATABASE proj_pn TO user_pn;
                 GRANT CONNECT ON DATABASE keycloak TO backup_role;
-                GRANT CONNECT ON DATABASE proj_pn TO backup_role;
+              EOSQL
 
+              # Standardized Multi-Project Database & Role Provisioning (proj_<slug> / user_<slug>)
+              for SLUG in $(echo "${PROJECT_SLUGS:-pn}" | tr ',' ' '); do
+                DB_NAME="proj_${SLUG}"
+                ROLE_NAME="user_${SLUG}"
+                PASS_FILE="/var/run/secrets/database/${SLUG}_password"
+                if [ -f "${PASS_FILE}" ]; then
+                  PROJ_DB_PASS=$(cat "${PASS_FILE}")
+                else
+                  PROJ_DB_PASS="${PROJ_PN_DB_PASSWORD:-}"
+                fi
+
+                psql -v ON_ERROR_STOP=1 <<-EOSQL
+                  DO \$\$
+                  BEGIN
+                    IF NOT EXISTS (SELECT FROM pg_catalog.pg_roles WHERE rolname = '${ROLE_NAME}') THEN
+                      CREATE ROLE ${ROLE_NAME} WITH LOGIN PASSWORD '${PROJ_DB_PASS}';
+                    ELSE
+                      ALTER ROLE ${ROLE_NAME} WITH PASSWORD '${PROJ_DB_PASS}';
+                    END IF;
+                  END
+                  \$\$;
+
+                  SELECT 'CREATE DATABASE ${DB_NAME} OWNER ${ROLE_NAME}'
+                  WHERE NOT EXISTS (SELECT FROM pg_database WHERE datname = '${DB_NAME}')\gexec
+
+                  REVOKE ALL ON DATABASE ${DB_NAME} FROM PUBLIC;
+                  REVOKE CREATE, TEMPORARY ON DATABASE ${DB_NAME} FROM backup_role;
+                  REVOKE CONNECT ON DATABASE keycloak FROM ${ROLE_NAME};
+                  REVOKE CONNECT ON DATABASE ${DB_NAME} FROM keycloak_user;
+                  GRANT CONNECT ON DATABASE ${DB_NAME} TO ${ROLE_NAME};
+                  GRANT CONNECT ON DATABASE ${DB_NAME} TO backup_role;
+                EOSQL
+                unset PROJ_DB_PASS
+              done
+
+              psql -v ON_ERROR_STOP=1 <<-EOSQL
                 \connect keycloak
                 DO \$\$
                 BEGIN

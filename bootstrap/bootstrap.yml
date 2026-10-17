@@ -85,6 +85,7 @@
               readiness_outcomes:
                 service_active_and_enabled: false
                 management_api_ready: false
+                cni_ready: false
                 node_ready: false
                 coredns_ready: false
                 reconciler_ready: false
@@ -105,11 +106,13 @@
             - httpd
           failed_when: false
 
-        - name: Clean lingering container cache and old cluster state
+        - name: Clean lingering container cache, stale CNI interfaces, and old cluster state
           when: not ansible_check_mode
           ansible.builtin.shell:
             cmd: |
-              rm -rf /var/lib/containerd /var/lib/docker /etc/rancher
+              ip link delete flannel.1 2>/dev/null || true
+              ip link delete cni0 2>/dev/null || true
+              rm -rf /var/lib/containerd /var/lib/docker /etc/rancher /var/lib/cni /etc/cni/net.d
           changed_when: false
           failed_when: false
 

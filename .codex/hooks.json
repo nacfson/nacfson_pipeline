@@ -1,0 +1,28 @@
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "shell|exec_command|bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 scripts/universal-agent-hook.py --agent codex --event PreToolUse",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 scripts/universal-agent-hook.py --agent codex --event Stop",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

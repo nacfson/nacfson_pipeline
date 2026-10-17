@@ -263,6 +263,118 @@ def check_project_doors(projects_dict):
     return violations
 
 
+def check_database_and_readiness_contract(projects_dict, platform_docs):
+    """Enforce CONTRACT_DATABASE.md and CONTRACT_PROBES_READINESS.md on database-backed workloads."""
+    violations = []
+    for proj_id, docs in sorted(projects_dict.items()):
+        slug = proj_id[len("proj-"):].replace("-", "_") if proj_id.startswith("proj-") else proj_id.replace("-", "_")
+        expected_db = f"proj_{slug}"
+        expected_user_prefix = f"project:{slug}:workload:"
+        for doc in docs:
+            pod_spec, _ = get_pod_spec_and_meta(doc)
+            if not pod_spec:
+                continue
+            obj = f"{proj_id}/{doc.get('kind', '')}/{(doc.get('metadata') or {}).get('name', '')}"
+            for c in pod_spec.get("containers") or []:
+                c_obj = f"{obj}:{c.get('name', '')}"
+                env_map = {}
+                for env_entry in c.get("env") or []:
+                    if isinstance(env_entry, dict) and env_entry.get("name"):
+                        env_map[str(env_entry["name"]).strip()] = str(env_entry.get("value") or "").strip()
+
+                db_keys = {"DATABASE_URL", "DB_HOST", "DB_NAME", "DB_USER", "DB_TOKEN"}
+                if not (db_keys & set(env_map.keys())):
+                    continue
+
+                # 1. Verify zero-plaintext proxy routing and tenant scope
+                db_host = env_map.get("DB_HOST", "")
+                if db_host and db_host != "vault-db-proxy.vault.svc":
+                    violations.append({
+                        "rule": 2,
+                        "object": c_obj,
+                        "detail": f"DB_HOST must route through vault-db-proxy.vault.svc, got {db_host!r}",
+                    })
+
+                db_name = env_map.get("DB_NAME", "")
+                if db_name and db_name != expected_db:
+                    violations.append({
+                        "rule": 2,
+                        "object": c_obj,
+                        "detail": f"DB_NAME for namespace {proj_id} must be {expected_db!r}, got {db_name!r}",
+                    })
+
+                db_user = env_map.get("DB_USER", "")
+                if db_user and not db_user.startswith(expected_user_prefix):
+                    violations.append({
+                        "rule": 2,
+                        "object": c_obj,
+                        "detail": f"DB_USER must start with {expected_user_prefix!r}, got {db_user!r}",
+                    })
+
+                db_url = env_map.get("DATABASE_URL", "")
+                if db_url:
+                    if "postgres-service" in db_url or "@vault-db-proxy.vault.svc:5432/" + expected_db not in db_url:
+                        violations.append({
+                            "rule": 2,
+                            "object": c_obj,
+                            "detail": (
+                                f"DATABASE_URL must connect via @vault-db-proxy.vault.svc:5432/{expected_db} "
+                                f"and never directly to postgres-service"
+                            ),
+                        })
+
+                # 2. Verify Readiness (/readyz) vs Liveness (/healthz) Probe Separation
+                readiness = c.get("readinessProbe")
+                liveness = c.get("livenessProbe")
+                r_path = ((readiness or {}).get("httpGet") or {}).get("path")
+                l_path = ((liveness or {}).get("httpGet") or {}).get("path")
+                if r_path != "/readyz":
+                    violations.append({
+                        "rule": 2,
+                        "object": c_obj,
+                        "detail": (
+                            f"database-backed project container must declare readinessProbe.httpGet.path: /readyz "
+                            f"(got {r_path!r})"
+                        ),
+                    })
+                if liveness is not None and l_path != "/healthz":
+                    violations.append({
+                        "rule": 2,
+                        "object": c_obj,
+                        "detail": (
+                            f"database-backed project container must declare livenessProbe.httpGet.path: /healthz "
+                            f"(got {l_path!r})"
+                        ),
+                    })
+
+    # Verify vault-db-proxy platform readinessProbe (/readyz) and livenessProbe (/healthz)
+    for doc in platform_docs:
+        if not isinstance(doc, dict) or doc.get("kind") != "Deployment":
+            continue
+        meta = doc.get("metadata") or {}
+        if meta.get("name") != "vault-db-proxy":
+            continue
+        pod_spec, _ = get_pod_spec_and_meta(doc)
+        if not pod_spec:
+            continue
+        for c in pod_spec.get("containers") or []:
+            if c.get("name") != "db-proxy":
+                continue
+            r_path = ((c.get("readinessProbe") or {}).get("httpGet") or {}).get("path")
+            l_path = ((c.get("livenessProbe") or {}).get("httpGet") or {}).get("path")
+            if r_path != "/readyz" or l_path != "/healthz":
+                violations.append({
+                    "rule": 2,
+                    "object": "vault/Deployment/vault-db-proxy:db-proxy",
+                    "detail": (
+                        f"vault-db-proxy must separate readinessProbe (/readyz) and livenessProbe (/healthz), "
+                        f"got readiness={r_path!r} liveness={l_path!r}"
+                    ),
+                })
+
+    return violations
+
+
 def check_edge_tls(project_docs, platform_docs):
     """Enforce edge TLS rules TLS-1 through TLS-6 (contracts/preflight-tls-rules.md)."""
     violations = []
@@ -750,6 +862,14 @@ def main():
             status = STATUS_REJECTED_ISOLATION
             if not rejection_reason:
                 rejection_reason = tls_violations[0]["detail"]
+            exit_code = 1
+
+        db_probe_violations = check_database_and_readiness_contract(projects_dict, platform_docs)
+        if db_probe_violations:
+            violations.extend(db_probe_violations)
+            status = STATUS_REJECTED_ISOLATION
+            if not rejection_reason:
+                rejection_reason = db_probe_violations[0]["detail"]
             exit_code = 1
 
     project_count = len(projects_dict)

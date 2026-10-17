@@ -291,3 +291,29 @@
   delegate_to: localhost
   become: false
   run_once: true
+
+# Controller check: verify Cilium CNI manifest bundle exists on controller
+- name: Inspect controller Cilium CNI manifest files
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  loop:
+    - "{{ playbook_dir }}/../deploy/platform/cni/kustomization.yaml"
+    - "{{ playbook_dir }}/../deploy/platform/cni/upstream/cilium.yaml"
+  register: cni_manifest_files
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Assert Cilium CNI manifest bundle exists on controller
+  ansible.builtin.assert:
+    that:
+      - item.stat.exists
+      - item.stat.isreg
+    fail_msg: >-
+      Preflight failed: Required Cilium CNI manifest file missing on controller: {{ item.item }}.
+  loop: "{{ cni_manifest_files.results }}"
+  loop_control:
+    label: "{{ item.item }}"
+  delegate_to: localhost
+  become: false
+  run_once: true

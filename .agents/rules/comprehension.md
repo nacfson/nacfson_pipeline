@@ -16,5 +16,5 @@ When explaining code, summarizing complex refactors, or reporting progress to th
 When the cognitive load of a change is high, escalate the output medium:
 - **Small fixes (1-2 files):** Controlled STE summary.
 - **Structural / Call-flow changes:** Controlled STE summary + Mermaid sequence or state diagram.
-- **Complex state machines / algorithms:** Disposable single-file HTML sandbox (`comprehension-sandbox`).
+- **Visual change digests, state machines, plans & handbooks:** Unified rich interactive HTML visualization (`comprehension-visualize` — `temp-summary`, `interactive-sandbox`, `plan-blueprint`, `canonical-handbook`).
 - **Major architectural pivots / deep refactors:** Bespoke narrated video explainer (`comprehension-video`).

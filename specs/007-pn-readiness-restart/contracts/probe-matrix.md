@@ -1,6 +1,7 @@
 # Contract: Project PN Probe Matrix (Cluster Hop)
 
-**Scope**: `deploy/projects/pn/workloads/frontend-deployment.yaml`, `backend-deployment.yaml`
+**Scope**: `deploy/projects/pn/workloads/frontend-deployment.yaml`, `backend-deployment.yaml`, `deploy/platform/vault-proxies/db-proxy.yaml`  
+**Canonical Contracts**: [`contracts/CONTRACT_PROBES_READINESS.md`](../../../contracts/CONTRACT_PROBES_READINESS.md), [`contracts/CONTRACT_DATABASE.md`](../../../contracts/CONTRACT_DATABASE.md)
 
 **Non-goals**: Image rebuilds, NetworkPolicy changes, IngressRoute changes, notification sinks, asserting browser CORS from kubelet probes (see [browser-api-access.md](./browser-api-access.md)).
 
@@ -11,8 +12,10 @@
 | `pn-frontend` | startup | `httpGet` | `/api/auth/language-options` | `80` | FE reached the BE auth router through nginx `location /api/` (**cluster hop incl. `/api/` proxy**) | In-window: keep Starting; **threshold exhausted: kill + restart** |
 | `pn-frontend` | readiness | `httpGet` | `/healthz` | `80` | Connected FE→BE on cluster hop (disconnect signal clear) | NotReady = cluster unconnected; **process NOT restarted**; **does not prove CORS** |
 | `pn-frontend` | liveness | `httpGet` | `/` | `80` | Local site process up | Kill + restart |
-| `pn-backend` | readiness | `httpGet` | `/readyz` | `8080` | Data dependency reachable | NotReady for API; **process NOT restarted** |
-| `pn-backend` | liveness | `httpGet` | `/healthz` | `8080` | Backend process up | Kill + restart |
+| `pn-backend` | readiness | `httpGet` | `/readyz` | `8080` | End-to-end DB dependency (`BE -> vault-db-proxy -> proj_pn`) reachable | NotReady for API; **process NOT restarted** |
+| `pn-backend` | liveness | `httpGet` | `/healthz` | `8080` | Backend process up (DB-free) | Kill + restart |
+| `vault-db-proxy` | readiness | `httpGet` | `/readyz` | `8080` | Upstream PostgreSQL (`postgres-service.identity.svc:5432`) TCP reachable | NotReady for DB proxy; **process NOT restarted** |
+| `vault-db-proxy` | liveness | `httpGet` | `/healthz` | `8080` | Proxy process up (DB-free) | Kill + restart |
 
 ## Timing (declared defaults)
 
@@ -21,8 +24,10 @@
 | FE startup | `5` | `3` | `36` | ≈180s boot window |
 | FE readiness | `5` | `3` | `3` | Cluster disconnect visible ~15s after sustained fail |
 | FE liveness | `10` | default/`3` | default/`3` | Process-local |
-| BE readiness | `5` | `3` | `3` | Dependency readiness |
+| BE readiness | `5` | `3` | `3` | Dependency readiness (`vault-db-proxy` -> `proj_pn`) |
 | BE liveness | `10` | default/`3` | default/`3` | Process-local |
+| DB Proxy readiness | `5` | default/`3` | default/`3` | Upstream PostgreSQL TCP reachability (`/readyz`) |
+| DB Proxy liveness | `10` | default/`3` | default/`3` | Process-local (`/healthz`) |
 
 ## Restart policy
 

@@ -1,0 +1,1082 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>nacfson_pipeline — Internal Login Page (7 Compiled HTML Variations)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #020617;
+      color: #f8fafc;
+      margin: 0;
+    }
+    .font-mono { font-family: 'JetBrains Mono', monospace; }
+    .font-serif-editorial { font-family: 'Instrument Serif', serif; }
+    .font-jakarta { font-family: 'Plus Jakarta Sans', sans-serif; }
+    .font-grotesk { font-family: 'Space Grotesk', sans-serif; }
+
+    /* Variation 1: Obsidian Grid & SVG Flow */
+    .obsidian-grid {
+      background-color: #020617;
+      background-size: 32px 32px;
+      background-image:
+        linear-gradient(to right, rgba(30, 41, 59, 0.35) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(30, 41, 59, 0.35) 1px, transparent 1px);
+    }
+    @keyframes dashFlow {
+      to { stroke-dashoffset: -24; }
+    }
+    .flow-line {
+      stroke-dasharray: 6 6;
+      animation: dashFlow 1.2s linear infinite;
+    }
+    @keyframes pulseDot {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.45; transform: scale(0.92); }
+    }
+    .pulse-dot { animation: pulseDot 2.2s infinite ease-in-out; }
+
+    /* Variation 2: Swiss Daylight Grid */
+    .swiss-grid {
+      background-color: #fafafa;
+      color: #09090b;
+      background-size: 40px 40px;
+      background-image:
+        linear-gradient(to right, rgba(24, 24, 27, 0.045) 1px, transparent 1px),
+        linear-gradient(to bottom, rgba(24, 24, 27, 0.045) 1px, transparent 1px);
+    }
+
+    /* Variation 3: CRT Scanlines & Cursor */
+    .terminal-bg {
+      font-family: 'JetBrains Mono', monospace;
+      background-color: #050806;
+      color: #4ade80;
+      background-image: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.35) 50%);
+      background-size: 100% 4px;
+    }
+    @keyframes blink {
+      0%, 49% { opacity: 1; }
+      50%, 100% { opacity: 0; }
+    }
+    .cursor-blink { animation: blink 1s step-end infinite; }
+    .terminal-shadow {
+      box-shadow: 0 0 50px rgba(34, 197, 94, 0.08), inset 0 0 24px rgba(34, 197, 94, 0.04);
+    }
+
+    /* Variation 4: Nordic Aurora & Frosted Glass */
+    @keyframes floatAurora {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33% { transform: translate(35px, -25px) scale(1.08); }
+      66% { transform: translate(-25px, 20px) scale(0.95); }
+    }
+    .aurora-1 { animation: floatAurora 14s ease-in-out infinite; }
+    .aurora-2 { animation: floatAurora 18s ease-in-out infinite reverse; }
+    .glass-card {
+      background: linear-gradient(145deg, rgba(255, 255, 255, 0.08) 0%, rgba(255, 255, 255, 0.025) 100%);
+      backdrop-filter: blur(28px);
+      -webkit-backdrop-filter: blur(28px);
+      box-shadow: 0 25px 60px -15px rgba(0, 0, 0, 0.7), inset 0 1px 0 0 rgba(255, 255, 255, 0.18);
+    }
+
+    /* Variation 5: Brutalist Blueprint */
+    .brutalist-bg {
+      font-family: 'Space Grotesk', sans-serif;
+      background-color: #f4f1ea;
+      color: #111111;
+      background-image: radial-gradient(#111111 0.75px, transparent 0.75px);
+      background-size: 24px 24px;
+    }
+    .brutal-box {
+      border: 2px solid #111111;
+      box-shadow: 6px 6px 0px #111111;
+    }
+    .brutal-btn {
+      border: 2px solid #111111;
+      box-shadow: 4px 4px 0px #111111;
+      transition: all 0.12s ease;
+    }
+    .brutal-btn:hover {
+      transform: translate(-2px, -2px);
+      box-shadow: 6px 6px 0px #111111;
+    }
+    .brutal-btn:active {
+      transform: translate(2px, 2px);
+      box-shadow: 2px 2px 0px #111111;
+    }
+
+    /* Variation 7: Bento Cards */
+    .bento-card {
+      background: linear-gradient(180deg, rgba(24, 24, 27, 0.85) 0%, rgba(15, 15, 18, 0.95) 100%);
+      border: 1px solid rgba(63, 63, 70, 0.55);
+      transition: border-color 0.2s ease, transform 0.2s ease;
+    }
+    .bento-card:hover {
+      border-color: rgba(161, 161, 170, 0.45);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col selection:bg-cyan-500/30 selection:text-cyan-200">
+
+  <!-- ===================================================================== -->
+  <!-- STICKY STUDIO NAVIGATION BAR (ALL 7 VARIATIONS IN 1 FILE)             -->
+  <!-- ===================================================================== -->
+  <header id="studioBar" class="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/95 backdrop-blur-md px-4 lg:px-6 py-2.5">
+    <div class="max-w-[1600px] mx-auto flex flex-wrap items-center justify-between gap-2.5">
+      
+      <!-- Brand -->
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-br from-cyan-500/20 to-emerald-500/20 border border-cyan-500/40 flex items-center justify-center text-sm">
+          🔐
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-sm font-extrabold tracking-tight text-white">nacfson_pipeline Login Studio</span>
+            <span class="px-2 py-0.5 text-[10px] font-mono font-semibold rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">7-in-1 File</span>
+          </div>
+          <p class="text-[11px] text-slate-400 hidden xl:block">Press <kbd class="px-1 py-0.5 bg-slate-800 rounded text-slate-200 font-mono">1</kbd>–<kbd class="px-1 py-0.5 bg-slate-800 rounded text-slate-200 font-mono">7</kbd> to switch designs, <kbd class="px-1 py-0.5 bg-slate-800 rounded text-slate-200 font-mono">0</kbd> for Overview Grid</p>
+        </div>
+      </div>
+
+      <!-- Variation Switcher Buttons -->
+      <nav class="flex flex-wrap items-center gap-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+        <button onclick="showVariation(0)" id="nav-0" class="var-nav px-2.5 py-1.5 rounded-lg text-xs font-bold transition bg-cyan-500 text-slate-950">
+          ⊞ All 7 Grid
+        </button>
+        <button onclick="showVariation(1)" id="nav-1" class="var-nav px-2.5 py-1.5 rounded-lg text-xs font-semibold transition text-slate-400 hover:text-white">
+          1. Obsidian
+        </button>
+        <button onclick="showVariation(2)" id="nav-2" class="var-nav px-2.5 py-1.5 rounded-lg text-xs font-semibold transition text-slate-400 hover:text-white">
+          2. Swiss Light
+        </button>
+        <button onclick="showVariation(3)" id="nav-3" class="var-nav px-2.5 py-1.5 rounded-lg text-xs font-semibold transition text-slate-400 hover:text-white">
+          3. CLI Terminal
+        </button>
+        <button onclick="showVariation(4)" id="nav-4" class="var-nav px-2.5 py-1.5 rounded-lg text-xs font-semibold transition text-slate-400 hover:text-white">
+          4. Aurora Glass
+        </button>
+        <button onclick="showVariation(5)" id="nav-5" class="var-nav px-2.5 py-1.5 rounded-lg text-xs font-semibold transition text-slate-400 hover:text-white">
+          5. Brutalist
+        </button>
+        <button onclick="showVariation(6)" id="nav-6" class="var-nav px-2.5 py-1.5 rounded-lg text-xs font-semibold transition text-slate-400 hover:text-white">
+          6. Editorial
+        </button>
+        <button onclick="showVariation(7)" id="nav-7" class="var-nav px-2.5 py-1.5 rounded-lg text-xs font-semibold transition text-slate-400 hover:text-white">
+          7. Bento Portal
+        </button>
+      </nav>
+
+      <!-- State Simulator & Next/Prev -->
+      <div class="flex items-center gap-1.5">
+        <button onclick="toggleErrorSim()" id="simErrorBtn" class="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-mono text-slate-300 transition" title="Simulate 401 Session Revoked / Error Banner">
+          ⚡ Sim 401 Alert
+        </button>
+        <button onclick="stepVariation(-1)" class="px-2 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-mono text-slate-300">←</button>
+        <button onclick="stepVariation(1)" class="px-2 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-xs font-mono text-slate-300">→</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Simulated 401 / Revoked Session Banner (Toggleable across all variations) -->
+  <div id="globalErrorSim" class="hidden bg-rose-950/95 border-b border-rose-500/40 px-4 py-2.5 text-center text-xs font-mono text-rose-200 z-40">
+    <span class="px-1.5 py-0.5 rounded bg-rose-500 text-black font-bold mr-2">HTTP 401</span>
+    <span>{"error":"session_revoked","message":"Session revoked or expired — please re-authenticate via /oauth/start"}</span>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- VIEW 0: OVERVIEW GRID OF ALL 7 VARIATIONS                             -->
+  <!-- ===================================================================== -->
+  <section id="var-0" class="var-section flex-1 max-w-[1600px] w-full mx-auto p-6 sm:p-8 space-y-6">
+    <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 border-b border-slate-800/80 pb-5">
+      <div>
+        <span class="text-xs font-mono uppercase tracking-widest text-cyan-400">Single Self-Contained File · auth.nacfson.cloud</span>
+        <h1 class="text-2xl sm:text-3xl font-extrabold text-white mt-1">7 Internal Login Page Variations</h1>
+        <p class="text-sm text-slate-400 mt-1 max-w-3xl">
+          Click any card below (or press keys <kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-cyan-300 font-mono text-xs">1</kbd>–<kbd class="px-1.5 py-0.5 bg-slate-800 rounded text-cyan-300 font-mono text-xs">7</kbd>) to experience the full-screen interactive design right inside this file.
+        </p>
+      </div>
+    </div>
+
+    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+      <!-- Card 1 -->
+      <div onclick="showVariation(1)" class="cursor-pointer rounded-2xl border border-slate-800 bg-slate-900/60 hover:border-cyan-400/60 p-6 flex flex-col justify-between transition group shadow-lg">
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="px-2.5 py-1 rounded-md bg-cyan-500/15 border border-cyan-500/30 text-xs font-mono font-bold text-cyan-300">Variation 01</span>
+            <div class="flex gap-1.5">
+              <span class="w-4 h-4 rounded-full bg-[#020617] border border-white/20"></span>
+              <span class="w-4 h-4 rounded-full bg-[#0f172a] border border-white/20"></span>
+              <span class="w-4 h-4 rounded-full bg-[#06b6d4]"></span>
+              <span class="w-4 h-4 rounded-full bg-[#10b981]"></span>
+            </div>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-white group-hover:text-cyan-300 transition">Obsidian Zero-Trust Console</h2>
+            <p class="text-xs font-mono text-emerald-400 mt-0.5">Matches docs/platform-architecture.html</p>
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Asymmetric split-screen dark console with live animated SVG request flow (<code class="text-slate-200">Browser → Gateway → Keycloak → Project PN</code>), destination door dropdown, and PKCE S256 telemetry.
+          </p>
+        </div>
+        <div class="pt-5 mt-5 border-t border-slate-800/80 flex items-center justify-between text-xs font-mono text-cyan-400">
+          <span>Launch Fullscreen View</span>
+          <span class="group-hover:translate-x-1 transition">Key [1] →</span>
+        </div>
+      </div>
+
+      <!-- Card 2 -->
+      <div onclick="showVariation(2)" class="cursor-pointer rounded-2xl border border-slate-800 bg-slate-900/60 hover:border-cyan-400/60 p-6 flex flex-col justify-between transition group shadow-lg">
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="px-2.5 py-1 rounded-md bg-zinc-100 text-zinc-900 text-xs font-mono font-bold">Variation 02</span>
+            <div class="flex gap-1.5">
+              <span class="w-4 h-4 rounded-full bg-[#fafafa] border border-white/20"></span>
+              <span class="w-4 h-4 rounded-full bg-[#ffffff] border border-white/20"></span>
+              <span class="w-4 h-4 rounded-full bg-[#18181b] border border-white/20"></span>
+              <span class="w-4 h-4 rounded-full bg-[#10b981]"></span>
+            </div>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-white group-hover:text-cyan-300 transition">Swiss Minimalist Daylight</h2>
+            <p class="text-xs font-mono text-slate-400 mt-0.5">Vercel / Linear Inspired Light Mode</p>
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Crisp off-white architectural grid with a centered card, segmented tab switcher (<strong class="text-slate-200">Federated SSO</strong> vs. <strong class="text-slate-200">Internal Credentials</strong>), FIDO2 hardware passkey trigger, and keyboard shortcut badges.
+          </p>
+        </div>
+        <div class="pt-5 mt-5 border-t border-slate-800/80 flex items-center justify-between text-xs font-mono text-cyan-400">
+          <span>Launch Fullscreen View</span>
+          <span class="group-hover:translate-x-1 transition">Key [2] →</span>
+        </div>
+      </div>
+
+      <!-- Card 3 -->
+      <div onclick="showVariation(3)" class="cursor-pointer rounded-2xl border border-slate-800 bg-slate-900/60 hover:border-emerald-400/60 p-6 flex flex-col justify-between transition group shadow-lg">
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="px-2.5 py-1 rounded-md bg-emerald-500/15 border border-emerald-500/30 text-xs font-mono font-bold text-emerald-300">Variation 03</span>
+            <div class="flex gap-1.5">
+              <span class="w-4 h-4 rounded-full bg-[#050806] border border-white/20"></span>
+              <span class="w-4 h-4 rounded-full bg-[#4ade80]"></span>
+              <span class="w-4 h-4 rounded-full bg-[#fbbf24]"></span>
+            </div>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-white group-hover:text-emerald-300 transition">Operator CLI Terminal Matrix</h2>
+            <p class="text-xs font-mono text-amber-400 mt-0.5">CRT Phosphor Emerald &amp; Amber Shell</p>
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Full monospace SRE terminal with scanline overlay, ASCII banner, live timestamped handshake log, and interactive CLI prompts (<code class="text-emerald-300">operator_uid</code>, <code class="text-emerald-300">totp_token</code>).
+          </p>
+        </div>
+        <div class="pt-5 mt-5 border-t border-slate-800/80 flex items-center justify-between text-xs font-mono text-emerald-400">
+          <span>Launch Fullscreen View</span>
+          <span class="group-hover:translate-x-1 transition">Key [3] →</span>
+        </div>
+      </div>
+
+      <!-- Card 4 -->
+      <div onclick="showVariation(4)" class="cursor-pointer rounded-2xl border border-slate-800 bg-slate-900/60 hover:border-indigo-400/60 p-6 flex flex-col justify-between transition group shadow-lg">
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="px-2.5 py-1 rounded-md bg-indigo-500/15 border border-indigo-500/30 text-xs font-mono font-bold text-indigo-300">Variation 04</span>
+            <div class="flex gap-1.5">
+              <span class="w-4 h-4 rounded-full bg-[#070514] border border-white/20"></span>
+              <span class="w-4 h-4 rounded-full bg-[#4f46e5]"></span>
+              <span class="w-4 h-4 rounded-full bg-[#d946ef]"></span>
+              <span class="w-4 h-4 rounded-full bg-[#06b6d4]"></span>
+            </div>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-white group-hover:text-indigo-300 transition">Nordic Glass &amp; Aurora Mesh</h2>
+            <p class="text-xs font-mono text-indigo-300 mt-0.5">Frosted Acrylic Glassmorphism</p>
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Floating frosted-glass card over slow-drifting aurora mesh orbs with an SSO-first workflow and a collapsible drawer for internal operator credentials.
+          </p>
+        </div>
+        <div class="pt-5 mt-5 border-t border-slate-800/80 flex items-center justify-between text-xs font-mono text-indigo-300">
+          <span>Launch Fullscreen View</span>
+          <span class="group-hover:translate-x-1 transition">Key [4] →</span>
+        </div>
+      </div>
+
+      <!-- Card 5 -->
+      <div onclick="showVariation(5)" class="cursor-pointer rounded-2xl border border-slate-800 bg-slate-900/60 hover:border-orange-500/60 p-6 flex flex-col justify-between transition group shadow-lg">
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="px-2.5 py-1 rounded-md bg-[#ff4f00]/20 border border-[#ff4f00]/40 text-xs font-mono font-bold text-[#ff7733]">Variation 05</span>
+            <div class="flex gap-1.5">
+              <span class="w-4 h-4 rounded-full bg-[#f4f1ea] border border-white/20"></span>
+              <span class="w-4 h-4 rounded-full bg-[#111111] border border-white/20"></span>
+              <span class="w-4 h-4 rounded-full bg-[#ff4f00]"></span>
+            </div>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-white group-hover:text-[#ff7733] transition">Neo-Brutalist Blueprint</h2>
+            <p class="text-xs font-mono text-[#ff7733] mt-0.5">Industrial Spec-006 Checkpoint</p>
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Drafting-paper dot matrix with heavy <code class="text-slate-200">2px</code> ink borders, <code class="text-slate-200">6px</code> hard offset shadows, Spec-006 inspection table, and international safety-orange OIDC trigger.
+          </p>
+        </div>
+        <div class="pt-5 mt-5 border-t border-slate-800/80 flex items-center justify-between text-xs font-mono text-[#ff7733]">
+          <span>Launch Fullscreen View</span>
+          <span class="group-hover:translate-x-1 transition">Key [5] →</span>
+        </div>
+      </div>
+
+      <!-- Card 6 -->
+      <div onclick="showVariation(6)" class="cursor-pointer rounded-2xl border border-slate-800 bg-slate-900/60 hover:border-emerald-300/60 p-6 flex flex-col justify-between transition group shadow-lg">
+        <div class="space-y-4">
+          <div class="flex items-center justify-between">
+            <span class="px-2.5 py-1 rounded-md bg-stone-200 text-stone-900 text-xs font-mono font-bold">Variation 06</span>
+            <div class="flex gap-1.5">
+              <span class="w-4 h-4 rounded-full bg-[#14211b] border border-white/20"></span>
+              <span class="w-4 h-4 rounded-full bg-[#f6f4ee] border border-white/20"></span>
+              <span class="w-4 h-4 rounded-full bg-[#a7cbb7]"></span>
+            </div>
+          </div>
+          <div>
+            <h2 class="text-lg font-bold text-white group-hover:text-[#a7cbb7] transition">Editorial Atelier Sanctuary</h2>
+            <p class="text-xs font-mono text-[#a7cbb7] mt-0.5">Instrument Serif + Warm Alabaster</p>
+          </div>
+          <p class="text-xs text-slate-400 leading-relaxed">
+            Pairs high-contrast editorial serif typography on a deep forest panel with a poised warm-stone login form, highlighting strict 1/n isolation.
+          </p>
+        </div>
+        <div class="pt-5 mt-5 border-t border-slate-800/80 flex items-center justify-between text-xs font-mono text-[#a7cbb7]">
+          <span>Launch Fullscreen View</span>
+          <span class="group-hover:translate-x-1 transition">Key [6] →</span>
+        </div>
+      </div>
+
+      <!-- Card 7 -->
+      <div onclick="showVariation(7)" class="cursor-pointer rounded-2xl border border-slate-800 bg-slate-900/60 hover:border-amber-400/60 p-6 flex flex-col justify-between transition group shadow-lg md:col-span-2 xl:col-span-3">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div class="space-y-2 max-w-3xl">
+            <div class="flex items-center gap-3">
+              <span class="px-2.5 py-1 rounded-md bg-amber-500/15 border border-amber-500/30 text-xs font-mono font-bold text-amber-300">Variation 07</span>
+              <h2 class="text-lg font-bold text-white group-hover:text-amber-300 transition">Cyber-Bento Multi-Project Portal</h2>
+              <span class="text-xs font-mono text-amber-400 hidden sm:inline">Interactive Project Door Selector</span>
+            </div>
+            <p class="text-xs text-slate-400 leading-relaxed">
+              Modular 4-tile Bento layout where operators can click between <strong class="text-slate-200">Project PN</strong> (<code class="text-amber-300">pn.nacfson.cloud</code>), <strong class="text-slate-200">Vault Transit Proxy</strong>, and <strong class="text-slate-200">Flux Telemetry</strong> to dynamically update the live <code class="text-slate-200">Set-Cookie</code> domain contract and <code class="text-slate-200">/oauth/start?return=...</code> URL.
+            </p>
+          </div>
+          <div class="flex items-center gap-3 shrink-0 font-mono text-xs text-amber-300">
+            <span>Launch Fullscreen View</span>
+            <span class="px-3 py-2 rounded-xl bg-amber-400 text-zinc-950 font-bold group-hover:translate-x-1 transition">Key [7] →</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- VARIATION 1: OBSIDIAN ZERO-TRUST CONSOLE                              -->
+  <!-- ===================================================================== -->
+  <section id="var-1" class="var-section hidden flex-1 obsidian-grid flex flex-col justify-between relative overflow-hidden">
+    <div class="pointer-events-none absolute -top-40 -left-40 w-96 h-96 rounded-full bg-cyan-500/10 blur-[120px]"></div>
+    <div class="pointer-events-none absolute -bottom-40 -right-40 w-96 h-96 rounded-full bg-emerald-500/10 blur-[120px]"></div>
+
+    <div class="w-full border-b border-slate-800/80 bg-slate-950/70 px-6 py-3 z-10">
+      <div class="max-w-7xl mx-auto flex flex-wrap items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div class="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500/20 to-emerald-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300 font-mono font-bold text-xs">N</div>
+          <span class="font-bold text-sm text-white">auth.nacfson.cloud</span>
+          <span class="font-mono text-xs px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-300 border border-cyan-500/30">realm: platform</span>
+        </div>
+        <div class="flex items-center gap-4 text-xs font-mono text-slate-400">
+          <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-emerald-400 pulse-dot"></span>Keycloak OIDC: ONLINE</span>
+          <span class="hidden sm:inline text-slate-700">|</span>
+          <span class="hidden sm:inline">PKCE: <strong class="text-slate-200">S256</strong></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="flex-1 flex items-center justify-center p-6 z-10">
+      <div class="max-w-6xl w-full grid grid-cols-1 lg:grid-cols-12 rounded-3xl border border-slate-800/90 bg-slate-900/60 backdrop-blur-xl shadow-2xl overflow-hidden">
+        <!-- Left (7 cols) -->
+        <div class="lg:col-span-7 p-8 sm:p-12 flex flex-col justify-between border-b lg:border-b-0 lg:border-r border-slate-800/80 bg-gradient-to-br from-slate-950/90 via-slate-900/60 to-slate-950/90">
+          <div class="space-y-6">
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/90 border border-slate-700/80 text-xs font-mono text-cyan-300">
+              <span>🛡️</span><span>ZERO-PLAINTEXT IDENTITY GATEWAY</span>
+            </div>
+            <div class="space-y-2">
+              <h2 class="text-3xl sm:text-4xl font-extrabold tracking-tight text-white leading-tight">
+                Personal Project Platform <span class="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-emerald-400">Internal Sign-In</span>
+              </h2>
+              <p class="text-sm sm:text-base text-slate-400 max-w-xl leading-relaxed">
+                Authenticate once via the Go Identity Gateway. Your session is cryptographically bound to the target project host with strict <code class="text-cyan-300 font-mono text-xs bg-slate-800/90 px-1.5 py-0.5 rounded">aud</code> claim verification.
+              </p>
+            </div>
+
+            <!-- Live SVG Flow -->
+            <div class="rounded-2xl bg-slate-950/90 border border-slate-800 p-5 space-y-4">
+              <div class="flex items-center justify-between text-xs font-mono text-slate-400">
+                <span>ACTIVE AUTHENTICATION PIPELINE</span>
+                <span class="text-emerald-400">TLS 1.3 · STRICT SNI</span>
+              </div>
+              <svg viewBox="0 0 520 90" class="w-full h-auto">
+                <rect x="8" y="20" width="102" height="50" rx="10" fill="#0f172a" stroke="#38bdf8" stroke-width="1.5"/>
+                <text x="59" y="42" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="Inter" font-weight="700">Browser</text>
+                <text x="59" y="57" text-anchor="middle" fill="#38bdf8" font-size="9" font-family="JetBrains Mono">/oauth/start</text>
+                <line x1="110" y1="45" x2="150" y2="45" stroke="#38bdf8" stroke-width="2" class="flow-line"/>
+                <rect x="150" y="20" width="108" height="50" rx="10" fill="#0f172a" stroke="#22d3ee" stroke-width="1.5"/>
+                <text x="204" y="42" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="Inter" font-weight="700">Auth Gateway</text>
+                <text x="204" y="57" text-anchor="middle" fill="#94a3b8" font-size="9" font-family="JetBrains Mono">HMAC + PKCE</text>
+                <line x1="258" y1="45" x2="298" y2="45" stroke="#10b981" stroke-width="2" class="flow-line"/>
+                <rect x="298" y="20" width="102" height="50" rx="10" fill="#0f172a" stroke="#10b981" stroke-width="1.5"/>
+                <text x="349" y="42" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="Inter" font-weight="700">Keycloak</text>
+                <text x="349" y="57" text-anchor="middle" fill="#10b981" font-size="9" font-family="JetBrains Mono">Realm: platform</text>
+                <line x1="400" y1="45" x2="432" y2="45" stroke="#a855f7" stroke-width="2" class="flow-line"/>
+                <rect x="432" y="20" width="80" height="50" rx="10" fill="#0f172a" stroke="#a855f7" stroke-width="1.5"/>
+                <text x="472" y="42" text-anchor="middle" fill="#e2e8f0" font-size="11" font-family="Inter" font-weight="700">Project PN</text>
+                <text x="472" y="57" text-anchor="middle" fill="#c084fc" font-size="9" font-family="JetBrains Mono">aud: pn</text>
+              </svg>
+              <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800/80 text-[11px] font-mono">
+                <div class="bg-slate-900/90 rounded-lg p-2.5 border border-slate-800/70">
+                  <div class="text-slate-500">RETURN TARGET</div>
+                  <div class="text-cyan-300 font-semibold truncate mt-0.5">https://pn.nacfson.cloud</div>
+                </div>
+                <div class="bg-slate-900/90 rounded-lg p-2.5 border border-slate-800/70">
+                  <div class="text-slate-500">COOKIE SCOPE</div>
+                  <div class="text-emerald-300 font-semibold truncate mt-0.5">HostOnly · HttpOnly</div>
+                </div>
+                <div class="bg-slate-900/90 rounded-lg p-2.5 border border-slate-800/70">
+                  <div class="text-slate-500">REVOCATION</div>
+                  <div class="text-purple-300 font-semibold truncate mt-0.5">Fail-Closed Online</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="pt-8 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-500 font-mono">
+            <span>CLUSTER: vps-k3s (Oracle Cloud)</span>
+            <span>SPEC-006 / SPEC-008 COMPLIANT</span>
+          </div>
+        </div>
+
+        <!-- Right (5 cols) -->
+        <div class="lg:col-span-5 p-8 sm:p-10 flex flex-col justify-center bg-slate-950/50">
+          <div class="space-y-6">
+            <div>
+              <div class="flex items-center justify-between">
+                <h3 class="text-xl font-bold text-white">Operator Authentication</h3>
+                <span class="text-[11px] font-mono px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Ready</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Select federated OIDC broker or enter internal realm credentials.</p>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-mono uppercase tracking-wider text-slate-400 mb-1.5">Destination Project Door</label>
+              <select class="w-full rounded-xl bg-slate-900 border border-slate-700/80 px-3.5 py-2.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-cyan-400 transition">
+                <option value="https://pn.nacfson.cloud/">pn.nacfson.cloud (aud: project-pn)</option>
+                <option value="https://vault.nacfson.cloud/">vault.nacfson.cloud (aud: project-vault)</option>
+                <option value="https://flux.nacfson.cloud/">flux.nacfson.cloud (aud: project-ops)</option>
+              </select>
+            </div>
+
+            <a href="/oauth/start?return=https://pn.nacfson.cloud/" class="w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-400 hover:to-emerald-400 text-slate-950 font-bold text-sm shadow-lg shadow-cyan-500/20 transition">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 15.64 5 12c0-3.64 3.36-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81Z"/></svg>
+              <span>Continue with Google (Keycloak Broker)</span>
+            </a>
+
+            <div class="relative flex py-1 items-center">
+              <div class="flex-grow border-t border-slate-800"></div>
+              <span class="flex-shrink mx-3 text-[11px] font-mono uppercase text-slate-500">or internal realm login</span>
+              <div class="flex-grow border-t border-slate-800"></div>
+            </div>
+
+            <form onsubmit="event.preventDefault(); document.getElementById('v1Banner').classList.remove('hidden');" class="space-y-4">
+              <div>
+                <label class="block text-xs font-medium text-slate-300 mb-1.5">Operator Handle / Internal Email</label>
+                <input type="text" required placeholder="nacfson@internal.platform" class="w-full rounded-xl bg-slate-900/90 border border-slate-800 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 font-mono" />
+              </div>
+              <div>
+                <div class="flex items-center justify-between mb-1.5">
+                  <label class="block text-xs font-medium text-slate-300">Passphrase</label>
+                  <span class="text-[11px] font-mono text-cyan-400">Vault Transit Backed</span>
+                </div>
+                <input type="password" required placeholder="••••••••••••••••" class="w-full rounded-xl bg-slate-900/90 border border-slate-800 px-3.5 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-cyan-400 font-mono" />
+              </div>
+              <button type="submit" class="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-100 font-semibold text-sm transition flex items-center justify-center gap-2">
+                <span>Sign In with Realm Credentials</span>
+                <span class="font-mono text-xs text-cyan-400">→</span>
+              </button>
+            </form>
+
+            <div id="v1Banner" class="hidden rounded-xl bg-cyan-500/10 border border-cyan-500/30 p-3 text-xs font-mono text-cyan-200">
+              ✓ Initiating PKCE S256 challenge via <span class="underline">/oauth/start</span>...
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- VARIATION 2: SWISS MINIMALIST DAYLIGHT                                -->
+  <!-- ===================================================================== -->
+  <section id="var-2" class="var-section hidden flex-1 swiss-grid flex flex-col justify-between">
+    <div class="w-full border-b border-zinc-200 bg-white/80 backdrop-blur-md px-6 py-3">
+      <div class="max-w-5xl mx-auto flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <div class="w-6 h-6 rounded bg-zinc-900 text-white flex items-center justify-center font-mono text-xs font-bold">N</div>
+          <span class="text-sm font-semibold tracking-tight text-zinc-900">Personal Project Platform</span>
+          <span class="text-zinc-300">/</span>
+          <span class="text-xs font-mono text-zinc-500">auth.nacfson.cloud</span>
+        </div>
+        <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-xs font-mono">
+          <span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>All Systems Operational
+        </span>
+      </div>
+    </div>
+
+    <div class="flex-1 flex items-center justify-center p-6">
+      <div class="w-full max-w-[440px]">
+        <div class="mb-4 flex items-center justify-between px-3.5 py-2 rounded-xl bg-white border border-zinc-200/90 shadow-sm text-xs">
+          <div class="flex items-center gap-2">
+            <span class="font-mono text-[11px] uppercase tracking-wider text-zinc-400">Return Door</span>
+            <span class="font-mono font-semibold text-zinc-800">pn.nacfson.cloud</span>
+          </div>
+          <span class="font-mono text-[11px] px-2 py-0.5 rounded bg-zinc-100 text-zinc-600 border border-zinc-200">aud: project-pn</span>
+        </div>
+
+        <div class="bg-white rounded-2xl border border-zinc-200/90 shadow-[0_8px_30px_rgb(0,0,0,0.04)] overflow-hidden">
+          <div class="p-8 pb-6 border-b border-zinc-100">
+            <div class="text-[11px] font-mono uppercase tracking-widest text-zinc-400 mb-1">01 // AUTHENTICATION</div>
+            <h2 class="text-2xl font-bold tracking-tight text-zinc-950">Sign in to your workspace</h2>
+            <p class="text-sm text-zinc-500 mt-1">Zero-plaintext session brokered by Keycloak OIDC &amp; Go Gateway.</p>
+
+            <div class="grid grid-cols-2 gap-1 p-1 mt-6 rounded-xl bg-zinc-100 border border-zinc-200/60 text-xs font-semibold">
+              <button type="button" onclick="setSwissTab('sso')" id="swiss-tab-sso" class="py-2 rounded-lg bg-white text-zinc-950 shadow-sm transition">Federated SSO</button>
+              <button type="button" onclick="setSwissTab('cred')" id="swiss-tab-cred" class="py-2 rounded-lg text-zinc-500 hover:text-zinc-900 transition">Internal Credentials</button>
+            </div>
+          </div>
+
+          <div id="swiss-panel-sso" class="p-8 pt-6 space-y-5">
+            <a href="/oauth/start?return=https://pn.nacfson.cloud/" class="w-full flex items-center justify-between py-3 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-medium text-sm transition shadow-sm group">
+              <span class="flex items-center gap-3">
+                <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 15.64 5 12c0-3.64 3.36-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81Z"/></svg>
+                <span>Continue with Google</span>
+              </span>
+              <kbd class="text-[11px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-300 border border-zinc-700">↵</kbd>
+            </a>
+
+            <button type="button" onclick="alert('WebAuthn / YubiKey Passkey assertion initiated')" class="w-full flex items-center justify-between py-2.5 px-4 rounded-xl bg-white hover:bg-zinc-50 text-zinc-800 border border-zinc-200 font-medium text-sm transition">
+              <span class="flex items-center gap-3"><span>🔑</span><span>Authenticate with Hardware Passkey</span></span>
+              <span class="text-[11px] font-mono text-zinc-400">FIDO2</span>
+            </button>
+
+            <div class="rounded-xl bg-zinc-50 border border-zinc-200/70 p-3.5 text-xs text-zinc-600 space-y-1.5 font-mono text-[11px]">
+              <div class="flex items-center justify-between"><span class="text-zinc-400">PROTOCOL</span><span class="text-zinc-800 font-medium">OIDC Code + PKCE (S256)</span></div>
+              <div class="flex items-center justify-between"><span class="text-zinc-400">COOKIE SCOPE</span><span class="text-zinc-800 font-medium">Domain=pn.nacfson.cloud</span></div>
+            </div>
+          </div>
+
+          <form id="swiss-panel-cred" onsubmit="event.preventDefault(); alert('Submitting internal realm credentials');" class="hidden p-8 pt-6 space-y-4">
+            <div>
+              <label class="block text-xs font-medium text-zinc-700 mb-1.5">Username or Internal Email</label>
+              <input type="text" required placeholder="operator@nacfson.cloud" class="w-full rounded-xl bg-zinc-50 border border-zinc-200 px-3.5 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 focus:bg-white focus:outline-none focus:border-zinc-900 font-mono" />
+            </div>
+            <div>
+              <div class="flex items-center justify-between mb-1.5">
+                <label class="block text-xs font-medium text-zinc-700">Password</label>
+                <span class="text-[11px] font-mono text-zinc-400">Realm: platform</span>
+              </div>
+              <input type="password" required placeholder="••••••••••••" class="w-full rounded-xl bg-zinc-50 border border-zinc-200 px-3.5 py-2.5 text-sm text-zinc-900 placeholder-zinc-400 focus:bg-white focus:outline-none focus:border-zinc-900 font-mono" />
+            </div>
+            <button type="submit" class="w-full py-2.5 px-4 rounded-xl bg-zinc-950 hover:bg-zinc-800 text-white font-medium text-sm transition">
+              Sign in to Project PN →
+            </button>
+          </form>
+
+          <div class="px-8 py-4 bg-zinc-50/80 border-t border-zinc-100 flex items-center justify-between text-[11px] font-mono text-zinc-400">
+            <span>STRICT 1/N ISOLATION</span>
+            <span>TLS 1.3 VERIFIED</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- VARIATION 3: OPERATOR CLI TERMINAL MATRIX                             -->
+  <!-- ===================================================================== -->
+  <section id="var-3" class="var-section hidden flex-1 terminal-bg flex flex-col justify-between p-4 sm:p-8">
+    <div class="max-w-5xl w-full mx-auto flex flex-wrap items-center justify-between gap-2 border border-emerald-500/30 bg-black/80 px-4 py-2.5 text-xs">
+      <div class="flex items-center gap-3">
+        <span class="px-1.5 py-0.5 bg-emerald-500 text-black font-bold">TTY/0</span>
+        <span class="text-emerald-300">root@auth.nacfson.cloud:~#</span>
+        <span class="text-emerald-500/70 hidden sm:inline">./gateway-auth --mode=strict-1n</span>
+      </div>
+      <span class="text-amber-400">[VAULT: SEALED=false]</span>
+    </div>
+
+    <div class="flex-1 flex items-center justify-center my-6">
+      <div class="max-w-5xl w-full border border-emerald-500/40 bg-[#070c09]/95 terminal-shadow">
+        <div class="border-b border-emerald-500/30 bg-emerald-950/30 px-4 py-2 flex items-center justify-between text-xs">
+          <div class="flex items-center gap-2">
+            <span class="w-2.5 h-2.5 rounded-full bg-red-500/70 inline-block"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-amber-500/70 inline-block"></span>
+            <span class="w-2.5 h-2.5 rounded-full bg-emerald-500/70 inline-block"></span>
+            <span class="ml-2 text-emerald-400 font-semibold">nacfson_pipeline // identity-gateway v1.3.0 (Go 1.22)</span>
+          </div>
+          <span class="text-emerald-500/60">TLS_AES_256_GCM_SHA384</span>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12">
+          <div class="lg:col-span-6 p-6 border-b lg:border-b-0 lg:border-r border-emerald-500/30 flex flex-col justify-between space-y-5 text-xs">
+            <div>
+              <pre class="text-[10px] sm:text-xs leading-tight text-emerald-400 font-bold overflow-x-auto">
+ _   _    _    ____ _____ ____   ___  _   _ 
+| \ | |  / \  / ___|  ___/ ___| / _ \| \ | |
+|  \| | / _ \| |   | |_  \___ \| | | |  \| |
+| |\  |/ ___ \ |___|  _|  ___) | |_| | |\  |
+|_| \_/_/   \_\____|_|   |____/ \___/|_| \_|
+:: INTERNAL IDENTITY &amp; SESSION GATEWAY ::</pre>
+              <div class="mt-5 space-y-1.5 text-emerald-300/90 leading-relaxed" id="terminalLog">
+                <div><span class="text-emerald-600">[20:47:01]</span> INBOUND GET /oauth/start</div>
+                <div><span class="text-emerald-600">[20:47:01]</span> VERIFY return_host=<span class="text-amber-300">pn.nacfson.cloud</span> [ALLOWLIST OK]</div>
+                <div><span class="text-emerald-600">[20:47:01]</span> DERIVE target_audience=<span class="text-amber-300">project-pn</span></div>
+                <div><span class="text-emerald-600">[20:47:02]</span> GENERATE PKCE code_verifier (32B entropy)</div>
+                <div><span class="text-emerald-600">[20:47:02]</span> SIGN state HMAC-SHA256 (Vault secret v2)</div>
+                <div><span class="text-emerald-600">[20:47:02]</span> AWAITING operator authentication input<span class="cursor-blink">█</span></div>
+              </div>
+            </div>
+            <div class="border border-emerald-500/30 bg-black/60 p-3 space-y-1 text-[11px]">
+              <div class="text-amber-400 font-bold">// SECURITY INVARIANTS ACTIVE</div>
+              <div class="text-emerald-400/80">• Strip-Forged-Headers: X-User-Subject, Authorization</div>
+              <div class="text-emerald-400/80">• Cookie Scope: HostOnly (pn.nacfson.cloud)</div>
+              <div class="text-emerald-400/80">• Revocation Check: Synchronous Keycloak Introspect</div>
+            </div>
+          </div>
+
+          <div class="lg:col-span-6 p-6 space-y-6">
+            <div>
+              <div class="text-xs text-amber-400 mb-1">$ auth-cli login --interactive</div>
+              <h2 class="text-lg font-bold text-white">SELECT AUTHENTICATION VECTOR</h2>
+            </div>
+
+            <div class="border border-emerald-500/50 bg-emerald-950/20 p-4 space-y-3">
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-emerald-300 font-bold">[01] KEYCLOAK OIDC BROKER (RECOMMENDED)</span>
+                <span class="px-1.5 py-0.5 bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px]">PKCE S256</span>
+              </div>
+              <p class="text-xs text-emerald-400/70">Redirects to <code class="text-white">realm/platform</code> Google Identity Broker and issues host-scoped session cookie.</p>
+              <a href="/oauth/start?return=https://pn.nacfson.cloud/" class="block w-full text-center py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-black font-bold text-xs tracking-wider uppercase transition">
+                &gt;&gt; EXEC: /oauth/start --broker=google &lt;&lt;
+              </a>
+            </div>
+
+            <form onsubmit="event.preventDefault(); appendTerminalLog();" class="border border-emerald-500/30 bg-black/50 p-4 space-y-4">
+              <div class="text-xs text-emerald-300 font-bold">[02] DIRECT REALM OPERATOR CREDENTIALS</div>
+              <div>
+                <label class="block text-xs text-emerald-500 mb-1">operator_uid:</label>
+                <div class="flex items-center border border-emerald-500/40 bg-black px-3 py-2 focus-within:border-amber-400">
+                  <span class="text-emerald-600 mr-2 text-xs">&gt;</span>
+                  <input id="cliUser" type="text" required placeholder="nacfson" class="w-full bg-transparent text-xs text-emerald-200 placeholder-emerald-800 focus:outline-none" />
+                </div>
+              </div>
+              <div>
+                <label class="block text-xs text-emerald-500 mb-1">passphrase_secret:</label>
+                <div class="flex items-center border border-emerald-500/40 bg-black px-3 py-2 focus-within:border-amber-400">
+                  <span class="text-emerald-600 mr-2 text-xs">&gt;</span>
+                  <input type="password" required placeholder="****************" class="w-full bg-transparent text-xs text-emerald-200 placeholder-emerald-800 focus:outline-none" />
+                </div>
+              </div>
+              <button type="submit" class="w-full py-2.5 px-4 border border-amber-400/80 text-amber-300 hover:bg-amber-400 hover:text-black font-bold text-xs uppercase tracking-wider transition">
+                [ENTER] AUTHENTICATE SESSION
+              </button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- VARIATION 4: NORDIC GLASS & AURORA MESH                               -->
+  <!-- ===================================================================== -->
+  <section id="var-4" class="var-section hidden flex-1 bg-[#070514] font-jakarta flex flex-col justify-between relative overflow-hidden">
+    <div class="pointer-events-none absolute top-[-10%] left-[15%] w-[520px] h-[520px] rounded-full bg-indigo-600/25 blur-[130px] aurora-1"></div>
+    <div class="pointer-events-none absolute bottom-[-12%] right-[12%] w-[480px] h-[480px] rounded-full bg-fuchsia-600/20 blur-[140px] aurora-2"></div>
+    <div class="pointer-events-none absolute top-[35%] right-[30%] w-[360px] h-[360px] rounded-full bg-cyan-500/15 blur-[120px] aurora-1"></div>
+
+    <div class="relative z-10 flex-1 flex items-center justify-center p-6">
+      <div class="w-full max-w-[450px] rounded-3xl glass-card border border-white/15 p-8 sm:p-10 space-y-7">
+        <div class="text-center space-y-2.5">
+          <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/5 border border-white/15 text-[11px] font-mono text-indigo-200">
+            <span class="w-2 h-2 rounded-full bg-cyan-400 animate-pulse"></span>
+            <span>Return → pn.nacfson.cloud</span>
+          </div>
+          <h2 class="text-2xl sm:text-3xl font-extrabold tracking-tight text-white">Welcome Back</h2>
+          <p class="text-xs sm:text-sm text-slate-300/80 leading-relaxed">
+            Sign in through the platform identity gateway to unlock your isolated project session.
+          </p>
+        </div>
+
+        <div class="space-y-3">
+          <a href="/oauth/start?return=https://pn.nacfson.cloud/" class="w-full py-3.5 px-5 rounded-2xl bg-white text-slate-950 hover:bg-indigo-50 font-bold text-sm shadow-xl shadow-indigo-950/50 flex items-center justify-center gap-3 transition transform hover:-translate-y-0.5">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 15.64 5 12c0-3.64 3.36-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81Z"/></svg>
+            <span>Continue with Google SSO</span>
+          </a>
+
+          <button type="button" onclick="document.getElementById('auroraDrawer').classList.toggle('hidden')" class="w-full py-2.5 px-4 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-indigo-200 transition flex items-center justify-center gap-2">
+            <span>Use Internal Operator Credentials</span>
+            <span class="font-mono">▾</span>
+          </button>
+        </div>
+
+        <form id="auroraDrawer" onsubmit="event.preventDefault(); alert('Authenticating against Keycloak platform realm...');" class="space-y-4 pt-2 border-t border-white/10">
+          <div>
+            <label class="block text-xs font-medium text-indigo-200/90 mb-1.5">Internal Handle</label>
+            <input type="text" required placeholder="nacfson@nacfson.cloud" class="w-full rounded-xl bg-black/30 border border-white/15 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400 font-mono" />
+          </div>
+          <div>
+            <div class="flex items-center justify-between mb-1.5">
+              <label class="block text-xs font-medium text-indigo-200/90">Passphrase</label>
+              <span class="text-[11px] font-mono text-indigo-300/70">PKCE S256</span>
+            </div>
+            <input type="password" required placeholder="••••••••••••" class="w-full rounded-xl bg-black/30 border border-white/15 px-3.5 py-2.5 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-indigo-400 font-mono" />
+          </div>
+          <button type="submit" class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-indigo-500 via-purple-500 to-cyan-500 hover:opacity-95 text-white font-bold text-xs uppercase tracking-wider shadow-lg transition">
+            Authorize Session →
+          </button>
+        </form>
+
+        <div class="pt-3 border-t border-white/10 flex items-center justify-between text-[11px] font-mono text-slate-400">
+          <span>aud: project-pn</span><span>•</span><span>HttpOnly Cookie</span><span>•</span><span>Vault Sealed: No</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- VARIATION 5: NEO-BRUTALIST ENGINEERING BLUEPRINT                      -->
+  <!-- ===================================================================== -->
+  <section id="var-5" class="var-section hidden flex-1 brutalist-bg flex flex-col justify-between p-4 sm:p-8">
+    <div class="max-w-5xl w-full mx-auto bg-white brutal-box px-5 py-3 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <span class="px-2.5 py-1 bg-[#ff4f00] text-white font-mono text-xs font-bold border border-black">SPEC-006</span>
+        <span class="font-bold tracking-tight text-base uppercase">NACFSON_PIPELINE // AUTH DOOR</span>
+      </div>
+      <span class="font-mono text-xs bg-[#e9e4d8] px-2 py-1 border border-black">CLUSTER: VPS-K3S</span>
+    </div>
+
+    <div class="flex-1 flex items-center justify-center my-8">
+      <div class="max-w-4xl w-full bg-white brutal-box grid grid-cols-1 md:grid-cols-12">
+        <div class="md:col-span-5 bg-[#111111] text-[#f4f1ea] p-7 flex flex-col justify-between border-b-2 md:border-b-0 md:border-r-2 border-black">
+          <div class="space-y-5">
+            <div class="inline-block border border-[#f4f1ea] px-2.5 py-0.5 font-mono text-[11px] uppercase tracking-widest text-[#ff4f00] bg-black">
+              RESTRICTED INTERNAL PORTAL
+            </div>
+            <h2 class="text-3xl font-bold leading-none tracking-tight uppercase">PROJECT DOOR<br/>CHECKPOINT</h2>
+            <p class="text-xs font-mono text-zinc-300 leading-relaxed">
+              Every request to <span class="text-white underline">pn.nacfson.cloud</span> requires a host-scoped session token verified by Traefik ForwardAuth.
+            </p>
+            <div class="border border-zinc-700 font-mono text-[11px] divide-y divide-zinc-700">
+              <div class="p-2.5 flex justify-between"><span class="text-zinc-400">AUTH_HOST</span><span class="text-white font-bold">auth.nacfson.cloud</span></div>
+              <div class="p-2.5 flex justify-between"><span class="text-zinc-400">RETURN_DOOR</span><span class="text-[#ff4f00] font-bold">pn.nacfson.cloud</span></div>
+              <div class="p-2.5 flex justify-between"><span class="text-zinc-400">AUDIENCE</span><span class="text-white">project-pn</span></div>
+              <div class="p-2.5 flex justify-between"><span class="text-zinc-400">PKCE_METHOD</span><span class="text-emerald-400">S256 + HMAC</span></div>
+            </div>
+          </div>
+          <div class="pt-6 mt-6 border-t border-zinc-800 flex items-center justify-between font-mono text-[10px] text-zinc-400">
+            <span>REV: CONSTITUTION 1.3.0</span><span>FAIL-CLOSED</span>
+          </div>
+        </div>
+
+        <div class="md:col-span-7 p-7 sm:p-10 space-y-6 bg-white">
+          <div class="flex items-start justify-between border-b-2 border-black pb-4">
+            <div>
+              <div class="font-mono text-xs font-bold text-[#ff4f00]">STEP 01 // IDENTIFY</div>
+              <h3 class="text-2xl font-bold uppercase tracking-tight">Operator Clearance</h3>
+            </div>
+            <div class="font-mono text-xs border-2 border-black px-2 py-1 bg-[#f4f1ea] font-bold">401 → 302</div>
+          </div>
+
+          <a href="/oauth/start?return=https://pn.nacfson.cloud/" class="w-full py-3.5 px-5 bg-[#ff4f00] text-white font-mono font-bold text-xs sm:text-sm uppercase tracking-wider brutal-btn flex items-center justify-between">
+            <span class="flex items-center gap-3">
+              <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 15.64 5 12c0-3.64 3.36-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81Z"/></svg>
+              <span>BROKER VIA GOOGLE OIDC</span>
+            </span>
+            <span>[/oauth/start] →</span>
+          </a>
+
+          <div class="flex items-center gap-3 font-mono text-[11px] font-bold uppercase text-zinc-500">
+            <div class="h-0.5 flex-1 bg-black"></div><span>OR MANUAL CREDENTIALS</span><div class="h-0.5 flex-1 bg-black"></div>
+          </div>
+
+          <form onsubmit="event.preventDefault(); alert('Dispatched manual clearance request');" class="space-y-4">
+            <div>
+              <label class="block font-mono text-xs font-bold uppercase mb-1.5">OPERATOR_ID</label>
+              <input type="text" required placeholder="nacfson" class="w-full bg-[#f4f1ea] border-2 border-black px-3.5 py-2.5 font-mono text-sm focus:bg-white focus:outline-none" />
+            </div>
+            <div>
+              <label class="block font-mono text-xs font-bold uppercase mb-1.5">SECRET_PASSPHRASE</label>
+              <input type="password" required placeholder="••••••••••••" class="w-full bg-[#f4f1ea] border-2 border-black px-3.5 py-2.5 font-mono text-sm focus:bg-white focus:outline-none" />
+            </div>
+            <button type="submit" class="w-full py-3 px-5 bg-[#111111] text-white font-mono font-bold text-xs uppercase tracking-wider brutal-btn">
+              ISSUE HOST-SCOPED COOKIE →
+            </button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- VARIATION 6: EDITORIAL ATELIER SANCTUARY                              -->
+  <!-- ===================================================================== -->
+  <section id="var-6" class="var-section hidden flex-1 bg-[#f6f4ee] text-[#16211c] grid grid-cols-1 lg:grid-cols-12">
+    <div class="lg:col-span-6 bg-[#14211b] text-[#f6f4ee] p-8 sm:p-14 flex flex-col justify-between">
+      <div class="flex items-center gap-3">
+        <span class="w-7 h-7 rounded-full border border-[#d6d1c4]/40 flex items-center justify-center font-serif-editorial italic text-lg">n</span>
+        <span class="font-mono text-xs tracking-widest uppercase text-[#b5b0a3]">nacfson.cloud · Sanctuary</span>
+      </div>
+
+      <div class="my-12 space-y-6 max-w-lg">
+        <div class="font-mono text-xs uppercase tracking-[0.2em] text-[#8fa89b]">Constitution v1.3.0 · Identity Architecture</div>
+        <h2 class="font-serif-editorial text-5xl sm:text-6xl leading-[1.05] font-normal">
+          Quiet infrastructure, <span class="italic text-[#a7cbb7]">strictly isolated</span> by design.
+        </h2>
+        <p class="text-sm sm:text-base text-[#c2bdb0] leading-relaxed">
+          Each project hosted on the Personal Project Platform operates behind its own dedicated door. Sign in once to receive a host-bound session credential for <span class="text-white font-mono text-xs underline">pn.nacfson.cloud</span>.
+        </p>
+        <div class="pt-6 border-t border-white/10 grid grid-cols-3 gap-6 font-mono text-xs">
+          <div><div class="text-[#8fa89b] text-[10px] uppercase">Zero Plaintext</div><div class="text-white mt-1">Vault Transit</div></div>
+          <div><div class="text-[#8fa89b] text-[10px] uppercase">Session Scope</div><div class="text-white mt-1">Single Project Door</div></div>
+          <div><div class="text-[#8fa89b] text-[10px] uppercase">Verification</div><div class="text-white mt-1">PKCE + ForwardAuth</div></div>
+        </div>
+      </div>
+
+      <div class="font-mono text-xs text-[#8fa89b] flex items-center justify-between">
+        <span>Realm: platform</span><span>Oracle K3s · Flux Reconciled</span>
+      </div>
+    </div>
+
+    <div class="lg:col-span-6 p-8 sm:p-16 flex items-center justify-center">
+      <div class="w-full max-w-md space-y-8">
+        <div class="space-y-2 border-b border-[#ded9cd] pb-6">
+          <div class="font-mono text-xs uppercase tracking-widest text-[#6e6a61]">Destination: Project PN</div>
+          <h3 class="font-serif-editorial text-4xl text-[#14211b]">Enter the workspace</h3>
+          <p class="text-sm text-[#5a574f]">Authenticate via your federated Google identity or internal operator key.</p>
+        </div>
+
+        <a href="/oauth/start?return=https://pn.nacfson.cloud/" class="w-full py-3.5 px-5 rounded-full bg-[#14211b] hover:bg-[#1f332a] text-[#f6f4ee] text-sm font-medium flex items-center justify-between transition shadow-md">
+          <span class="flex items-center gap-3">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 15.64 5 12c0-3.64 3.36-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81Z"/></svg>
+            <span>Continue with Google Identity</span>
+          </span>
+          <span class="font-mono text-xs text-[#a7cbb7]">/oauth/start →</span>
+        </a>
+
+        <div class="flex items-center gap-4 text-xs font-mono text-[#8c877b]">
+          <div class="h-px flex-1 bg-[#ded9cd]"></div><span>OR OPERATOR CREDENTIALS</span><div class="h-px flex-1 bg-[#ded9cd]"></div>
+        </div>
+
+        <form onsubmit="event.preventDefault(); alert('Authenticating session...');" class="space-y-5">
+          <div>
+            <label class="block text-xs font-mono uppercase tracking-wider text-[#4a4740] mb-2">Operator Identity</label>
+            <input type="text" required placeholder="nacfson@nacfson.cloud" class="w-full bg-white border border-[#d5cfc2] rounded-xl px-4 py-3 text-sm text-[#14211b] placeholder-[#a39e93] focus:outline-none focus:border-[#14211b] font-mono" />
+          </div>
+          <div>
+            <div class="flex items-center justify-between mb-2">
+              <label class="block text-xs font-mono uppercase tracking-wider text-[#4a4740]">Passphrase</label>
+              <span class="text-xs font-mono text-[#6e6a61]">aud: project-pn</span>
+            </div>
+            <input type="password" required placeholder="••••••••••••" class="w-full bg-white border border-[#d5cfc2] rounded-xl px-4 py-3 text-sm text-[#14211b] placeholder-[#a39e93] focus:outline-none focus:border-[#14211b] font-mono" />
+          </div>
+          <button type="submit" class="w-full py-3.5 px-6 rounded-full border border-[#14211b] text-[#14211b] hover:bg-[#14211b] hover:text-[#f6f4ee] font-medium text-sm transition">
+            Sign In with Internal Credentials
+          </button>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- VARIATION 7: CYBER-BENTO MULTI-PROJECT PORTAL                         -->
+  <!-- ===================================================================== -->
+  <section id="var-7" class="var-section hidden flex-1 bg-[#09090b] flex items-center justify-center p-4 sm:p-8">
+    <div class="max-w-6xl w-full grid grid-cols-1 lg:grid-cols-12 gap-4">
+      <!-- Login Tile (5 cols, 2 rows) -->
+      <div class="lg:col-span-5 lg:row-span-2 bento-card rounded-3xl p-7 sm:p-8 flex flex-col justify-between space-y-6">
+        <div class="space-y-5">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-mono uppercase tracking-wider text-amber-400">01 // SIGN IN</span>
+            <span id="activeAudBadge" class="text-xs font-mono px-2.5 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">aud: project-pn</span>
+          </div>
+          <div>
+            <h2 class="text-2xl font-extrabold tracking-tight text-white">Authenticate Session</h2>
+            <p class="text-xs text-zinc-400 mt-1">Target return URL: <code id="targetUrlCode" class="text-zinc-200 font-mono">https://pn.nacfson.cloud/</code></p>
+          </div>
+          <a id="bentoOidcLink" href="/oauth/start?return=https://pn.nacfson.cloud/" class="w-full py-3.5 px-4 rounded-2xl bg-amber-400 hover:bg-amber-300 text-zinc-950 font-bold text-sm flex items-center justify-center gap-3 shadow-lg shadow-amber-500/10 transition">
+            <svg class="w-4 h-4" viewBox="0 0 24 24" fill="currentColor"><path d="M21.35 11.1h-9.17v2.73h6.51c-.33 3.81-3.5 5.44-6.5 5.44C8.36 19.27 5 15.64 5 12c0-3.64 3.36-7.27 7.2-7.27 3.09 0 4.9 1.97 4.9 1.97L19 4.72S16.56 2 12.1 2C6.42 2 2.03 6.8 2.03 12c0 5.05 4.13 10 10.22 10 5.35 0 9.25-3.67 9.25-9.09 0-1.15-.15-1.81-.15-1.81Z"/></svg>
+            <span>Continue with Google OIDC</span>
+          </a>
+          <div class="relative flex py-1 items-center">
+            <div class="flex-grow border-t border-zinc-800"></div>
+            <span class="flex-shrink mx-3 text-[11px] font-mono uppercase text-zinc-500">or internal account</span>
+            <div class="flex-grow border-t border-zinc-800"></div>
+          </div>
+          <form onsubmit="event.preventDefault(); alert('Authenticating against Keycloak...');" class="space-y-3.5">
+            <div>
+              <label class="block text-xs font-medium text-zinc-300 mb-1">Operator Username</label>
+              <input type="text" required placeholder="nacfson" class="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-400 font-mono" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-zinc-300 mb-1">Password</label>
+              <input type="password" required placeholder="••••••••••••" class="w-full rounded-xl bg-zinc-950 border border-zinc-800 px-3.5 py-2.5 text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-amber-400 font-mono" />
+            </div>
+            <button type="submit" class="w-full py-2.5 px-4 rounded-xl bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-100 font-semibold text-sm transition">
+              Sign In to Selected Door →
+            </button>
+          </form>
+        </div>
+        <div class="pt-4 border-t border-zinc-800/80 flex items-center justify-between text-[11px] font-mono text-zinc-500">
+          <span>PKCE S256 + HMAC State</span><span>Fail-Closed</span>
+        </div>
+      </div>
+
+      <!-- Door Selector Tile (7 cols) -->
+      <div class="lg:col-span-7 bento-card rounded-3xl p-6 sm:p-7 space-y-4">
+        <div class="flex items-center justify-between">
+          <div>
+            <span class="text-xs font-mono uppercase tracking-wider text-zinc-400">02 // SELECT PROJECT DOOR</span>
+            <h3 class="text-lg font-bold text-white mt-0.5">Isolated 1/n Project Workspaces</h3>
+          </div>
+          <span class="text-xs font-mono text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-lg">PROJECT_RETURN_HOSTS</span>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <button type="button" onclick="selectDoor('https://pn.nacfson.cloud/', 'project-pn', 'pn.nacfson.cloud', 'door-pn')" id="door-pn" class="door-btn text-left p-4 rounded-2xl bg-amber-500/10 border-2 border-amber-400 transition space-y-2">
+            <div class="flex items-center justify-between"><span class="text-base">🚀</span><span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-400/20 text-amber-300">ACTIVE</span></div>
+            <div class="font-bold text-sm text-white">Project PN</div>
+            <div class="text-[11px] font-mono text-zinc-400 truncate">pn.nacfson.cloud</div>
+          </button>
+          <button type="button" onclick="selectDoor('https://vault.nacfson.cloud/', 'project-vault', 'vault.nacfson.cloud', 'door-vault')" id="door-vault" class="door-btn text-left p-4 rounded-2xl bg-zinc-900/70 border border-zinc-800 hover:border-zinc-700 transition space-y-2">
+            <div class="flex items-center justify-between"><span class="text-base">🔐</span><span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">INTERNAL</span></div>
+            <div class="font-bold text-sm text-white">Vault Transit Proxy</div>
+            <div class="text-[11px] font-mono text-zinc-400 truncate">vault.nacfson.cloud</div>
+          </button>
+          <button type="button" onclick="selectDoor('https://gitops.nacfson.cloud/', 'project-gitops', 'gitops.nacfson.cloud', 'door-gitops')" id="door-gitops" class="door-btn text-left p-4 rounded-2xl bg-zinc-900/70 border border-zinc-800 hover:border-zinc-700 transition space-y-2">
+            <div class="flex items-center justify-between"><span class="text-base">🔄</span><span class="text-[10px] font-mono px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">RECONCILE</span></div>
+            <div class="font-bold text-sm text-white">Flux Telemetry</div>
+            <div class="text-[11px] font-mono text-zinc-400 truncate">gitops.nacfson.cloud</div>
+          </button>
+        </div>
+      </div>
+
+      <!-- Cookie Contract Preview Tile (4 cols) -->
+      <div class="lg:col-span-4 bento-card rounded-3xl p-6 space-y-3">
+        <div class="text-xs font-mono uppercase tracking-wider text-zinc-400">03 // ISSUED COOKIE CONTRACT</div>
+        <pre class="text-[11px] font-mono text-zinc-300 bg-zinc-950/90 border border-zinc-800/90 rounded-2xl p-3.5 overflow-x-auto leading-relaxed">Set-Cookie: PLATFORM_SESSION=&lt;hmac&gt;;
+  Domain=<span id="cookieDomainPreview" class="text-amber-300 font-bold">pn.nacfson.cloud</span>;
+  Path=/; HttpOnly; Secure;
+  SameSite=Lax</pre>
+        <p class="text-[11px] text-zinc-400">Scoped strictly to the target project host—never shared across parent domain.</p>
+      </div>
+
+      <!-- Gateway Telemetry Tile (3 cols) -->
+      <div class="lg:col-span-3 bento-card rounded-3xl p-6 flex flex-col justify-between space-y-3">
+        <div class="text-xs font-mono uppercase tracking-wider text-zinc-400">04 // GATEWAY STATUS</div>
+        <div class="space-y-2.5 text-xs font-mono">
+          <div class="flex items-center justify-between"><span class="text-zinc-500">Keycloak</span><span class="text-emerald-400">● 200 OK</span></div>
+          <div class="flex items-center justify-between"><span class="text-zinc-500">JWKS Proxy</span><span class="text-emerald-400">● Cached</span></div>
+          <div class="flex items-center justify-between"><span class="text-zinc-500">ForwardAuth</span><span class="text-amber-300">Strip-Forged</span></div>
+        </div>
+        <div class="text-[10px] font-mono text-zinc-500 pt-2 border-t border-zinc-800">Spec 006 · Spec 007 · Spec 008</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- INTERACTIVE CONTROLLER SCRIPTS                                        -->
+  <!-- ===================================================================== -->
+  <script>
+    let currentVar = 0;
+
+    function showVariation(idx) {
+      currentVar = idx;
+      document.querySelectorAll('.var-section').forEach(el => el.classList.add('hidden'));
+      document.getElementById('var-' + idx).classList.remove('hidden');
+
+      document.querySelectorAll('.var-nav').forEach(btn => {
+        btn.className = 'var-nav px-2.5 py-1.5 rounded-lg text-xs font-semibold transition text-slate-400 hover:text-white';
+      });
+      const activeBtn = document.getElementById('nav-' + idx);
+      if (activeBtn) {
+        activeBtn.className = 'var-nav px-2.5 py-1.5 rounded-lg text-xs font-bold transition bg-cyan-500 text-slate-950';
+      }
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    function stepVariation(delta) {
+      let next = currentVar + delta;
+      if (next < 0) next = 7;
+      if (next > 7) next = 0;
+      showVariation(next);
+    }
+
+    function toggleErrorSim() {
+      const el = document.getElementById('globalErrorSim');
+      const btn = document.getElementById('simErrorBtn');
+      el.classList.toggle('hidden');
+      if (!el.classList.contains('hidden')) {
+        btn.className = 'px-2.5 py-1.5 rounded-lg bg-rose-500 text-black font-bold text-xs font-mono transition';
+      } else {
+        btn.className = 'px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-xs font-mono text-slate-300 transition';
+      }
+    }
+
+    function setSwissTab(tab) {
+      const sso = document.getElementById('swiss-panel-sso');
+      const cred = document.getElementById('swiss-panel-cred');
+      const tabSso = document.getElementById('swiss-tab-sso');
+      const tabCred = document.getElementById('swiss-tab-cred');
+      if (tab === 'sso') {
+        sso.classList.remove('hidden');
+        cred.classList.add('hidden');
+        tabSso.className = 'py-2 rounded-lg bg-white text-zinc-950 shadow-sm transition';
+        tabCred.className = 'py-2 rounded-lg text-zinc-500 hover:text-zinc-900 transition';
+      } else {
+        sso.classList.add('hidden');
+        cred.classList.remove('hidden');
+        tabCred.className = 'py-2 rounded-lg bg-white text-zinc-950 shadow-sm transition';
+        tabSso.className = 'py-2 rounded-lg text-zinc-500 hover:text-zinc-900 transition';
+      }
+    }
+
+    function appendTerminalLog() {
+      const log = document.getElementById('terminalLog');
+      const user = document.getElementById('cliUser').value || 'operator';
+      const entry = document.createElement('div');
+      entry.className = 'text-amber-300';
+      entry.innerHTML = `<span class="text-emerald-600">[${new Date().toTimeString().slice(0,8)}]</span> AUTH_REQ subject="${user}" -> Dispatching to Keycloak...`;
+      log.appendChild(entry);
+    }
+
+    function selectDoor(url, aud, domain, btnId) {
+      document.getElementById('targetUrlCode').textContent = url;
+      document.getElementById('activeAudBadge').textContent = 'aud: ' + aud;
+      document.getElementById('cookieDomainPreview').textContent = domain;
+      document.getElementById('bentoOidcLink').href = '/oauth/start?return=' + encodeURIComponent(url);
+      document.querySelectorAll('.door-btn').forEach(btn => {
+        btn.className = 'door-btn text-left p-4 rounded-2xl bg-zinc-900/70 border border-zinc-800 hover:border-zinc-700 transition space-y-2';
+      });
+      document.getElementById(btnId).className = 'door-btn text-left p-4 rounded-2xl bg-amber-500/10 border-2 border-amber-400 transition space-y-2';
+    }
+
+    window.addEventListener('keydown', (e) => {
+      if (['INPUT', 'SELECT', 'TEXTAREA'].includes(document.activeElement?.tagName)) return;
+      if (e.key >= '0' && e.key <= '7') {
+        showVariation(parseInt(e.key, 10));
+      }
+    });
+  </script>
+</body>
+</html>

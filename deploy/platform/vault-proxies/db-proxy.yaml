@@ -49,6 +49,8 @@ spec:
               value: "proj_pn"
             - name: ENFORCED_ROLE
               value: "user_pn"
+            - name: ALLOWED_PROJECTS
+              value: "pn"
           resources:
             requests:
               cpu: 25m
@@ -64,7 +66,7 @@ spec:
                 - ALL
           readinessProbe:
             httpGet:
-              path: /healthz
+              path: /readyz
               port: 8080
             initialDelaySeconds: 2
             periodSeconds: 5

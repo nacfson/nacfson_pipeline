@@ -1,6 +1,22 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
+  name: cni
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/cni
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
   name: governance
   namespace: flux-system
 spec:
@@ -31,6 +47,7 @@ spec:
       name: openbao
       namespace: vault
   dependsOn:
+    - name: cni
     - name: governance
   sourceRef:
     kind: GitRepository

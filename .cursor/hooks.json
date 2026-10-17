@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeShellExecution": [
+      {
+        "command": "python3 scripts/universal-agent-hook.py --agent cursor --event PreToolUse"
+      }
+    ],
+    "stop": [
+      {
+        "command": "python3 scripts/universal-agent-hook.py --agent cursor --event Stop"
+      }
+    ]
+  }
+}
