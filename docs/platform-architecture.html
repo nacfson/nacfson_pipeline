@@ -2367,7 +2367,7 @@
           hookEl.textContent = 'iptables KUBE-POD-FW-<openbao> -> KUBE-NWPLCY(openbao-ingress-policy) ipBlock 10.0.0.0/8 :6443 -> MARK 0x10000 -> ACCEPT. Without the fallback: REJECT --reject-with icmp-port-unreachable -> "connection refused".';
           hubbleEl.textContent = '[No Hubble for Flannel-attached pods] Diagnose with:\nsudo iptables-save -c | grep KUBE-POD-FW-<hash> | grep REJECT   # counter increments per blocked TokenReview\nsudo k3s kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint list   # only reserved:host = Cilium owns no pods';
           yamlEl.textContent = s.yaml;
-          whyEl.textContent = 'Incident 2026-10-17 (vps-k3s): Flux applied the Spec 010 manifests but the host k3s unit is Ansible-owned and was not migrated, so kube-router kept enforcing. Removing the NetworkPolicy apiserver rule failed every Vault Kubernetes login. Keep the fallback until every node runs Cilium.';
+          whyEl.textContent = 'Incident 2026-10-17 (vps-k3s): Flux applied the Spec 010 manifests but the host k3s unit is Ansible-owned and was not migrated, so kube-router kept enforcing. Removing the NetworkPolicy apiserver rule failed every Vault Kubernetes login. Keep the fallback until every node runs Cilium. Second effect: the cilium-operator unmanaged-pods GC deleted CoreDNS every ~30s (Cilium owned no pods), and each new system-cluster-critical CoreDNS preempted postgres-0 on the CPU-full node, so cilium-config now sets unmanaged-pod-watcher-interval: "0".';
         } else {
           badge.className = s.allowed
             ? 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
