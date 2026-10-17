@@ -75,6 +75,26 @@ spec:
       ports:
         - protocol: TCP
           port: 8201
+    # Kubernetes API Server TokenReview egress (auth/kubernetes) — kube-router fallback.
+    # K3s kube-router (still active on any node not yet migrated to
+    # `--flannel-backend=none --disable-network-policy`) ignores CiliumNetworkPolicy, so
+    # without this rule it REJECTs TokenReview and every Vault Kubernetes login fails.
+    # kube-proxy DNATs 10.43.0.1:443 to the node IP :6443 before policy evaluation, so the
+    # destination is the node's private address; scope to RFC1918 instead of 0.0.0.0/0.
+    # Under Cilium, ipBlock never matches node IPs; the CiliumNetworkPolicy below
+    # (toEntities: kube-apiserver) is what admits this traffic there.
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
 ---
 apiVersion: cilium.io/v2
 kind: CiliumNetworkPolicy

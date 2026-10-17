@@ -2275,11 +2275,11 @@
         src: 'vault/openbao-0 (app=openbao)',
         dst: 'reserved:kube-apiserver (:6443)',
         allowed: true,
-        policy: 'CiliumNetworkPolicy: vault-apiserver-egress (deploy/platform/vault/networkpolicy.yaml)',
+        policy: 'NetworkPolicy: openbao-ingress-policy (RFC1918 :443/:6443 kube-router fallback) + CiliumNetworkPolicy: openbao-apiserver-egress (deploy/platform/vault/network-policy.yaml)',
         kernelHook: 'eBPF toEntities: ["kube-apiserver"] -> Host IP / SNAT Identity Match -> FORWARDED',
         hubble: `TIMESTAMP             SOURCE                        DESTINATION                   TYPE            VERDICT     SUMMARY\nOct 17 09:42:22.410   vault/openbao-0:44218         reserved:kube-apiserver:6443  policy-verdict  FORWARDED   TCP TLSv1.3 (TokenReview validation)`,
-        yaml: `apiVersion: cilium.io/v2\nkind: CiliumNetworkPolicy\nmetadata:\n  name: vault-apiserver-egress\n  namespace: vault\nspec:\n  endpointSelector:\n    matchLabels: { app: openbao }\n  egress:\n    - toEntities:\n        - kube-apiserver`,
-        why: 'On single-node K3s, the Kubernetes API server runs on the host IP. Standard K8s NetworkPolicies break when DNAT/SNAT rewrites the IP, whereas Cilium tracks reserved:kube-apiserver natively.'
+        yaml: `# 1) kube-router fallback (Cilium never matches node IPs with ipBlock)\nkind: NetworkPolicy\nmetadata: { name: openbao-ingress-policy, namespace: vault }\nspec:\n  egress:\n    - to:\n        - ipBlock: { cidr: 10.0.0.0/8 }\n        - ipBlock: { cidr: 172.16.0.0/12 }\n        - ipBlock: { cidr: 192.168.0.0/16 }\n      ports: [{ port: 443 }, { port: 6443 }]\n---\n# 2) Cilium-native entity match (only enforced once Cilium owns the pod)\napiVersion: cilium.io/v2\nkind: CiliumNetworkPolicy\nmetadata:\n  name: openbao-apiserver-egress\n  namespace: vault\nspec:\n  endpointSelector:\n    matchLabels: { app.kubernetes.io/name: openbao }\n  egress:\n    - toEntities:\n        - kube-apiserver`,
+        why: 'kube-proxy DNATs 10.43.0.1:443 to the node IP :6443 before policy evaluation. Cilium matches it as reserved:kube-apiserver; kube-router (still active on any node not yet migrated to --flannel-backend=none --disable-network-policy) ignores CiliumNetworkPolicy, so the RFC1918 NetworkPolicy rule must stay as a fallback (Cilium ignores ipBlock for node IPs, so after migration only the CNP entity rule applies). Incident 2026-10-17: removing it REJECTed TokenReview on vps-k3s and took down postgres, keycloak and pn.'
       },
       'pn-gateway': {
         title: 'pn-backend ➔ gateway (:8080/jwks) [JWT Verification]',
@@ -2360,13 +2360,13 @@
 
       if (currentCniMode === 'flannel') {
         if (currentCniScenario === 'bao-apiserver') {
-          badge.className = 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40';
-          badge.textContent = '✗ BROKEN under Flannel + kube-router';
-          modeDesc.textContent = 'What-If Mode: Legacy K3s Flannel + kube-router iptables. CiliumNetworkPolicy CRD is ignored, and host-IP SNAT breaks OpenBao -> kube-apiserver TokenReview!';
-          hookEl.textContent = 'iptables KUBE-NWPLCY chain -> CiliumNetworkPolicy CRD unrecognized -> Egress to 10.43.0.1:443 SNATs to node IP and times out!';
-          hubbleEl.textContent = '[No Hubble in Flannel mode] Operator is blind: packets silently timeout during OpenBao Kubernetes Auth login.';
+          badge.className = 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
+          badge.textContent = '✓ ALLOWED via NetworkPolicy fallback (kube-router)';
+          modeDesc.textContent = 'What-If Mode: Legacy K3s Flannel + kube-router iptables (e.g. a node whose k3s unit was never re-rendered with --flannel-backend=none --disable-network-policy). CiliumNetworkPolicy CRD is ignored; only the RFC1918 :443/:6443 rule in openbao-ingress-policy admits TokenReview.';
+          hookEl.textContent = 'iptables KUBE-POD-FW-<openbao> -> KUBE-NWPLCY(openbao-ingress-policy) ipBlock 10.0.0.0/8 :6443 -> MARK 0x10000 -> ACCEPT. Without the fallback: REJECT --reject-with icmp-port-unreachable -> "connection refused".';
+          hubbleEl.textContent = '[No Hubble for Flannel-attached pods] Diagnose with:\nsudo iptables-save -c | grep KUBE-POD-FW-<hash> | grep REJECT   # counter increments per blocked TokenReview\nsudo k3s kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint list   # only reserved:host = Cilium owns no pods';
           yamlEl.textContent = s.yaml;
-          whyEl.textContent = 'This exact failure is why Spec 010 replaced Flannel/kube-router with Cilium v1.20.3: Cilium natively tracks reserved:kube-apiserver and provides Hubble drop visibility.';
+          whyEl.textContent = 'Incident 2026-10-17 (vps-k3s): Flux applied the Spec 010 manifests but the host k3s unit is Ansible-owned and was not migrated, so kube-router kept enforcing. Removing the NetworkPolicy apiserver rule failed every Vault Kubernetes login. Keep the fallback until every node runs Cilium.';
         } else {
           badge.className = s.allowed
             ? 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
