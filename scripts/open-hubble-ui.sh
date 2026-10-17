@@ -95,6 +95,9 @@ run_verify() {
   PF_LOG="$(mktemp /tmp/hubble-ui-pf-XXXXXX.log)"
   kubectl -n kube-system port-forward --address 127.0.0.1 svc/hubble-ui "${PORT}:80" >"${PF_LOG}" 2>&1 &
   PF_PID=$!
+  # Invoked only by the EXIT trap below. ShellCheck does not treat trap
+  # callbacks as calls (https://www.shellcheck.net/wiki/SC2329).
+  # shellcheck disable=SC2329
   cleanup_pf() {
     kill "${PF_PID}" >/dev/null 2>&1 || true
     rm -f "${PF_LOG}"
