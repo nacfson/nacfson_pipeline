@@ -26,6 +26,7 @@ Always consult these top-level indexes before exploring or modifying the codebas
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | **System Topology & Data Flows**: Mermaid architecture diagrams, Flux GitOps layer DAG, TLS termination, auth routing, Vault proxy boundary, and probe roles. |
 | [`DEPENDENCIES.md`](DEPENDENCIES.md) | **Dependencies, Pinned Versions & Tenant Contracts**: Go stdlib-only rule, pinned infra/image tags, CI toolchains, capacity envelopes, and `Project_PN` integration contracts. |
 | [`README.md`](README.md) & [`SPEC.md`](SPEC.md) | **Onboarding Portal & Baseline Spec**: High-level traceability matrix, quickstart progression, and original platform specification baseline. |
+| Direct push to `main` | **Rejected** by the `main_PR` ruleset. Land every change through a pull request. Never `git push` to `main`. |
 
 ---
 
