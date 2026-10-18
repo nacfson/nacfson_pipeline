@@ -1,0 +1,95 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: project-health-isolation
+  namespace: proj-health
+  labels:
+    app.kubernetes.io/name: project-health
+    app.kubernetes.io/part-of: project-health
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # 1. Door contract: ports 80 and 8080 from the platform namespace.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: platform
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+
+    # 2. K3s runs Traefik in kube-system. Admit only those pods, on the same ports.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: traefik
+      ports:
+        - protocol: TCP
+          port: 80
+        - protocol: TCP
+          port: 8080
+
+    # 3. Allow intra-namespace traffic between project pods (frontend -> backend)
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: health-frontend
+      ports:
+        - protocol: TCP
+          port: 8080
+
+  egress:
+    # 1. Allow internal cluster DNS (kube-dns)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+    # 2. Allow connection to vault-db-proxy only (Zero-Plaintext; no direct Postgres)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vault
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault-db-proxy
+      ports:
+        - protocol: TCP
+          port: 5432
+
+    # 3. Session confirmation only. Not a visitor door, and not Keycloak itself.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: identity
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+
+    # 4. Allow intra-namespace traffic between project pods (frontend -> backend)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: health-backend
+      ports:
+        - protocol: TCP
+          port: 8080

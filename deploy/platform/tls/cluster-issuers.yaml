@@ -9,6 +9,40 @@ metadata:
 spec:
   selfSigned: {}
 ---
+# Local rehearsal root CA: exportable once for Android emulator / iOS simulator trust.
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: local-rehearsal-root-ca
+  namespace: cert-manager
+  labels:
+    app.kubernetes.io/part-of: platform
+spec:
+  isCA: true
+  commonName: nacfson local-k3s rehearsal root
+  secretName: local-rehearsal-root-ca
+  duration: 87600h
+  renewBefore: 8760h
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: selfsigned
+---
+# CA issuer backed by local-rehearsal-root-ca so auth.example.com and health.example.com share one root.
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: local-rehearsal-ca
+  labels:
+    app.kubernetes.io/part-of: platform
+spec:
+  ca:
+    secretName: local-rehearsal-root-ca
+---
 # Let's Encrypt staging: untrusted certificates, generous rate limits.
 # Use it to debug challenges before switching an environment to production.
 apiVersion: cert-manager.io/v1

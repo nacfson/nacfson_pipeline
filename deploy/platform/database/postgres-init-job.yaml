@@ -47,7 +47,7 @@ spec:
             - name: VAULT_ROLE
               value: "postgres-init"
             - name: PROJECT_SLUGS
-              value: "pn"
+              value: "pn,health"
           command:
             - /bin/sh
             - -c
@@ -113,7 +113,7 @@ spec:
             - name: VAULT_ADDR
               value: "http://openbao-service.vault.svc:8200"
             - name: PROJECT_SLUGS
-              value: "pn"
+              value: "pn,health"
           command:
             - /bin/sh
             - -c
@@ -229,7 +229,7 @@ spec:
                     SELECT c.id, cs.id, true
                     FROM client c
                     JOIN realm r ON r.id = c.realm_id AND r.name = 'platform'
-                    JOIN client_scope cs ON cs.realm_id = r.id AND cs.name = 'project-pn-audience'
+                    JOIN client_scope cs ON cs.realm_id = r.id AND cs.name IN ('project-pn-audience', 'project-health-audience')
                     WHERE c.client_id = 'gateway-client'
                     ON CONFLICT (client_id, scope_id) DO UPDATE SET default_scope = true;
                   END IF;

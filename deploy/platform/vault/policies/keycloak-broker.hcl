@@ -16,3 +16,7 @@ path "kv/data/gateway/*" {
 path "kv/data/projects/pn/*" {
   capabilities = ["read"]
 }
+
+path "kv/data/projects/health/*" {
+  capabilities = ["read"]
+}

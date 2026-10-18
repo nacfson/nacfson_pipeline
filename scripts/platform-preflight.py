@@ -599,7 +599,8 @@ def check_edge_tls(project_docs, platform_docs):
             if not c_ns:
                 c_ns = doc.get("metadata", {}).get("labels", {}).get("kustomize.toolkit.fluxcd.io/namespace", "")
             c_name = (doc.get("metadata") or {}).get("name", "")
-            if c_ns and c_ns != "platform" and c_ns in PLATFORM_NAMESPACES:
+            is_ca = (doc.get("spec") or {}).get("isCA") is True
+            if c_ns and c_ns != "platform" and c_ns in PLATFORM_NAMESPACES and not (c_ns == "cert-manager" and is_ca):
                 violations.append({
                     "rule": 2,
                     "object": f"{c_ns}/Certificate/{c_name}",

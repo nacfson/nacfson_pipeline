@@ -1,0 +1,33 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: project-health-ingress
+  namespace: proj-health
+  labels:
+    app.kubernetes.io/name: project-health
+    app.kubernetes.io/part-of: project-health
+spec:
+  entryPoints:
+    - websecure
+  # The platform selects the certificate by hostname (TLSStore platform/default). HTTP is redirected by platform/http-to-https.
+  tls: {}
+  routes:
+    # Host route, then /api. Flux match patches address these indexes.
+    - match: Host(`health.example.com`)
+      kind: Rule
+      priority: 10
+      middlewares:
+        - name: strip-forged-headers
+          namespace: platform
+      services:
+        - name: health-frontend
+          port: 80
+    - match: Host(`health.example.com`) && PathPrefix(`/api`)
+      kind: Rule
+      priority: 100
+      middlewares:
+        - name: strip-forged-headers
+          namespace: platform
+      services:
+        - name: health-backend
+          port: 8080

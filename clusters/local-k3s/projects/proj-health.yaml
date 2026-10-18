@@ -1,0 +1,29 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: proj-health
+  namespace: proj-health
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  serviceAccountName: health-reconciler
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  dependsOn:
+    - name: project-boundaries-health
+      namespace: flux-system
+    - name: ingress
+      namespace: flux-system
+    - name: vault-proxies
+      namespace: flux-system
+  path: ./deploy/projects/health/workloads
+  images:
+    - name: ghcr.io/nacfson/health-backend
+      digest: sha256:3bab2a36c05104d6ab753850bcd74ec1b6062baa91e4a308f42c398644904e73
+    - name: ghcr.io/nacfson/health-frontend
+      digest: sha256:f22dfe18854a3ccba30d1f0b0db041ac4a68530218ff477d5df3355643179c86

@@ -17,3 +17,4 @@ spec:
   certificates:
     - secretName: auth-tls
     - secretName: pn-tls
+    - secretName: health-tls

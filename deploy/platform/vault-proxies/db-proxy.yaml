@@ -52,7 +52,7 @@ spec:
             - name: ENFORCED_ROLE
               value: "user_pn"
             - name: ALLOWED_PROJECTS
-              value: "pn"
+              value: "pn,health"
           resources:
             requests:
               cpu: 25m

@@ -1,0 +1,98 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: health-backend
+  namespace: proj-health
+  labels:
+    app.kubernetes.io/name: health-backend
+    app.kubernetes.io/part-of: project-health
+    platform.nacfson.io/managed-by: platform
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: health-backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: health-backend
+        app.kubernetes.io/part-of: project-health
+    spec:
+      restartPolicy: Always
+      serviceAccountName: health-workload-sa
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          image: ghcr.io/nacfson/health-backend@sha256:3bab2a36c05104d6ab753850bcd74ec1b6062baa91e4a308f42c398644904e73
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          workingDir: /app
+          env:
+            - name: APP_ENV
+              value: "prod"
+            - name: DATABASE_URL
+              value: "postgres://project%3Ahealth%3Aworkload%3Abackend:project%3Ahealth%3Aworkload%3Abackend@vault-db-proxy.vault.svc:5432/proj_health?sslmode=disable"
+            - name: DB_HOST
+              value: "vault-db-proxy.vault.svc"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "proj_health"
+            - name: DB_USER
+              value: "project:health:workload:backend"
+            - name: DB_TOKEN
+              value: "project:health:workload:backend"
+            - name: GATEWAY_AUTH_URL
+              value: "http://gateway.identity.svc:8080/auth"
+            - name: PUBLIC_APP_URL
+              value: "https://health.example.com"
+            - name: ALLOWED_ORIGINS
+              value: "https://health.example.com"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+      volumes:
+        - name: tmp
+          emptyDir: {}
