@@ -3,3 +3,4 @@ kind: Kustomization
 
 resources:
   - proj-pn.yaml
+  - proj-health.yaml

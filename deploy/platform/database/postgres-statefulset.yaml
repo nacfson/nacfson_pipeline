@@ -85,7 +85,7 @@ spec:
             - name: POSTGRES_PASSWORD_FILE
               value: /var/run/secrets/database/admin_password
             - name: PROJECT_SLUGS
-              value: "pn"
+              value: "pn,health"
           resources:
             requests:
               cpu: 250m

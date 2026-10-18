@@ -99,6 +99,12 @@ spec:
               echo -n "${PN_SECRET}" > /opt/keycloak/conf/secrets/project_pn_client_secret
               echo -n "${PN_SECRET}" > /opt/keycloak/conf/secrets/platform_project_pn_client_secret
 
+              echo "Retrieving Project Health client secret..."
+              HEALTH_JSON=$(curl -fsSL -H "X-Vault-Token: ${VAULT_TOKEN}" "${VAULT_ADDR}/v1/kv/data/projects/health/client-secret")
+              HEALTH_SECRET=$(echo "${HEALTH_JSON}" | sed -n 's/.*"client_secret":"\([^"]*\)".*/\1/p')
+              echo -n "${HEALTH_SECRET}" > /opt/keycloak/conf/secrets/project_health_client_secret
+              echo -n "${HEALTH_SECRET}" > /opt/keycloak/conf/secrets/platform_project_health_client_secret
+
               chmod 0400 /opt/keycloak/conf/secrets/*
               echo "Keycloak secrets and realm client secrets populated into ephemeral storage."
           volumeMounts:
@@ -116,6 +122,7 @@ spec:
               export GOOGLE_CLIENT_SECRET=$(cat /opt/keycloak/conf/secrets/google_client_secret)
               export GATEWAY_CLIENT_SECRET=$(cat /opt/keycloak/conf/secrets/gateway_client_secret)
               export PROJECT_PN_CLIENT_SECRET=$(cat /opt/keycloak/conf/secrets/project_pn_client_secret)
+              export PROJECT_HEALTH_CLIENT_SECRET=$(cat /opt/keycloak/conf/secrets/project_health_client_secret)
               export SESSION_REVOCATION_SECRET=$(cat /opt/keycloak/conf/secrets/session_revocation_secret)
               exec /opt/keycloak/bin/kc.sh start --import-realm --vault=file --vault-dir=/opt/keycloak/conf/secrets
           env:

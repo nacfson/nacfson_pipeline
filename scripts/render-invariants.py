@@ -122,6 +122,7 @@ def main():
         ("Namespace", "governance", "kustomize.toolkit.fluxcd.io/prune", "disabled"),
         ("Namespace", "vault", "kustomize.toolkit.fluxcd.io/prune", "disabled"),
         ("Namespace", "proj-pn", "kustomize.toolkit.fluxcd.io/prune", "disabled"),
+        ("Namespace", "proj-health", "kustomize.toolkit.fluxcd.io/prune", "disabled"),
         ("PersistentVolumeClaim", "postgres-data-postgres-0", "kustomize.toolkit.fluxcd.io/prune", "disabled"),
         ("PersistentVolumeClaim", "postgres-backup-pvc", "kustomize.toolkit.fluxcd.io/prune", "disabled"),
         ("PersistentVolumeClaim", "openbao-backup-pvc", "kustomize.toolkit.fluxcd.io/prune", "disabled"),

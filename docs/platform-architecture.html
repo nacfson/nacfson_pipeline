@@ -697,7 +697,7 @@
       <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 class="text-base font-bold text-white">FluxCD Kustomization Reconciliation DAG (<code class="text-cyan-300">clusters/&lt;env&gt;/layers.yaml</code>)</h2>
-          <p class="text-xs text-slate-400">Every 5m Flux reconciles these 10 layers in strict <code class="text-amber-300">dependsOn</code> order with <code class="text-rose-300">prune: true</code>. Click any layer to inspect its patches.</p>
+          <p class="text-xs text-slate-400">Every 5m Flux reconciles these 11 layers in strict <code class="text-amber-300">dependsOn</code> order with <code class="text-rose-300">prune: true</code>. Click any layer to inspect its patches.</p>
         </div>
         <div class="flex items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
           <button onclick="setDagEnv('vps-k3s')" id="env-btn-vps" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-cyan-500 text-slate-950">
@@ -722,10 +722,10 @@
             <!-- DAG Edges (dependsOn) -->
             <!-- cni -> vault -->
             <path d="M 190 72 L 320 135" stroke="#34d399" stroke-width="2.2" fill="none" marker-end="url(#dag-arrow)" />
-            <!-- governance -> cert-manager, vault, project-boundaries -->
+            <!-- governance -> cert-manager, vault, project-boundaries, project-boundaries-health -->
             <path d="M 480 72 L 150 135" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
             <path d="M 480 72 L 385 135" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
-            <path d="M 480 72 L 585 135" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
+            <path d="M 480 72 L 585 128" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
 
             <!-- vault -> vault-proxies, database -->
             <path d="M 330 190 L 250 245" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
@@ -735,13 +735,13 @@
             <path d="M 430 300 L 430 340" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
             <path d="M 370 368 L 285 368" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
 
-            <!-- project-boundaries -> projects -->
-            <path d="M 585 190 L 585 245" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
+            <!-- project-boundaries & project-boundaries-health -> projects -->
+            <path d="M 585 216 L 585 245" stroke="#64748b" stroke-width="2" fill="none" marker-end="url(#dag-arrow)" />
 
-            <!-- cert-manager, ingress, project-boundaries -> tls -->
+            <!-- cert-manager, ingress, project-boundaries* -> tls -->
             <path d="M 130 190 L 180 430" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5 3" fill="none" marker-end="url(#dag-arrow)" />
             <path d="M 210 396 L 210 430" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5 3" fill="none" marker-end="url(#dag-arrow)" />
-            <path d="M 540 190 L 260 430" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5 3" fill="none" marker-end="url(#dag-arrow)" />
+            <path d="M 540 216 L 260 430" stroke="#fbbf24" stroke-width="2" stroke-dasharray="5 3" fill="none" marker-end="url(#dag-arrow)" />
 
             <!-- Layer 1a: cni -->
             <g class="node-box" onclick="selectDagLayer('cni')" transform="translate(80, 20)">
@@ -772,10 +772,17 @@
             </g>
 
             <!-- Layer 2c: project-boundaries -->
-            <g class="node-box" onclick="selectDagLayer('project-boundaries')" transform="translate(490, 138)">
-              <rect class="main-rect" width="195" height="52" rx="10" fill="#1f1224" stroke="#fb7185" stroke-width="2" />
-              <text x="97" y="22" text-anchor="middle" fill="#f8fafc" font-size="12" font-weight="700">2c. project-boundaries</text>
-              <text x="97" y="39" text-anchor="middle" fill="#fda4af" font-size="9.5" font-family="'JetBrains Mono'">./deploy/projects/pn/boundary</text>
+            <g class="node-box" onclick="selectDagLayer('project-boundaries')" transform="translate(490, 125)">
+              <rect class="main-rect" width="205" height="42" rx="10" fill="#1f1224" stroke="#fb7185" stroke-width="2" />
+              <text x="102" y="18" text-anchor="middle" fill="#f8fafc" font-size="11" font-weight="700">2c. project-boundaries</text>
+              <text x="102" y="33" text-anchor="middle" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">./deploy/projects/pn/boundary</text>
+            </g>
+
+            <!-- Layer 2d: project-boundaries-health -->
+            <g class="node-box" onclick="selectDagLayer('project-boundaries-health')" transform="translate(490, 173)">
+              <rect class="main-rect" width="205" height="42" rx="10" fill="#1f1224" stroke="#fb7185" stroke-width="2" />
+              <text x="102" y="18" text-anchor="middle" fill="#f8fafc" font-size="11" font-weight="700">2d. project-boundaries-health</text>
+              <text x="102" y="33" text-anchor="middle" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">./deploy/projects/health/boundary</text>
             </g>
 
             <!-- Layer 3a: vault-proxies -->
@@ -794,9 +801,9 @@
 
             <!-- Layer 3c: projects -->
             <g class="node-box" onclick="selectDagLayer('projects')" transform="translate(490, 248)">
-              <rect class="main-rect" width="195" height="52" rx="10" fill="#1f1224" stroke="#fb7185" stroke-width="2" />
-              <text x="97" y="22" text-anchor="middle" fill="#f8fafc" font-size="11.5" font-weight="700">3c. projects (proj-pn)</text>
-              <text x="97" y="39" text-anchor="middle" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">wait: false · ./clusters/*/projects</text>
+              <rect class="main-rect" width="205" height="52" rx="10" fill="#1f1224" stroke="#fb7185" stroke-width="2" />
+              <text x="102" y="22" text-anchor="middle" fill="#f8fafc" font-size="11.5" font-weight="700">3c. projects (proj-pn, health)</text>
+              <text x="102" y="39" text-anchor="middle" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">wait: false · ./clusters/*/projects</text>
             </g>
 
             <!-- Layer 4: identity -->
@@ -1908,7 +1915,7 @@
         }
       },
       'project-boundaries': {
-        title: '2c. project-boundaries (Tenant Sandbox)',
+        title: '2c. project-boundaries (Tenant Sandbox — proj-pn)',
         path: './deploy/projects/pn/boundary',
         deps: 'governance',
         desc: 'Creates namespace proj-pn with Pod Security Restricted labels, ResourceQuota (850m CPU, 1536Mi RAM, 0 NodePorts/LBs), strict NetworkPolicy, project-pn-sa (no token mount), and pn-reconciler RBAC.',
@@ -1917,34 +1924,44 @@
           'local-k3s': `dependsOn: [governance]\npath: ./deploy/projects/pn/boundary (identical isolation contract)`
         }
       },
+      'project-boundaries-health': {
+        title: '2d. project-boundaries-health (Tenant Sandbox — proj-health)',
+        path: './deploy/projects/health/boundary',
+        deps: 'governance',
+        desc: 'Creates namespace proj-health with Pod Security Restricted labels, ResourceQuota (850m CPU, 1536Mi RAM, 0 NodePorts/LBs), strict NetworkPolicy, project-health-sa (no token mount), and health-reconciler RBAC.',
+        yaml: {
+          'vps-k3s': `dependsOn: [governance]\npath: ./deploy/projects/health/boundary\nobjects:\n  - Namespace proj-health (pod-security.kubernetes.io/enforce: restricted)\n  - ResourceQuota project-health-quota (850m / 1536Mi)\n  - NetworkPolicy project-health-isolation`,
+          'local-k3s': `dependsOn: [governance]\npath: ./deploy/projects/health/boundary (identical isolation contract)`
+        }
+      },
       'vault-proxies': {
         title: '3a. vault-proxies (Zero-Plaintext Proxies)',
         path: './deploy/platform/vault-proxies',
         deps: 'vault',
         desc: 'Deploys vault-db-proxy (:5432 PostgreSQL wire proxy) and vault-registry-proxy (:5000 GHCR image pull proxy) inside namespace vault.',
         yaml: {
-          'vps-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml (ENFORCED_DB=proj_pn, ENFORCED_ROLE=user_pn)\n  - registry-proxy.yaml (UPSTREAM_REGISTRY=ghcr.io)`,
-          'local-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml & registry-proxy.yaml`
+          'vps-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml (ALLOWED_PROJECTS="pn,health")\n  - registry-proxy.yaml (UPSTREAM_REGISTRY=ghcr.io)`,
+          'local-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml (ALLOWED_PROJECTS="pn,health") & registry-proxy.yaml`
         }
       },
       'database': {
         title: '3b. database (PostgreSQL 16.8 & Init Job)',
         path: './deploy/platform/database',
         deps: 'vault',
-        desc: 'Deploys PostgreSQL 16.8-alpine StatefulSet, 10Gi PVC, postgres-init-job (which provisions keycloak and proj_pn databases using secrets from OpenBao), and the daily backup CronJob.',
+        desc: 'Deploys PostgreSQL 16.8-alpine StatefulSet, 10Gi PVC, postgres-init-job (which provisions keycloak, proj_pn, and proj_health databases using secrets from OpenBao), and the daily backup CronJob.',
         yaml: {
-          'vps-k3s': `dependsOn: [vault]\nhealthChecks:\n  - kind: StatefulSet, name: postgres, namespace: identity\nresources:\n  - postgres-statefulset.yaml, postgres-init-job.yaml, backup-cronjob.yaml`,
+          'vps-k3s': `dependsOn: [vault]\nhealthChecks:\n  - kind: StatefulSet, name: postgres, namespace: identity\nresources:\n  - postgres-statefulset.yaml, postgres-init-job.yaml (PROJECT_SLUGS="pn,health"), backup-cronjob.yaml`,
           'local-k3s': `dependsOn: [vault]\nhealthChecks:\n  - kind: StatefulSet, name: postgres, namespace: identity`
         }
       },
       'projects': {
         title: '3c. projects (Tenant Workloads)',
         path: './clusters/<env>/projects',
-        deps: 'project-boundaries',
-        desc: 'Reconciles tenant project Kustomizations (proj-pn) using targetServiceAccount: pn-reconciler. Patches IngressRoute hostnames and frontend/backend environment per cluster.',
+        deps: 'project-boundaries, project-boundaries-health',
+        desc: 'Reconciles tenant project Kustomizations (proj-pn, proj-health) using per-project reconciler ServiceAccounts. Patches IngressRoute hostnames and frontend/backend environment per cluster.',
         yaml: {
-          'vps-k3s': `dependsOn: [project-boundaries]\nwait: false\n# clusters/vps-k3s/projects/proj-pn.yaml patches:\n- IngressRoute match: Host(\`pn.nacfson.cloud\`)\n- pn-backend env: KEYCLOAK_ISSUER_URL=https://auth.nacfson.cloud/realms/platform`,
-          'local-k3s': `dependsOn: [project-boundaries]\nwait: false\n# clusters/local-k3s/projects/proj-pn.yaml:\n- Uses base Host(\`pn.example.com\`)`
+          'vps-k3s': `dependsOn: [project-boundaries, project-boundaries-health]\nwait: false\n# clusters/vps-k3s/projects/proj-pn.yaml patches:\n- IngressRoute match: Host(\`pn.nacfson.cloud\`)\n- pn-backend env: KEYCLOAK_ISSUER_URL=https://auth.nacfson.cloud/realms/platform`,
+          'local-k3s': `dependsOn: [project-boundaries, project-boundaries-health]\nwait: false\n# clusters/local-k3s/projects/proj-pn.yaml & proj-health.yaml:\n- Uses base Host(\`pn.example.com\`) and Host(\`health.example.com\`)`
         }
       },
       'identity': {
@@ -1953,8 +1970,8 @@
         deps: 'database',
         desc: 'Deploys Keycloak 24.0.5 and the custom Go Auth Gateway in namespace identity, with per-environment patches for cookie domain, public URL, and allowed project return hosts. Realm import must parse on Keycloak 24.0.5, so the Google identity provider must not contain hideOnLogin. The login form stays skipped by kc_idp_hint=google, not by a Keycloak login-page switch.',
         yaml: {
-          'vps-k3s': `dependsOn: [database]\npatches (Deployment/gateway):\n  COOKIE_DOMAIN: ".nacfson.cloud"\n  KEYCLOAK_PUBLIC_URL: "https://auth.nacfson.cloud/realms/platform"\n  PROJECT_RETURN_HOSTS: "pn.nacfson.cloud"`,
-          'local-k3s': `dependsOn: [database]\npatches (Deployment/gateway):\n  COOKIE_DOMAIN: ".example.com"\n  # Uses base KEYCLOAK_PUBLIC_URL (https://auth.example.com/realms/platform)`
+          'vps-k3s': `dependsOn: [database]\npatches (Deployment/gateway):\n  COOKIE_DOMAIN: ".nacfson.cloud"\n  KEYCLOAK_PUBLIC_URL: "https://auth.nacfson.cloud/realms/platform"\n  PROJECT_RETURN_HOSTS: "pn.nacfson.cloud,health.nacfson.cloud"`,
+          'local-k3s': `dependsOn: [database]\npatches (Deployment/gateway):\n  COOKIE_DOMAIN: ".example.com"\n  PROJECT_RETURN_HOSTS: "pn.example.com,health.example.com"`
         }
       },
       'ingress': {
@@ -1970,11 +1987,11 @@
       'tls': {
         title: '6. tls (Centralized TLSStore & Certificates)',
         path: './deploy/platform/tls',
-        deps: 'cert-manager, ingress, project-boundaries',
-        desc: 'Creates ClusterIssuers (selfsigned, letsencrypt-staging, letsencrypt-prod), TLSStore platform/default, and Certificates (auth-tls, pn-tls) in namespace platform.',
+        deps: 'cert-manager, ingress, project-boundaries, project-boundaries-health',
+        desc: 'Creates ClusterIssuers (selfsigned, local-rehearsal-ca, letsencrypt-staging, letsencrypt-prod), TLSStore platform/default, and Certificates (auth-tls, pn-tls, health-tls) in namespace platform.',
         yaml: {
-          'vps-k3s': `dependsOn: [cert-manager, ingress, project-boundaries]\npatches:\n  - Certificate/auth-tls: dnsNames=[auth.nacfson.cloud], issuer=letsencrypt-prod\n  - Certificate/pn-tls:   dnsNames=[pn.nacfson.cloud],   issuer=letsencrypt-prod`,
-          'local-k3s': `dependsOn: [cert-manager, ingress, project-boundaries]\n# Uses base values:\n  - Certificate/auth-tls: dnsNames=[auth.example.com], issuer=selfsigned\n  - Certificate/pn-tls:   dnsNames=[pn.example.com],   issuer=selfsigned`
+          'vps-k3s': `dependsOn: [cert-manager, ingress, project-boundaries, project-boundaries-health]\npatches:\n  - Certificate/auth-tls:   dnsNames=[auth.nacfson.cloud],   issuer=letsencrypt-prod\n  - Certificate/pn-tls:     dnsNames=[pn.nacfson.cloud],     issuer=letsencrypt-prod\n  - Certificate/health-tls: dnsNames=[health.nacfson.cloud], issuer=letsencrypt-prod`,
+          'local-k3s': `dependsOn: [cert-manager, ingress, project-boundaries, project-boundaries-health]\n# Uses base values (local-rehearsal-ca):\n  - Certificate/auth-tls:   dnsNames=[auth.example.com],   issuer=local-rehearsal-ca\n  - Certificate/pn-tls:     dnsNames=[pn.example.com],     issuer=local-rehearsal-ca\n  - Certificate/health-tls: dnsNames=[health.example.com], issuer=local-rehearsal-ca`
         }
       }
     };

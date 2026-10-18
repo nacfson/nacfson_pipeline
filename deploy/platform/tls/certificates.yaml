@@ -20,7 +20,7 @@ spec:
   issuerRef:
     group: cert-manager.io
     kind: ClusterIssuer
-    name: selfsigned
+    name: local-rehearsal-ca
   privateKey:
     algorithm: ECDSA
     size: 256
@@ -44,6 +44,29 @@ spec:
     group: cert-manager.io
     kind: ClusterIssuer
     name: selfsigned
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+---
+# Served through TLSStore platform/default
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: health-tls
+  namespace: platform
+  labels:
+    app.kubernetes.io/part-of: platform
+spec:
+  secretName: health-tls
+  # renew when 30 days remain (FR-006), independent of CA lifetime
+  renewBefore: 720h
+  dnsNames:
+    - health.example.com
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: local-rehearsal-ca
   privateKey:
     algorithm: ECDSA
     size: 256

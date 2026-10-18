@@ -17,6 +17,7 @@ spec:
     - expression: >-
         request.userInfo.username.startsWith('system:serviceaccount:flux-system:') ||
         request.userInfo.username == 'system:serviceaccount:proj-pn:pn-reconciler' ||
+        request.userInfo.username == 'system:serviceaccount:proj-health:health-reconciler' ||
         request.userInfo.username.startsWith('system:serviceaccount:kube-system:') ||
         request.userInfo.username.startsWith('system:node:') ||
         request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver', 'system:k3s-controller', 'k3s-cloud-controller-manager'] ||
@@ -53,6 +54,7 @@ spec:
             - platform
             - vault
             - proj-pn
+            - proj-health
             - cert-manager
 ---
 apiVersion: admissionregistration.k8s.io/v1
@@ -82,6 +84,7 @@ spec:
     - expression: >-
         request.userInfo.username.startsWith('system:serviceaccount:flux-system:') ||
         request.userInfo.username == 'system:serviceaccount:proj-pn:pn-reconciler' ||
+        request.userInfo.username == 'system:serviceaccount:proj-health:health-reconciler' ||
         request.userInfo.username.startsWith('system:serviceaccount:kube-system:') ||
         request.userInfo.username.startsWith('system:node:') ||
         request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver', 'system:k3s-controller', 'k3s-cloud-controller-manager'] ||

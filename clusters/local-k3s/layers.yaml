@@ -129,6 +129,8 @@ spec:
                   env:
                     - name: COOKIE_DOMAIN
                       value: ".example.com"
+                    - name: PROJECT_RETURN_HOSTS
+                      value: "pn.example.com,health.example.com"
 ---
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
@@ -171,7 +173,7 @@ spec:
     name: flux-system
   path: ./deploy/platform/cert-manager
 ---
-# local-k3s keeps the base values: example.com hosts + self-signed issuer.
+# local-k3s keeps the base values: example.com hosts + local-rehearsal-ca issuer.
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
@@ -187,6 +189,7 @@ spec:
     - name: cert-manager
     - name: ingress
     - name: project-boundaries
+    - name: project-boundaries-health
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -213,6 +216,24 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
+  name: project-boundaries-health
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: governance
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/projects/health/boundary
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
   name: projects
   namespace: flux-system
 spec:
@@ -223,6 +244,7 @@ spec:
   wait: false
   dependsOn:
     - name: project-boundaries
+    - name: project-boundaries-health
   sourceRef:
     kind: GitRepository
     name: flux-system
