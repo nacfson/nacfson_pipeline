@@ -37,6 +37,26 @@ REALM_CONFIG = os.path.join(
 )
 
 JIT_FLOW_ALIAS = "google jit first broker login"
+KC24_IDENTITY_PROVIDER_FIELDS = frozenset(
+    {
+        "enabled",
+        "firstBrokerLoginFlowAlias",
+        "trustEmail",
+        "linkOnly",
+        "providerId",
+        "displayName",
+        "alias",
+        "postBrokerLoginFlowAlias",
+        "addReadTokenRoleOnCreate",
+        "authenticateByDefault",
+        "internalId",
+        "updateProfileFirstLogin",
+        "updateProfileFirstLoginMode",
+        "config",
+        "storeToken",
+    }
+)
+
 FORBIDDEN_LINK_AUTHENTICATORS = {
     "idp-auto-link",
     "idp-confirm-link",
@@ -182,6 +202,33 @@ class TestKeycloakGoogleJitProvisioning(unittest.TestCase):
             clients["session-revocation-client"]["secret"],
             "${SESSION_REVOCATION_SECRET}",
         )
+
+    def test_google_idp_fields_are_known_to_keycloak_24_0_5(self) -> None:
+        google = self._google_idp()
+        unknown = set(google) - KC24_IDENTITY_PROVIDER_FIELDS
+        self.assertEqual(
+            unknown,
+            set(),
+            "Keycloak 24.0.5 realm import rejects unknown IdentityProviderRepresentation fields",
+        )
+        self.assertNotIn("hideOnLogin", google)
+        self.assertFalse(google.get("storeToken"))
+
+    def test_login_form_skip_stays_on_gateway_hint(self) -> None:
+        handler = os.path.join(BASE_DIR, "gateway", "internal", "auth", "handler.go")
+        with open(handler, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("kc_idp_hint=google", text)
+
+    def test_startup_import_does_not_override_existing_realm(self) -> None:
+        deployment = os.path.join(
+            BASE_DIR, "deploy", "platform", "identity", "keycloak-deployment.yaml"
+        )
+        with open(deployment, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("kc.sh start --import-realm", text)
+        self.assertNotIn("--override", text)
+        self.assertIn("quay.io/keycloak/keycloak:24.0.5", text)
 
     def _google_idp(self) -> dict:
         providers = self.realm.get("identityProviders") or []

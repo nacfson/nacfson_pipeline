@@ -167,7 +167,6 @@ data:
                 "addReadTokenRoleOnCreate": false,
                 "authenticateByDefault": true,
                 "linkOnly": false,
-                "hideOnLogin": false,
                 "firstBrokerLoginFlowAlias": "google jit first broker login",
                 "config": {
                     "clientId": "${GOOGLE_CLIENT_ID}",

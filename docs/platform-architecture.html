@@ -1951,7 +1951,7 @@
         title: '4. identity (Keycloak & Go Auth Gateway)',
         path: './deploy/platform/identity',
         deps: 'database',
-        desc: 'Deploys Keycloak 24.0.5 and the custom Go Auth Gateway in namespace identity, with per-environment patches for cookie domain, public URL, and allowed project return hosts.',
+        desc: 'Deploys Keycloak 24.0.5 and the custom Go Auth Gateway in namespace identity, with per-environment patches for cookie domain, public URL, and allowed project return hosts. Realm import must parse on Keycloak 24.0.5, so the Google identity provider must not contain hideOnLogin. The login form stays skipped by kc_idp_hint=google, not by a Keycloak login-page switch.',
         yaml: {
           'vps-k3s': `dependsOn: [database]\npatches (Deployment/gateway):\n  COOKIE_DOMAIN: ".nacfson.cloud"\n  KEYCLOAK_PUBLIC_URL: "https://auth.nacfson.cloud/realms/platform"\n  PROJECT_RETURN_HOSTS: "pn.nacfson.cloud"`,
           'local-k3s': `dependsOn: [database]\npatches (Deployment/gateway):\n  COOKIE_DOMAIN: ".example.com"\n  # Uses base KEYCLOAK_PUBLIC_URL (https://auth.example.com/realms/platform)`

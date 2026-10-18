@@ -19,7 +19,7 @@ spec:
   template:
     metadata:
       annotations:
-        platform.nacfson.io/realm-scope-sync: "2026-10-18"
+        platform.nacfson.io/realm-scope-sync: "2026-10-18-kc24-import"
       labels:
         app.kubernetes.io/name: keycloak
         app.kubernetes.io/part-of: platform
