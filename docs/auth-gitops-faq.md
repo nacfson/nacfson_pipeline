@@ -161,7 +161,31 @@ Sign-in needs all three. Fixing only routing moves the failure from 404 to 400.
   gateway env (`COOKIE_DOMAIN`, `PROJECT_RETURN_HOSTS`), backend env and Keycloak
   redirect URIs. Nothing checks they agree. Only `AUTH_HOST` is a variable so far.
 
-## 6. How a change reaches the cluster
+## 6. First Google login must create the Keycloak user
+
+**Q: Google sign-in succeeded, but there is still no Keycloak user until an admin creates or links one. Why?**
+
+The platform realm is imported from [`deploy/platform/identity/keycloak-realm-config.yaml`](../deploy/platform/identity/keycloak-realm-config.yaml). AUTH-01 requires Keycloak to create an ordinary user the first time Google SSO succeeds.
+
+Before the JIT flow landed, the Google IdP pointed at the built-in `first broker login` flow and set `updateProfileFirstLoginMode: "off"`. In Keycloak 24.0.5 that IdP field is ignored. The built-in flow still:
+
+1. Runs **Review Profile** with `update.profile.on.first.login = missing` (the Keycloak 24 user-profile default requires first and last name).
+2. Offers **Handle Existing Account** / Confirm Link / email or password re-auth when create-if-unique does not succeed.
+3. Leaves **VERIFY_PROFILE** enabled, so even a created user can fail token grant with "Account is not fully set up".
+
+This realm also has `registrationAllowed: false`, `resetPasswordAllowed: false`, and no SMTP, so those interactive steps cannot be completed by the visitor. An operator then created or linked the account by hand.
+
+The import now declares a dedicated flow `google jit first broker login`: Review Profile **off**, Create User If Unique **REQUIRED**, no email auto-link, Google `trustEmail: true`, `syncMode: IMPORT`, `VERIFY_PROFILE` disabled. Config tests live in [`tests/preflight/test_keycloak_jit_provisioning.py`](../tests/preflight/test_keycloak_jit_provisioning.py).
+
+Email is still not used as the platform identity (that remains `(issuer, subject)`). Duplicate emails fail closed instead of taking over an existing account.
+
+**Q: I merged the realm JSON. When does a cluster pick it up?**
+
+Flux reconciles `identity`, then Keycloak must re-import the realm. The Deployment uses `--import-realm` with `-Dkeycloak.migration.strategy=OVERWRITE_EXISTING`, so a Keycloak pod restart reloads `platform-realm.json`. The `platform.nacfson.io/realm-scope-sync` annotation on the Deployment is bumped when the realm JSON changes so the pod rolls. After rollout, the first Google login for a given Google `sub` creates the user; the next login reuses that federated identity.
+
+`OVERWRITE_EXISTING` replaces the realm from Git, including users that existed only in the database. After a restart, those visitors are provisioned again on their next Google sign-in. Do not create users in the admin console as the source of truth.
+
+## 7. How a change reaches the cluster
 
 `git push` to `main`, Flux (watching the repo every minute) applies
 `clusters/<cluster>/`, `prune: true` reverts hand edits. Commands on the host:
@@ -173,7 +197,7 @@ flux reconcile kustomization ingress
 kubectl rollout status deploy/gateway -n identity
 ```
 
-## 7. Debugging commands used
+## 8. Debugging commands used
 
 ```bash
 kubectl logs -n proj-pn deploy/pn-backend -f

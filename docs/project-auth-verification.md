@@ -24,7 +24,7 @@ Project Frontend (Owns 100% of Login UI, Zero Cookies)
 | **4. Project Frontend** | Owns the entire Login UI; exchanges one-time pickup code at `POST /api/auth/session` for `{ session_handle, user, requirements }` and sends `Authorization: Bearer <session_handle>` on `/api/*` with **zero cookies**. |
 | **3. Project Backend (`gateway/pkg/projectauth`)** | Exposes `/api/auth/login`, `/api/auth/callback`, `/api/auth/session`, `/api/auth/logout` and `RequireAuth`; maps verified `(issuer, subject)` to project user data & capabilities. |
 | **2. Internal Gateway (`gateway.identity.svc:8080`)** | Headless login logic only (`kc_idp_hint=google` + AES-256-GCM encrypted PKCE `state`); seals OAuth/refresh tokens using its OpenBao Vault key into an opaque `session_handle`; validates canonical issuer and transparently refreshes expired short-lived tokens. |
-| **1. Keycloak (`keycloak-service.identity.svc:8080`)** | Root identity broker (Google OIDC) and PostgreSQL-backed session authority. |
+| **1. Keycloak (`keycloak-service.identity.svc:8080`)** | Root identity broker (Google OIDC) and PostgreSQL-backed session authority. First successful Google SSO runs `google jit first broker login` and creates the Keycloak user (AUTH-01); later logins match `FederatedIdentity(google, sub)`. |
 
 **Forbidden for the project**
 

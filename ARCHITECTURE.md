@@ -17,7 +17,7 @@ flowchart TD
 
     subgraph PlatformIdentity["Identity Namespace (identity)"]
         Gateway["Go Auth Gateway (Stdlib Only)<br/>[/oauth/start, /oauth/callback, /auth/logout]"]
-        Keycloak["Keycloak IdP<br/>[Realm: platform, Google Broker]"]
+        Keycloak["Keycloak IdP<br/>[Realm: platform, Google Broker, JIT first login]"]
         Postgres[("PostgreSQL StatefulSet<br/>[Per-Project DBs & Restricted Roles]")]
     end
 

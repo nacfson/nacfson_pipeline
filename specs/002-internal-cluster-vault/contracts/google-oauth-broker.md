@@ -51,10 +51,14 @@ sequenceDiagram
        "alias": "google",
        "providerId": "google",
        "enabled": true,
+       "trustEmail": true,
+       "linkOnly": false,
+       "firstBrokerLoginFlowAlias": "google jit first broker login",
        "config": {
          "clientId": "${VAULT:identity/google-oauth:client_id}",
          "clientSecret": "${VAULT:identity/google-oauth:client_secret}",
-         "defaultScope": "openid profile email"
+         "defaultScope": "openid profile email",
+         "syncMode": "IMPORT"
        }
      }
      ```

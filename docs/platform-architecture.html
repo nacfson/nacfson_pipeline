@@ -344,7 +344,7 @@
               <rect class="main-rect" width="270" height="66" rx="10" fill="#1e1b4b" stroke="#a855f7" stroke-width="2" />
               <text x="14" y="22" font-size="14">🪪</text>
               <text x="36" y="22" fill="#f8fafc" font-size="11.5" font-weight="700">Keycloak IdP v24.0.5 (:8080)</text>
-              <text x="14" y="39" fill="#d8b4fe" font-size="9.5" font-family="'JetBrains Mono'">Realm: platform · Google Broker</text>
+              <text x="14" y="39" fill="#d8b4fe" font-size="9.5" font-family="'JetBrains Mono'">Realm: platform · Google JIT Broker</text>
               <text x="14" y="53" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">/admin &amp; :9000 blocked at Ingress</text>
             </g>
 
@@ -1024,7 +1024,7 @@
                 <span class="font-mono text-xs font-bold text-indigo-300">Spec 009 — Host-Scoped Session Cookies &amp; Direct Google Auth</span>
                 <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/009-host-scoped-shared-auth</span>
               </div>
-              <p class="text-xs text-slate-400 mt-1">Redirects <code class="text-indigo-300">/oauth/start</code> straight to Google OAuth (<code class="text-indigo-300">kc_idp_hint=google</code>) skipping intermediate Keycloak screens, with host-scoped session confirmation.</p>
+              <p class="text-xs text-slate-400 mt-1">Redirects <code class="text-indigo-300">/oauth/start</code> straight to Google OAuth (<code class="text-indigo-300">kc_idp_hint=google</code>) skipping intermediate Keycloak screens. First Google SSO creates the Keycloak user via <code class="text-indigo-300">google jit first broker login</code> (AUTH-01).</p>
             </div>
             <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
               <div class="flex justify-between items-center">
@@ -1140,10 +1140,11 @@
         image: 'accounts.google.com',
         oss: 'OpenID Connect 1.0',
         res: 'N/A (External)',
-        desc: 'Trusted upstream identity provider brokered by Keycloak. Any Google account can self-register an ordinary platform identity on first sign-in without administrator approval (AUTH-01).',
+        desc: 'Trusted upstream identity provider brokered by Keycloak. Any Google account is just-in-time provisioned as an ordinary platform identity on first sign-in without administrator approval (AUTH-01).',
         bullets: [
           '➔ Only Keycloak talks to Google OAuth; application workloads never receive Google tokens.',
-          '➔ Google client secret is stored in OpenBao and injected into Keycloak at startup.'
+          '➔ Google client secret is stored in OpenBao and injected into Keycloak at startup.',
+          '➔ First login uses flow google jit first broker login (Create User If Unique REQUIRED, Review Profile off, no email auto-link).'
         ],
         path: 'specs/002-internal-cluster-vault/contracts/google-oauth-broker.md'
       },
@@ -1271,9 +1272,10 @@
         image: 'quay.io/keycloak/keycloak:24.0.5',
         oss: 'CNCF Keycloak (Apache-2.0)',
         res: '500m CPU / 768Mi RAM (req == lim)',
-        desc: 'Central OIDC identity provider and session authority for the platform realm. Brokers Google OAuth2 sign-in and issues project-scoped JWT access tokens.',
+        desc: 'Central OIDC identity provider and session authority for the platform realm. Brokers Google OAuth2 sign-in, just-in-time creates the platform user on first Google SSO (AUTH-01), and issues project-scoped JWT access tokens.',
         bullets: [
           '➔ InitContainer fetches DB credentials and Google OAuth broker secret from OpenBao into memory.',
+          '➔ Realm import declares google jit first broker login: Review Profile off, Create User If Unique required, VERIFY_PROFILE disabled, trustEmail true.',
           '➔ Public ingress exposes ONLY login-actions, OIDC auth, broker callback, and /resources.',
           '➔ Admin console (/admin) and metrics (:9000) are strictly internal.'
         ],
@@ -1498,7 +1500,7 @@
           from: 'Keycloak IdP',
           to: 'Google OAuth 2.0',
           proto: 'OIDC Broker Redirect (/realms/platform/broker/google/endpoint)',
-          desc: 'Keycloak redirects the browser to Google OAuth 2.0 using the broker client secret injected into Keycloak from OpenBao at pod startup. First-time Google users are automatically registered as ordinary platform identities.',
+          desc: 'Keycloak redirects the browser to Google OAuth 2.0 using the broker client secret injected into Keycloak from OpenBao at pod startup. On the first successful Google callback, flow google jit first broker login creates the Keycloak user (idp-create-user-if-unique REQUIRED, Review Profile off) and stores FederatedIdentity(google, sub). Subsequent logins map to that same account. Duplicate emails fail closed; they are not auto-linked.',
           code: `# Publicly allowed Keycloak paths in ingress-allowlist.yaml:\nPathPrefix(\`/realms/platform/protocol/openid-connect/auth\`) ||\nPathPrefix(\`/realms/platform/login-actions\`) ||\nPathPrefix(\`/realms/platform/broker/\`) || PathPrefix(\`/resources\`)`,
           guard: 'AUTH-01: Automatic registration grants zero Keycloak admin, K8s API, or application admin rights.'
         },
@@ -2038,7 +2040,7 @@
         license: 'Apache-2.0 (CNCF)',
         role: 'OIDC Identity Provider & Google Broker',
         where: 'deploy/platform/identity/keycloak-deployment.yaml',
-        details: 'Manages the platform realm, brokers Google OAuth 2.0 sign-in, issues project-scoped access tokens, and handles session termination.'
+        details: 'Manages the platform realm, brokers Google OAuth 2.0 sign-in, just-in-time creates users via google jit first broker login (AUTH-01), issues project-scoped access tokens, and handles session termination.'
       },
       {
         cat: 'oss',

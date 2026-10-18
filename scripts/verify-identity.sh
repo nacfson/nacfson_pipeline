@@ -13,7 +13,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 echo "=== Verifying Keycloak Declarative Identity & Realm Ingestion ==="
 
 # Check 1: Static verification of Keycloak deployment flags and volume mounts
-echo "[Check 1/3] Verifying Keycloak deployment startup flags and volume mounts..."
+echo "[Check 1/4] Verifying Keycloak deployment startup flags and volume mounts..."
 if grep -q -- "--import-realm" "$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml" && \
    grep -q -- "--vault=file" "$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml" && \
    grep -q -- "--vault-dir=/opt/keycloak/conf/secrets" "$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml" && \
@@ -26,7 +26,7 @@ else
 fi
 
 # Check 2: Static verification of single-source-of-truth realm config
-echo "[Check 2/3] Verifying declarative realm definition and Vault secret placeholders..."
+echo "[Check 2/4] Verifying declarative realm definition and Vault secret placeholders..."
 if grep -q '"realm": "platform"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
    grep -q 'GOOGLE_CLIENT_ID' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
    grep -q 'GOOGLE_CLIENT_SECRET' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
@@ -39,8 +39,23 @@ else
   exit 1
 fi
 
-# Check 3: Dynamic Realm API Reachability (if live cluster is accessible)
-echo "[Check 3/3] Dynamic Platform Realm Health & Discovery Endpoint Check..."
+# Check 3: AUTH-01 Google JIT first-broker-login (non-interactive user creation)
+echo "[Check 3/4] Verifying Google first-broker-login JIT provisioning (AUTH-01)..."
+if grep -q '"firstBrokerLoginFlowAlias": "google jit first broker login"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q '"alias": "google jit first broker login"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q '"authenticator": "idp-create-user-if-unique"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q '"update.profile.on.first.login": "off"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q '"syncMode": "IMPORT"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q '"trustEmail": true' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q '"linkOnly": false' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml"; then
+  echo "  ✓ PASS: Google IdP uses non-interactive JIT first-broker-login (create-user-if-unique, trustEmail, no email auto-link)."
+else
+  echo "  ✗ FAIL: Realm is missing Google JIT first-broker-login (AUTH-01 automatic registration)!" >&2
+  exit 1
+fi
+
+# Check 4: Dynamic Realm API Reachability (if live cluster is accessible)
+echo "[Check 4/4] Dynamic Platform Realm Health & Discovery Endpoint Check..."
 if ssh -o BatchMode=yes -o ConnectTimeout=3 oracleCloud "sudo k3s kubectl get nodes" >/dev/null 2>&1; then
   echo "Live cluster detected. Querying Keycloak platform realm endpoint..."
   KC_IP=$(ssh oracleCloud "sudo k3s kubectl get svc -n identity keycloak-service -o jsonpath='{.spec.clusterIP}'" 2>/dev/null || true)
