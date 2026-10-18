@@ -72,7 +72,7 @@ In [Google's official OpenID Connect / OAuth 2.0 Web Server documentation](https
 * **Google Documentation Rule**: The confidential server sends a `POST` request to `https://oauth2.googleapis.com/token` to exchange `code` for tokens.
 * **Platform Execution**:
   1. **5.1 (`Keycloak` $\leftrightarrow$ `Google`)**: Keycloak sends `<google_code>` and `${GOOGLE_CLIENT_SECRET}` to `https://oauth2.googleapis.com/token` and receives Google's `id_token` and `access_token`.
-  2. **5.2 (`Keycloak` $\rightarrow$ `Platform Gateway`)**: Keycloak stores the root user session in PostgreSQL, mints `<keycloak_code>`, and redirects the browser to `https://auth.nacfson.cloud/oauth/callback?code=<keycloak_code>&state=<gateway_state>`.
+  2. **5.2 (`Keycloak` $\rightarrow$ `Platform Gateway`)**: On first Google SSO, Keycloak runs `google jit first broker login` and creates the local user (AUTH-01) before minting `<keycloak_code>`. Subsequent logins reuse `FederatedIdentity(google, sub)`. Keycloak then stores the root user session in PostgreSQL and redirects the browser to `https://auth.nacfson.cloud/oauth/callback?code=<keycloak_code>&state=<gateway_state>`.
   3. **5.3 (`Platform Gateway` $\leftrightarrow$ `Keycloak`)**: The Gateway verifies `<gateway_state>` and the PKCE `verifier`, then calls `POST http://keycloak-service.identity.svc:8080/realms/platform/protocol/openid-connect/token` ([`gateway/internal/keycloak/oidc.go`](gateway/internal/keycloak/oidc.go)) to exchange `<keycloak_code>` for a Keycloak JWT (`access_token`) and `refresh_token`.
 
 ### **6. Obtain User Information from the Token & Authenticate the User**

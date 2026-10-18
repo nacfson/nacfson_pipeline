@@ -39,3 +39,26 @@ Each project declares its relationship with the platform sign-in service in `sig
    - Authentication establishes *who* the visitor is, never implicit admin or business permissions.
 4. **Online Current-Session Revocation**:
    - CSRF-protected `POST https://<AUTH_HOST>/auth/logout` revokes the active session in Keycloak and invalidates subsequent session checks across the cluster immediately.
+
+---
+
+## 4. Google SSO Just-In-Time Provisioning (`AUTH-01`)
+
+Keycloak, not the gateway and not a project, creates the platform user on first successful Google sign-in.
+
+| Setting | Required value | Why |
+| :--- | :--- | :--- |
+| Google IdP `firstBrokerLoginFlowAlias` | `google jit first broker login` | Built-in `first broker login` is interactive (Review Profile / Confirm Link / password or email re-auth). Keycloak 24 ignores IdP `updateProfileFirstLoginMode`. |
+| `idp-review-profile` config `update.profile.on.first.login` | `off` | No Keycloak profile form after Google returns. |
+| `idp-create-user-if-unique` | `REQUIRED` | Creates the user when username and email are unused. Duplicate email/username fails closed instead of offering account linking. |
+| Google IdP `trustEmail` | `true` | Google asserts `email_verified`; do not send a Keycloak verify-email action. |
+| Google IdP `syncMode` | `IMPORT` | Import profile attributes on first login; later logins match the existing federated identity (`google` + Google `sub`). |
+| Google IdP `linkOnly` | `false` | `true` would refuse to create users and require an admin-created account. |
+| `VERIFY_PROFILE` required action | `enabled: false` | Keycloak 24 enables this by default and then refuses tokens (`invalid_grant` / "Account is not fully set up") when `firstName`/`lastName` are empty. |
+| `registrationAllowed` | `false` | Public username/password registration stays closed. Broker JIT is independent of that switch. |
+
+**Do not auto-link by email.** AUTH-01 forbids treating email as a permanent unique identifier or as sufficient evidence to attach a Google identity to an existing Keycloak user. The JIT flow therefore MUST NOT include `idp-auto-link`, `idp-confirm-link`, `idp-email-verification`, or `idp-username-password-form`. If a Keycloak user already owns that email, first Google login fails and an operator links the federated identity through the private admin path.
+
+Subsequent Google logins skip first-broker-login because Keycloak already stores `FederatedIdentity(google, sub)`.
+
+Source of truth: [`deploy/platform/identity/keycloak-realm-config.yaml`](../deploy/platform/identity/keycloak-realm-config.yaml). Config validation: [`tests/preflight/test_keycloak_jit_provisioning.py`](../tests/preflight/test_keycloak_jit_provisioning.py).

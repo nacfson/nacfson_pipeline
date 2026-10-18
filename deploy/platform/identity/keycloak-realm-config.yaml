@@ -28,6 +28,133 @@ data:
         "defaultOptionalClientScopes": [
             "offline_access"
         ],
+        "firstBrokerLoginFlow": "google jit first broker login",
+        "authenticatorConfig": [
+            {
+                "alias": "google-jit-review-profile",
+                "config": {
+                    "update.profile.on.first.login": "off"
+                }
+            },
+            {
+                "alias": "google-jit-create-unique-user",
+                "config": {
+                    "require.password.update.after.registration": "false"
+                }
+            }
+        ],
+        "authenticationFlows": [
+            {
+                "alias": "google jit first broker login",
+                "description": "Non-interactive JIT provisioning for Google SSO (AUTH-01). Creates a Keycloak user on first successful Google login. Does not auto-link by email.",
+                "providerId": "basic-flow",
+                "topLevel": true,
+                "builtIn": false,
+                "authenticationExecutions": [
+                    {
+                        "authenticator": "idp-review-profile",
+                        "authenticatorFlow": false,
+                        "requirement": "REQUIRED",
+                        "priority": 10,
+                        "autheticatorFlow": false,
+                        "authenticatorConfig": "google-jit-review-profile",
+                        "userSetupAllowed": false
+                    },
+                    {
+                        "authenticator": "idp-create-user-if-unique",
+                        "authenticatorFlow": false,
+                        "requirement": "REQUIRED",
+                        "priority": 20,
+                        "autheticatorFlow": false,
+                        "authenticatorConfig": "google-jit-create-unique-user",
+                        "userSetupAllowed": false
+                    }
+                ]
+            }
+        ],
+        "requiredActions": [
+            {
+                "alias": "CONFIGURE_TOTP",
+                "name": "Configure OTP",
+                "providerId": "CONFIGURE_TOTP",
+                "enabled": true,
+                "defaultAction": false,
+                "priority": 10,
+                "config": {}
+            },
+            {
+                "alias": "TERMS_AND_CONDITIONS",
+                "name": "Terms and Conditions",
+                "providerId": "TERMS_AND_CONDITIONS",
+                "enabled": false,
+                "defaultAction": false,
+                "priority": 20,
+                "config": {}
+            },
+            {
+                "alias": "UPDATE_PASSWORD",
+                "name": "Update Password",
+                "providerId": "UPDATE_PASSWORD",
+                "enabled": true,
+                "defaultAction": false,
+                "priority": 30,
+                "config": {}
+            },
+            {
+                "alias": "UPDATE_PROFILE",
+                "name": "Update Profile",
+                "providerId": "UPDATE_PROFILE",
+                "enabled": true,
+                "defaultAction": false,
+                "priority": 40,
+                "config": {}
+            },
+            {
+                "alias": "VERIFY_EMAIL",
+                "name": "Verify Email",
+                "providerId": "VERIFY_EMAIL",
+                "enabled": true,
+                "defaultAction": false,
+                "priority": 50,
+                "config": {}
+            },
+            {
+                "alias": "delete_account",
+                "name": "Delete Account",
+                "providerId": "delete_account",
+                "enabled": false,
+                "defaultAction": false,
+                "priority": 60,
+                "config": {}
+            },
+            {
+                "alias": "VERIFY_PROFILE",
+                "name": "Verify Profile",
+                "providerId": "VERIFY_PROFILE",
+                "enabled": false,
+                "defaultAction": false,
+                "priority": 90,
+                "config": {}
+            },
+            {
+                "alias": "delete_credential",
+                "name": "Delete Credential",
+                "providerId": "delete_credential",
+                "enabled": true,
+                "defaultAction": false,
+                "priority": 100,
+                "config": {}
+            },
+            {
+                "alias": "update_user_locale",
+                "name": "Update User Locale",
+                "providerId": "update_user_locale",
+                "enabled": true,
+                "defaultAction": false,
+                "priority": 1000,
+                "config": {}
+            }
+        ],
         "identityProviders": [
             {
                 "alias": "google",
@@ -39,11 +166,55 @@ data:
                 "storeToken": false,
                 "addReadTokenRoleOnCreate": false,
                 "authenticateByDefault": true,
-                "firstBrokerLoginFlowAlias": "first broker login",
+                "linkOnly": false,
+                "hideOnLogin": false,
+                "firstBrokerLoginFlowAlias": "google jit first broker login",
                 "config": {
                     "clientId": "${GOOGLE_CLIENT_ID}",
                     "clientSecret": "${GOOGLE_CLIENT_SECRET}",
-                    "defaultScope": "openid profile email"
+                    "defaultScope": "openid profile email",
+                    "syncMode": "IMPORT"
+                }
+            }
+        ],
+        "identityProviderMappers": [
+            {
+                "name": "google-username-from-sub",
+                "identityProviderAlias": "google",
+                "identityProviderMapper": "oidc-username-idp-mapper",
+                "config": {
+                    "syncMode": "INHERIT",
+                    "template": "${ALIAS}.${CLAIM.sub}"
+                }
+            },
+            {
+                "name": "google-email",
+                "identityProviderAlias": "google",
+                "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+                "config": {
+                    "syncMode": "INHERIT",
+                    "claim": "email",
+                    "user.attribute": "email"
+                }
+            },
+            {
+                "name": "google-given-name",
+                "identityProviderAlias": "google",
+                "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+                "config": {
+                    "syncMode": "INHERIT",
+                    "claim": "given_name",
+                    "user.attribute": "firstName"
+                }
+            },
+            {
+                "name": "google-family-name",
+                "identityProviderAlias": "google",
+                "identityProviderMapper": "oidc-user-attribute-idp-mapper",
+                "config": {
+                    "syncMode": "INHERIT",
+                    "claim": "family_name",
+                    "user.attribute": "lastName"
                 }
             }
         ],

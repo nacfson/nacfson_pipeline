@@ -165,6 +165,7 @@ All infrastructure and application changes are made declaratively:
    - `platform-preflight`: validates QoS (`requests == limits`), memory freeze, and 1/n capacity budgeting.
 5. Review and merge the Pull Request.
 6. Flux detects the merge within 1 minute and reconciles changes without human intervention.
+7. **Keycloak realm JSON** (`deploy/platform/identity/keycloak-realm-config.yaml`) is applied only when the Keycloak pod starts (`kc.sh start --import-realm` with `OVERWRITE_EXISTING`). Bumping `platform.nacfson.io/realm-scope-sync` on the Deployment forces that rollout. After import, first-time Google SSO creates the Keycloak user via `google jit first broker login` (AUTH-01); see [`contracts/CONTRACT_AUTH_DOOR.md`](../contracts/CONTRACT_AUTH_DOOR.md) §4. Do not create users in the Keycloak admin console as the source of truth.
 
 ---
 
