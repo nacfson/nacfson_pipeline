@@ -1,0 +1,40 @@
+name: Review Cycle & Eval Gate
+
+on:
+  pull_request:
+    branches: [main]
+  merge_group:
+  schedule:
+    - cron: "0 3 * * *"
+
+jobs:
+  review-gate:
+    name: review-gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run review-cycle unit tests
+        run: |
+          python3 -m unittest discover tests/review_cycle -v
+
+      - name: Run review-cycle eval suite
+        run: |
+          python3 scripts/review-cycle.py eval
+
+      - name: Classify branch risk tier and inspect circuit breaker
+        run: |
+          python3 scripts/review-cycle.py classify-risk --scope branch
+          python3 scripts/review-cycle.py circuit-breaker --json
+
+      - name: Verify architecture handbook synchronization
+        run: |
+          python3 scripts/check-arch-doc-sync.py --worktree

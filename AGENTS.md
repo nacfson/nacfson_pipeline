@@ -26,6 +26,7 @@ Always consult these top-level indexes before exploring or modifying the codebas
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | **System Topology & Data Flows**: Mermaid architecture diagrams, Flux GitOps layer DAG, TLS termination, auth routing, Vault proxy boundary, and probe roles. |
 | [`DEPENDENCIES.md`](DEPENDENCIES.md) | **Dependencies, Pinned Versions & Tenant Contracts**: Go stdlib-only rule, pinned infra/image tags, CI toolchains, capacity envelopes, and `Project_PN` integration contracts. |
 | [`README.md`](README.md) & [`SPEC.md`](SPEC.md) | **Onboarding Portal & Baseline Spec**: High-level traceability matrix, quickstart progression, and original platform specification baseline. |
+| [`REVIEW.md`](REVIEW.md) & [`CLAUDE.md`](CLAUDE.md) | **Code Review Rulebook & Multi-Agent Entrypoint**: Severity taxonomy (`Important`, `Security`, `Nit`, `Pre-existing`), `file:line` evidence requirement, 2-nit cap, 3-round convergence limit, and Claude/multi-agent entrypoint. |
 | Direct push to `main` | **Rejected** by the `main_PR` ruleset. Land every change through a pull request. Never `git push` to `main`. |
 
 ---
@@ -116,4 +117,12 @@ python3 -m unittest discover tests/preflight
 
 # 5. Canonical Architecture Handbook synchronization & invariant check
 python3 scripts/check-arch-doc-sync.py --worktree
+
+# 6. Multi-Agent Review Cycle verification, risk classification, eval suite & fast rollback
+python3 -m unittest discover tests/review_cycle
+python3 scripts/review-cycle.py verify --scope staged
+python3 scripts/review-cycle.py classify-risk --scope branch
+python3 scripts/review-cycle.py eval
+./scripts/rollback-change.sh --dry-run HEAD
 ```
+

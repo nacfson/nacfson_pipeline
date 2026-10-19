@@ -18,6 +18,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -28,6 +29,13 @@ _spec = importlib.util.spec_from_file_location(
 sync_checker = importlib.util.module_from_spec(_spec)
 assert _spec and _spec.loader
 _spec.loader.exec_module(sync_checker)
+
+_review_spec = importlib.util.spec_from_file_location(
+    "review_cycle", SCRIPT_DIR / "review-cycle.py"
+)
+review_cycle = importlib.util.module_from_spec(_review_spec)
+assert _review_spec and _review_spec.loader
+_review_spec.loader.exec_module(review_cycle)
 
 
 def load_stdin_json() -> dict:
@@ -106,26 +114,54 @@ def main() -> int:
         print(json.dumps({"decision": "allow"}))
         return 0
 
+    arch_errors: list[str] = []
+    review_errors: list[str] = []
+
     # For PreToolUse, only gate `git commit` commands so normal exploration/test commands run freely
     if event == "PreToolUse":
         cmd = extract_command(payload)
         if not is_git_commit_command(cmd):
             print(json.dumps({"decision": "allow"}))
             return 0
-        errors = sync_checker.check_static_invariants()
+        arch_errors = sync_checker.check_static_invariants()
         staged_errs = sync_checker.check_git_co_update("staged")
         worktree_errs = sync_checker.check_git_co_update("worktree")
-        errors.extend(staged_errs or worktree_errs)
+        arch_errors.extend(staged_errs or worktree_errs)
+
+        if os.environ.get("SKIP_REVIEW_GATE") != "1" and "SKIP_REVIEW_GATE=1" not in cmd:
+            receipt_path = Path(
+                os.environ.get("REVIEW_RECEIPT_PATH")
+                or (SCRIPT_DIR.parent / ".git" / "review-cycle" / "receipt.json")
+            )
+            force_changed = (
+                [x.strip() for x in os.environ["REVIEW_FORCE_CHANGED"].split(",") if x.strip()]
+                if "REVIEW_FORCE_CHANGED" in os.environ
+                else None
+            )
+            force_diff = os.environ.get("REVIEW_FORCE_DIFF")
+            ok, gate_errs = review_cycle.check_gate(
+                "staged",
+                receipt_path,
+                diff_text_override=force_diff,
+                changed_files_override=force_changed,
+            )
+            if not ok:
+                review_errors.extend(gate_errs)
     else:
         # Stop event: verify static invariants + working tree co-update
-        errors = sync_checker.check_static_invariants()
-        errors.extend(sync_checker.check_git_co_update("worktree"))
+        arch_errors = sync_checker.check_static_invariants()
+        arch_errors.extend(sync_checker.check_git_co_update("worktree"))
 
-    if not errors:
+    if not arch_errors and not review_errors:
         print(json.dumps({"decision": "allow"}))
         return 0
 
-    reason = "[ARCH-DOC-SYNC REQUIRED] " + " | ".join(errors)
+    reason_parts: list[str] = []
+    if arch_errors:
+        reason_parts.append("[ARCH-DOC-SYNC REQUIRED] " + " | ".join(arch_errors))
+    if review_errors:
+        reason_parts.append("[REVIEW-CYCLE REQUIRED] " + " | ".join(review_errors))
+    reason = " | ".join(reason_parts)
 
     if agent == "antigravity":
         if event == "PreToolUse":

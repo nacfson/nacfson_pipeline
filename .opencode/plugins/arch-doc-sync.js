@@ -14,6 +14,7 @@ const plugin = {
   server: async (input) => {
     const repoRoot = input?.directory || process.cwd();
     const checkerPath = path.join(repoRoot, "scripts", "check-arch-doc-sync.py");
+    const reviewCyclePath = path.join(repoRoot, "scripts", "review-cycle.py");
 
     return {
       "tool.execute.before": async (event, output) => {
@@ -32,6 +33,20 @@ const plugin = {
           throw new Error(
             `[ARCH-DOC-SYNC BLOCKED] Update docs/platform-architecture.html before committing:\n${stderr}`
           );
+        }
+
+        if (process.env.SKIP_REVIEW_GATE !== "1" && !cmd.includes("SKIP_REVIEW_GATE=1")) {
+          try {
+            execFileSync("python3", [reviewCyclePath, "check-gate", "--scope", "staged"], {
+              cwd: repoRoot,
+              stdio: "pipe",
+            });
+          } catch (err) {
+            const stderr = err?.stderr ? String(err.stderr).trim() : String(err);
+            throw new Error(
+              `[REVIEW-CYCLE BLOCKED] Run scripts/review-cycle.py record-receipt --scope staged before committing:\n${stderr}`
+            );
+          }
         }
       },
       event: async ({ event }) => {

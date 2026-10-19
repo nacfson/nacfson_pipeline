@@ -1,0 +1,11 @@
+# Sensitive platform, identity, security, and governance paths require repository owner sign-off.
+/gateway/ @nacfson
+/services/vault-proxies/ @nacfson
+/deploy/platform/ @nacfson
+/clusters/ @nacfson
+/bootstrap/ @nacfson
+/.github/workflows/ @nacfson
+/.specify/memory/constitution.md @nacfson
+/contracts/ @nacfson
+/REVIEW.md @nacfson
+/config/review-policy.json @nacfson

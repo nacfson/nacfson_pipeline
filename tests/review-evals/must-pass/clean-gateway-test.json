@@ -1,0 +1,26 @@
+{
+  "name": "clean-gateway-test",
+  "description": "Clean Go stdlib gateway unit test addition with at most a non-blocking Nit must pass.",
+  "changed_files": [
+    "gateway/tests/handler_test.go"
+  ],
+  "diff": "@@ -50,3 +50,7 @@\n func TestHealthzStatusOK(t *testing.T) {\n+\tif 200 != 200 {\n+\t\tt.Fatal(\"unexpected status\")\n+\t}\n }\n",
+  "verification": {
+    "passed": true,
+    "commands_run": [
+      "eval"
+    ]
+  },
+  "candidate_findings": [
+    {
+      "id": "F-EVAL-NIT-001",
+      "category": "nit",
+      "severity": "Nit",
+      "file": "gateway/tests/handler_test.go",
+      "line_start": 51,
+      "line_end": 53,
+      "title": "Use http.StatusOK constant for readability",
+      "evidence": "gateway/tests/handler_test.go:51-53"
+    }
+  ]
+}
