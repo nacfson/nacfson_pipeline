@@ -237,6 +237,7 @@ def _load_or_init_state(state_path: Path) -> dict:
             if isinstance(data, dict):
                 data.setdefault("round", 0)
                 data.setdefault("last_diff_sha256", None)
+                data.setdefault("last_gate_status", None)
                 data.setdefault("resolved_findings", [])
                 data.setdefault(
                     "noise_stats",
@@ -248,6 +249,7 @@ def _load_or_init_state(state_path: Path) -> dict:
     return {
         "round": 0,
         "last_diff_sha256": None,
+        "last_gate_status": None,
         "resolved_findings": [],
         "noise_stats": {"fixed": 0, "false_positive": 0, "intentional": 0, "wont_fix": 0},
     }
@@ -295,11 +297,15 @@ def validate_and_record_receipt(
     breaker: dict,
 ) -> dict:
     state = _load_or_init_state(state_path)
-    if state["round"] == 0:
+    last_sha = state.get("last_diff_sha256")
+    if state["round"] == 0 or not last_sha:
         state["round"] = 1
         state["last_diff_sha256"] = diff_sha
-    elif state.get("last_diff_sha256") != diff_sha:
-        state["round"] = int(state["round"]) + 1
+    elif last_sha != diff_sha:
+        if state.get("last_gate_status") == "PASS":
+            state["round"] = 1
+        else:
+            state["round"] = int(state["round"]) + 1
         state["last_diff_sha256"] = diff_sha
 
     round_num = int(state["round"])
@@ -413,6 +419,7 @@ def validate_and_record_receipt(
         "gate_status": gate_status,
     }
 
+    state["last_gate_status"] = gate_status
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
 
@@ -503,6 +510,7 @@ def resolve_finding(
         security_open=security_open,
     )
 
+    state["last_gate_status"] = receipt["gate_status"]
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")
     receipt_path.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")

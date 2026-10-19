@@ -1,3 +1,4 @@
+import os
 import re
 import subprocess
 import unittest
@@ -60,6 +61,7 @@ class TestCiGovernanceAndEvals(unittest.TestCase):
     def test_rollback_script_dry_run(self):
         script = ROOT / "scripts/rollback-change.sh"
         self.assertTrue(script.is_file())
+        self.assertTrue(os.access(script, os.X_OK))
         proc = subprocess.run(
             ["bash", str(script), "--dry-run", "HEAD"],
             text=True,
@@ -69,6 +71,7 @@ class TestCiGovernanceAndEvals(unittest.TestCase):
         )
         self.assertEqual(proc.returncode, 0, proc.stderr)
         self.assertIn("DRY-RUN", proc.stdout)
+        self.assertIn("SKIP_REVIEW_GATE=1", proc.stdout)
 
 
 if __name__ == "__main__":

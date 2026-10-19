@@ -224,3 +224,25 @@ class TestReviewEngine(unittest.TestCase):
             )
             self.assertEqual(r2["gate_status"], "PASS")
             self.assertEqual(r2["summary"]["security_open"], 0)
+
+    def test_independent_clean_commits_reset_round_to_one(self):
+        eng = _load_engine()
+        with tempfile.TemporaryDirectory() as tmp:
+            r_path = Path(tmp) / "receipt.json"
+            s_path = Path(tmp) / "state.json"
+            for idx in (1, 2, 3, 4):
+                receipt = eng.validate_and_record_receipt(
+                    {"verification": {"passed": True, "commands_run": ["unittest"]}, "findings": []},
+                    r_path,
+                    s_path,
+                    f"clean-sha-{idx}",
+                    ["scripts/review-cycle.py"],
+                    self.policy,
+                    self.breaker,
+                )
+                self.assertEqual(receipt["round"], 1)
+                self.assertEqual(receipt["gate_status"], "PASS")
+
+
+if __name__ == "__main__":
+    unittest.main()

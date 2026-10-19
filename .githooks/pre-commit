@@ -96,5 +96,7 @@ if [ "${SKIP_REVIEW_GATE:-0}" != "1" ]; then
     exit 1
   fi
   echo -e "${GREEN}✓ Review-cycle gate check passed.${NC}"
+else
+  echo -e "${YELLOW}[BREAK-GLASS] SKIP_REVIEW_GATE=1 set: bypassing staged review-cycle gate.${NC}"
 fi
 exit 0

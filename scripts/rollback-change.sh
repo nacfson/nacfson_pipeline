@@ -65,14 +65,14 @@ SHORT_SHA="$(git -C "$REPO_ROOT" rev-parse --short "$RESOLVED_SHA")"
 
 if [[ "$DRY_RUN" -eq 1 ]]; then
   echo "[DRY-RUN] Validated rollback target: ${SHORT_SHA} (${RESOLVED_SHA})"
-  echo "[DRY-RUN] Would execute: git revert --no-edit ${RESOLVED_SHA}"
+  echo "[DRY-RUN] Would execute: SKIP_REVIEW_GATE=1 git revert --no-edit ${RESOLVED_SHA}"
   echo "[DRY-RUN] Would record circuit-breaker incident: python3 scripts/review-cycle.py circuit-breaker --record-incident ${SHORT_SHA}"
   echo "[DRY-RUN] Would run verification: python3 -m unittest discover tests/preflight"
   exit 0
 fi
 
 echo "[ROLLBACK] Reverting commit ${SHORT_SHA} (${RESOLVED_SHA})..."
-git -C "$REPO_ROOT" revert --no-edit "$RESOLVED_SHA"
+SKIP_REVIEW_GATE=1 git -C "$REPO_ROOT" revert --no-edit "$RESOLVED_SHA"
 
 echo "[ROLLBACK] Recording incident in review circuit breaker..."
 python3 "$REPO_ROOT/scripts/review-cycle.py" circuit-breaker --record-incident "$SHORT_SHA"
