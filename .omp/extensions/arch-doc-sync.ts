@@ -11,6 +11,7 @@ import * as path from "node:path";
 export default function archDocSyncExtension(pi: any): void {
   const repoRoot = process.cwd();
   const checkerPath = path.join(repoRoot, "scripts", "check-arch-doc-sync.py");
+  const reviewCyclePath = path.join(repoRoot, "scripts", "review-cycle.py");
 
   // 1. Intercept bash/shell tool calls that run `git commit`
   pi.on("tool_call", async (event: any) => {
@@ -27,7 +28,6 @@ export default function archDocSyncExtension(pi: any): void {
         cwd: repoRoot,
         stdio: "pipe",
       });
-      return undefined;
     } catch (err: any) {
       const stderr = err?.stderr ? String(err.stderr).trim() : String(err);
       return {
@@ -35,6 +35,22 @@ export default function archDocSyncExtension(pi: any): void {
         reason: `[ARCH-DOC-SYNC BLOCKED] Update docs/platform-architecture.html before committing:\n${stderr}`,
       };
     }
+
+    if (process.env.SKIP_REVIEW_GATE !== "1" && !cmd.includes("SKIP_REVIEW_GATE=1")) {
+      try {
+        execFileSync("python3", [reviewCyclePath, "check-gate", "--scope", "staged"], {
+          cwd: repoRoot,
+          stdio: "pipe",
+        });
+      } catch (err: any) {
+        const stderr = err?.stderr ? String(err.stderr).trim() : String(err);
+        return {
+          block: true,
+          reason: `[REVIEW-CYCLE BLOCKED] Run scripts/review-cycle.py record-receipt --scope staged before committing:\n${stderr}`,
+        };
+      }
+    }
+    return undefined;
   });
 
   // 2. Verify working tree sync when agent finishes its turn
