@@ -34,6 +34,7 @@ Each project namespace enforces a default-deny `Ingress` + `Egress` policy with 
   - To `vault/vault-db-proxy` on TCP port `5432` (**never** directly to `identity/postgres`).
   - To `identity/gateway` on TCP port `8080` **only** when `signIn: shared` is declared in `sign-in.yaml`.
   - Intra-namespace from `<slug>-frontend` to `<slug>-backend` on TCP port `8080`.
+- **Translation egress (Project PN backend only):** not a rule in the portable `NetworkPolicy`. `CiliumNetworkPolicy/pn-backend-translation-egress` (`deploy/projects/pn/boundary/translation-egress.yaml`) selects only `app.kubernetes.io/name: pn-backend` and allows TCP 443 to exactly `api.wiktapi.dev` and `generativelanguage.googleapis.com`. DNS to kube-dns on port 53 uses `matchPattern: "*"` so in-cluster names still resolve. No other public name, no `0.0.0.0/0`, and no kube-router world fallback. Enforced only while Cilium owns the pod.
 
 ---
 
