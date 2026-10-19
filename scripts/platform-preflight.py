@@ -263,6 +263,113 @@ def check_project_doors(projects_dict):
     return violations
 
 
+TRANSLATION_HOSTS = frozenset({"api.wiktapi.dev", "generativelanguage.googleapis.com"})
+TRANSLATION_POLICY_NAME = "pn-backend-translation-egress"
+KUBE_DNS_ENDPOINTS = [
+    {
+        "matchLabels": {
+            "k8s:io.kubernetes.pod.namespace": "kube-system",
+            "k8s:k8s-app": "kube-dns",
+        }
+    }
+]
+DNS_PORTS = [
+    {
+        "ports": [{"port": "53", "protocol": "ANY"}],
+        "rules": {"dns": [{"matchPattern": "*"}]},
+    }
+]
+FQDN_PORTS = [{"ports": [{"port": "443", "protocol": "TCP"}]}]
+WORLD_DETAIL = "translation egress must not allow world or 0.0.0.0/0"
+WORLD_RULE_KEYS = ("toCIDR", "toCIDRSet", "toEntities", "toServices")
+
+
+def check_translation_egress(docs):
+    """Reject a missing or widened Project PN translation allow.
+
+    Returns [] when NetworkPolicy/project-pn-isolation is absent so fixture
+    renders that do not include the boundary stay valid.
+    """
+    violations = []
+    isolation = None
+    policy = None
+    for doc in docs or []:
+        if not isinstance(doc, dict):
+            continue
+        meta = doc.get("metadata") or {}
+        name = meta.get("name")
+        namespace = meta.get("namespace")
+        kind = doc.get("kind")
+        if kind == "NetworkPolicy" and name == "project-pn-isolation" and namespace == "proj-pn":
+            isolation = doc
+        if kind == "CiliumNetworkPolicy" and name == TRANSLATION_POLICY_NAME and namespace == "proj-pn":
+            policy = doc
+    if isolation is None:
+        return []
+
+    obj = f"proj-pn/CiliumNetworkPolicy/{TRANSLATION_POLICY_NAME}"
+
+    def add(detail):
+        violations.append({"rule": 2, "object": obj, "detail": detail})
+
+    for rule in (isolation.get("spec") or {}).get("egress") or []:
+        text = yaml.dump(rule)
+        if "to" not in rule or not rule.get("to") or "ipBlock" in text or "0.0.0.0/0" in text:
+            add(WORLD_DETAIL)
+        for entry in rule.get("ports") or []:
+            if str(entry.get("port")) == "443":
+                add(WORLD_DETAIL)
+
+    for doc in docs or []:
+        if not isinstance(doc, dict):
+            continue
+        meta = doc.get("metadata") or {}
+        if (
+            doc.get("kind") == "CiliumNetworkPolicy"
+            and meta.get("namespace") == "proj-pn"
+            and meta.get("name") != TRANSLATION_POLICY_NAME
+        ):
+            add("translation egress must select only pn-backend")
+
+    if policy is None:
+        add("proj-pn translation egress policy is missing")
+        return violations
+
+    spec = policy.get("spec") or {}
+    if "ingress" in spec:
+        add(WORLD_DETAIL)
+    selector = (spec.get("endpointSelector") or {}).get("matchLabels") or {}
+    if selector != {"app.kubernetes.io/name": "pn-backend"}:
+        add("translation egress must select only pn-backend")
+
+    egress = spec.get("egress") or []
+    for rule in egress:
+        if any(key in rule for key in WORLD_RULE_KEYS):
+            add(WORLD_DETAIL)
+    if len(egress) != 2:
+        add(WORLD_DETAIL)
+        return violations
+
+    dns, fqdn = egress
+    if set(dns) != {"toEndpoints", "toPorts"} or dns.get("toEndpoints") != KUBE_DNS_ENDPOINTS or dns.get("toPorts") != DNS_PORTS:
+        add("translation egress must allow kube-dns lookups with matchPattern *")
+    if set(fqdn) != {"toFQDNs", "toPorts"}:
+        add(WORLD_DETAIL)
+    names = []
+    for item in fqdn.get("toFQDNs") or []:
+        if not isinstance(item, dict) or set(item) != {"matchName"} or item.get("matchName") not in TRANSLATION_HOSTS:
+            unexpected = item.get("matchPattern") or item.get("matchName") or "*"
+            add(f"translation egress host {unexpected} is not allowed")
+            continue
+        names.append(item["matchName"])
+    for required in sorted(TRANSLATION_HOSTS):
+        if required not in names:
+            add(f"translation egress is missing host {required}")
+    if fqdn.get("toPorts") != FQDN_PORTS:
+        add("translation egress must be TCP 443 only")
+    return violations
+
+
 def check_database_and_readiness_contract(projects_dict, platform_docs):
     """Enforce CONTRACT_DATABASE.md and CONTRACT_PROBES_READINESS.md on database-backed workloads."""
     violations = []
@@ -855,6 +962,14 @@ def main():
             violations.extend(door_violations)
             status = STATUS_REJECTED_ISOLATION
             rejection_reason = door_violations[0]["detail"]
+            exit_code = 1
+
+        translation_violations = check_translation_egress(candidate_docs)
+        if translation_violations:
+            violations.extend(translation_violations)
+            status = STATUS_REJECTED_ISOLATION
+            if not rejection_reason:
+                rejection_reason = translation_violations[0]["detail"]
             exit_code = 1
 
         tls_violations = check_edge_tls(project_docs, platform_docs)

@@ -256,6 +256,7 @@ spec:
   prune: true
   wait: true
   dependsOn:
+    - name: cni
     - name: governance
   sourceRef:
     kind: GitRepository
