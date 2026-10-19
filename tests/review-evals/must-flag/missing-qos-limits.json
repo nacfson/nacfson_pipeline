@@ -1,0 +1,27 @@
+{
+  "name": "missing-qos-limits",
+  "description": "Project Deployment without Guaranteed QoS limits matching requests must be flagged as Important.",
+  "changed_files": [
+    "deploy/projects/pn/workloads/backend-deployment.yaml"
+  ],
+  "diff": "@@ -10,6 +10,9 @@\n kind: Deployment\n spec:\n   template:\n     spec:\n       containers:\n         - name: backend\n           image: ghcr.io/nacfson/pn-backend@sha256:1111111111111111111111111111111111111111111111111111111111111111\n+          resources:\n+            requests:\n+              cpu: 100m\n+              memory: 128Mi\n",
+  "verification": {
+    "passed": true,
+    "commands_run": [
+      "eval"
+    ]
+  },
+  "candidate_findings": [
+    {
+      "id": "F-EVAL-QOS-001",
+      "category": "bug",
+      "severity": "Important",
+      "class_of_bug": "missing-guaranteed-qos",
+      "file": "deploy/projects/pn/workloads/backend-deployment.yaml",
+      "line_start": 10,
+      "line_end": 18,
+      "title": "Project container specifies resource requests without matching limits (violates Guaranteed QoS)",
+      "evidence": "resources.requests set without resources.limits in deploy/projects/pn/workloads/backend-deployment.yaml"
+    }
+  ]
+}
