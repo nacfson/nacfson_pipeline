@@ -1741,9 +1741,9 @@
           from: 'Cilium eBPF Policy Engine',
           to: 'Namespace proj-pn',
           proto: 'Default-Deny Ingress/Egress + Explicit Allowlist',
-          desc: 'Cilium compiles proj-pn NetworkPolicy into kernel eBPF maps: ingress is allowed ONLY from Traefik (kube-system) and intra-namespace pods; egress is allowed ONLY to CoreDNS (:53), vault-db-proxy (:5432), and gateway (:8080).',
-          code: `# Allowed egress from proj-pn:\n1. kube-system CoreDNS (UDP/TCP 53)\n2. vault/vault-db-proxy (TCP 5432)\n3. identity/gateway (TCP 8080)\n# Everything else (postgres:5432, openbao:8200, internet) -> eBPF DROP`,
-          guard: 'Blocks lateral movement to PostgreSQL, OpenBao, or external internet hosts at the kernel socket/tc layer.'
+          desc: 'Cilium compiles proj-pn policy into kernel eBPF maps. Ingress is allowed only from Traefik and intra-namespace pods. In-cluster egress is CoreDNS, vault-db-proxy, and gateway. pn-backend only: api.wiktapi.dev:443 and generativelanguage.googleapis.com:443. Every other world destination stays dropped.',
+          code: `# Allowed egress from proj-pn:\n1. kube-system CoreDNS (UDP/TCP 53)\n2. vault/vault-db-proxy (TCP 5432)\n3. identity/gateway (TCP 8080)\n4. pn-backend only: api.wiktapi.dev:443 and generativelanguage.googleapis.com:443\n# Other world destinations, postgres:5432, and openbao:8200 stay dropped`,
+          guard: 'Blocks lateral movement to PostgreSQL and OpenBao. Public egress is the two translation hosts from pn-backend only.'
         },
         {
           title: '3. CiliumNetworkPolicy Resolves kube-apiserver Entity for OpenBao',
@@ -2365,78 +2365,69 @@
     }
 
     function renderCniSim() {
+      const list = document.getElementById('cni-scenario-list');
+      if (list) {
+        document.getElementById('cni-scenario-list').innerHTML = Object.keys(CNI_SCENARIOS).map(key => {
+          const active = key === currentCniScenario;
+          const cls = active
+            ? 'cni-scen-btn w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold bg-teal-500/15 border border-teal-400 text-white'
+            : 'cni-scen-btn w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700';
+          return `<button id="cni-scen-${key}" class="${cls}" onclick="selectCniScenario('${key}')">${CNI_SCENARIOS[key].title}</button>`;
+        }).join('');
+      }
+
       const s = CNI_SCENARIOS[currentCniScenario];
       if (!s) return;
-
       const badge = document.getElementById('cni-verdict-badge');
       const title = document.getElementById('cni-sim-title');
-      const modeDesc = document.getElementById('cni-mode-desc');
-      const srcEl = document.getElementById('cni-sim-src');
-      const dstEl = document.getElementById('cni-sim-dst');
-      const hookEl = document.getElementById('cni-sim-hook');
-      const hubbleEl = document.getElementById('cni-sim-hubble');
-      const yamlEl = document.getElementById('cni-sim-yaml');
-      const whyEl = document.getElementById('cni-sim-why');
+      const explain = document.getElementById('cni-junior-explain');
+      const code = document.getElementById('cni-sim-code');
+      const tag = document.getElementById('cni-hubble-tag');
+      if (!badge || !title || !explain || !code) return;
 
       title.textContent = s.title;
-      srcEl.textContent = s.src;
-      dstEl.textContent = s.dst;
+      document.getElementById('cni-junior-explain').textContent = s.why;
+      if (tag) tag.textContent = s.policy || '';
+      const mode = currentCniMode === 'missing' ? 'nocni' : currentCniMode;
 
-      if (currentCniMode === 'nocni') {
+      if (mode === 'nocni') {
         badge.className = 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40';
         badge.textContent = '⚠ POD PENDING (ContainerCreating)';
-        modeDesc.textContent = 'What-If Mode: K3s started with --flannel-backend=none, and Flux Layer 1a (cni) has NOT reconciled yet. Kubelet cannot allocate pod IPs or veth pairs for non-hostNetwork pods.';
-        hookEl.textContent = 'No CNI binary in /opt/cni/bin -> Pod sandbox creation blocked until cilium DaemonSet starts';
-        hubbleEl.textContent = 'kubectl get pods -A\nNAMESPACE   NAME                          READY   STATUS              RESTARTS\nvault       openbao-0                     0/1     ContainerCreating   0\nproj-pn     pn-backend-6d8f9b7c4-x92lk    0/1     ContainerCreating   0';
-        yamlEl.textContent = '# Why Layer 1a (cni) is a Root Layer in clusters/*/layers.yaml:\n# vault dependsOn: [cni, governance] so OpenBao waits for Cilium Ready!';
-        whyEl.textContent = 'Because K3s disables built-in Flannel, Cilium MUST be deployed in Root Layer 1a before Vault, Database, or Tenant pods can obtain IP addresses.';
+        explain.textContent = 'K3s started with --flannel-backend=none, and the cni layer has not reconciled. Pods stay ContainerCreating until Cilium starts.';
+        code.textContent = '# vault dependsOn: [cni, governance] so OpenBao waits for Cilium Ready';
         return;
       }
 
-      if (currentCniMode === 'flannel') {
+      if (mode === 'flannel') {
+        if (currentCniScenario === 'pn-translation') {
+          badge.className = 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40';
+          badge.textContent = '✗ DROPPED (kube-router ignores CiliumNetworkPolicy)';
+          explain.textContent = 'kube-router ignores CiliumNetworkPolicy, and project-pn-isolation has no world rule. api.wiktapi.dev:443 and generativelanguage.googleapis.com:443 stay dropped until Cilium owns the pod. Do not add a 0.0.0.0/0 fallback.';
+          code.textContent = s.yaml;
+          return;
+        }
         if (currentCniScenario === 'bao-apiserver') {
           badge.className = 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
           badge.textContent = '✓ ALLOWED via NetworkPolicy fallback (kube-router)';
-          modeDesc.textContent = 'What-If Mode: Legacy K3s Flannel + kube-router iptables (e.g. a node whose k3s unit was never re-rendered with --flannel-backend=none --disable-network-policy). CiliumNetworkPolicy CRD is ignored; only the RFC1918 :443/:6443 rule in openbao-ingress-policy admits TokenReview.';
-          hookEl.textContent = 'iptables KUBE-POD-FW-<openbao> -> KUBE-NWPLCY(openbao-ingress-policy) ipBlock 10.0.0.0/8 :6443 -> MARK 0x10000 -> ACCEPT. Without the fallback: REJECT --reject-with icmp-port-unreachable -> "connection refused".';
-          hubbleEl.textContent = '[No Hubble for Flannel-attached pods] Diagnose with:\nsudo iptables-save -c | grep KUBE-POD-FW-<hash> | grep REJECT   # counter increments per blocked TokenReview\nsudo k3s kubectl -n kube-system exec ds/cilium -c cilium-agent -- cilium-dbg endpoint list   # only reserved:host = Cilium owns no pods';
-          yamlEl.textContent = s.yaml;
-          whyEl.textContent = 'Incident 2026-10-17 (vps-k3s): Flux applied the Spec 010 manifests but the host k3s unit is Ansible-owned and was not migrated, so kube-router kept enforcing. Removing the NetworkPolicy apiserver rule failed every Vault Kubernetes login. Keep the fallback until every node runs Cilium. Second effect: the cilium-operator unmanaged-pods GC deleted CoreDNS every ~30s (Cilium owned no pods), and each new system-cluster-critical CoreDNS preempted postgres-0 on the CPU-full node, so cilium-config now sets unmanaged-pod-watcher-interval: "0".';
-        } else if (currentCniScenario === 'pn-translation') {
-          badge.className = 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40';
-          badge.textContent = '✗ DROPPED (kube-router ignores CiliumNetworkPolicy)';
-          modeDesc.textContent = 'What-If Mode: Legacy K3s Flannel + kube-router. CiliumNetworkPolicy is ignored. project-pn-isolation has no world rule, so the translation hosts are dropped.';
-          hookEl.textContent = 'kube-router ignores CiliumNetworkPolicy/pn-backend-translation-egress; project-pn-isolation has no world rule -> DROP';
-          hubbleEl.textContent = '[Hubble unavailable under Flannel] api.wiktapi.dev:443 and generativelanguage.googleapis.com:443 are dropped until Cilium owns the pod.';
-          yamlEl.textContent = s.yaml;
-          whyEl.textContent = 'kube-router ignores CiliumNetworkPolicy, and project-pn-isolation has no world rule. Do not mark this allowed under Flannel, and do not add a 0.0.0.0/0 fallback.';
-        } else {
-          badge.className = s.allowed
-            ? 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-            : 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40';
-          badge.textContent = s.allowed ? '✓ ALLOWED (Legacy iptables)' : '✗ DROPPED (Silent iptables drop — No Hubble)';
-          modeDesc.textContent = 'What-If Mode: Legacy K3s Flannel + kube-router. Linear O(n) iptables chains evaluate rules, but zero Hubble flow logs exist when a packet is dropped.';
-          hookEl.textContent = 'Netfilter iptables chain traversal (no eBPF identity map, no L7/flow telemetry)';
-          hubbleEl.textContent = '[Hubble unavailable under Flannel] To debug a drop, you would have to tcpdump raw veth interfaces on the host.';
-          yamlEl.textContent = s.yaml;
-          whyEl.textContent = s.why;
+          explain.textContent = s.why;
+          code.textContent = s.yaml;
+          return;
         }
+        badge.className = s.allowed
+          ? 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+          : 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40';
+        badge.textContent = s.allowed ? '✓ ALLOWED (Legacy iptables)' : '✗ DROPPED (Silent iptables drop — No Hubble)';
+        explain.textContent = s.why;
+        code.textContent = s.yaml;
         return;
       }
 
-      // Default: Cilium v1.20.3 eBPF Mode
-      modeDesc.textContent = 'Live Architecture Mode (Spec 010): K3s runs with --flannel-backend=none --disable-network-policy. Cilium v1.20.3 enforces policies in eBPF and streams verdicts to Hubble.';
-      if (s.allowed) {
-        badge.className = 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40';
-        badge.textContent = '✓ eBPF VERDICT: FORWARDED';
-      } else {
-        badge.className = 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40';
-        badge.textContent = '✗ eBPF VERDICT: DROPPED (Policy Denied)';
-      }
-      hookEl.textContent = s.kernelHook;
-      hubbleEl.textContent = s.hubble;
-      yamlEl.textContent = s.yaml;
-      whyEl.textContent = s.why;
+      badge.className = s.allowed
+        ? 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
+        : 'px-3 py-1 rounded-full text-xs font-mono font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40';
+      badge.textContent = s.allowed ? '✓ eBPF VERDICT: FORWARDED' : '✗ eBPF VERDICT: DROPPED (Policy Denied)';
+      explain.textContent = s.why;
+      code.textContent = s.hubble + '\n\n' + s.yaml;
     }
 
     // =========================================================================

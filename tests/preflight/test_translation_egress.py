@@ -174,3 +174,81 @@ class TestTranslationEgressPreflight(unittest.TestCase):
         ]
         violations = module.check_translation_egress([doc, _load(PORTABLE)])
         self.assertTrue(any("TCP 443" in item["detail"] for item in violations))
+
+    def test_public_cidr_other_than_world_literal_is_rejected(self):
+        module = _preflight()
+        doc = copy.deepcopy(_load(POLICY))
+        doc["spec"]["egress"].append({"toCIDR": ["1.1.1.1/32"]})
+        doc["spec"]["egress"].append({"toCIDR": ["0.0.0.0/1", "128.0.0.0/1"]})
+        violations = module.check_translation_egress([doc, _load(PORTABLE)])
+        self.assertTrue(violations)
+        self.assertTrue(all(item["rule"] == 2 for item in violations))
+
+    def test_to_entities_all_is_rejected(self):
+        module = _preflight()
+        doc = copy.deepcopy(_load(POLICY))
+        doc["spec"]["egress"].append({"toEntities": ["all"]})
+        violations = module.check_translation_egress([doc, _load(PORTABLE)])
+        self.assertTrue(violations)
+
+    def test_star_moved_onto_public_fqdn_is_rejected(self):
+        module = _preflight()
+        doc = copy.deepcopy(_load(POLICY))
+        doc["spec"]["egress"][0]["toPorts"][0]["rules"]["dns"] = [
+            {"matchName": "api.wiktapi.dev"},
+            {"matchName": "generativelanguage.googleapis.com"},
+        ]
+        doc["spec"]["egress"][1]["toFQDNs"] = [{"matchPattern": "*"}]
+        violations = module.check_translation_egress([doc, _load(PORTABLE)])
+        self.assertTrue(violations)
+
+    def test_dns_star_must_select_kube_dns(self):
+        module = _preflight()
+        doc = copy.deepcopy(_load(POLICY))
+        doc["spec"]["egress"][0]["toEndpoints"][0]["matchLabels"]["k8s:k8s-app"] = "not-dns"
+        violations = module.check_translation_egress([doc, _load(PORTABLE)])
+        self.assertTrue(any("kube-dns" in item["detail"] for item in violations))
+
+    def test_isolation_port_443_without_destination_is_rejected(self):
+        module = _preflight()
+        isolation = copy.deepcopy(_load(PORTABLE))
+        isolation["spec"]["egress"].append({"ports": [{"protocol": "TCP", "port": 443}]})
+        violations = module.check_translation_egress([_load(POLICY), isolation])
+        self.assertTrue(violations)
+
+    def test_second_cilium_policy_for_frontend_is_rejected(self):
+        module = _preflight()
+        extra = {
+            "apiVersion": "cilium.io/v2",
+            "kind": "CiliumNetworkPolicy",
+            "metadata": {"name": "frontend-world", "namespace": "proj-pn"},
+            "spec": {
+                "endpointSelector": {"matchLabels": {"app.kubernetes.io/name": "pn-frontend"}},
+                "egress": [{"toEntities": ["world"]}],
+            },
+        }
+        violations = module.check_translation_egress([_load(POLICY), _load(PORTABLE), extra])
+        self.assertTrue(violations)
+
+    def test_ingress_from_all_is_rejected(self):
+        module = _preflight()
+        doc = copy.deepcopy(_load(POLICY))
+        doc["spec"]["ingress"] = [{"fromEntities": ["all"]}]
+        violations = module.check_translation_egress([doc, _load(PORTABLE)])
+        self.assertTrue(violations)
+
+
+class TestTranslationHandbook(unittest.TestCase):
+    def test_cni_flow_allows_only_the_two_hosts(self):
+        with open(HANDBOOK, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertIn("pn-backend only: api.wiktapi.dev:443 and generativelanguage.googleapis.com:443", text)
+        self.assertNotIn("internet) -> eBPF DROP", text)
+
+    def test_simulator_writes_the_flannel_drop_to_a_live_element(self):
+        with open(HANDBOOK, encoding="utf-8") as fh:
+            text = fh.read()
+        self.assertNotIn("getElementById('cni-sim-src')", text)
+        self.assertIn("cni-scenario-list').innerHTML", text)
+        self.assertIn("cni-junior-explain').textContent", text)
+        self.assertIn("kube-router ignores CiliumNetworkPolicy", text)
