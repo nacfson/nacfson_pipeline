@@ -34,7 +34,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: frontend
-          image: ghcr.io/nacfson/project-pn-frontend@sha256:84af4c4c0ea055fde8493e9ac4eadec7170b94aae368c706bfcdc573e6459380
+          image: ghcr.io/nacfson/project-pn-frontend@sha256:2ee7ed4d33f54f318c8cfcc3b1196b156684361e082375dba46ecbfa972edc9c
           imagePullPolicy: IfNotPresent
           env:
             - name: PN_BACKEND_HOST
