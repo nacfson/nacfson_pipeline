@@ -1403,7 +1403,7 @@
         bullets: [
           '➔ services.nodeports: "0" and services.loadbalancers: "0" enforced at quota admission.',
           '➔ In-cluster egress: kube-dns (:53), vault-db-proxy (:5432), gateway (:8080), and intra-namespace.',
-          '➔ Cilium FQDN allow for pn-backend only: api.wiktapi.dev:443 and generativelanguage.googleapis.com:443. Other world destinations stay dropped.',
+          '➔ Cilium FQDN allow for pn-backend only: api.wiktapi.dev:443 and generativelanguage.googleapis.com:443. Other world destinations stay dropped. check_translation_egress rejects any other public name.',
           '➔ Reconciler RBAC (pn-reconciler) cannot modify Quotas, NetworkPolicies, or RoleBindings.'
         ],
         path: 'deploy/projects/pn/boundary/network-policy.yaml'

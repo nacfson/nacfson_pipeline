@@ -1,3 +1,5 @@
+import copy
+import importlib.util
 import os
 import unittest
 
@@ -10,6 +12,14 @@ KUSTOMIZATION = os.path.join(BASE, "deploy", "projects", "pn", "boundary", "kust
 BACKEND = os.path.join(BASE, "deploy", "projects", "pn", "workloads", "backend-deployment.yaml")
 HANDBOOK = os.path.join(BASE, "docs", "platform-architecture.html")
 HOSTS = frozenset({"api.wiktapi.dev", "generativelanguage.googleapis.com"})
+PREFLIGHT = os.path.join(BASE, "scripts", "platform-preflight.py")
+
+
+def _preflight():
+    spec = importlib.util.spec_from_file_location("platform_preflight", PREFLIGHT)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def _load(path):
@@ -117,3 +127,50 @@ class TestPnTranslationEgress(unittest.TestCase):
         self.assertIn("generativelanguage.googleapis.com", text)
         self.assertIn("pn-translation", text)
         self.assertIn("currentCniScenario === 'pn-translation'", text)
+
+
+class TestTranslationEgressPreflight(unittest.TestCase):
+    def test_real_policy_is_accepted(self):
+        module = _preflight()
+        docs = [_load(POLICY), _load(PORTABLE)]
+        self.assertEqual(module.check_translation_egress(docs), [])
+
+    def test_extra_host_is_rejected(self):
+        module = _preflight()
+        doc = copy.deepcopy(_load(POLICY))
+        doc["spec"]["egress"][1]["toFQDNs"].append({"matchName": "evil.example"})
+        violations = module.check_translation_egress([doc, _load(PORTABLE)])
+        self.assertTrue(any("evil.example" in item["detail"] for item in violations))
+        self.assertTrue(all(item["rule"] == 2 for item in violations))
+
+    def test_world_cidr_is_rejected(self):
+        module = _preflight()
+        doc = copy.deepcopy(_load(POLICY))
+        doc["spec"]["egress"].append(
+            {"toCIDR": ["0.0.0.0/0"], "toPorts": [{"ports": [{"port": "443", "protocol": "TCP"}]}]}
+        )
+        violations = module.check_translation_egress([doc, _load(PORTABLE)])
+        self.assertTrue(any("0.0.0.0/0" in item["detail"] for item in violations))
+
+    def test_missing_policy_is_rejected_when_isolation_is_present(self):
+        module = _preflight()
+        violations = module.check_translation_egress([_load(PORTABLE)])
+        self.assertTrue(any("missing" in item["detail"] for item in violations))
+
+    def test_frontend_selector_is_rejected(self):
+        module = _preflight()
+        doc = copy.deepcopy(_load(POLICY))
+        doc["spec"]["endpointSelector"]["matchLabels"] = {
+            "app.kubernetes.io/name": "pn-frontend"
+        }
+        violations = module.check_translation_egress([doc, _load(PORTABLE)])
+        self.assertTrue(any("pn-backend" in item["detail"] for item in violations))
+
+    def test_udp_443_is_rejected(self):
+        module = _preflight()
+        doc = copy.deepcopy(_load(POLICY))
+        doc["spec"]["egress"][1]["toPorts"] = [
+            {"ports": [{"port": "443", "protocol": "UDP"}]}
+        ]
+        violations = module.check_translation_egress([doc, _load(PORTABLE)])
+        self.assertTrue(any("TCP 443" in item["detail"] for item in violations))

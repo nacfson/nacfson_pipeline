@@ -235,6 +235,7 @@ spec:
             "deploy/platform/tls/tls-store.yaml",
             "deploy/projects/pn/sign-in.yaml",
             "deploy/projects/pn/boundary/network-policy.yaml",
+            "deploy/projects/pn/boundary/translation-egress.yaml",
             "deploy/projects/pn/workloads/ingress-route.yaml",
             "deploy/projects/pn/workloads/backend-service.yaml",
             "deploy/projects/pn/workloads/backend-deployment.yaml",
