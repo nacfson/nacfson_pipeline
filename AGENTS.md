@@ -75,6 +75,7 @@ Before modifying code, manifests, or scripts, read the corresponding domain docu
   - [`specs/003-minimal-vm-bootstrap/contracts/bootstrap.md`](specs/003-minimal-vm-bootstrap/contracts/bootstrap.md)
 
 - **Hosted Tenant Workloads / Project PN (`deploy/projects/pn/`, `clusters/*/projects/proj-pn.yaml`), probes, or browser API CORS**:
+  - To update project image pins from GHCR, Actions, commit, or digest links, use the [`update-project-images`](.agents/skills/update-project-images/SKILL.md) skill; it validates the images and opens one PR per project.
   - [`DEPENDENCIES.md`](DEPENDENCIES.md) (§5 Hosted Tenant Project Contracts)
   - [`docs/project-auth-verification.md`](docs/project-auth-verification.md)
   - [`specs/006-separate-project-auth/contracts/`](specs/006-separate-project-auth/contracts/) (`project-door.md`, `sign-in-choice.md`, `session-return.md`)
