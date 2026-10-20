@@ -1152,7 +1152,7 @@
         bullets: [
           '➔ GET https://pn.nacfson.cloud/ serves public SPA landing page via Traefik.',
           '➔ GET https://auth.nacfson.cloud/oauth/start?return=... initiates PKCE login.',
-          '➔ POST https://auth.nacfson.cloud/auth/logout revokes current session with CSRF check.'
+          '➔ POST https://auth.nacfson.cloud/auth/logout revokes the current session with a CSRF check, as session-revocation-client. A failed Keycloak delete is 502/503, not "revoked".'
         ],
         path: 'docs/architecture-auth-routing.md'
       },
@@ -1298,7 +1298,7 @@
         bullets: [
           '➔ initContainer (curl:8.10.1) authenticates to OpenBao via K8s SA JWT and writes secrets to tmpfs.',
           '➔ Validates return_to host against PROJECT_RETURN_HOSTS before starting OIDC.',
-          '➔ Performs online session check against Keycloak on /auth and /auth/logout (fails closed).'
+          '➔ Performs online session check against Keycloak on /auth. /auth/logout deletes the session as session-revocation-client and fails closed: a failed delete is 502/503, not revoked.'
         ],
         path: 'gateway/cmd/gateway/main.go'
       },
@@ -1578,9 +1578,9 @@
           from: 'User Browser',
           to: 'Go Auth Gateway -> Keycloak',
           proto: 'POST https://auth.nacfson.cloud/auth/logout',
-          desc: 'User triggers logout. Gateway authenticates the current session cookie, verifies the CSRF token (X-CSRF-Token / Origin), calls Keycloak over the private cluster network using a dedicated session-revocation client credential, and clears the cookie.',
-          code: `POST /auth/logout HTTP/1.1\nHost: auth.nacfson.cloud\nCookie: PLATFORM_SESSION=...\nX-CSRF-Token: <valid-hmac>\n\n--> Gateway calls Keycloak DELETE session & invalidates cache immediately`,
-          guard: 'AUTH-05: Next protected request with an old unexpired JWT is immediately rejected (401) while other device sessions stay active.'
+          desc: 'User triggers logout. Gateway authenticates the current session cookie, verifies the CSRF token (X-CSRF-Token / Origin), calls Keycloak over the private cluster network as session-revocation-client (not gateway-client), and clears the cookie only as a success path. If that delete fails, logout returns 502 or 503 and does not claim the session was revoked.',
+          code: `POST /auth/logout HTTP/1.1\nHost: auth.nacfson.cloud\nCookie: PLATFORM_SESSION=...\nX-CSRF-Token: <valid-hmac>\n\n--> DELETE session as session-revocation-client; 204 clears the cookie; a failed delete is 503, not revoked`,
+          guard: 'AUTH-05: The next protected request is rejected only after the Keycloak delete succeeds. A failed delete must not be reported as revoked. Other device sessions stay active.'
         }
       ],
       vault: [
