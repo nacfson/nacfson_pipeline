@@ -39,6 +39,9 @@ Each project declares its relationship with the platform sign-in service in `sig
    - Authentication establishes *who* the visitor is, never implicit admin or business permissions.
 4. **Online Current-Session Revocation**:
    - CSRF-protected `POST https://<AUTH_HOST>/auth/logout` revokes the active session in Keycloak and invalidates subsequent session checks across the cluster immediately.
+   - The Keycloak Admin delete MUST authenticate as `session-revocation-client` with `SESSION_REVOCATION_CLIENT_SECRET`. It MUST NOT use `gateway-client`, client-provisioning credentials, or the master admin credential. That service account MUST hold the realm-management role required to delete one session (`manage-users`).
+   - Success (`200` with `status: revoked`, or `302`) is allowed only after that delete succeeds. If the delete fails or the revocation client is unavailable, the gateway MUST NOT claim the session was revoked. It returns `502` or `503` with an error body. The platform cookie MAY still be cleared. The same `session_handle` stays active. The next `GET /auth` MUST still confirm that session. It MUST NOT be rejected as revoked until a later delete succeeds.
+   - A later spec note that logout always returns `200 {"status":"revoked"}` ([`specs/009-host-scoped-shared-auth/contracts/gateway-internal-auth-api.md`](../specs/009-host-scoped-shared-auth/contracts/gateway-internal-auth-api.md) §5) does not override this failure rule.
 
 ---
 
