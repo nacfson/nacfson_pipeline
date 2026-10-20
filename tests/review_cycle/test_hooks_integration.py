@@ -47,3 +47,21 @@ class TestHooksIntegration(unittest.TestCase):
         self.assertIn("review-cycle.py", oc_text)
         self.assertIn("review-cycle.py check-gate --scope staged", pc_text)
         self.assertIn("SKIP_REVIEW_GATE", pc_text)
+
+    def test_secret_scan_ignores_alg_none_example_and_keeps_real_jwt(self):
+        import re
+
+        pc_text = (ROOT / ".githooks/pre-commit").read_text(encoding="utf-8")
+        found = re.search(
+            r'check_pattern "Raw JWT Token" "([^"]+)" "([^"]+)"',
+            pc_text,
+        )
+        self.assertIsNotNone(found)
+        jwt, ignore = found.group(1), found.group(2)
+        fake = "eyJhbGciOiJub25lIn0.eyJzdWIiOiJwcm9qZWN0OnBuOndvcmtsb2FkOmJhY2tlbmQifQ.invalidsig"
+        # Split so this source line is not itself a scannable token.
+        real = "eyJhbGciOiJIUzI1NiJ9." + "eyJzdWIiOiJhbGljZSIsImlhdCI6MX0." + "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
+        self.assertRegex(fake, jwt)
+        self.assertRegex(fake, ignore)
+        self.assertRegex(real, jwt)
+        self.assertNotRegex(real, ignore)
