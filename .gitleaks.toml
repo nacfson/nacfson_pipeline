@@ -1,0 +1,12 @@
+title = "nacfson_pipeline"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Documented attack illustrations, not live credentials"
+regexTarget = "secret"
+regexes = [
+  '''eyJhbGciOiJub25lIn0\.eyJzdWIiOiJwcm9qZWN0OnBuOndvcmtsb2FkOmJhY2tlbmQifQ\.invalidsig''',
+  '''duration=87600h''',
+]
