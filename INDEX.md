@@ -24,6 +24,7 @@ This file is the master navigation index for **`nacfson_pipeline`**. For AI agen
 | [`docs/architecture-auth-routing.md`](docs/architecture-auth-routing.md) | End-to-end walkthrough of how Git changes reach the cluster, how Traefik routes `pn.nacfson.cloud` vs `auth.nacfson.cloud`, and how the Go auth gateway + Keycloak sign-in flow works. |
 | [`docs/auth-gitops-faq.md`](docs/auth-gitops-faq.md) | Troubleshooting FAQ for common points of confusion across the Go gateway, Keycloak, Traefik middlewares, and Flux GitOps reconciliation. |
 | [`TROUBLE_SHOOTING.md`](TROUBLE_SHOOTING.md) | Aggregated troubleshooting guide for OAuth callback session confirmation (`401` and `invalid identity claims`), Google OAuth 2.0 numbered flow, and the Main-Domain Naming Rule. |
+| [`docs/issues/index.md`](docs/issues/index.md) | Filed GitHub issues. One `docs/issues/FIX_GithubIssue<number>.md` per issue. OpenCode refreshes this index on project open. |
 | [`docs/project-auth-verification.md`](docs/project-auth-verification.md) | Contract guide for hosted tenant applications (e.g., `Project_PN`) on verifying platform identity, `(issuer, subject)` resolution, and fail-closed authorization. |
 | [`docs/tls-certificates.md`](docs/tls-certificates.md) | Platform-owned edge TLS architecture (cert-manager + Let's Encrypt HTTP-01 solver + Traefik default `TLSStore` in `platform` namespace). |
 | [`docs/operations-runbook.md`](docs/operations-runbook.md) | Day-2 GitOps runbook: Flux layer inspection, suspend/resume break-glass procedures, drift recovery, and incident triage. |

@@ -1,0 +1,13 @@
+{
+  "mcp": {
+    "servers": {
+      "github": {
+        "type": "remote",
+        "url": "https://api.githubcopilot.com/mcp/",
+        "headers": {
+          "X-MCP-Toolsets": "context,issues"
+        }
+      }
+    }
+  }
+}
