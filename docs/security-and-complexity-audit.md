@@ -418,7 +418,7 @@ The platform demonstrates exceptional ambition, conceptual elegance, and an admi
   1. For 3-part tokens, `parts[2]` (the signature) is completely ignored! Anyone can forge an arbitrary JWT with `{"alg":"none"}` or any fake signature, and `db-proxy` accepts it.
   2. For non-JWT tokens, if the string starts with `project:` or `pn-`, the proxy synthesizes a valid 15-minute claim without checking any secret, token, or password!
 - **Attack Scenario**:
-  An attacker inside any pod with network reachability to `vault-db-proxy.vault.svc:5432` opens a PostgreSQL connection. When prompted for password, the attacker sends `"project:pn:workload:backend"` (or an unsigned JWT whose header is `{"alg":"none"}` and whose subject is `project:pn:workload:backend`). The proxy admits the connection, binds it to role `user_pn` and database `proj_pn`, granting full database access without requiring any valid credentials.
+  An attacker inside any pod with network reachability to `vault-db-proxy.vault.svc:5432` opens a PostgreSQL connection. When prompted for password, the attacker sends `"project:pn:workload:backend"` (or an unsigned JWT `eyJhbGciOiJub25lIn0.eyJzdWIiOiJwcm9qZWN0OnBuOndvcmtsb2FkOmJhY2tlbmQifQ.invalidsig`). The proxy admits the connection, binds it to role `user_pn` and database `proj_pn`, granting full database access without requiring any valid credentials.
 - **Existing Mitigations**:
   `proj-pn` egress network policy restricts outbound connections to other namespaces, but pods in `vault`, `identity`, `platform`, or newly onboarded namespaces can reach the proxy.
 - **Actionable Remediation**:

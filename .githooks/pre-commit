@@ -26,9 +26,14 @@ LEAKS_FOUND=0
 check_pattern() {
   local name="$1"
   local regex="$2"
+  local ignore="${3:-}"
 
   local matches
   matches=$(echo "$STAGED_DIFF" | grep -E "^\+" | grep -Ev "^\+\+\+" | grep -E -e "$regex" || true)
+  # alg:none illustrations are not credentials. A real signed JWT still matches.
+  if [ -n "$matches" ] && [ -n "$ignore" ]; then
+    matches=$(echo "$matches" | grep -Ev -e "$ignore" || true)
+  fi
 
   if [ -n "$matches" ]; then
     echo -e "${RED}[BLOCKED] Potential $name detected in staged changes:${NC}" >&2
@@ -51,8 +56,8 @@ check_pattern "Google API Key" "AIza[-0-9A-Za-z_]{35}"
 # 4. AWS Access Keys
 check_pattern "AWS Access Key ID" "AKIA[0-9A-Z]{16}"
 
-# 5. Generic JWT Tokens with real signatures (excluding mock/test examples)
-check_pattern "Raw JWT Token" "eyJ[-A-Za-z0-9_]{10,}\.eyJ[-A-Za-z0-9_]{10,}\.[-A-Za-z0-9_]{10,}"
+# 5. Generic JWT Tokens with real signatures. Ignore {"alg":"none"} illustrations.
+check_pattern "Raw JWT Token" "eyJ[-A-Za-z0-9_]{10,}\.eyJ[-A-Za-z0-9_]{10,}\.[-A-Za-z0-9_]{10,}" "eyJhbGciOiJub25lIn0|[.]invalidsig"
 
 # 6. Unsanitized dockerconfigjson base64 containing non-placeholder auth
 if echo "$STAGED_DIFF" | grep -E "^\+" | grep -q "\"auth\":"; then
