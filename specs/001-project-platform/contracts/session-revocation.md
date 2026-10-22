@@ -24,7 +24,8 @@ redirect_uri=https://project-a.example.com/goodbye
 
 ### Security Preconditions
 1. **Authenticated Request**: The request MUST present a valid `PLATFORM_SESSION` cookie. An anonymous or unauthenticated request MUST NOT trigger any backend Keycloak call.
-2. **CSRF Protection**: The request MUST include a valid CSRF token matching the session or have a validated `Origin`/`Referer` header matching a registered project domain. Cross-site requests without valid protection are rejected immediately (HTTP 403 Forbidden).
+2. **CSRF Protection**: The request MUST include a valid CSRF token matching the session or have a validated `Origin`/`Referer` header matching a registered project domain. Cross-site requests without valid protection are rejected immediately (HTTP 403 Forbidden). The `localhost` and `127.0.0.1` Origin/Referer exemption MUST NOT apply in production.
+3. **Redirect Allowlist**: `redirect_uri` is honored only if it uses `https`, carries no userinfo, and its host is in `PROJECT_RETURN_HOSTS` (the same check as `/oauth/start`). Protocol-relative (`//host`), `javascript:`, and unlisted hosts MUST NOT be returned as `Location`. The gateway ignores an invalid `redirect_uri` and returns the `200` JSON confirmation, only after the Keycloak delete succeeds.
 
 ---
 
