@@ -1,6 +1,6 @@
 # Project Log Viewer & Log History — Design
 
-Date: 2026-10-22 · Size: project (new Flux layer + preflight change + constitution clarifying note) · Status: awaiting approval
+Date: 2026-10-22 · Size: project (new Flux layer + preflight change + constitution clarifying note) · Status: approved 2026-10-22
 
 Marking: **(operator)** = decided by the operator. **(my call)** = my proposal, can be changed.
 
@@ -143,4 +143,4 @@ Each step reuses the standard record and swappable outputs, so projects and the 
 - Names of manifests and the helper script.
 
 ## Open for the operator
-None. Remaining: approve this document.
+None. Approved 2026-10-22. Implementation plan: [`docs/superpowers/plans/2026-10-22-project-log-history.md`](../plans/2026-10-22-project-log-history.md).
