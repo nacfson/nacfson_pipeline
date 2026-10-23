@@ -52,3 +52,9 @@ Automated review hunters MUST skip vendored upstream manifests unless a security
 - `deploy/platform/cert-manager/upstream/`
 - `deploy/platform/cni/upstream/`
 - `**/gotk-components.yaml`
+
+---
+
+## 5. Pre-Commit Gate
+
+A `git commit` is blocked until the staged diff has a receipt with `"pipeline": "code-review"`. The code-review skill sets that field after its review stages. The agent hooks (`scripts/universal-agent-hook.py`, `.omp/extensions/arch-doc-sync.ts`, `.opencode/plugins/arch-doc-sync.js`) deny the commit and tell the agent to run [`.agents/skills/code-review/SKILL.md`](.agents/skills/code-review/SKILL.md) instead of calling `record-receipt` alone. The field is that skill's completion marker. The hook cannot prove subagents ran if the same agent writes the receipt. `.githooks/pre-commit` checks `review-cycle.py check-gate --scope staged --require-pipeline code-review`. `SKIP_REVIEW_GATE=1` is break-glass only.

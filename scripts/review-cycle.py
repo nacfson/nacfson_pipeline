@@ -32,6 +32,16 @@ APPROVALS_BY_TIER = {"Low": 0, "Medium": 1, "High": 2}
 DEPTH_BY_TIER = {"Low": "Quick", "Medium": "Standard", "High": "Deep"}
 VALID_RESOLUTIONS = {"fixed", "false_positive", "intentional", "wont_fix"}
 SUPPRESSING_RESOLUTIONS = {"false_positive", "intentional", "wont_fix"}
+CODE_REVIEW_PIPELINE = "code-review"
+CODE_REVIEW_SKILL = ".agents/skills/code-review/SKILL.md"
+
+
+def code_review_required(detail: str) -> str:
+    return (
+        f"{detail} Run the code-review skill ({CODE_REVIEW_SKILL}) before git commit. "
+        "Do not self-record a receipt."
+    )
+
 
 
 def get_receipt_path() -> Path:
@@ -417,6 +427,7 @@ def validate_and_record_receipt(
             "pre_existing_count": pre_existing_count,
         },
         "gate_status": gate_status,
+        "pipeline": payload.get("pipeline"),
     }
 
     state["last_gate_status"] = gate_status
@@ -523,6 +534,7 @@ def check_gate(
     receipt_path: Path,
     diff_text_override: str | None = None,
     changed_files_override: list[str] | None = None,
+    require_pipeline: str | None = None,
 ) -> tuple[bool, list[str]]:
     changed_files = get_changed_files(scope, changed_files_override)
     diff_text = get_diff_text(scope, diff_text_override)
@@ -533,9 +545,14 @@ def check_gate(
 
     errors: list[str] = []
     if not receipt_path.exists():
-        errors.append(
-            f"Missing review receipt at {receipt_path} for scope '{scope}' (diff_sha256={current_sha})."
+        detail = (
+            f"Missing review receipt at {receipt_path} for scope '{scope}' "
+            f"(diff_sha256={current_sha})."
         )
+        if require_pipeline == CODE_REVIEW_PIPELINE:
+            errors.append(code_review_required(detail))
+        else:
+            errors.append(detail)
         return False, errors
 
     try:
@@ -557,6 +574,16 @@ def check_gate(
             f"(important_open={summary.get('important_open', 0)}, "
             f"security_open={summary.get('security_open', 0)})."
         )
+    if require_pipeline and receipt.get("pipeline") != require_pipeline:
+        detail = (
+            f"Review receipt at {receipt_path} pipeline is {receipt.get('pipeline')!r}, "
+            f"not {require_pipeline!r}."
+        )
+        if require_pipeline == CODE_REVIEW_PIPELINE:
+            errors.append(code_review_required(detail))
+        else:
+            errors.append(detail)
+
 
     return len(errors) == 0, errors
 
@@ -925,6 +952,11 @@ def main() -> int:
         "--scope", choices=["staged", "worktree", "branch"], default="staged"
     )
     p_gate.add_argument("--json", action="store_true")
+    p_gate.add_argument(
+        "--require-pipeline",
+        default="",
+        help="Reject the receipt unless pipeline equals this value. Commit hooks pass code-review.",
+    )
 
     p_sum = subparsers.add_parser("summary", help="Print review receipt summary.")
     p_sum.add_argument("--markdown", action="store_true")
@@ -1015,7 +1047,11 @@ def main() -> int:
         return 0
 
     if args.subcommand == "check-gate":
-        ok, errs = check_gate(args.scope, get_receipt_path())
+        ok, errs = check_gate(
+            args.scope,
+            get_receipt_path(),
+            require_pipeline=args.require_pipeline or None,
+        )
         if args.json:
             print(json.dumps({"ok": ok, "errors": errs}, indent=2))
         else:
