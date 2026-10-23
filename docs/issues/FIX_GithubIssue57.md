@@ -1,7 +1,7 @@
 # FIX_GithubIssue57
 
 - Issue: https://github.com/nacfson/nacfson_pipeline/issues/57
-- State: OPEN. The code was not changed in this note.
+- State: OPEN. Handler, revoker wiring, and realm-import role grant are in this change. Not verified against a live Keycloak 24.0.5. The production 403 was inferred from the import, not observed.
 - Live contract: [`contracts/CONTRACT_AUTH_DOOR.md`](../../contracts/CONTRACT_AUTH_DOOR.md) §3.4
 - Older contract: [`specs/001-project-platform/contracts/session-revocation.md`](../../specs/001-project-platform/contracts/session-revocation.md) Case C
 
@@ -17,7 +17,7 @@ The live rule, added with this note:
 
 - The Admin delete authenticates as `session-revocation-client` with `SESSION_REVOCATION_CLIENT_SECRET`. Not `gateway-client`.
 - `200` / `302` success is allowed only after that delete succeeds.
-- If the delete fails, return `502` or `503`. Do not claim `revoked`. The cookie may still be cleared. The same `session_handle` is not revoked.
+- If the delete fails, return `502` or `503`. Do not claim `revoked`. The platform cookie MUST NOT be cleared on failure. The same `session_handle` is not revoked.
 
 `specs/009-host-scoped-shared-auth/contracts/gateway-internal-auth-api.md` §5 still says logout always returns `200`. That note does not override the live contract.
 

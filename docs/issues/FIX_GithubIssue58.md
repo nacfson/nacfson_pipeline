@@ -1,8 +1,8 @@
 # FIX_GithubIssue58
 
 - Issue: https://github.com/nacfson/nacfson_pipeline/issues/58
-- State: OPEN. Reproduced in Brave 155 against this tree's gateway. The code was not changed.
-- Live contract: not written. Sign-in allowlist is [`contracts/CONTRACT_AUTH_DOOR.md`](../../contracts/CONTRACT_AUTH_DOOR.md) §3.1 only.
+- State: OPEN. Redirect allowlist is in this change. Not verified against a signed-in browser on https://auth.nacfson.cloud.
+- Live contract: [`contracts/CONTRACT_AUTH_DOOR.md`](../../contracts/CONTRACT_AUTH_DOOR.md) §3.4
 
 ## What is wrong
 

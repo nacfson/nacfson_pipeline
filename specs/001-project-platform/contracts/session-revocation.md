@@ -24,7 +24,8 @@ redirect_uri=https://project-a.example.com/goodbye
 
 ### Security Preconditions
 1. **Authenticated Request**: The request MUST present a valid `PLATFORM_SESSION` cookie. An anonymous or unauthenticated request MUST NOT trigger any backend Keycloak call.
-2. **CSRF Protection**: The request MUST include a valid CSRF token matching the session or have a validated `Origin`/`Referer` header matching a registered project domain. Cross-site requests without valid protection are rejected immediately (HTTP 403 Forbidden).
+2. **CSRF Protection**: The request MUST include a valid CSRF token matching the session or have a validated `Origin`/`Referer` header matching a registered project domain. Cross-site requests without valid protection are rejected immediately (HTTP 403 Forbidden). The `localhost` and `127.0.0.1` Origin/Referer exemption MUST NOT apply in production.
+3. **Redirect Allowlist**: `redirect_uri` is honored only if it uses `https`, carries no userinfo, and its host is in `PROJECT_RETURN_HOSTS` (the same check as `/oauth/start`). Protocol-relative (`//host`), `javascript:`, and unlisted hosts MUST NOT be returned as `Location`. The gateway ignores an invalid `redirect_uri` and returns the `200` JSON confirmation, only after the Keycloak delete succeeds.
 
 ---
 
@@ -61,13 +62,22 @@ This guarantee applies only after the Keycloak session delete succeeds. On the v
 
 ### Case C: Keycloak Deletion Failed (HTTP 502 or 503)
 
-If `DELETE /admin/realms/platform/sessions/<sessionId>` fails, or the `session-revocation-client` token cannot be obtained, the gateway MUST NOT return Case A. It MUST NOT return `200` with `status: revoked`. The platform cookie MAY still be cleared. The same `session_handle` remains a live session until a later successful delete.
+If `DELETE /admin/realms/platform/sessions/<sessionId>` fails, or the `session-revocation-client` token request fails, the gateway MUST NOT return Case A. It MUST NOT return `200` with `status: revoked`. A token request that fails is `502`, not `503`. The platform cookie MUST NOT be cleared. The response MUST NOT set `Location`. The same `session_handle` remains a live session until a later successful delete.
+
+```http
+HTTP/1.1 502 Bad Gateway
+Content-Type: application/json
+
+{"error":"revocation_failed","message":"Keycloak session deletion failed"}
+```
+
+If the revocation client is not configured, the gateway returns `503`. The platform cookie MUST NOT be cleared. The response MUST NOT set `Location`.
 
 ```http
 HTTP/1.1 503 Service Unavailable
 Content-Type: application/json
 
-{"error":"revocation_failed","message":"Keycloak session deletion failed"}
+{"error":"revocation_unavailable","message":"Session revocation client is not configured"}
 ```
 
 ---

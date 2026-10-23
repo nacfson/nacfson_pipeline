@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"net/http"
 	"net/url"
 	"strings"
@@ -64,7 +65,6 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var session *SessionHandleData
-	usedBearer := false
 
 	rawAuth := strings.TrimSpace(r.Header.Get("Authorization"))
 	if strings.HasPrefix(strings.ToLower(rawAuth), "bearer ") {
@@ -78,7 +78,6 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 			session = s
-			usedBearer = true
 		}
 	}
 
@@ -110,25 +109,27 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
-	_ = usedBearer
 
-	// 3. Synchronous Backend Keycloak Session Invalidation
-	if h.Revoker != nil && session.SessionID != "" {
-		_ = h.Revoker.RevokeSession(session.SessionID)
-	} else if h.Client != nil && session.SessionID != "" {
-		_ = h.Client.RevokeSession(session.SessionID)
+	if session.SessionID == "" {
+		writeLogoutError(w, http.StatusBadRequest, "invalid_session", "Malformed session")
+		return
+	}
+	if h.Revoker == nil {
+		writeLogoutError(w, http.StatusServiceUnavailable, "revocation_unavailable", "Session revocation client is not configured")
+		return
+	}
+	if err := h.Revoker.RevokeSession(session.SessionID); err != nil {
+		writeLogoutError(w, http.StatusBadGateway, "revocation_failed", "Keycloak session deletion failed")
+		return
 	}
 
-	// 4. Synchronously clear the platform session cookie
 	h.clearSessionCookie(w)
 
-	// 5. Response Interface: Redirect (HTTP 302) or JSON confirmation (HTTP 200)
 	redirectURI := r.FormValue("redirect_uri")
 	if redirectURI == "" {
 		redirectURI = r.URL.Query().Get("redirect_uri")
 	}
-
-	if redirectURI != "" {
+	if redirectURI != "" && h.returnHostAllowed(redirectURI) {
 		http.Redirect(w, r, redirectURI, http.StatusFound)
 		return
 	}
@@ -136,4 +137,13 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status":"revoked","message":"Platform session successfully terminated"}`))
+}
+
+func writeLogoutError(w http.ResponseWriter, status int, code, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	_ = json.NewEncoder(w).Encode(map[string]string{
+		"error":   code,
+		"message": message,
+	})
 }

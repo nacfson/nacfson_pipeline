@@ -64,15 +64,10 @@ type Handler struct {
 
 // NewHandler creates a new Auth Handler.
 func NewHandler(cfg *config.Config, validator keycloak.SessionValidator, client *keycloak.Client) *Handler {
-	var revoker keycloak.SessionTerminator
-	if client != nil {
-		revoker = client
-	}
 	return &Handler{
 		Config:    cfg,
 		Validator: validator,
 		Client:    client,
-		Revoker:   revoker,
 		tickets:   newTicketStore(),
 	}
 }

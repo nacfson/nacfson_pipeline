@@ -14,6 +14,9 @@ type SessionTerminator interface {
 	RevokeSession(sessionID string) error
 }
 
+// SessionRevocationClientID is the Keycloak service account that deletes one session.
+const SessionRevocationClientID = "session-revocation-client"
+
 // SessionClient handles administrative session revocation in Keycloak via Admin API.
 type SessionClient struct {
 	AdminURL     string
@@ -98,14 +101,4 @@ func (c *SessionClient) RevokeSession(sessionID string) error {
 		return fmt.Errorf("keycloak session deletion returned status %d", resp.StatusCode)
 	}
 	return nil
-}
-
-// RevokeSession on Client delegates or performs session revocation using admin credentials.
-func (c *Client) RevokeSession(sessionID string) error {
-	if sessionID == "" {
-		return fmt.Errorf("sessionID cannot be empty")
-	}
-	// Direct call if Client is configured with revocation credentials
-	sessionClient := NewSessionClient(c.AdminURL, c.ClientID, c.ClientSecret)
-	return sessionClient.RevokeSession(sessionID)
 }
