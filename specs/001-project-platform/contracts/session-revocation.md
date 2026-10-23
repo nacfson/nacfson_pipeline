@@ -62,13 +62,22 @@ This guarantee applies only after the Keycloak session delete succeeds. On the v
 
 ### Case C: Keycloak Deletion Failed (HTTP 502 or 503)
 
-If `DELETE /admin/realms/platform/sessions/<sessionId>` fails, or the `session-revocation-client` token cannot be obtained, the gateway MUST NOT return Case A. It MUST NOT return `200` with `status: revoked`. The platform cookie MAY still be cleared. The same `session_handle` remains a live session until a later successful delete.
+If `DELETE /admin/realms/platform/sessions/<sessionId>` fails, or the `session-revocation-client` token request fails, the gateway MUST NOT return Case A. It MUST NOT return `200` with `status: revoked`. A token request that fails is `502`, not `503`. The platform cookie MUST NOT be cleared. The response MUST NOT set `Location`. The same `session_handle` remains a live session until a later successful delete.
+
+```http
+HTTP/1.1 502 Bad Gateway
+Content-Type: application/json
+
+{"error":"revocation_failed","message":"Keycloak session deletion failed"}
+```
+
+If the revocation client is not configured, the gateway returns `503`. The platform cookie MUST NOT be cleared. The response MUST NOT set `Location`.
 
 ```http
 HTTP/1.1 503 Service Unavailable
 Content-Type: application/json
 
-{"error":"revocation_failed","message":"Keycloak session deletion failed"}
+{"error":"revocation_unavailable","message":"Session revocation client is not configured"}
 ```
 
 ---

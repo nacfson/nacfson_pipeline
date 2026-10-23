@@ -79,7 +79,7 @@ func LoadFromEnv() (*Config, error) {
 	clientSecret := readSecretFileOrEnv("GATEWAY_CLIENT_SECRET_FILE", "/var/run/secrets/gateway/client_secret", "GATEWAY_CLIENT_SECRET", "")
 
 	// 4. Load Session Revocation Client Secret (for Admin API session termination)
-	sessionRevocationSecret := readSecretFileOrEnv("SESSION_REVOCATION_CLIENT_SECRET_FILE", "/var/run/secrets/gateway/session_revocation_secret", "SESSION_REVOCATION_CLIENT_SECRET", clientSecret)
+	sessionRevocationSecret := readSecretFileOrEnv("SESSION_REVOCATION_CLIENT_SECRET_FILE", "/var/run/secrets/gateway/session_revocation_secret", "SESSION_REVOCATION_CLIENT_SECRET", "")
 
 	return &Config{
 		Port:                    port,

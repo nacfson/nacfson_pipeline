@@ -537,5 +537,15 @@ data:
                 "clientAuthenticatorType": "client-secret",
                 "secret": "${SESSION_REVOCATION_SECRET}"
             }
+        ],
+        "users": [
+            {
+                "username": "service-account-session-revocation-client",
+                "enabled": true,
+                "serviceAccountClientId": "session-revocation-client",
+                "clientRoles": {
+                    "realm-management": ["manage-users"]
+                }
+            }
         ]
     }
