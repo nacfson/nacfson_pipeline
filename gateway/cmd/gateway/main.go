@@ -31,6 +31,11 @@ func main() {
 	)
 
 	handler := auth.NewHandler(cfg, kcClient, kcClient)
+	if cfg.SessionRevocationSecret != "" {
+		handler.SetRevoker(keycloak.NewSessionClient(cfg.KeycloakAdminURL, keycloak.SessionRevocationClientID, cfg.SessionRevocationSecret))
+	} else {
+		log.Println("SESSION_REVOCATION_CLIENT_SECRET is unset; POST /auth/logout will return 503")
+	}
 
 	mux := http.NewServeMux()
 
