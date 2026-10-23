@@ -92,11 +92,11 @@ echo -e "${GREEN}✓ Architecture handbook sync check passed.${NC}"
 
 if [ "${SKIP_REVIEW_GATE:-0}" != "1" ]; then
   echo "==> Running automated review-cycle gate check..."
-  if ! python3 scripts/review-cycle.py check-gate --scope staged; then
+  if ! python3 scripts/review-cycle.py check-gate --scope staged --require-pipeline code-review; then
     echo "" >&2
     echo -e "${RED}================================================================================${NC}" >&2
-    echo -e "${RED}COMMIT REJECTED: Staged changes do not have a passing review-cycle receipt!${NC}" >&2
-    echo -e "${YELLOW}Run the review-cycle pipeline (scripts/review-cycle.py) or set SKIP_REVIEW_GATE=1 for emergency break-glass.${NC}" >&2
+    echo -e "${RED}COMMIT REJECTED: Staged changes do not have a code-review receipt!${NC}" >&2
+    echo -e "${YELLOW}Run the code-review skill (.agents/skills/code-review/SKILL.md) before committing, or set SKIP_REVIEW_GATE=1 for emergency break-glass.${NC}" >&2
     echo -e "${RED}================================================================================${NC}" >&2
     exit 1
   fi

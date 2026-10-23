@@ -37,14 +37,18 @@ const plugin = {
 
         if (process.env.SKIP_REVIEW_GATE !== "1" && !cmd.includes("SKIP_REVIEW_GATE=1")) {
           try {
-            execFileSync("python3", [reviewCyclePath, "check-gate", "--scope", "staged"], {
-              cwd: repoRoot,
-              stdio: "pipe",
-            });
+            execFileSync(
+              "python3",
+              [reviewCyclePath, "check-gate", "--scope", "staged", "--require-pipeline", "code-review"],
+              {
+                cwd: repoRoot,
+                stdio: "pipe",
+              }
+            );
           } catch (err) {
             const stderr = err?.stderr ? String(err.stderr).trim() : String(err);
             throw new Error(
-              `[REVIEW-CYCLE BLOCKED] Run scripts/review-cycle.py record-receipt --scope staged before committing:\n${stderr}`
+              `[REVIEW-CYCLE BLOCKED] Run the code-review skill (.agents/skills/code-review/SKILL.md) before committing. Do not self-record a receipt:\n${stderr}`
             );
           }
         }

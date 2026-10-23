@@ -35,4 +35,5 @@ Perform a focused security audit across authentication (`gateway/`, `deploy/plat
      python3 scripts/review-cycle.py record-receipt --scope staged --input <verified-payload.json>
      python3 scripts/review-cycle.py check-gate --scope staged
      ```
+   - Do not set `"pipeline": "code-review"`. That field is reserved for `.agents/skills/code-review/SKILL.md`. This receipt does not satisfy the commit hook.
    - Report the standard `REVIEW.md` header (`X Important, Y Security, N Nit, M Pre-existing`).
