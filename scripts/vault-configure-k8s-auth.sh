@@ -118,15 +118,11 @@ echo "=== [2/4] Enabling & Configuring Kubernetes Auth Method ==="
 run_bao auth enable kubernetes 2>/dev/null || echo "auth/kubernetes already enabled."
 
 echo "Provisioning Kubernetes Cluster CA and Token Reviewer JWT..."
-CA_DATA=$(${KUBE_EXEC} config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 -d)
+CA_DATA=$(${KUBE_EXEC} config view --raw | awk '/certificate-authority-data:/ {print $2; exit}' | base64 -d)
 TOKEN_JWT=$(${KUBE_EXEC} --as=system:admin --as-group=platform:break-glass create token openbao-token-reviewer -n vault --duration=87600h)
 
-${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- /bin/sh -c "cat <<'EOF' > /tmp/ca.crt
-${CA_DATA}
-EOF
-cat <<'EOF' > /tmp/token_reviewer.jwt
-${TOKEN_JWT}
-EOF"
+printf "%s\n" "${CA_DATA}" | ${KUBE_EXEC} exec -i -n "${VAULT_NS}" "${VAULT_POD}" -- tee /tmp/ca.crt >/dev/null
+printf "%s\n" "${TOKEN_JWT}" | ${KUBE_EXEC} exec -i -n "${VAULT_NS}" "${VAULT_POD}" -- tee /tmp/token_reviewer.jwt >/dev/null
 
 run_bao write auth/kubernetes/config \
   kubernetes_host="https://kubernetes.default.svc:443" \

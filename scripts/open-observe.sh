@@ -15,6 +15,7 @@ ENV_NAME="vps-k3s"
 API_PORT="16443"
 HUBBLE_PORT="12000"
 LOGS_PORT="9428"
+AI_PORT="18081"
 SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
 ROOT="$(cd "$(dirname "$SCRIPT_PATH")/.." && pwd)"
 KUBECONFIG_FILE="${HOME}/.kube/nacfson-${ENV_NAME}.yaml"
@@ -22,6 +23,7 @@ KUBECONFIG_FILE="${HOME}/.kube/nacfson-${ENV_NAME}.yaml"
 SSH_PID=""
 HUBBLE_PID=""
 LOGS_PID=""
+AI_PID=""
 
 usage() {
   cat <<EOF
@@ -32,14 +34,15 @@ Opens ssh ${SSH_HOST} to 127.0.0.1:${API_PORT} -> VPS 127.0.0.1:6443, writes a
 
   Hubble UI      http://127.0.0.1:${HUBBLE_PORT}
   VictoriaLogs   http://127.0.0.1:${LOGS_PORT}/select/vmui/
+  AI Gateway UI  http://127.0.0.1:${AI_PORT}/
 
-Ctrl+C closes the SSH forward and both UI forwards.
+Ctrl+C closes the SSH forward and all UI forwards.
 EOF
 }
 
 cleanup() {
   local pid
-  for pid in "$LOGS_PID" "$HUBBLE_PID" "$SSH_PID"; do
+  for pid in "$AI_PID" "$LOGS_PID" "$HUBBLE_PID" "$SSH_PID"; do
     if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null || true
       wait "$pid" 2>/dev/null || true
@@ -150,10 +153,11 @@ fi
 require_free "$API_PORT" "API tunnel"
 require_free "$HUBBLE_PORT" "Hubble"
 require_free "$LOGS_PORT" "VictoriaLogs"
+require_free "$AI_PORT" "AI Gateway UI"
 
 echo "Opening ssh ${SSH_HOST} API forward 127.0.0.1:${API_PORT} -> 127.0.0.1:6443"
 ssh -o BatchMode=yes -o ExitOnForwardFailure=yes -o ConnectTimeout=15 -N \
-  -L "127.0.0.1:${API_PORT}:127.0.0.1:6443" "$SSH_HOST" &
+  -L "127.0.0.1:${API_PORT}:127.0.0.1:6443" "$SSH_HOST" </dev/null &
 SSH_PID=$!
 wait_for_listen "$API_PORT" "$SSH_PID" "ssh ${SSH_HOST}"
 
@@ -161,7 +165,7 @@ wait_for_listen "$API_PORT" "$SSH_PID" "ssh ${SSH_HOST}"
 point_kubeconfig_at_tunnel
 export KUBECONFIG="$KUBECONFIG_FILE"
 
-echo "Checking Hubble UI and VictoriaLogs"
+echo "Checking Hubble UI, VictoriaLogs, and AI Gateway"
 if ! kubectl -n kube-system rollout status deployment/hubble-ui --timeout=60s >/dev/null; then
   echo "Error: deployment/hubble-ui is not ready." >&2
   exit 1
@@ -170,31 +174,48 @@ if ! kubectl -n observability rollout status statefulset/victorialogs --timeout=
   echo "Error: statefulset/victorialogs is not ready." >&2
   exit 1
 fi
+if ! kubectl -n vault rollout status deployment/vault-ai-proxy --timeout=60s >/dev/null; then
+  echo "Error: deployment/vault-ai-proxy is not ready." >&2
+  exit 1
+fi
 
-kubectl -n kube-system port-forward --address 127.0.0.1 svc/hubble-ui "${HUBBLE_PORT}:80" >/dev/null &
+kubectl -n kube-system port-forward --address 127.0.0.1 svc/hubble-ui "${HUBBLE_PORT}:80" </dev/null >/dev/null 2>&1 &
 HUBBLE_PID=$!
-kubectl -n observability port-forward --address 127.0.0.1 svc/victorialogs "${LOGS_PORT}:9428" >/dev/null &
+kubectl -n observability port-forward --address 127.0.0.1 svc/victorialogs "${LOGS_PORT}:9428" </dev/null >/dev/null 2>&1 &
 LOGS_PID=$!
+kubectl -n vault port-forward --address 127.0.0.1 deploy/vault-ai-proxy "${AI_PORT}:8081" </dev/null >/dev/null 2>&1 &
+AI_PID=$!
 wait_for_listen "$HUBBLE_PORT" "$HUBBLE_PID" "Hubble port-forward"
 wait_for_listen "$LOGS_PORT" "$LOGS_PID" "VictoriaLogs port-forward"
+wait_for_listen "$AI_PORT" "$AI_PID" "AI Gateway port-forward"
 wait_for_http "http://127.0.0.1:${HUBBLE_PORT}/"
 wait_for_http "http://127.0.0.1:${LOGS_PORT}/select/vmui/"
+wait_for_http "http://127.0.0.1:${AI_PORT}/"
 
 echo "=================================================================="
-echo "Hubble UI:     http://127.0.0.1:${HUBBLE_PORT}"
-echo "VictoriaLogs:  http://127.0.0.1:${LOGS_PORT}/select/vmui/"
-echo "LogsQL:        {project=\"proj-pn\"}"
-echo "Press Ctrl+C to close ssh ${SSH_HOST} and both UI forwards."
+echo "Hubble UI:      http://127.0.0.1:${HUBBLE_PORT}"
+echo "VictoriaLogs:   http://127.0.0.1:${LOGS_PORT}/select/vmui/"
+echo "AI Gateway UI:  http://127.0.0.1:${AI_PORT}/"
+echo "LogsQL:         {project=\"proj-pn\"}"
+echo "Press Ctrl+C to close ssh ${SSH_HOST} and all UI forwards."
 echo "=================================================================="
 
 while true; do
-  if ! kill -0 "$SSH_PID" 2>/dev/null \
-    || ! kill -0 "$HUBBLE_PID" 2>/dev/null \
-    || ! kill -0 "$LOGS_PID" 2>/dev/null; then
-    echo "Error: a tunnel exited." >&2
+  if ! kill -0 "$SSH_PID" 2>/dev/null; then
+    echo "Error: SSH API tunnel exited." >&2
     exit 1
   fi
-  wait -n
-  echo "Error: a tunnel exited." >&2
-  exit 1
+  if ! kill -0 "$HUBBLE_PID" 2>/dev/null; then
+    kubectl -n kube-system port-forward --address 127.0.0.1 svc/hubble-ui "${HUBBLE_PORT}:80" </dev/null >/dev/null 2>&1 &
+    HUBBLE_PID=$!
+  fi
+  if ! kill -0 "$LOGS_PID" 2>/dev/null; then
+    kubectl -n observability port-forward --address 127.0.0.1 svc/victorialogs "${LOGS_PORT}:9428" </dev/null >/dev/null 2>&1 &
+    LOGS_PID=$!
+  fi
+  if ! kill -0 "$AI_PID" 2>/dev/null; then
+    kubectl -n vault port-forward --address 127.0.0.1 deploy/vault-ai-proxy "${AI_PORT}:8081" </dev/null >/dev/null 2>&1 &
+    AI_PID=$!
+  fi
+  sleep 2
 done

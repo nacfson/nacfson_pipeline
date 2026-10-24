@@ -38,8 +38,9 @@ if [ "${CONFIRM}" != "RESET-OPENBAO" ]; then
 fi
 
 echo "=== [1/6] Wiping OpenBao storage in ${VAULT_NS}/${VAULT_POD} and restarting pod ==="
-${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- /bin/sh -c "rm -rf /var/lib/openbao/data/* /var/lib/openbao/data/.[!.]* /openbao/data/* /openbao/data/.[!.]* 2>/dev/null || true"
-${KUBE_BG} delete pod -n "${VAULT_NS}" "${VAULT_POD}" --wait=true
+${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- rm -rf /var/lib/openbao/data/vault.db /var/lib/openbao/data/raft
+${KUBE_BG} delete pod -n "${VAULT_NS}" "${VAULT_POD}" --grace-period=0 --force --wait=true 2>/dev/null || \
+  ${KUBE_BG} delete pod -n "${VAULT_NS}" "${VAULT_POD}" --wait=true
 
 echo "Waiting for recreated ${VAULT_NS}/${VAULT_POD} container to start..."
 READY_FOR_INIT=false
@@ -58,8 +59,9 @@ fi
 
 echo "=== [2/6] Initializing fresh OpenBao & generating new Unseal Key ==="
 INIT_OUTPUT=$(${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator init -key-shares=1 -key-threshold=1 -format=json)
-UNSEAL_KEY=$(echo "${INIT_OUTPUT}" | grep -o '"unseal_keys_b64":\["[^"]*"' | cut -d'"' -f4)
-ROOT_TOKEN=$(echo "${INIT_OUTPUT}" | grep -o '"root_token":"[^"]*"' | cut -d'"' -f4)
+INIT_COMPACT=$(printf "%s" "${INIT_OUTPUT}" | tr -d '\r\n ')
+UNSEAL_KEY=$(printf "%s" "${INIT_COMPACT}" | grep -o '"unseal_keys_b64":\["[^"]*"' | cut -d'"' -f4)
+ROOT_TOKEN=$(printf "%s" "${INIT_COMPACT}" | grep -o '"root_token":"[^"]*"' | cut -d'"' -f4)
 
 cleanup_root_token() {
   if [ -n "${ROOT_TOKEN:-}" ]; then
@@ -98,12 +100,14 @@ NEW_PG_ADMIN=$(${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- \
   env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${ROOT_TOKEN}" \
   bao kv get -field=password kv/database/postgres-admin | tr -d '\r\n')
 
-# shellcheck disable=SC2016
-printf "%s" "${NEW_PG_ADMIN}" | ${KUBE_BG} exec -i -n "${IDENTITY_NS}" "${POSTGRES_POD}" -- /bin/sh -c '
-  set -eu
-  NEW_PASS="$(cat)"
-  psql -U postgres -d postgres -v ON_ERROR_STOP=1 -v new_pass="${NEW_PASS}" -c "ALTER ROLE postgres WITH PASSWORD :'\''new_pass'\'';" >/dev/null
-'
+if [[ ! "${NEW_PG_ADMIN}" =~ ^[0-9a-fA-F]+$ ]]; then
+  echo "ERROR: Unexpected format for generated postgres-admin password." >&2
+  exit 1
+fi
+
+printf "ALTER ROLE postgres WITH PASSWORD '%s';\n" "${NEW_PG_ADMIN}" | \
+  ${KUBE_BG} exec -i -n "${IDENTITY_NS}" "${POSTGRES_POD}" -- \
+  psql -U postgres -d postgres -v ON_ERROR_STOP=1 >/dev/null
 echo "PASS: Synced postgres administrator password via local Unix socket."
 
 ${KUBE_BG} delete job -n "${IDENTITY_NS}" postgres-init-job --ignore-not-found
@@ -119,6 +123,10 @@ ${KUBE_BG} rollout restart deployment/keycloak deployment/gateway -n "${IDENTITY
 
 echo "================================================================================"
 echo "SUCCESS: OpenBao reset complete with zero PostgreSQL data loss!"
+echo "********************************************************************************"
+echo "SAVE THIS NEW SHAMIR UNSEAL KEY IN YOUR PASSWORD MANAGER:"
+echo "New Unseal Key: ${UNSEAL_KEY}"
+echo "********************************************************************************"
 echo "Next steps for external API keys:"
 echo "  1. ./scripts/ai-gateway-ctl.sh set-key"
 echo "  2. ./scripts/vault-set-google-oauth.sh"

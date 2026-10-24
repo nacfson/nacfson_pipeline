@@ -27,19 +27,59 @@ test_token() {
     bao token lookup >/dev/null 2>&1
 }
 
-# Resolve Vault Token
-if [ -z "${VAULT_TOKEN:-}" ]; then
-  read -r -s -p "Enter Vault Root/Admin Token: " VAULT_TOKEN
-  echo ""
-fi
-VAULT_TOKEN=$(echo "${VAULT_TOKEN}" | tr -d '\r\n ')
+# Function to generate a short-lived root token using Shamir Unseal Key
+generate_root_token() {
+  local unseal_key="$1"
+  ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -cancel >/dev/null 2>&1 || true
 
-if ! test_token "${VAULT_TOKEN}"; then
-  echo "Error: Vault Token rejected by Vault (Code 403: permission denied)." >&2
+  local otp_json otp init_json nonce step_json encoded decoded_token
+  otp_json=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -generate-otp -format=json | tr -d '\r\n ')
+  otp=$(printf "%s" "${otp_json}" | grep -o '"otp":"[^"]*"' | cut -d'"' -f4)
+
+  init_json=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -init -otp="${otp}" -format=json | tr -d '\r\n ')
+  nonce=$(printf "%s" "${init_json}" | grep -o '"nonce":"[^"]*"' | cut -d'"' -f4)
+
+  step_json=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -nonce="${nonce}" -otp="${otp}" -format=json "${unseal_key}" | tr -d '\r\n ')
+  encoded=$(printf "%s" "${step_json}" | grep -o '"encoded_root_token":"[^"]*"' | cut -d'"' -f4)
+
+  if [ -z "${encoded}" ]; then
+    echo "Error: Failed to encode root token. Check your Unseal Key." >&2
+    exit 1
+  fi
+
+  decoded_token=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -decode="${encoded}" -otp="${otp}" | tr -d '\r\n ')
+  echo "${decoded_token}"
+}
+
+GENERATED_EPHEMERAL_ROOT=0
+if [ -z "${VAULT_TOKEN:-}" ]; then
+  read -r -s -p "Enter OpenBao Unseal Key (or Root Token): " INPUT_KEY
+  echo ""
+  INPUT_KEY=$(echo "${INPUT_KEY}" | tr -d '\r\n ')
+  if [ -n "${INPUT_KEY}" ] && test_token "${INPUT_KEY}"; then
+    VAULT_TOKEN="${INPUT_KEY}"
+  elif [ -n "${INPUT_KEY}" ]; then
+    echo "Generating short-lived Root Token from Unseal Key..."
+    VAULT_TOKEN=$(generate_root_token "${INPUT_KEY}")
+    GENERATED_EPHEMERAL_ROOT=1
+  fi
+fi
+
+cleanup_ephemeral_token() {
+  if [ "${GENERATED_EPHEMERAL_ROOT}" -eq 1 ] && [ -n "${VAULT_TOKEN:-}" ]; then
+    ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- \
+      env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${VAULT_TOKEN}" \
+      bao token revoke -self >/dev/null 2>&1 || true
+  fi
+}
+trap cleanup_ephemeral_token EXIT
+
+if [ -z "${VAULT_TOKEN:-}" ] || ! test_token "${VAULT_TOKEN}"; then
+  echo "Error: Authentication failed." >&2
   exit 1
 fi
 
-echo "Vault Token validated successfully."
+echo "Authenticated to OpenBao successfully (ephemeral token will be revoked on exit)."
 echo ""
 
 read -r -p "Enter Google OAuth Client ID: " GOOGLE_CLIENT_ID

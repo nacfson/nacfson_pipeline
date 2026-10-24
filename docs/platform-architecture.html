@@ -186,7 +186,7 @@
             <!-- Namespace: proj-pn (Right Column - Restricted Tenant Boundary) -->
             <rect x="710" y="155" width="320" height="577" rx="12" fill="#0f172a" fill-opacity="0.6" stroke="#f43f5e" stroke-opacity="0.55" />
             <text x="724" y="174" fill="#fb7185" font-size="10" font-family="'JetBrains Mono'" font-weight="700">NS: proj-pn (Restricted Pod Security)</text>
-            <text x="724" y="189" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">Peak: 400m CPU · 640Mi RAM | Quota: 850m · 1536Mi</text>
+            <text x="724" y="189" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">Peak: 200m CPU · 640Mi RAM | Quota: 850m · 1536Mi</text>
 
             <!-- ======================== CONNECTIONS (EDGES) ======================== -->
             <g id="topology-edges">
@@ -1434,7 +1434,7 @@
         ns: 'proj-pn',
         image: 'ghcr.io/nacfson/project-pn-frontend@sha256:9757cfd8...',
         oss: 'Nginx Unprivileged + React Native / Expo Web',
-        res: '100m CPU / 128Mi RAM (req == lim)',
+        res: '50m CPU / 128Mi RAM (req == lim)',
         desc: 'Digest-pinned frontend web application running under Kubernetes Restricted Pod Security profile (non-root UID 10001, drops ALL capabilities, restartPolicy: Always).',
         bullets: [
           '➔ Separates startupProbe (/api/auth/language-options), readinessProbe (/healthz -> BE), and livenessProbe (/).',
@@ -1448,7 +1448,7 @@
         ns: 'proj-pn',
         image: 'ghcr.io/nacfson/project-pn-backend@sha256:dfdba959...',
         oss: 'Go Application Server (Non-root UID 10001)',
-        res: '300m CPU / 512Mi RAM (req == lim)',
+        res: '150m CPU / 512Mi RAM (req == lim)',
         desc: 'Digest-pinned backend API server running with readOnlyRootFilesystem: true, automountServiceAccountToken: false, PUBLIC_APP_URL in ALLOWED_ORIGINS, and zero database or OAuth secrets in its environment.',
         bullets: [
           '➔ Connects to PostgreSQL exclusively via vault-db-proxy.vault.svc:5432 (sslmode=disable internal).',
@@ -1462,7 +1462,7 @@
         ns: 'proj-pn',
         image: 'PSS Restricted + NetworkPolicy + ResourceQuota',
         oss: 'Kubernetes Native Isolation Controls',
-        res: 'Peak: 400m/640Mi · Quota: 850m CPU · 1536Mi RAM · 10 Pods',
+        res: 'Peak: 200m/640Mi · Quota: 850m CPU · 1536Mi RAM · 10 Pods',
         desc: 'Platform-owned boundary layer reconciled before tenant workloads. Enforces Restricted Pod Security Admission, zero ServiceAccount token mounts, strict egress firewalling, and 1/n ResourceQuota.',
         bullets: [
           '➔ services.nodeports: "0" and services.loadbalancers: "0" enforced at quota admission.',

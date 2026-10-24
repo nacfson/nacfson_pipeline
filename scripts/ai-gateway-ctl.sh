@@ -53,10 +53,10 @@ with_loopback_tunnel() {
   pf_log="$(mktemp /tmp/ai-gw-pf-XXXXXX.log)"
   if [ "${REMOTE_SSH}" -eq 1 ]; then
     # shellcheck disable=SC2029
-    ssh -L "127.0.0.1:${LOCAL_PORT}:127.0.0.1:${LOCAL_PORT}" oracleCloud \
-      "sudo k3s kubectl -n ${VAULT_NS} port-forward --address 127.0.0.1 ${AI_PROXY_DEPLOY} ${LOCAL_PORT}:${target_port}" >"${pf_log}" 2>&1 &
+    ssh -n -L "127.0.0.1:${LOCAL_PORT}:127.0.0.1:${LOCAL_PORT}" oracleCloud \
+      "sudo k3s kubectl -n ${VAULT_NS} port-forward --address 127.0.0.1 ${AI_PROXY_DEPLOY} ${LOCAL_PORT}:${target_port}" </dev/null >"${pf_log}" 2>&1 &
   else
-    ${KUBE_EXEC} -n "${VAULT_NS}" port-forward --address 127.0.0.1 "${AI_PROXY_DEPLOY}" "${LOCAL_PORT}:${target_port}" >"${pf_log}" 2>&1 &
+    ${KUBE_EXEC} -n "${VAULT_NS}" port-forward --address 127.0.0.1 "${AI_PROXY_DEPLOY}" "${LOCAL_PORT}:${target_port}" </dev/null >"${pf_log}" 2>&1 &
   fi
   local pf_pid=$!
 
@@ -128,17 +128,12 @@ case "${CMD}" in
     fi
     echo "Fallback: Writing kv/ai/gemini-api-key via least-privilege vault-ai-proxy Kubernetes ServiceAccount stdin..."
     JWT=$(${KUBE_EXEC} --as=system:admin --as-group=platform:break-glass create token vault-ai-proxy -n "${VAULT_NS}")
-    # shellcheck disable=SC2016
-    printf '{"jwt":"%s","key":"%s"}\n' "${JWT}" "${GEMINI_KEY}" | ${KUBE_EXEC} exec -i -n "${VAULT_NS}" "${OPENBAO_POD}" -- /bin/sh -c '
-      set -eu
-      export VAULT_ADDR="http://127.0.0.1:8200"
-      PAYLOAD="$(cat)"
-      JWT_VAL="$(printf "%s" "${PAYLOAD}" | sed -n "s/.*\"jwt\":\"\([^\"]*\)\".*/\1/p")"
-      KEY_VAL="$(printf "%s" "${PAYLOAD}" | sed -n "s/.*\"key\":\"\([^\"]*\)\".*/\1/p")"
-      VAULT_TOKEN="$(printf "{\"role\":\"vault-ai-proxy\",\"jwt\":\"%s\"}" "${JWT_VAL}" | bao write -field=token auth/kubernetes/login -)"
-      export VAULT_TOKEN
-      printf "{\"value\":\"%s\"}" "${KEY_VAL}" | bao kv put kv/ai/gemini-api-key - >/dev/null
-    '
+    VAULT_TOKEN=$(printf '{"role":"vault-ai-proxy","jwt":"%s"}' "${JWT}" | \
+      ${KUBE_EXEC} exec -i -n "${VAULT_NS}" "${OPENBAO_POD}" -- \
+      env VAULT_ADDR="http://127.0.0.1:8200" bao write -field=token auth/kubernetes/login - | tr -d '\r\n ')
+    printf '{"value":"%s"}' "${GEMINI_KEY}" | \
+      ${KUBE_EXEC} exec -i -n "${VAULT_NS}" "${OPENBAO_POD}" -- \
+      env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${VAULT_TOKEN}" bao kv put kv/ai/gemini-api-key - >/dev/null
     echo "SUCCESS: Gemini API key stored in OpenBao (kv/ai/gemini-api-key) with zero Root Token!"
     ;;
   *)

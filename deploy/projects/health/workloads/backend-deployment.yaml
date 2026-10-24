@@ -12,8 +12,8 @@ spec:
   strategy:
     type: RollingUpdate
     rollingUpdate:
-      maxSurge: 1
-      maxUnavailable: 0
+      maxSurge: 0
+      maxUnavailable: 1
   selector:
     matchLabels:
       app.kubernetes.io/name: health-backend
@@ -70,10 +70,10 @@ spec:
                 - ALL
           resources:
             requests:
-              cpu: "250m"
+              cpu: "150m"
               memory: "256Mi"
             limits:
-              cpu: "250m"
+              cpu: "150m"
               memory: "256Mi"
           volumeMounts:
             - name: tmp
