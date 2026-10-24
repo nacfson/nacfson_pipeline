@@ -59,6 +59,35 @@ class TestOpenVictoriaLogsUi(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("kubectl is required", result.stdout + result.stderr)
 
+    def test_repeated_errors_ignore_leading_timestamp(self):
+        sample = "\n".join(
+            [
+                "[2026/10/24 12:00:00.111111111] [error] [output:http:http.0] retry failed",
+                "[2026/10/24 12:00:01.222222222] [error] [output:http:http.0] retry failed",
+                "[2026/10/24 12:00:02.333333333] [error] [output:http:http.0] once",
+                "[2026/10/24 12:00:03.444444444] [info] collector healthy",
+            ]
+        )
+        result = subprocess.run(
+            [
+                "bash",
+                "-c",
+                'source "$1"; printf "%s\\n" "$2" | repeated_fluentbit_errors',
+                "bash",
+                SCRIPT,
+                sample,
+            ],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "OPEN_VICTORIALOGS_LIB": "1"},
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            result.stdout,
+            "[error] [output:http:http.0] retry failed\n",
+        )
+        self.assertNotIn("once", result.stdout)
+
     def test_shellcheck_clean_when_installed(self):
         shellcheck = shutil.which("shellcheck")
         if shellcheck is None:

@@ -22,6 +22,20 @@ Options:
 EOF
 }
 
+# Fluent Bit 4.2.8 prefixes every line with [YYYY/MM/DD HH:MM:SS.<ns>].
+# Drop that prefix so the same [error] text counts as a repeat. One unique
+# error still passes. Unit tests source this file with OPEN_VICTORIALOGS_LIB=1.
+repeated_fluentbit_errors() {
+  grep -F '[error]' \
+    | sed -E 's/^\[[0-9]{4}\/[0-9]{2}\/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+\] //' \
+    | sort \
+    | uniq -d || true
+}
+
+if [ "${OPEN_VICTORIALOGS_LIB:-0}" = "1" ]; then
+  return 0
+fi
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --port)
@@ -147,7 +161,7 @@ EOF
     printf '%s\n' "${FB_LOGS}" >&2
     exit 1
   fi
-  REPEATED="$(printf '%s\n' "${FB_LOGS}" | grep -F '[error]' | sort | uniq -d || true)"
+  REPEATED="$(printf '%s\n' "${FB_LOGS}" | repeated_fluentbit_errors)"
   if [ -n "${REPEATED}" ]; then
     echo "FAIL: Fluent Bit repeated [error] lines in the last 5 minutes:" >&2
     printf '%s\n' "${REPEATED}" >&2
