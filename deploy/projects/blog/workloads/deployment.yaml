@@ -34,7 +34,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: blog-web
-          image: ghcr.io/nacfson/blog-web:latest
+          image: ghcr.io/nacfson/blog-web@sha256:7625cec69777f23156977162a42011b1d576a4ae3133a0b7d2e9c539a8e7b4a1
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
