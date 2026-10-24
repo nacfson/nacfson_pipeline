@@ -108,6 +108,7 @@ Each directory under `specs/` is a SpecKit feature package containing `spec.md` 
 - [`scripts/render-validate.sh`](scripts/render-validate.sh) & [`scripts/render-invariants.py`](scripts/render-invariants.py) — Kustomize rendering, `kubeconform` schema validation, and invariant checks across `local-k3s` and `vps-k3s`.
 - [`scripts/open-hubble-ui.sh`](scripts/open-hubble-ui.sh) — Private loopback port-forward tunnel (`http://127.0.0.1:12000`) and `--verify` 5-point live Cilium + Hubble verification helper.
 - [`scripts/open-victorialogs-ui.sh`](scripts/open-victorialogs-ui.sh) — Private loopback port-forward (`http://127.0.0.1:9428/select/vmui/`) and `--verify` for VictoriaLogs. Runbook section 15.
+- [`scripts/open-observe.sh`](scripts/open-observe.sh) — One workstation session for `ssh oracleCloud`: API forward on `127.0.0.1:16443`, then Hubble `127.0.0.1:12000` and VictoriaLogs `127.0.0.1:9428`.
 - [`scripts/db-migrate-dump.sh`](scripts/db-migrate-dump.sh) — Standardized, project-agnostic zero-plaintext PostgreSQL dump import (`--file`, `--mode full|data`) and export (`--export`) pipeline utility.
 - [`scripts/smoke-auth-chain.sh`](scripts/smoke-auth-chain.sh) — End-to-end smoke test for the sign-in redirect and auth routing chain.
 - [`scripts/vault-*.sh`](scripts/) — `vault-init.sh`, `vault-seed-inventory.sh`, `vault-reconcile.sh`, `vault-rotate.sh`, `vault-configure-k8s-auth.sh`, `vault-set-google-oauth.sh`.

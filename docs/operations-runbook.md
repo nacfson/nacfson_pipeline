@@ -293,13 +293,14 @@ Stored history is `proj-*` stdout and stderr only. Platform namespaces stay live
 
 ### Open the UI
 
-1. Point `kubectl` at the cluster, then start the tunnel.
-   - `local-k3s`: `./scripts/open-victorialogs-ui.sh`
-   - `vps-k3s`: use the existing API tunnel from §6 (`ssh -L 6443:127.0.0.1:6443 <vps-host>`) and the kubeconfig from `./scripts/operator-kubeconfig.sh`, then run `./scripts/open-victorialogs-ui.sh` on the workstation. Do not also bind workstation port `9428` with SSH. `Service/victorialogs` is ClusterIP only, so nothing listens on the VPS loopback until a port-forward is running.
-   - Alternative, only when `kubectl port-forward` itself is running on the node: `ssh -L 9428:127.0.0.1:9428 <vps-host>`, then open `http://127.0.0.1:9428/select/vmui/`. Do not run that SSH forward and `./scripts/open-victorialogs-ui.sh` together. Both bind workstation port `9428`.
-2. Browser URL: `http://127.0.0.1:9428/select/vmui/`.
+1. On this workstation, one script opens the VPS API tunnel and both UIs:
+   ```bash
+   ./scripts/open-observe.sh
+   ```
+   It runs `ssh oracleCloud` to `127.0.0.1:16443` (local k3s already owns `6443`), writes the 24-hour `operator-readonly` kubeconfig, and port-forwards Hubble to `http://127.0.0.1:12000` and VictoriaLogs to `http://127.0.0.1:9428/select/vmui/`. Ctrl+C closes all three. Do not also SSH-forward `12000` or `9428`.
+2. `local-k3s`, when that cluster's API is already on `127.0.0.1:6443`: `./scripts/open-hubble-ui.sh` and `./scripts/open-victorialogs-ui.sh`.
 3. Example LogsQL: `{project="proj-pn"}`. Narrow with a time range and `container` or `pod` filters.
-4. Live check: `./scripts/open-victorialogs-ui.sh --verify`.
+4. Live check, after the API tunnel is up: `./scripts/open-victorialogs-ui.sh --verify` and `./scripts/open-hubble-ui.sh --verify`.
 
 ### Limits
 
