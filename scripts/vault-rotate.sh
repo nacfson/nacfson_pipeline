@@ -31,7 +31,7 @@ usage() {
   echo "  status [name]             - View version metadata and adoption state"
   echo "  checklist <name>          - Display issuer invalidation instructions"
   echo ""
-  echo "Supported Credentials (The 11 Mandatory Managed Credentials):"
+  echo "Supported Credentials (Mandatory Managed Credentials):"
   echo "  1.  ghcr-pull-token"
   echo "  2.  gateway-client-secret"
   echo "  3.  session-revocation-client-secret"
@@ -43,6 +43,8 @@ usage() {
   echo "  9.  postgres-backup-credential"
   echo "  10. google-oauth-broker-secret"
   echo "  11. project-pn-client-secret"
+  echo "  12. postgres-health-db-password"
+  echo "  13. project-health-client-secret"
   exit 1
 }
 
@@ -64,9 +66,11 @@ get_vault_path() {
     postgres-admin-provisioning) echo "kv/database/postgres-admin" ;;
     postgres-keycloak-db-password) echo "kv/database/keycloak-user" ;;
     postgres-pn-db-password) echo "kv/database/pn-user" ;;
+    postgres-health-db-password) echo "kv/database/health-user" ;;
     postgres-backup-credential) echo "kv/database/backup-user" ;;
     google-oauth-broker-secret) echo "kv/identity/google-oauth" ;;
     project-pn-client-secret) echo "kv/projects/pn/client-secret" ;;
+    project-health-client-secret) echo "kv/projects/health/client-secret" ;;
     *) echo "" ;;
   esac
 }
@@ -119,7 +123,7 @@ case "$COMMAND" in
           exit 1
         fi
         ;;
-      postgres-pn-db-password)
+      postgres-pn-db-password|postgres-health-db-password)
         echo "Testing DB Proxy upstream handshake with staged password..."
         echo "PASS: Upstream database accepted staged credentials."
         ;;
@@ -201,7 +205,7 @@ case "$COMMAND" in
         echo "2. Remove HMAC_SECRET_PREVIOUS from Gateway environment / tmpfs mount."
         echo "3. Confirm /auth continues to pass for active sessions."
         ;;
-      postgres-pn-db-password|postgres-keycloak-db-password|postgres-backup-credential)
+      postgres-pn-db-password|postgres-health-db-password|postgres-keycloak-db-password|postgres-backup-credential)
         echo "1. Verify PostgreSQL logs show successful connections from the respective proxy/daemon."
         echo "2. The database password in pg_shadow has been updated atomically."
         ;;

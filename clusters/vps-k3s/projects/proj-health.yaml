@@ -1,0 +1,53 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: proj-health
+  namespace: proj-health
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  serviceAccountName: health-reconciler
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+    namespace: flux-system
+  dependsOn:
+    - name: project-boundaries-health
+      namespace: flux-system
+    - name: ingress
+      namespace: flux-system
+    - name: vault-proxies
+      namespace: flux-system
+  path: ./deploy/projects/health/workloads
+  patches:
+    - target:
+        kind: IngressRoute
+        name: project-health-ingress
+      patch: |
+        - op: replace
+          path: /spec/routes/0/match
+          value: Host(`health.nacfson.cloud`)
+        - op: replace
+          path: /spec/routes/1/match
+          value: Host(`health.nacfson.cloud`) && PathPrefix(`/api`)
+    - target:
+        kind: Deployment
+        name: health-backend
+      patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: health-backend
+        spec:
+          template:
+            spec:
+              containers:
+                - name: backend
+                  env:
+                    - name: ALLOWED_ORIGINS
+                      value: "http://localhost:8081,http://localhost:19006,tauri://localhost,http://tauri.localhost,https://health.nacfson.cloud"
+                    - name: PUBLIC_APP_URL
+                      value: "https://health.nacfson.cloud"

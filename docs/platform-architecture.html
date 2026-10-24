@@ -2061,9 +2061,9 @@
         title: '2d. project-boundaries-health (Tenant Sandbox — proj-health)',
         path: './deploy/projects/health/boundary',
         deps: 'governance',
-        desc: 'Creates namespace proj-health with Pod Security Restricted labels, ResourceQuota (850m CPU, 1536Mi RAM, 0 NodePorts/LBs), strict NetworkPolicy, project-health-sa (no token mount), and health-reconciler RBAC.',
+        desc: 'Creates namespace proj-health with Pod Security Restricted labels, ResourceQuota (700m CPU, 768Mi RAM, 0 NodePorts/LBs), strict NetworkPolicy, health-workload-sa (no token mount), and health-reconciler RBAC.',
         yaml: {
-          'vps-k3s': `dependsOn: [governance]\npath: ./deploy/projects/health/boundary\nobjects:\n  - Namespace proj-health (pod-security.kubernetes.io/enforce: restricted)\n  - ResourceQuota project-health-quota (850m / 1536Mi)\n  - NetworkPolicy project-health-isolation`,
+          'vps-k3s': `dependsOn: [governance]\npath: ./deploy/projects/health/boundary\nobjects:\n  - Namespace proj-health (pod-security.kubernetes.io/enforce: restricted)\n  - ResourceQuota project-health-quota (700m / 768Mi)\n  - NetworkPolicy project-health-isolation`,
           'local-k3s': `dependsOn: [governance]\npath: ./deploy/projects/health/boundary (identical isolation contract)`
         }
       },
@@ -2093,7 +2093,7 @@
         deps: 'project-boundaries, project-boundaries-health',
         desc: 'Reconciles tenant project Kustomizations (proj-pn, proj-health) using per-project reconciler ServiceAccounts. Patches IngressRoute hostnames and frontend/backend environment per cluster.',
         yaml: {
-          'vps-k3s': `dependsOn: [project-boundaries, project-boundaries-health]\nwait: false\n# clusters/vps-k3s/projects/proj-pn.yaml patches:\n- IngressRoute match: Host(\`pn.nacfson.cloud\`)\n- pn-backend env: KEYCLOAK_ISSUER_URL=https://auth.nacfson.cloud/realms/platform`,
+          'vps-k3s': `dependsOn: [project-boundaries, project-boundaries-health]\nwait: false\n# clusters/vps-k3s/projects/proj-pn.yaml & proj-health.yaml patches:\n- IngressRoute match: Host(\`pn.nacfson.cloud\`) and Host(\`health.nacfson.cloud\`)\n- backend env: PUBLIC_APP_URL & ALLOWED_ORIGINS for *.nacfson.cloud`,
           'local-k3s': `dependsOn: [project-boundaries, project-boundaries-health]\nwait: false\n# clusters/local-k3s/projects/proj-pn.yaml & proj-health.yaml:\n- Uses base Host(\`pn.example.com\`) and Host(\`health.example.com\`)`
         }
       },

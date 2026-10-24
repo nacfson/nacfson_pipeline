@@ -169,6 +169,11 @@ seed_secret "kv/database/pn-user" \
   username="user_pn" \
   password="$(openssl rand -hex 24)"
 
+# 8b. PostgreSQL Project Health Database User Password
+seed_secret "kv/database/health-user" \
+  username="user_health" \
+  password="$(openssl rand -hex 24)"
+
 # 9. PostgreSQL Dedicated Backup Role Password (pg_read_all_data)
 seed_secret "kv/database/backup-user" \
   username="backup_role" \
@@ -184,4 +189,9 @@ seed_secret "kv/projects/pn/client-secret" \
   client_id="project-pn" \
   client_secret="$(openssl rand -hex 24)"
 
-echo "=== All 11 Mandatory Credentials Successfully Seeded & Managed ==="
+# 12. Project Health Backend Application Client Secret
+seed_secret "kv/projects/health/client-secret" \
+  client_id="project-health" \
+  client_secret="$(openssl rand -hex 24)"
+
+echo "=== All Mandatory Credentials Successfully Seeded & Managed ==="

@@ -456,6 +456,145 @@ spec:
         self.assertEqual(rc, 0)
         self.assertEqual(data["validationStatus"], "PASSED")
 
+    def test_26_project_health_vps_and_local_render_accepted(self):
+        """Both local-k3s and vps-k3s render proj-pn + proj-health (projectCount == 2) without spec.images overrides."""
+        import yaml
+
+        kustomize_dirs = [
+            os.path.join(BASE_DIR, "deploy", "projects", "pn", "boundary"),
+            os.path.join(BASE_DIR, "deploy", "projects", "pn", "workloads"),
+            os.path.join(BASE_DIR, "deploy", "projects", "health", "boundary"),
+            os.path.join(BASE_DIR, "deploy", "projects", "health", "workloads"),
+            os.path.join(BASE_DIR, "deploy", "platform", "tls"),
+        ]
+        base_chunks = []
+        for kdir in kustomize_dirs:
+            res = subprocess.run(
+                ["kubectl", "kustomize", kdir],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            base_chunks.append(res.stdout)
+        base_yaml = "\n---\n".join(base_chunks)
+
+        for env, expected_host, expected_pn_host in (
+            ("local-k3s", "health.example.com", "pn.example.com"),
+            ("vps-k3s", "health.nacfson.cloud", "pn.nacfson.cloud"),
+        ):
+            proj_kustom = os.path.join(BASE_DIR, "clusters", env, "projects", "kustomization.yaml")
+            with open(proj_kustom, encoding="utf-8") as fh:
+                kdoc = yaml.safe_load(fh)
+            self.assertIn("proj-pn.yaml", kdoc.get("resources") or [])
+            self.assertIn("proj-health.yaml", kdoc.get("resources") or [])
+
+            proj_health_path = os.path.join(BASE_DIR, "clusters", env, "projects", "proj-health.yaml")
+            self.assertTrue(os.path.exists(proj_health_path), f"Missing {proj_health_path}")
+            with open(proj_health_path, encoding="utf-8") as fh:
+                hdoc = yaml.safe_load(fh)
+            self.assertEqual(hdoc["metadata"]["name"], "proj-health")
+            self.assertEqual(hdoc["metadata"]["namespace"], "proj-health")
+            self.assertEqual(hdoc["spec"]["serviceAccountName"], "health-reconciler")
+            self.assertEqual(hdoc["spec"]["path"], "./deploy/projects/health/workloads")
+            self.assertNotIn("images", hdoc["spec"], f"{proj_health_path} must not override workload digest pins via spec.images")
+
+            patches = hdoc["spec"].get("patches") or []
+            ing_patch_ops = next(
+                yaml.safe_load(p["patch"])
+                for p in patches
+                if p.get("target", {}).get("kind") == "IngressRoute"
+                and p.get("target", {}).get("name") == "project-health-ingress"
+            )
+            op_map = {op["path"]: op["value"] for op in ing_patch_ops}
+            self.assertEqual(op_map.get("/spec/routes/0/match"), f"Host(`{expected_host}`)")
+            self.assertEqual(op_map.get("/spec/routes/1/match"), f"Host(`{expected_host}`) && PathPrefix(`/api`)")
+
+            dep_patch = next(
+                yaml.safe_load(p["patch"])
+                for p in patches
+                if p.get("target", {}).get("kind") == "Deployment"
+                and p.get("target", {}).get("name") == "health-backend"
+            )
+            env_list = dep_patch["spec"]["template"]["spec"]["containers"][0]["env"]
+            env_map = {e["name"]: e["value"] for e in env_list}
+            self.assertEqual(env_map.get("PUBLIC_APP_URL"), f"https://{expected_host}")
+            self.assertIn(f"https://{expected_host}", env_map.get("ALLOWED_ORIGINS", "").split(","))
+
+            # Apply environment host patches onto base_yaml and validate via platform-preflight.py
+            docs = [d for d in yaml.safe_load_all(base_yaml) if isinstance(d, dict)]
+            for d in docs:
+                kind = d.get("kind")
+                name = (d.get("metadata") or {}).get("name")
+                if kind == "IngressRoute" and name == "project-health-ingress":
+                    d["spec"]["routes"][0]["match"] = op_map["/spec/routes/0/match"]
+                    d["spec"]["routes"][1]["match"] = op_map["/spec/routes/1/match"]
+                elif kind == "IngressRoute" and name == "project-pn-ingress":
+                    d["spec"]["routes"][0]["match"] = f"Host(`{expected_pn_host}`)"
+                    d["spec"]["routes"][1]["match"] = f"Host(`{expected_pn_host}`) && PathPrefix(`/api`)"
+                elif kind == "Deployment" and name == "health-backend":
+                    c_envs = d["spec"]["template"]["spec"]["containers"][0]["env"]
+                    for e in c_envs:
+                        if e["name"] in env_map:
+                            e["value"] = env_map[e["name"]]
+                elif kind == "Deployment" and name == "pn-backend":
+                    c_envs = d["spec"]["template"]["spec"]["containers"][0]["env"]
+                    for e in c_envs:
+                        if e["name"] == "PUBLIC_APP_URL":
+                            e["value"] = f"https://{expected_pn_host}"
+                        elif e["name"] == "ALLOWED_ORIGINS":
+                            e["value"] = f"https://{expected_pn_host}"
+                elif kind == "Certificate" and name == "health-tls":
+                    d["spec"]["commonName"] = expected_host
+                    d["spec"]["dnsNames"] = [expected_host]
+                elif kind == "Certificate" and name == "pn-tls":
+                    d["spec"]["commonName"] = expected_pn_host
+                    d["spec"]["dnsNames"] = [expected_pn_host]
+
+            import tempfile
+            with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as tmp:
+                tmp.write(yaml.safe_dump_all(docs))
+                cand_path = tmp.name
+            try:
+                rc, data, err = self.run_preflight(
+                    cand_path,
+                    os.path.join(BASE_DIR, "clusters", env, "capacity.yaml"),
+                    env=env,
+                )
+                self.assertEqual(rc, 0, err or data.get("rejectionReason"))
+                self.assertEqual(data.get("validationStatus"), "PASSED")
+                self.assertEqual(data.get("projectCount"), 2)
+            finally:
+                if os.path.exists(cand_path):
+                    os.remove(cand_path)
+
+    def test_27_vault_seed_and_rotate_cover_all_project_slugs(self):
+        """vault-seed-inventory.sh and vault-rotate.sh must cover every slug in postgres-init-job PROJECT_SLUGS."""
+        import yaml
+
+        init_job_path = os.path.join(BASE_DIR, "deploy", "platform", "database", "postgres-init-job.yaml")
+        with open(init_job_path, encoding="utf-8") as fh:
+            job_doc = yaml.safe_load(fh)
+        init_envs = {
+            e["name"]: e["value"]
+            for e in job_doc["spec"]["template"]["spec"]["initContainers"][0]["env"]
+        }
+        slugs = [s.strip() for s in init_envs["PROJECT_SLUGS"].split(",") if s.strip()]
+        self.assertIn("pn", slugs)
+        self.assertIn("health", slugs)
+
+        with open(os.path.join(BASE_DIR, "scripts", "vault-seed-inventory.sh"), encoding="utf-8") as fh:
+            seed_script = fh.read()
+        with open(os.path.join(BASE_DIR, "scripts", "vault-rotate.sh"), encoding="utf-8") as fh:
+            rotate_script = fh.read()
+
+        for slug in slugs:
+            self.assertIn(f'seed_secret "kv/database/{slug}-user"', seed_script)
+            self.assertIn(f'username="user_{slug}"', seed_script)
+            self.assertIn(f'seed_secret "kv/projects/{slug}/client-secret"', seed_script)
+            self.assertIn(f'client_id="project-{slug}"', seed_script)
+            self.assertIn(f"postgres-{slug}-db-password) echo \"kv/database/{slug}-user\"", rotate_script)
+            self.assertIn(f"project-{slug}-client-secret) echo \"kv/projects/{slug}/client-secret\"", rotate_script)
+
 
 if __name__ == "__main__":
     unittest.main()
