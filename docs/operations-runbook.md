@@ -15,7 +15,7 @@ All cluster interactions follow two distinct tiers:
 
 | Access | Location | Can Write? | Authorization |
 | :--- | :--- | :--- | :--- |
-| **Read-only** | Workstation through SSH tunnel (`ssh -L 6443:127.0.0.1:6443 <vm>`) | No | `ServiceAccount governance/operator-readonly` via short-lived (≤24h) token; ClusterRole `view` |
+| **Read-only** | Workstation. On this machine use [`scripts/open-observe.sh`](../scripts/open-observe.sh) (`127.0.0.1:16443`). Do not bind `6443`; local k3s owns it. A machine that does not run local k3s may use `ssh -L 6443:127.0.0.1:6443 <vm>`. | No | `ServiceAccount governance/operator-readonly` via short-lived (≤24h) token; ClusterRole `view` |
 | **Break-glass** | On the node only, over SSH | Yes | Deliberate impersonation of group `platform:break-glass` via node admin credentials |
 
 ### Key Invariants
@@ -117,18 +117,28 @@ After initial cluster bootstrap or any OpenBao container restart:
 
 ## 6. Read-Only Workstation Inspection
 
-Operators inspect cluster state from their local workstation using read-only credentials:
+Operators inspect cluster state from their local workstation using read-only credentials.
 
-1. Open SSH port forward:
-   ```bash
-   ssh -L 6443:127.0.0.1:6443 <vm>
-   ```
-2. Generate 24-hour read-only kubeconfig (Section 13):
+On this workstation, do not bind `6443`. Local k3s already owns it. One script opens the VPS API on `127.0.0.1:16443` and both private UIs:
+
+```bash
+./scripts/open-observe.sh
+```
+
+A machine that does not run local k3s opens the API first:
+
+```bash
+ssh -L 6443:127.0.0.1:6443 <vm>
+```
+
+Then, on either machine:
+
+1. Generate 24-hour read-only kubeconfig (Section 13). `open-observe.sh` already does this for the VPS.
    ```bash
    ./scripts/operator-kubeconfig.sh <vm>
    export KUBECONFIG=~/.kube/nacfson-<env>.yaml
    ```
-3. Inspect cluster status and GitOps reconciliation:
+2. Inspect cluster status and GitOps reconciliation:
    ```bash
    # Inspect cluster nodes and metrics (granted via operator-diagnostics)
    kubectl get nodes

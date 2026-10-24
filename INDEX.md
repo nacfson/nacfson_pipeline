@@ -35,7 +35,7 @@ This file is the master navigation index for **`nacfson_pipeline`**. For AI agen
 
 | File | Description |
 | :--- | :--- |
-| [`docs/platform-architecture.html`](docs/platform-architecture.html) | **Canonical Interactive Architecture Handbook (Hook-Synced)**: 8-tab interactive guide covering cluster topology, 7 end-to-end flows, CNI & eBPF packet path simulator, Gateway allow-vs-block decision simulator, 10-layer Flux GitOps DAG, 16-component OSS catalog, live $1/n$ resource budget calculator, and junior-engineer mental models + failure drills. |
+| [`docs/platform-architecture.html`](docs/platform-architecture.html) | **Canonical Interactive Architecture Handbook (Hook-Synced)**: 8-tab interactive guide covering cluster topology, 8 end-to-end flows, CNI & eBPF packet path simulator, Gateway allow-vs-block decision simulator, 13-layer Flux GitOps DAG, 18-component OSS catalog, live $1/n$ resource budget calculator, and junior-engineer mental models + failure drills. |
 | [`docs/ghcr-token-lifecycle.html`](docs/ghcr-token-lifecycle.html) | Interactive diagram of the zero-plaintext GHCR image pull token lifecycle via `registry-proxy` and OpenBao. |
 | [`docs/internal-login-variations.html`](docs/internal-login-variations.html) | Visual comparison of browser login, redirect, and session cookie flows across projects and the auth gateway. |
 | [`agy_plan/html/`](agy_plan/html/) | Self-contained HTML implementation plans generated during Spec-Driven Development. |

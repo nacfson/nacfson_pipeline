@@ -54,7 +54,7 @@ project pod prints to stdout/stderr
  → containerd writes /var/log/pods/proj-<name>_<pod>_<uid>/<container>/0.log on the node
  → Fluent Bit DaemonSet (observability) reads proj-* files read-only, adds the standard record
  → VictoriaLogs (observability) stores it on a PVC, with a built-in search UI
- → operator reaches the UI by kubectl port-forward (no public route)
+ → operator reaches the UI by a private workstation tunnel (no public route)
 ```
 Projects only print to stdout/stderr, which they already do. Only the collector has a `hostPath`; project manifests and images do not change.
 
@@ -62,7 +62,7 @@ Projects only print to stdout/stderr, which they already do. Only the collector 
 1. **Live logs (already available).** Desktop Headlamp or `kubectl logs` over the existing SSH tunnel with the `operator-readonly` account (`deploy/platform/governance/operator-access.yaml`, `scripts/operator-kubeconfig.sh`, runbook §6 and §13). Docs only.
 2. **Collector.** Fluent Bit DaemonSet. `tail` input on `/var/log/pods/proj-*_*/*/*.log`. Names come from the file path, so there is **no Kubernetes API access and no service-account token**. Output goes to VictoriaLogs over HTTP inside the cluster. The tail bookmark is a 1 GiB PVC, not an `emptyDir` and not a second `hostPath`.
 3. **Store and UI.** VictoriaLogs single-binary StatefulSet with a PVC on k3s `local-path`. `ClusterIP` only.
-4. **Access.** A helper script modeled on `scripts/open-hubble-ui.sh` runs `kubectl port-forward` to `127.0.0.1`, with a `--verify` mode. No `IngressRoute`.
+4. **Access.** No `IngressRoute`. On this workstation, `scripts/open-observe.sh` SSHes only the VPS API to `127.0.0.1:16443` (local k3s owns `6443`), then port-forwards Hubble and VictoriaLogs. `local-k3s` uses `scripts/open-hubble-ui.sh` and `scripts/open-victorialogs-ui.sh`. Both log scripts have `--verify`.
 5. **Isolation.** `observability` has a default-deny `NetworkPolicy`; allow only Fluent Bit → VictoriaLogs write port and operator port-forward.
 
 ### Aggregation, naming and filtering **(operator)**
@@ -164,13 +164,13 @@ Each step reuses the standard record and swappable outputs, so projects and the 
 - Grafana attached to VictoriaLogs and Hubble `:9965` metrics. If added, the Grafana/Loki check in `scripts/open-hubble-ui.sh --verify` must be updated.
 - Log masking, node logs, alerting, platform-component log history.
 
-## Left to the builder
-- Image versions to pin and exact arm64 tags or digests.
-- Final CPU/memory numbers, tuned against the preflight.
-- Fluent Bit parser settings for the containerd (CRI) format and multi-line stack traces.
-- Whether the non-root `DAC_READ_SEARCH` option works on the VPS.
-- Wording of the constitution clarifying note.
-- Names of manifests and the helper script.
+## Decided in the build
+- Images: `fluent/fluent-bit:4.2.8` and `victoriametrics/victoria-logs:v1.53.0`.
+- Resources: Fluent Bit `50m` CPU / `64Mi`, request equals limit. VictoriaLogs `100m` request / `500m` limit / `384Mi`. The platform reservation that includes these numbers is not yet measured. Do not add `150m` / `448Mi` by hand.
+- The CRI parser is in the collector ConfigMap. A multiline stack-trace parser was left optional and was not added.
+- `DAC_READ_SEARCH` was not adopted. The collector stays root.
+- Constitution wording is Clarification 2.2.1.
+- Manifests live in `deploy/platform/observability/`. Helper scripts are `scripts/open-victorialogs-ui.sh` and `scripts/open-observe.sh`.
 
 ## Open for the operator
 None. Approved 2026-10-22. Amended 2026-10-24: 8 GiB cap, VPS-only disk check, tail bookmark on a 1 GiB PVC, `enforce: privileged`, envelope schema stays in this repo. Implementation plan: [`docs/superpowers/plans/2026-10-22-project-log-history.md`](../plans/2026-10-22-project-log-history.md).
