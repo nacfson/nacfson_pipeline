@@ -293,11 +293,10 @@ Stored history is `proj-*` stdout and stderr only. Platform namespaces stay live
 
 ### Open the UI
 
-1. For `vps-k3s`, open an SSH forward, then start the tunnel. `local-k3s` needs only the tunnel.
-   ```bash
-   ssh -L 9428:127.0.0.1:9428 <vps-host>
-   ./scripts/open-victorialogs-ui.sh
-   ```
+1. Point `kubectl` at the cluster, then start the tunnel.
+   - `local-k3s`: `./scripts/open-victorialogs-ui.sh`
+   - `vps-k3s`: use the existing API tunnel from §6 (`ssh -L 6443:127.0.0.1:6443 <vps-host>`) and the kubeconfig from `./scripts/operator-kubeconfig.sh`, then run `./scripts/open-victorialogs-ui.sh` on the workstation. Do not also bind workstation port `9428` with SSH. `Service/victorialogs` is ClusterIP only, so nothing listens on the VPS loopback until a port-forward is running.
+   - Alternative, only when `kubectl port-forward` itself is running on the node: `ssh -L 9428:127.0.0.1:9428 <vps-host>`, then open `http://127.0.0.1:9428/select/vmui/`. Do not run that SSH forward and `./scripts/open-victorialogs-ui.sh` together. Both bind workstation port `9428`.
 2. Browser URL: `http://127.0.0.1:9428/select/vmui/`.
 3. Example LogsQL: `{project="proj-pn"}`. Narrow with a time range and `container` or `pod` filters.
 4. Live check: `./scripts/open-victorialogs-ui.sh --verify`.
