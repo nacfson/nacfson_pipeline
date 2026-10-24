@@ -65,7 +65,7 @@
             <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Specs 001–010</span>
             <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">Hook-Synced</span>
           </div>
-          <p class="text-xs text-slate-400 mt-0.5">Interactive topology, CNI/eBPF packet simulator, Gateway allow-vs-block auth tester, 7 lifecycle flows, Flux 10-layer DAG, 1/n budget &amp; junior mental models. Log envelope schema is Git-owned in contracts/CONTRACT_LOG_SCHEMA.md; Flux applies the collector ConfigMap, not a schema server. observability is a platform namespace for the preflight exemption only.</p>
+          <p class="text-xs text-slate-400 mt-0.5">Interactive topology, CNI/eBPF packet simulator, Gateway allow-vs-block auth tester, 7 lifecycle flows, Flux 10-layer DAG, 1/n budget &amp; junior mental models. Log envelope schema is Git-owned in contracts/CONTRACT_LOG_SCHEMA.md; Flux applies the collector ConfigMap, not a schema server. observability is a platform namespace for the preflight exemption only. VictoriaLogs (victoriametrics/victoria-logs:v1.53.0) is the ClusterIP log store in that namespace.</p>
         </div>
       </div>
 
@@ -2071,6 +2071,15 @@
         role: 'source-controller & kustomize-controller',
         where: 'clusters/*/flux-system/gotk-components.yaml',
         details: 'Continuously reconciles Git state from main branch every 5 minutes across 9 ordered Kustomization layers with prune: true.'
+      },
+      {
+        cat: 'oss',
+        name: 'VictoriaLogs',
+        ver: 'v1.53.0',
+        license: 'Apache-2.0 (VictoriaMetrics)',
+        role: 'Single-node project log store',
+        where: 'deploy/platform/observability/victorialogs-statefulset.yaml',
+        details: 'ClusterIP store on :9428 with a 10Gi PVC, 30d retention, and an 8Gi disk cap. Not yet a Flux layer.'
       },
       {
         cat: 'oss',
