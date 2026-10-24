@@ -157,11 +157,11 @@ flowchart LR
     Stdout["project stdout"] --> File["containerd file"]
     File --> FB["Fluent Bit"]
     FB --> VL["VictoriaLogs"]
-    VL --> UI["port-forward UI"]
+    VL --> UI["private workstation UI"]
 ```
 
 - **Store**: VictoriaLogs `victoriametrics/victoria-logs:v1.53.0`, ClusterIP only, 10Gi PVC, 30-day retention, 8 GiB disk cap. Lines past either limit are dropped with no alert.
 - **Collector**: Fluent Bit `fluent/fluent-bit:4.2.8` tails `proj-*` only. Tail bookmark PVC `fluent-bit-state` is 1Gi. It survives a collector restart, not node-disk loss.
-- **Access**: [`scripts/open-victorialogs-ui.sh`](scripts/open-victorialogs-ui.sh) port-forwards to `http://127.0.0.1:9428/select/vmui/`. No public route.
+- **Access**: On this workstation, [`scripts/open-observe.sh`](scripts/open-observe.sh) SSHes only the VPS API to `127.0.0.1:16443` (local k3s already owns `6443`), then port-forwards Hubble `127.0.0.1:12000` and VictoriaLogs `http://127.0.0.1:9428/select/vmui/`. `local-k3s` uses [`scripts/open-victorialogs-ui.sh`](scripts/open-victorialogs-ui.sh). No public route. Do not SSH-forward `12000` or `9428`.
 - **Accepted risks**: disk loss, residual volume fill, viewer down with the node, `local-k3s` disk not checked, only `proj-*` stored. First step up is an off-node copy.
 - **Reference**: [`docs/operations-runbook.md`](docs/operations-runbook.md) §15 | [`docs/superpowers/specs/2026-10-22-log-viewer-design.md`](docs/superpowers/specs/2026-10-22-log-viewer-design.md)

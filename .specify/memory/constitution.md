@@ -117,7 +117,7 @@ The log collector in the platform namespace `observability` may mount `/var/log/
 **Impact**:
 
 - Security: one read-only node mount for one platform pod.
-- Resource: counted in the platform reservation.
+- Resource: requests and limits are declared on the collector and the store. They are not in the recorded platform reservation until a live `platformReservations` measurement is committed. Do not add them by hand.
 - Portability: unchanged.
 
 **Maintainer approval**: The operator accepted this note on 2026-10-22 with the design.

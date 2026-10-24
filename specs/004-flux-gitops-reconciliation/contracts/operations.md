@@ -8,7 +8,7 @@ Two kinds of cluster access exist:
 
 | Access | Where | Can write? |
 |---|---|---|
-| **Read-only** | Workstation, through the SSH tunnel (`ssh -L 6443:127.0.0.1:6443 <vm>`), kubeconfig from §13 | No |
+| **Read-only** | Workstation. This machine uses `scripts/open-observe.sh` (`127.0.0.1:16443`) because local k3s owns `6443`. A machine that does not run local k3s may use `ssh -L 6443:127.0.0.1:6443 <vm>`. Kubeconfig from runbook §13. | No |
 | **Break-glass** | On the node only, over SSH (§12) | Yes, deliberately |
 
 No kubeconfig is ever kept in Git.

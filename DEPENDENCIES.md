@@ -63,7 +63,7 @@ Per [Constitution Principle I](.specify/memory/constitution.md#L6-L7), third-par
 | `vps-k3s` (Oracle ARM64) | `4000m` CPU / `24576 MiB` RAM | `200m` CPU / `512 MiB` RAM | `1920m` CPU / `5312 MiB` RAM (`2080m` / `19264 MiB` per-project slice for $n=1$) | [`clusters/vps-k3s/capacity.yaml`](clusters/vps-k3s/capacity.yaml) |
 | `local-k3s` | `4000m` CPU / `8192 MiB` RAM | `200m` CPU / `512 MiB` RAM | `1920m` CPU / `5312 MiB` RAM (`2080m` / `2880 MiB` per-project slice for $n=1$) | [`clusters/local-k3s/capacity.yaml`](clusters/local-k3s/capacity.yaml) |
 
-The table above is the last recorded platform reservation. The observability reservation (Fluent Bit and VictoriaLogs) is not yet measured and must not be added by hand. Do not replace `1920m` or `5312` until a live `platformReservations` measurement is committed. Store sizing that does not depend on that measurement: 30-day retention, 8 GiB disk cap, 10Gi store PVC, 1Gi tail PVC `fluent-bit-state`, `proj-*` only, privileged namespace `observability`, operator access by port-forward.
+The table above is the last recorded platform reservation. The observability reservation (Fluent Bit and VictoriaLogs) is not yet measured and must not be added by hand. Do not replace `1920m` or `5312` until a live `platformReservations` measurement is committed. Store sizing that does not depend on that measurement: 30-day retention, 8 GiB disk cap, 10Gi store PVC, 1Gi tail PVC `fluent-bit-state`, `proj-*` only, privileged namespace `observability`. VPS access is `scripts/open-observe.sh`. `local-k3s` access is `scripts/open-victorialogs-ui.sh`.
 
 ---
 

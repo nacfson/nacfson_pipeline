@@ -2,9 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Status (2026-10-24):** Implemented and merged to `main` as #80. The checkboxes below are the original task list; they were not rewritten as done. Two facts differ from this plan: the platform reservation was not measured, so `1595`/`5312` and `1920m`/`5312` stay until a live measurement is committed; VPS access on this workstation is `scripts/open-observe.sh` (API on `127.0.0.1:16443`), not `ssh -L 6443`.
+
 **Goal:** Store 30 days (cap 8 GiB) of `proj-*` container logs in VictoriaLogs, collected by a Fluent Bit DaemonSet, searchable in a browser through a private `kubectl port-forward`.
 
-**Architecture:** A new `observability` Flux layer (`deploy/platform/observability/`) holds a VictoriaLogs StatefulSet (10 GiB PVC on `local-path`, 8 GiB cap) and a Fluent Bit DaemonSet that tails `/var/log/pods/proj-*_*/*/*.log` through one read-only `hostPath`. The tail bookmark is a 1 GiB PVC, not an `emptyDir`. The namespace label is `pod-security.kubernetes.io/enforce: privileged`. No project manifest changes. Access is a tunnel script modeled on `scripts/open-hubble-ui.sh`; live logs stay with Headlamp/`kubectl logs` and the existing `operator-readonly` account.
+**Architecture:** A new `observability` Flux layer (`deploy/platform/observability/`) holds a VictoriaLogs StatefulSet (10 GiB PVC on `local-path`, 8 GiB cap) and a Fluent Bit DaemonSet that tails `/var/log/pods/proj-*_*/*/*.log` through one read-only `hostPath`. The tail bookmark is a 1 GiB PVC, not an `emptyDir`. The namespace label is `pod-security.kubernetes.io/enforce: privileged`. No project manifest changes. Shipped access is `scripts/open-observe.sh` on the VPS and `scripts/open-victorialogs-ui.sh` on `local-k3s`. Live logs stay with Headlamp/`kubectl logs` and the existing `operator-readonly` account.
 
 **Tech Stack:** Kubernetes manifests + Kustomize + FluxCD, Fluent Bit, VictoriaLogs, Python `unittest` (manifest/preflight tests), Bash.
 
