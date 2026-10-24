@@ -242,3 +242,106 @@ spec:
     - ports:
         - protocol: TCP
           port: 443
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ai-proxy-policy
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: ai-proxy-policy
+    app.kubernetes.io/part-of: platform-vault
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vault-ai-proxy
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Allow ONLY authorized project backend pods (proj-pn/pn-backend) on TCP 8080
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: proj-pn
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: pn-backend
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: proj-pn
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: pn-backend
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # Allow connection to OpenBao API
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: openbao
+      ports:
+        - protocol: TCP
+          port: 8200
+    # Allow kube-router fallback to kube-apiserver (RFC1918) for Pod-IP attribution
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: ai-proxy-egress
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: ai-proxy-policy
+    app.kubernetes.io/part-of: platform-vault
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: vault-ai-proxy
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": vault
+            "k8s:app.kubernetes.io/name": openbao
+      toPorts:
+        - ports:
+            - port: "8200"
+              protocol: TCP
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    - toFQDNs:
+        - matchName: generativelanguage.googleapis.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP

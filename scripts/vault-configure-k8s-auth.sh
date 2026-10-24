@@ -70,7 +70,8 @@ generate_root_token() {
   echo "${decoded_token}"
 }
 
-# Resolve Vault Token (Prompt or environment)
+# Resolve Vault Token (Environment or Prompt; no Kubernetes ServiceAccount has operator-admin)
+GENERATED_EPHEMERAL_ROOT=0
 if [ -z "${VAULT_TOKEN:-}" ]; then
   read -r -s -p "Enter Vault Root/Admin Token (or press Enter if you only have the Unseal Key): " VAULT_TOKEN
   echo ""
@@ -84,7 +85,7 @@ else
     echo "Notice: The provided token was rejected by Vault (Code 403: permission denied)."
     echo "Remember: The Root Token is different from the Unseal Key."
   fi
-  read -r -p "Would you like to generate a new Root Token using your Unseal Key? [Y/n]: " DO_GEN
+  read -r -p "Would you like to generate a short-lived Root Token using your Unseal Key? [Y/n]: " DO_GEN
   if [[ "${DO_GEN}" =~ ^[Nn] ]]; then
     echo "Aborted." >&2
     exit 1
@@ -95,11 +96,19 @@ else
   UNSEAL_KEY=$(echo "${UNSEAL_KEY}" | tr -d '\r\n ')
 
   VAULT_TOKEN=$(generate_root_token "${UNSEAL_KEY}")
-  echo "================================================================================"
-  echo "SUCCESS: Generated new Root Token: ${VAULT_TOKEN}"
-  echo "Please store this Root Token in your password manager!"
-  echo "================================================================================"
+  GENERATED_EPHEMERAL_ROOT=1
+  echo "PASS: Generated ephemeral Root Token from Unseal Key (will be revoked automatically on script exit)."
 fi
+
+cleanup_ephemeral_token() {
+  if [ "${GENERATED_EPHEMERAL_ROOT}" -eq 1 ] && [ -n "${VAULT_TOKEN:-}" ]; then
+    ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- \
+      env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${VAULT_TOKEN}" \
+      bao token revoke -self >/dev/null 2>&1 || true
+    echo "Revoked ephemeral Root Token (zero standing admin tokens remain)."
+  fi
+}
+trap cleanup_ephemeral_token EXIT
 
 run_bao() {
   ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${VAULT_TOKEN}" bao "$@"
@@ -110,7 +119,7 @@ run_bao auth enable kubernetes 2>/dev/null || echo "auth/kubernetes already enab
 
 echo "Provisioning Kubernetes Cluster CA and Token Reviewer JWT..."
 CA_DATA=$(${KUBE_EXEC} config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 -d)
-TOKEN_JWT=$(${KUBE_EXEC} create token openbao-token-reviewer -n vault --duration=87600h)
+TOKEN_JWT=$(${KUBE_EXEC} --as=system:admin --as-group=platform:break-glass create token openbao-token-reviewer -n vault --duration=87600h)
 
 ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- /bin/sh -c "cat <<'EOF' > /tmp/ca.crt
 ${CA_DATA}
@@ -161,9 +170,10 @@ create_k8s_role "postgres-backup" "postgres-backup" "identity" "backup-job"
 create_k8s_role "keycloak" "keycloak" "identity" "keycloak-broker"
 create_k8s_role "gateway" "gateway" "identity" "gateway-transit"
 
-# Vault Proxy Roles
+# Vault Proxy & Snapshot Roles (no ServiceAccount is bound to operator-admin)
 create_k8s_role "vault-db-proxy" "vault-db-proxy" "vault" "db-proxy"
 create_k8s_role "vault-registry-proxy" "vault-registry-proxy" "vault" "registry-proxy"
-create_k8s_role "openbao-backup" "openbao-backup" "vault" "operator-admin"
+create_k8s_role "vault-ai-proxy" "vault-ai-proxy" "vault" "ai-proxy"
+create_k8s_role "openbao-backup" "openbao-backup" "vault" "raft-snapshot"
 
 echo "SUCCESS: Kubernetes Auth and all workload roles successfully configured!"

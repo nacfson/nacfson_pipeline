@@ -1,0 +1,101 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: vault-ai-proxy
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: vault-ai-proxy
+    app.kubernetes.io/part-of: platform-vault
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: vault-ai-proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: vault-ai-proxy
+        app.kubernetes.io/part-of: platform-vault
+    spec:
+      restartPolicy: Always
+      serviceAccountName: vault-ai-proxy
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ai-proxy
+          image: ghcr.io/nacfson/vault-ai-proxy:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: DATA_ADDR
+              value: "0.0.0.0:8080"
+            - name: ADMIN_ADDR
+              value: "127.0.0.1:8081"
+            - name: OPENBAO_ADDR
+              value: "http://openbao-service.vault.svc:8200"
+            - name: OPENBAO_ROLE
+              value: "vault-ai-proxy"
+            - name: UPSTREAM_AI_BASE_URL
+              value: "https://generativelanguage.googleapis.com/v1beta/openai"
+            - name: ALLOWED_PROJECT_GRANTS
+              value: "pn:proj-pn:pn-backend:gemini-3.1-flash-lite:500"
+            - name: DEFAULT_DAILY_LIMIT
+              value: "500"
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 100m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          startupProbe:
+            httpGet:
+              path: /startupz
+              port: 8080
+            initialDelaySeconds: 1
+            periodSeconds: 3
+            failureThreshold: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 15
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ai-gateway
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: vault-ai-proxy
+    app.kubernetes.io/part-of: platform-vault
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: vault-ai-proxy

@@ -194,4 +194,12 @@ seed_secret "kv/projects/health/client-secret" \
   client_id="project-health" \
   client_secret="$(openssl rand -hex 24)"
 
+# 13. Upstream Gemini AI Gateway API Key & Project PN Kill-Switch Default State
+seed_secret "kv/ai/gemini-api-key" \
+  value="PLACEHOLDER_RUN_AI_GATEWAY_CTL_SET_KEY"
+seed_secret "kv/ai/projects/pn" \
+  enabled="true" \
+  manual_revoked="false" \
+  daily_limit="500"
+
 echo "=== All Mandatory Credentials Successfully Seeded & Managed ==="

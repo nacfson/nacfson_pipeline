@@ -21,7 +21,6 @@ spec:
               - matchPattern: "*"
     - toFQDNs:
         - matchName: api.wiktapi.dev
-        - matchName: generativelanguage.googleapis.com
       toPorts:
         - ports:
             - port: "443"

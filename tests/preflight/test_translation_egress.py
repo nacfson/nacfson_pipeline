@@ -11,7 +11,7 @@ PORTABLE = os.path.join(BASE, "deploy", "projects", "pn", "boundary", "network-p
 KUSTOMIZATION = os.path.join(BASE, "deploy", "projects", "pn", "boundary", "kustomization.yaml")
 BACKEND = os.path.join(BASE, "deploy", "projects", "pn", "workloads", "backend-deployment.yaml")
 HANDBOOK = os.path.join(BASE, "docs", "platform-architecture.html")
-HOSTS = frozenset({"api.wiktapi.dev", "generativelanguage.googleapis.com"})
+HOSTS = frozenset({"api.wiktapi.dev"})
 PREFLIGHT = os.path.join(BASE, "scripts", "platform-preflight.py")
 
 
@@ -138,9 +138,9 @@ class TestTranslationEgressPreflight(unittest.TestCase):
     def test_extra_host_is_rejected(self):
         module = _preflight()
         doc = copy.deepcopy(_load(POLICY))
-        doc["spec"]["egress"][1]["toFQDNs"].append({"matchName": "evil.example"})
+        doc["spec"]["egress"][1]["toFQDNs"].append({"matchName": "generativelanguage.googleapis.com"})
         violations = module.check_translation_egress([doc, _load(PORTABLE)])
-        self.assertTrue(any("evil.example" in item["detail"] for item in violations))
+        self.assertTrue(any("generativelanguage.googleapis.com" in item["detail"] for item in violations))
         self.assertTrue(all(item["rule"] == 2 for item in violations))
 
     def test_world_cidr_is_rejected(self):
@@ -242,7 +242,8 @@ class TestTranslationHandbook(unittest.TestCase):
     def test_cni_flow_allows_only_the_two_hosts(self):
         with open(HANDBOOK, encoding="utf-8") as fh:
             text = fh.read()
-        self.assertIn("pn-backend only: api.wiktapi.dev:443 and generativelanguage.googleapis.com:443", text)
+        self.assertIn("pn-backend only: api.wiktapi.dev:443", text)
+        self.assertIn("vault/vault-ai-proxy", text)
         self.assertNotIn("internet) -> eBPF DROP", text)
 
     def test_simulator_writes_the_flannel_drop_to_a_live_element(self):

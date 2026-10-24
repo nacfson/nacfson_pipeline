@@ -633,7 +633,10 @@ def run_domain_verification(
     commands: list[list[str]] = []
     if any(f.startswith("gateway/") for f in changed):
         commands.append(["bash", "-c", "cd gateway && go test -v ./... && go vet ./..."])
-    if any(f.startswith("services/vault-proxies/") for f in changed):
+    if any(
+        f.startswith(("services/vault-proxies/", "deploy/platform/vault/", "deploy/platform/vault-proxies/"))
+        for f in changed
+    ):
         commands.append(
             ["bash", "-c", "cd services/vault-proxies && go test -v ./... && go vet ./..."]
         )

@@ -73,6 +73,18 @@ spec:
         - protocol: TCP
           port: 5432
 
+    # 2b. Allow connection to internal AI gateway (vault-ai-proxy) on port 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vault
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault-ai-proxy
+      ports:
+        - protocol: TCP
+          port: 8080
+
     # 3. Session confirmation only. Not a visitor door, and not Keycloak itself.
     - to:
         - namespaceSelector:

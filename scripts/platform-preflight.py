@@ -263,7 +263,7 @@ def check_project_doors(projects_dict):
     return violations
 
 
-TRANSLATION_HOSTS = frozenset({"api.wiktapi.dev", "generativelanguage.googleapis.com"})
+TRANSLATION_HOSTS = frozenset({"api.wiktapi.dev"})
 TRANSLATION_POLICY_NAME = "pn-backend-translation-egress"
 KUBE_DNS_ENDPOINTS = [
     {
@@ -478,6 +478,220 @@ def check_database_and_readiness_contract(projects_dict, platform_docs):
                         f"got readiness={r_path!r} liveness={l_path!r}"
                     ),
                 })
+
+    return violations
+
+
+def check_ai_gateway_contract(projects_dict, platform_docs):
+    """Enforce Internal AI Gateway (vault-ai-proxy) isolation, loopback admin, and three-probe contract."""
+    violations = []
+
+    # 1. Project containers must never hold *API_KEY* or call generativelanguage.googleapis.com directly
+    for proj_id, docs in sorted(projects_dict.items()):
+        for doc in docs:
+            pod_spec, _ = get_pod_spec_and_meta(doc)
+            if not pod_spec:
+                continue
+            obj = f"{proj_id}/{doc.get('kind', '')}/{(doc.get('metadata') or {}).get('name', '')}"
+            for c in pod_spec.get("containers") or []:
+                c_obj = f"{obj}:{c.get('name', '')}"
+                for env_entry in c.get("env") or []:
+                    if not isinstance(env_entry, dict):
+                        continue
+                    ename = str(env_entry.get("name") or "").strip()
+                    eval_str = str(env_entry.get("value") or "").strip()
+                    if "API_KEY" in ename:
+                        violations.append({
+                            "rule": 2,
+                            "object": c_obj,
+                            "detail": f"project container must not hold API_KEY env var ({ename})",
+                        })
+                    if ename == "ENRICH_PRIMARY_BASE_URL" and eval_str != "http://ai-gateway.vault.svc:8080/v1":
+                        violations.append({
+                            "rule": 2,
+                            "object": c_obj,
+                            "detail": f"ENRICH_PRIMARY_BASE_URL must route through http://ai-gateway.vault.svc:8080/v1, got {eval_str!r}",
+                        })
+
+    # 2. Check Service/ai-gateway, Deployment/vault-ai-proxy, NetworkPolicy/ai-proxy-policy, and CiliumNetworkPolicy/ai-proxy-egress
+    found_netpol = False
+    found_cnp = False
+    for doc in platform_docs:
+        if not isinstance(doc, dict):
+            continue
+        kind = doc.get("kind", "")
+        meta = doc.get("metadata") or {}
+        name = meta.get("name", "")
+        if kind == "Service" and name == "ai-gateway":
+            ports = (doc.get("spec") or {}).get("ports") or []
+            port_nums = [_as_port(p.get("port")) for p in ports if isinstance(p, dict)]
+            if port_nums != [8080]:
+                violations.append({
+                    "rule": 2,
+                    "object": "vault/Service/ai-gateway",
+                    "detail": f"Service/ai-gateway must expose port 8080 only (never admin port 8081), got {port_nums}",
+                })
+        elif kind == "Deployment" and name == "vault-ai-proxy":
+            pod_spec, _ = get_pod_spec_and_meta(doc)
+            if not pod_spec:
+                continue
+            sa_name = str(pod_spec.get("serviceAccountName") or "").strip()
+            if sa_name != "vault-ai-proxy":
+                violations.append({
+                    "rule": 2,
+                    "object": "vault/Deployment/vault-ai-proxy",
+                    "detail": f"vault-ai-proxy must run as least-privilege serviceAccountName 'vault-ai-proxy', got {sa_name!r}",
+                })
+            for c in pod_spec.get("containers") or []:
+                if c.get("name") != "ai-proxy":
+                    continue
+                s_path = ((c.get("startupProbe") or {}).get("httpGet") or {}).get("path")
+                r_path = ((c.get("readinessProbe") or {}).get("httpGet") or {}).get("path")
+                l_path = ((c.get("livenessProbe") or {}).get("httpGet") or {}).get("path")
+                if s_path != "/startupz" or r_path != "/readyz" or l_path != "/healthz":
+                    violations.append({
+                        "rule": 2,
+                        "object": "vault/Deployment/vault-ai-proxy:ai-proxy",
+                        "detail": (
+                            f"vault-ai-proxy must declare startupProbe (/startupz), readinessProbe (/readyz), "
+                            f"and livenessProbe (/healthz), got startup={s_path!r} readiness={r_path!r} liveness={l_path!r}"
+                        ),
+                    })
+                env_map = {
+                    str(e.get("name") or "").strip(): str(e.get("value") or "").strip()
+                    for e in (c.get("env") or [])
+                    if isinstance(e, dict) and e.get("name")
+                }
+                if env_map.get("ADMIN_ADDR", "127.0.0.1:8081") != "127.0.0.1:8081":
+                    violations.append({
+                        "rule": 2,
+                        "object": "vault/Deployment/vault-ai-proxy:ai-proxy",
+                        "detail": f"ADMIN_ADDR must be strictly 127.0.0.1:8081, got {env_map.get('ADMIN_ADDR')!r}",
+                    })
+                if env_map.get("OPENBAO_ROLE") != "vault-ai-proxy":
+                    violations.append({
+                        "rule": 2,
+                        "object": "vault/Deployment/vault-ai-proxy:ai-proxy",
+                        "detail": f"OPENBAO_ROLE must be least-privilege 'vault-ai-proxy', got {env_map.get('OPENBAO_ROLE')!r}",
+                    })
+        elif kind == "NetworkPolicy" and name == "ai-proxy-policy":
+            found_netpol = True
+            ingress_rules = (doc.get("spec") or {}).get("ingress") or []
+            if not ingress_rules:
+                violations.append({
+                    "rule": 2,
+                    "object": "vault/NetworkPolicy/ai-proxy-policy",
+                    "detail": "NetworkPolicy/ai-proxy-policy must declare explicit ingress rules",
+                })
+            for rule in ingress_rules:
+                peers = (rule or {}).get("from") or []
+                if not peers:
+                    violations.append({
+                        "rule": 2,
+                        "object": "vault/NetworkPolicy/ai-proxy-policy",
+                        "detail": "NetworkPolicy/ai-proxy-policy ingress rule must not allow unrestricted sources (missing 'from')",
+                    })
+                for peer in peers:
+                    ns_labels = ((peer or {}).get("namespaceSelector") or {}).get("matchLabels") or {}
+                    pod_labels = ((peer or {}).get("podSelector") or {}).get("matchLabels") or {}
+                    if not ns_labels or not pod_labels:
+                        violations.append({
+                            "rule": 2,
+                            "object": "vault/NetworkPolicy/ai-proxy-policy",
+                            "detail": "NetworkPolicy/ai-proxy-policy ingress peers must specify both non-empty namespaceSelector.matchLabels and podSelector.matchLabels",
+                        })
+        elif kind == "CiliumNetworkPolicy" and name == "ai-proxy-egress":
+            found_cnp = True
+            egress_rules = (doc.get("spec") or {}).get("egress") or []
+            fqdn_hosts = set()
+            for rule in egress_rules:
+                if not isinstance(rule, dict):
+                    continue
+                if "toCIDR" in rule or "toCIDRSet" in rule:
+                    violations.append({
+                        "rule": 2,
+                        "object": "vault/CiliumNetworkPolicy/ai-proxy-egress",
+                        "detail": "CiliumNetworkPolicy/ai-proxy-egress must not use toCIDR or toCIDRSet",
+                    })
+                for ent in rule.get("toEntities") or []:
+                    if ent in ("world", "all"):
+                        violations.append({
+                            "rule": 2,
+                            "object": "vault/CiliumNetworkPolicy/ai-proxy-egress",
+                            "detail": f"CiliumNetworkPolicy/ai-proxy-egress must not allow unrestricted entity {ent!r}",
+                        })
+                for fqdn in rule.get("toFQDNs") or []:
+                    if not isinstance(fqdn, dict) or "matchPattern" in fqdn or set(fqdn.keys()) != {"matchName"}:
+                        violations.append({
+                            "rule": 2,
+                            "object": "vault/CiliumNetworkPolicy/ai-proxy-egress",
+                            "detail": f"CiliumNetworkPolicy/ai-proxy-egress toFQDNs must use exact matchName only, got {fqdn!r}",
+                        })
+                    else:
+                        fqdn_hosts.add(fqdn["matchName"])
+            if fqdn_hosts != {"generativelanguage.googleapis.com"}:
+                violations.append({
+                    "rule": 2,
+                    "object": "vault/CiliumNetworkPolicy/ai-proxy-egress",
+                    "detail": f"CiliumNetworkPolicy/ai-proxy-egress must allow exact FQDN generativelanguage.googleapis.com only, got {sorted(fqdn_hosts)}",
+                })
+
+    if any(isinstance(d, dict) and d.get("kind") == "Deployment" and (d.get("metadata") or {}).get("name") == "vault-ai-proxy" for d in platform_docs):
+        if not found_netpol:
+            violations.append({
+                "rule": 2,
+                "object": "vault/NetworkPolicy/ai-proxy-policy",
+                "detail": "missing NetworkPolicy/ai-proxy-policy in vault namespace",
+            })
+        if not found_cnp:
+            violations.append({
+                "rule": 2,
+                "object": "vault/CiliumNetworkPolicy/ai-proxy-egress",
+                "detail": "missing CiliumNetworkPolicy/ai-proxy-egress in vault namespace",
+            })
+
+    # 3. Enforce Constitution Clarification 2.2.1 on observability namespace:
+    #    Only DaemonSet/fluent-bit may declare hostPath (/var/log/pods readOnly: true),
+    #    and privileged: true is strictly rejected so it can never access OpenBao PVs.
+    for doc in platform_docs:
+        if not isinstance(doc, dict):
+            continue
+        meta = doc.get("metadata") or {}
+        if meta.get("namespace") != "observability":
+            continue
+        pod_spec, _ = get_pod_spec_and_meta(doc)
+        if not pod_spec:
+            continue
+        kind = doc.get("kind", "")
+        name = meta.get("name", "")
+        obj = f"observability/{kind}/{name}"
+        for vol in pod_spec.get("volumes") or []:
+            if not isinstance(vol, dict) or "hostPath" not in vol:
+                continue
+            hp_path = str((vol.get("hostPath") or {}).get("path") or "").strip()
+            if kind != "DaemonSet" or name != "fluent-bit" or hp_path != "/var/log/pods":
+                violations.append({
+                    "rule": 2,
+                    "object": obj,
+                    "detail": f"observability workload may only mount hostPath '/var/log/pods' on DaemonSet/fluent-bit, got {hp_path!r}",
+                })
+        for c in (pod_spec.get("containers") or []) + (pod_spec.get("initContainers") or []):
+            if not isinstance(c, dict):
+                continue
+            sc = c.get("securityContext") or {}
+            if sc.get("privileged") is True:
+                violations.append({
+                    "rule": 2,
+                    "object": f"{obj}:{c.get('name', '')}",
+                    "detail": "observability container must not set privileged: true",
+                })
+            for vm in c.get("volumeMounts") or []:
+                if isinstance(vm, dict) and vm.get("mountPath") == "/var/log/pods" and vm.get("readOnly") is not True:
+                    violations.append({
+                        "rule": 2,
+                        "object": f"{obj}:{c.get('name', '')}",
+                        "detail": "/var/log/pods volumeMount in observability must set readOnly: true",
+                    })
 
     return violations
 
@@ -986,6 +1200,14 @@ def main():
             status = STATUS_REJECTED_ISOLATION
             if not rejection_reason:
                 rejection_reason = db_probe_violations[0]["detail"]
+            exit_code = 1
+
+        ai_gw_violations = check_ai_gateway_contract(projects_dict, platform_docs)
+        if ai_gw_violations:
+            violations.extend(ai_gw_violations)
+            status = STATUS_REJECTED_ISOLATION
+            if not rejection_reason:
+                rejection_reason = ai_gw_violations[0]["detail"]
             exit_code = 1
 
     project_count = len(projects_dict)

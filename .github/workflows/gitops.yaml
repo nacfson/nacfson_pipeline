@@ -38,9 +38,27 @@ jobs:
         run: |
           python3 -m unittest discover -s tests/skills
 
+  vault-proxies-tests:
+    name: vault-proxies-tests (Kill Switch & /startupz Self-Audit)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go 1.22
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Run vault-proxies unit, Kill-Switch & /startupz self-audit tests
+        run: |
+          cd services/vault-proxies
+          go test -v -race ./...
+          go vet ./...
+
   render-validate:
     name: render-validate (${{ matrix.env }})
-    needs: [preflight-tests]
+    needs: [preflight-tests, vault-proxies-tests]
     runs-on: ubuntu-latest
     strategy:
       matrix:
