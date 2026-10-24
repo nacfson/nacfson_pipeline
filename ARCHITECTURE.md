@@ -25,6 +25,7 @@ flowchart TD
         OpenBao["OpenBao 2.0.0 StatefulSet<br/>[KV Store + Transit Signing Engine]"]
         DBProxy["vault-db-proxy<br/>(services/vault-proxies)"]
         RegProxy["vault-registry-proxy<br/>(services/vault-proxies)"]
+        AIProxy["vault-ai-proxy (:8080 + 127.0.0.1:8081)<br/>(services/vault-proxies/cmd/ai-proxy)"]
     end
 
     subgraph ProjectPN["Project Namespace (proj-pn) [Restricted PSS]"]
@@ -122,6 +123,7 @@ flowchart LR
 - **In-Cluster Proxy Execution**:
   - `vault-db-proxy` (`services/vault-proxies/cmd/db-proxy`): Authenticates project workloads and executes/proxies PostgreSQL connections using credentials held only inside the Vault boundary.
   - `vault-registry-proxy` (`services/vault-proxies/cmd/registry-proxy`): Injects GHCR pull tokens on behalf of the K3s kubelet.
+  - `vault-ai-proxy` (`services/vault-proxies/cmd/ai-proxy`): Verifies calling project pod identity via `kube-apiserver`, enforces per-project daily quotas and a loopback-only Kill Switch (`127.0.0.1:8081`), and injects the OpenBao Gemini API key on outbound requests to `generativelanguage.googleapis.com` ([`docs/internal-ai-gateway.html`](docs/internal-ai-gateway.html)).
   - **Transit Engine**: Signs tokens asymmetrically inside OpenBao without exporting private signing keys.
 - **Reference**: [`docs/spec002-vault-guide.md`](docs/spec002-vault-guide.md) | [`specs/002-internal-cluster-vault/`](specs/002-internal-cluster-vault/)
 

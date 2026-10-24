@@ -1,0 +1,1003 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>nacfson_pipeline — Internal AI Gateway (vault-ai-proxy) Architecture & Kill-Switch Guide</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #020617;
+      color: #f8fafc;
+    }
+    code, pre, .mono {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    @keyframes dashForward {
+      to {
+        stroke-dashoffset: -24;
+      }
+    }
+    .edge-active-allow {
+      stroke: #34d399 !important;
+      stroke-width: 3px !important;
+      stroke-dasharray: 6 6;
+      animation: dashForward 0.9s linear infinite;
+      opacity: 1 !important;
+    }
+    .edge-active-deny {
+      stroke: #fb7185 !important;
+      stroke-width: 3px !important;
+      stroke-dasharray: 6 6;
+      animation: dashForward 0.9s linear infinite;
+      opacity: 1 !important;
+    }
+    .edge-active-info {
+      stroke: #38bdf8 !important;
+      stroke-width: 2.5px !important;
+      stroke-dasharray: 6 6;
+      animation: dashForward 0.9s linear infinite;
+      opacity: 1 !important;
+    }
+    .edge-active-amber {
+      stroke: #fbbf24 !important;
+      stroke-width: 3px !important;
+      stroke-dasharray: 6 6;
+      animation: dashForward 0.9s linear infinite;
+      opacity: 1 !important;
+    }
+    .dimmed {
+      opacity: 0.16;
+      transition: opacity 0.25s ease;
+    }
+    .node-box {
+      transition: all 0.25s ease;
+    }
+    .node-highlight-allow {
+      stroke: #34d399 !important;
+      stroke-width: 2.5px !important;
+      filter: drop-shadow(0 0 10px rgba(52, 211, 153, 0.35));
+    }
+    .node-highlight-deny {
+      stroke: #fb7185 !important;
+      stroke-width: 2.5px !important;
+      filter: drop-shadow(0 0 10px rgba(251, 113, 133, 0.4));
+    }
+    .node-highlight-info {
+      stroke: #38bdf8 !important;
+      stroke-width: 2.5px !important;
+      filter: drop-shadow(0 0 10px rgba(56, 189, 248, 0.35));
+    }
+    .node-highlight-amber {
+      stroke: #fbbf24 !important;
+      stroke-width: 2.5px !important;
+      filter: drop-shadow(0 0 10px rgba(251, 191, 36, 0.35));
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100 selection:bg-cyan-500/30 selection:text-cyan-200">
+
+  <!-- Sticky Header -->
+  <header class="sticky top-0 z-50 border-b border-slate-800 bg-slate-950/90 backdrop-blur-md">
+    <div class="mx-auto max-w-7xl px-6 py-4 flex flex-wrap items-center justify-between gap-4">
+      <div class="flex items-center gap-3">
+        <span class="inline-flex items-center rounded-full bg-emerald-500/10 px-3 py-1 text-xs font-semibold text-emerald-400 ring-1 ring-inset ring-emerald-500/30 mono">
+          PERSISTENT ARCHITECTURE REFERENCE
+        </span>
+        <h1 class="text-lg font-bold tracking-tight text-white">
+          Internal AI Gateway (`vault-ai-proxy`) — Loopback RAM Switch, K8s Identity & GitOps Gate
+        </h1>
+      </div>
+      <div class="flex items-center gap-2 text-xs mono">
+        <span class="rounded-lg bg-slate-900 border border-slate-800 px-2.5 py-1 text-slate-300">Repo Path: <strong class="text-cyan-400">docs/internal-ai-gateway.html</strong></span>
+        <span class="rounded-lg bg-slate-900 border border-slate-800 px-2.5 py-1 text-slate-300">eth0: <strong class="text-emerald-400">0.0.0.0:8080</strong></span>
+        <span class="rounded-lg bg-slate-900 border border-slate-800 px-2.5 py-1 text-slate-300">lo: <strong class="text-amber-400">127.0.0.1:8081</strong></span>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <div class="mx-auto max-w-7xl px-6 flex flex-wrap gap-2 border-t border-slate-900 pt-2 pb-2">
+      <button onclick="switchTab('vault')" id="tab-btn-vault" class="tab-btn rounded-lg px-4 py-1.5 text-sm font-medium bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
+        🔑 1. Forgotten Vault Token & Zero-Token Key Setup
+      </button>
+      <button onclick="switchTab('loopback')" id="tab-btn-loopback" class="tab-btn rounded-lg px-4 py-1.5 text-sm font-medium text-slate-400 hover:text-slate-200 border border-transparent">
+        2. Loopback (127.0.0.1:8081) & Direct RAM Access
+      </button>
+      <button onclick="switchTab('killswitch')" id="tab-btn-killswitch" class="tab-btn rounded-lg px-4 py-1.5 text-sm font-medium text-slate-400 hover:text-slate-200 border border-transparent">
+        3. Live Kill-Switch Power Strip & GitOps Gate
+      </button>
+      <button onclick="switchTab('vs')" id="tab-btn-vs" class="tab-btn rounded-lg px-4 py-1.5 text-sm font-medium text-slate-400 hover:text-slate-200 border border-transparent">
+        4. Go Auth Gateway vs. Vault Proxies
+      </button>
+      <button onclick="switchTab('simulator')" id="tab-btn-simulator" class="tab-btn rounded-lg px-4 py-1.5 text-sm font-medium text-slate-400 hover:text-slate-200 border border-transparent">
+        5. Cluster Topology & 5 Scenarios
+      </button>
+    </div>
+  </header>
+
+  <main class="mx-auto max-w-7xl px-6 py-6 space-y-6">
+
+    <!-- ===================================================================== -->
+    <!-- TAB 0: FORGOTTEN VAULT TOKEN RECOVERY & ZERO-TOKEN GEMINI KEY SETUP    -->
+    <!-- ===================================================================== -->
+    <section id="tab-vault" class="space-y-6">
+
+      <!-- Good News Banner -->
+      <div class="bg-emerald-500/10 border border-emerald-500/40 rounded-2xl p-5 flex flex-wrap items-center justify-between gap-4">
+        <div class="space-y-1 max-w-4xl">
+          <div class="flex items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 mono">RELIEF: YOU DON'T NEED THE ROOT TOKEN!</span>
+            <h2 class="text-base font-bold text-white">Why You Never Need a Vault Root Token to Add the Gemini Key — or to Access OpenBao</h2>
+          </div>
+          <p class="text-xs text-slate-300 leading-relaxed">
+            Your cluster already has OpenBao <code class="text-emerald-300">auth/kubernetes</code> enabled! That means Kubernetes pods (and your <code class="text-cyan-300">kubectl</code> CLI) log into OpenBao automatically using <strong>Kubernetes ServiceAccount JWTs</strong>—zero Vault Root Token memorization required.
+          </p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Left: Q1 - Why no helper script or Vault token is needed to add the Gemini API Key -->
+        <div class="lg:col-span-6 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div>
+            <span class="text-xs font-bold uppercase tracking-wider text-cyan-400 mono">Question 1 · "Why do we need a helper script? Is it hard to add?"</span>
+            <h3 class="text-base font-bold text-white mt-1">1-Click Paste in Local Browser UI (`127.0.0.1:18081`) — Zero Vault Token Needed</h3>
+            <p class="text-xs text-slate-400 mt-1 leading-relaxed">
+              Instead of running a Vault CLI script that asks for a Root Token, you can paste your <code class="text-cyan-300">AIzaSy...</code> Gemini key directly inside the Local Loopback UI (<code class="text-amber-300">http://127.0.0.1:18081</code>). Here is what happens automatically behind the scenes:
+            </p>
+          </div>
+
+          <!-- Interactive 1-Click Key Saver Demo -->
+          <div class="rounded-xl bg-slate-950 border border-cyan-500/40 p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-cyan-300 mono">Local Loopback UI (`http://127.0.0.1:18081`)</span>
+              <span id="key-status-badge" class="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 mono">
+                KEY ACTIVE IN OPENBAO & RAM
+              </span>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <input id="demo-gemini-key" type="password" value="AIzaSyDemoGeminiFlashLiteKey99281" placeholder="Paste AIzaSy... Gemini API Key" class="flex-1 rounded-lg bg-slate-900 border border-slate-700 px-3 py-1.5 text-xs text-white mono focus:outline-none focus:border-cyan-400" />
+              <button onclick="simulateSaveKey()" class="px-4 py-1.5 rounded-lg text-xs font-semibold mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 transition">
+                Save Key to OpenBao (Zero Vault Token)
+              </button>
+            </div>
+            <div id="key-save-trace" class="text-[11px] mono text-slate-300 space-y-1 bg-slate-900/90 rounded-lg p-3 border border-slate-800">
+              <div><span class="text-cyan-400">[STEP 1]</span> You paste <code>AIzaSy...</code> in browser UI (or run 1 command) ➔ hits <code>127.0.0.1:8081/admin/set-key</code>.</div>
+              <div><span class="text-emerald-400">[STEP 2]</span> <code>vault-ai-proxy</code> reads its own K8s ServiceAccount JWT (<code>/var/run/secrets/kubernetes.io/serviceaccount/token</code>).</div>
+              <div><span class="text-emerald-400">[STEP 3]</span> Logs into OpenBao automatically via <code>POST /v1/auth/kubernetes/login</code> (<strong>no human Vault token asked!</strong>).</div>
+              <div><span class="text-amber-400">[STEP 4]</span> Writes key to OpenBao encrypted disk (<code>kv/data/ai/gemini-api-key</code>) AND updates <code>p.geminiKey</code> in RAM immediately!</div>
+            </div>
+          </div>
+
+          <div class="rounded-xl bg-slate-950/70 border border-slate-800 p-4 space-y-2 text-xs">
+            <div class="font-semibold text-white">Why this is 10x easier than manual Vault CLI:</div>
+            <ul class="space-y-1.5 text-slate-300">
+              <li>✅ <strong>Zero Vault Token to Remember</strong>: Uses Kubernetes ServiceAccount authentication (<code class="text-emerald-300">auth/kubernetes</code>) automatically.</li>
+              <li>✅ <strong>Zero Pod Restart</strong>: Updates the key in <code class="text-cyan-300">vault-ai-proxy</code> RAM in &lt;1ms while also saving to OpenBao's encrypted PVC.</li>
+              <li>✅ <strong>Zero Git Leak Risk</strong>: Never touches any file in your Git repository.</li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Right: Q2 - "Oh god, I forgot my vault credential token now. How should I do?" -->
+        <div class="lg:col-span-6 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div>
+            <span class="text-xs font-bold uppercase tracking-wider text-amber-400 mono">Question 2 · "I forgot my Vault credential token! What should I do?"</span>
+            <h3 class="text-base font-bold text-white mt-1">3 Immediate Ways to Recover or Bypass Your Forgotten Root Token</h3>
+            <p class="text-xs text-slate-400 mt-1">
+              Click whichever situation matches what you have right now:
+            </p>
+          </div>
+
+          <!-- 3 Recovery Situation Buttons -->
+          <div class="grid grid-cols-1 gap-2.5">
+            <button onclick="showRecovery('k8s_bypass')" id="rec-btn-k8s_bypass" class="rec-btn text-left rounded-xl p-3.5 border border-emerald-500/50 bg-emerald-500/10 transition">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-emerald-300 mono">Option A (Easiest — Works Right Now!) · Bypass Root Token via K8s Auth</span>
+                <span class="text-[10px] mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-200">NO KEYS NEEDED</span>
+              </div>
+              <p class="text-xs text-slate-300 mt-1">
+                As long as <code class="text-white">openbao-0</code> is running, your cluster's <code class="text-emerald-300">openbao-backup</code> K8s ServiceAccount ALREADY has the <code class="text-emerald-300">operator-admin</code> policy (<code class="text-white">kv/*</code> read/write/delete)!
+              </p>
+            </button>
+
+            <button onclick="showRecovery('unseal_regen')" id="rec-btn-unseal_regen" class="rec-btn text-left rounded-xl p-3.5 border border-slate-800 bg-slate-950/60 hover:border-slate-700 transition">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-amber-300 mono">Option B · You Have the Unseal Key, Only Forgot the Root Token</span>
+                <span class="text-[10px] mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-200">MINT NEW ROOT TOKEN</span>
+              </div>
+              <p class="text-xs text-slate-300 mt-1">
+                Our scripts (<code class="text-white">vault-seed-inventory.sh</code> / <code class="text-white">vault-configure-k8s-auth.sh</code>) have a built-in Root Token generator—just press <code class="text-amber-300">[Enter]</code> at the Root Token prompt!
+              </p>
+            </button>
+
+            <button onclick="showRecovery('lost_both')" id="rec-btn-lost_both" class="rec-btn text-left rounded-xl p-3.5 border border-slate-800 bg-slate-950/60 hover:border-slate-700 transition">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-cyan-300 mono">Option C · You Lost BOTH the Root Token AND the Unseal Key</span>
+                <span class="text-[10px] mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-200">EXPORT & RE-INIT</span>
+              </div>
+              <p class="text-xs text-slate-300 mt-1">
+                While <code class="text-white">openbao-0</code> is still running unsealed, export all existing <code class="text-white">kv/*</code> secrets via Option A first, then re-initialize to get a fresh Unseal Key + Root Token.
+              </p>
+            </button>
+          </div>
+
+          <!-- Dynamic Recovery Command Box -->
+          <div id="recovery-detail-box" class="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-2">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 1: LOOPBACK (127.0.0.1:8081) & DIRECT IN-PROCESS RAM ACCESS       -->
+    <!-- ===================================================================== -->
+    <section id="tab-loopback" class="hidden space-y-6">
+
+      <!-- Top 3 Summary Cards -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="bg-slate-900/90 border border-rose-500/30 rounded-2xl p-4">
+          <div class="text-xs font-bold uppercase tracking-wider text-rose-400 mono">1. Why Separate :8080 & :8081?</div>
+          <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+            <code class="text-slate-100">pn-backend</code> must reach <code class="text-slate-100">:8080</code> for AI calls. If <code class="text-rose-300">/admin/enable</code> lived on <code class="text-rose-300">0.0.0.0:8080</code>, a buggy or compromised <code class="text-slate-100">pn-backend</code> pod could call <code class="text-rose-300">:8080/admin/enable?project=pn</code> and turn its own Kill Switch back ON!
+          </p>
+        </div>
+        <div class="bg-slate-900/90 border border-amber-500/30 rounded-2xl p-4">
+          <div class="text-xs font-bold uppercase tracking-wider text-amber-400 mono">2. Why Loopback (127.0.0.1:8081)?</div>
+          <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+            Inside the <code class="text-slate-100">vault-ai-proxy</code> container, <code class="text-amber-300">lo (127.0.0.1)</code> is a private internal wire that never leaves the pod. No other pod on the cluster network (<code class="text-cyan-300">eth0</code>) can ever connect to <code class="text-amber-300">127.0.0.1:8081</code>—only host <code class="text-slate-100">kubelet</code> via your <code class="text-slate-100">kubectl</code> tunnel can!
+          </p>
+        </div>
+        <div class="bg-slate-900/90 border border-emerald-500/30 rounded-2xl p-4">
+          <div class="text-xs font-bold uppercase tracking-wider text-emerald-400 mono">3. Direct In-Memory Table Access (&lt;1µs)</div>
+          <p class="text-xs text-slate-300 mt-1.5 leading-relaxed">
+            Both <code class="text-cyan-300">Server #1 (dataMux :8080)</code> and <code class="text-amber-300">Server #2 (adminMux :8081)</code> run inside the <strong>exact same Go process</strong> and share the same Go pointer (<code class="text-emerald-300">*AIProxy</code> with <code class="text-emerald-300">sync.RWMutex</code>). Flipping the switch on <code class="text-amber-300">:8081</code> mutates the RAM struct directly in &lt;1 microsecond!
+          </p>
+        </div>
+      </div>
+
+      <!-- Interactive Loopback Simulator -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Left: 4 Interactive Packet Tests -->
+        <div class="lg:col-span-4 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-3">
+          <div>
+            <h2 class="text-base font-bold text-white">Test Every Path & Memory Access</h2>
+            <p class="text-xs text-slate-400 mt-0.5">Click each button to see how network packets and Go memory pointers behave inside <code class="text-cyan-300">vault-ai-proxy</code>:</p>
+          </div>
+
+          <button onclick="runLoopbackCase('operator_tunnel')" id="lb-btn-operator_tunnel" class="lb-btn w-full text-left rounded-xl p-3.5 border border-amber-500/50 bg-amber-500/10 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-amber-300 mono">Test 1 · Operator Flips Switch (lo ➔ RAM)</span>
+              <span class="text-[11px] mono px-2 py-0.5 rounded bg-amber-500/20 text-amber-200">&lt;1µs RAM WRITE</span>
+            </div>
+            <p class="text-xs font-medium text-white mt-1"><code class="text-amber-300">127.0.0.1:8081 ➔ p.mu.Lock() ➔ RAM + OpenBao</code></p>
+            <p class="text-[11px] text-slate-400 mt-0.5"><code class="text-slate-200">adminMux</code> directly writes <code class="text-slate-200">p.projects["pn"].Enabled = false</code> in shared Go process RAM and persists to OpenBao.</p>
+          </button>
+
+          <button onclick="runLoopbackCase('pod_normal_8080')" id="lb-btn-pod_normal_8080" class="lb-btn w-full text-left rounded-xl p-3.5 border border-slate-800 bg-slate-950/60 hover:border-slate-700 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-emerald-400 mono">Test 2 · AI Call Reads RAM Directly</span>
+              <span class="text-[11px] mono px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300">&lt;1µs RAM READ</span>
+            </div>
+            <p class="text-xs font-medium text-white mt-1"><code class="text-emerald-300">eth0:8080 ➔ p.mu.RLock() ➔ Check Switch</code></p>
+            <p class="text-[11px] text-slate-400 mt-0.5"><code class="text-slate-200">dataMux</code> reads the exact same <code class="text-slate-200">p.projects["pn"].Enabled</code> pointer in Go RAM with zero network hop!</p>
+          </button>
+
+          <button onclick="runLoopbackCase('pod_attack_8081')" id="lb-btn-pod_attack_8081" class="lb-btn w-full text-left rounded-xl p-3.5 border border-slate-800 bg-slate-950/60 hover:border-slate-700 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-rose-400 mono">Test 3 · pn-backend Tries Port :8081</span>
+              <span class="text-[11px] mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300">KERNEL REFUSED</span>
+            </div>
+            <p class="text-xs font-medium text-white mt-1"><code class="text-rose-300">pn-backend ➔ 10.42.0.55:8081</code></p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Linux kernel refuses TCP connection on <code class="text-slate-200">eth0</code> because <code class="text-slate-200">adminMux</code> is bound strictly to <code class="text-slate-200">127.0.0.1:8081 (lo)</code>.</p>
+          </button>
+
+          <button onclick="runLoopbackCase('pod_attack_8080_admin')" id="lb-btn-pod_attack_8080_admin" class="lb-btn w-full text-left rounded-xl p-3.5 border border-slate-800 bg-slate-950/60 hover:border-slate-700 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-rose-400 mono">Test 4 · pn-backend Calls :8080/admin</span>
+              <span class="text-[11px] mono px-2 py-0.5 rounded bg-rose-500/20 text-rose-300">404 NOT FOUND</span>
+            </div>
+            <p class="text-xs font-medium text-white mt-1"><code class="text-rose-300">pn-backend ➔ :8080/admin/enable</code></p>
+            <p class="text-[11px] text-slate-400 mt-0.5"><code class="text-slate-200">dataMux</code> on <code class="text-slate-200">:8080</code> only registers <code class="text-slate-200">/v1/chat/completions</code>, <code class="text-slate-200">/healthz</code>, and <code class="text-slate-200">/readyz</code>.</p>
+          </button>
+
+          <button onclick="runLoopbackCase('set_api_key')" id="lb-btn-set_api_key" class="lb-btn w-full text-left rounded-xl p-3.5 border border-slate-800 bg-slate-950/60 hover:border-slate-700 transition">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold text-cyan-300 mono">Test 5 · Seed / Rotate Gemini API Key</span>
+              <span class="text-[11px] mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-200">1-TIME VAULT SEED</span>
+            </div>
+            <p class="text-xs font-medium text-white mt-1"><code class="text-cyan-300">./scripts/ai-gateway-ctl.sh set-key</code></p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Prompts silently for <code class="text-slate-200">AIza...</code> key (never in Git), stores in <code class="text-slate-200">OpenBao</code> PVC, and hot-reloads <code class="text-slate-200">vault-ai-proxy</code> RAM via <code class="text-slate-200">127.0.0.1:8081</code>.</p>
+          </button>
+
+          <!-- Go Shared Pointer Code Snippet -->
+          <div class="rounded-xl bg-slate-950 border border-slate-800 p-3 text-[11px] mono text-slate-300">
+            <div class="text-cyan-400 font-semibold mb-1">// Single Go Process (cmd/ai-proxy/main.go)</div>
+            <div>proxy := NewAIProxy(cfg) <span class="text-slate-500">// 1 shared struct in RAM</span></div>
+            <div class="text-emerald-400">go http.ListenAndServe("0.0.0.0:8080", proxy.DataMux())</div>
+            <div class="text-amber-400">go http.ListenAndServe("127.0.0.1:8081", proxy.AdminMux())</div>
+          </div>
+        </div>
+
+        <!-- Right: Inside the Pod Linux Network Namespace + Shared Go Process RAM SVG -->
+        <div class="lg:col-span-8 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 flex flex-col justify-between">
+          <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <div>
+              <h2 class="text-base font-bold text-white">Inside <code class="text-cyan-300">Pod: vault-ai-proxy</code> — Network Cards & Shared Go Process RAM</h2>
+              <p class="text-xs text-slate-400">Both HTTP servers live inside the same Go binary and point directly to the same <code class="text-emerald-300">sync.RWMutex</code> Kill-Switch table in RAM.</p>
+            </div>
+            <span id="lb-verdict-badge" class="mono text-xs font-semibold px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40">
+              DIRECT IN-MEMORY WRITE VIA LOOPBACK
+            </span>
+          </div>
+
+          <div class="w-full overflow-x-auto bg-slate-950/90 border border-slate-800/80 rounded-xl p-3">
+            <svg viewBox="0 0 860 440" class="w-full h-auto select-none">
+              <defs>
+                <marker id="lb-arrow-slate" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1 L 10 5 L 0 9 z" fill="#475569" />
+                </marker>
+                <marker id="lb-arrow-allow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1 L 10 5 L 0 9 z" fill="#34d399" />
+                </marker>
+                <marker id="lb-arrow-deny" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1 L 10 5 L 0 9 z" fill="#fb7185" />
+                </marker>
+                <marker id="lb-arrow-amber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                  <path d="M 0 1 L 10 5 L 0 9 z" fill="#fbbf24" />
+                </marker>
+              </defs>
+
+              <!-- LEFT: Other Pod on Cluster Network -->
+              <rect x="14" y="20" width="195" height="250" rx="12" fill="#0f172a" stroke="#334155" stroke-dasharray="4 4" />
+              <text x="26" y="44" fill="#38bdf8" font-size="11.5" font-weight="700" font-family="JetBrains Mono">Cluster CNI Network</text>
+              <text x="26" y="60" fill="#94a3b8" font-size="9.5" font-family="Inter">Separate Pod NetNS</text>
+
+              <rect id="lb-node-be" class="node-box" x="26" y="82" width="170" height="115" rx="10" fill="#1e293b" stroke="#475569" stroke-width="1.5" />
+              <text x="38" y="107" fill="#f8fafc" font-size="11.5" font-weight="700" font-family="JetBrains Mono">Pod: pn-backend</text>
+              <text x="38" y="125" fill="#38bdf8" font-size="10" font-family="JetBrains Mono">eth0: 10.42.0.12</text>
+              <text x="38" y="142" fill="#94a3b8" font-size="9.5" font-family="JetBrains Mono">lo: 127.0.0.1 (own pod)</text>
+              <text x="38" y="164" fill="#cbd5e1" font-size="9.5" font-family="Inter">Can ONLY send packets</text>
+              <text x="38" y="178" fill="#cbd5e1" font-size="9.5" font-family="Inter">to 10.42.0.55 (eth0)</text>
+
+              <!-- LEFT BOTTOM: OpenBao Persistence in vault namespace -->
+              <rect id="lb-node-openbao" class="node-box" x="14" y="290" width="195" height="125" rx="12" fill="#1e293b" stroke="#475569" stroke-width="1.5" />
+              <text x="28" y="315" fill="#f8fafc" font-size="11" font-weight="700" font-family="JetBrains Mono">OpenBao (:8200)</text>
+              <text x="28" y="333" fill="#fbbf24" font-size="9.5" font-family="JetBrains Mono">kv/ai/projects/pn</text>
+              <text x="28" y="352" fill="#cbd5e1" font-size="9.5" font-family="Inter">Persists switch state so</text>
+              <text x="28" y="366" fill="#cbd5e1" font-size="9.5" font-family="Inter">if vault-ai-proxy restarts,</text>
+              <text x="28" y="380" fill="#cbd5e1" font-size="9.5" font-family="Inter">STOPPED projects stay</text>
+              <text x="28" y="394" fill="#34d399" font-size="9.5" font-family="JetBrains Mono">STOPPED on boot!</text>
+
+              <!-- CENTER: Pod vault-ai-proxy Linux Network Namespace & Single Go Process -->
+              <rect x="245" y="18" width="375" height="400" rx="14" fill="#0f172a" stroke="#0284c7" stroke-width="2" />
+              <text x="262" y="42" fill="#38bdf8" font-size="12" font-weight="700" font-family="JetBrains Mono">Pod: vault-ai-proxy (Single Go Process)</text>
+              <text x="262" y="58" fill="#94a3b8" font-size="10" font-family="Inter">1 Go binary in RAM with 2 HTTP listeners sharing *AIProxy struct</text>
+
+              <!-- NIC 1: eth0 + Server #1 -->
+              <rect id="lb-node-eth0" class="node-box" x="265" y="72" width="335" height="98" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5" />
+              <text x="280" y="93" fill="#38bdf8" font-size="11" font-weight="700" font-family="JetBrains Mono">NIC 1: eth0 (0.0.0.0:8080) — Cluster Facing</text>
+              <text x="280" y="110" fill="#f8fafc" font-size="10.5" font-weight="600" font-family="JetBrains Mono">Go HTTP Server #1 (proxy.DataMux())</text>
+              <text x="280" y="127" fill="#34d399" font-size="10" font-family="JetBrains Mono">✓ POST /v1/chat/completions</text>
+              <text x="280" y="143" fill="#34d399" font-size="10" font-family="JetBrains Mono">✓ GET  /healthz, /readyz</text>
+              <text x="280" y="159" fill="#fb7185" font-size="10" font-family="JetBrains Mono">✗ ZERO /admin/* routes registered here!</text>
+
+              <!-- Shared In-Memory Switch Table (Direct Go Struct Pointer) -->
+              <rect id="lb-node-ram" class="node-box" x="280" y="192" width="305" height="86" rx="10" fill="#090d16" stroke="#34d399" stroke-width="2" />
+              <text x="296" y="214" fill="#34d399" font-size="11" font-weight="700" font-family="JetBrains Mono">Shared Go Struct in Process RAM (*AIProxy)</text>
+              <text x="296" y="232" fill="#f8fafc" font-size="10" font-family="JetBrains Mono">p.mu.RLock() / p.mu.Lock() (sync.RWMutex)</text>
+              <text x="296" y="249" fill="#38bdf8" font-size="10" font-family="JetBrains Mono">p.projects["pn"] = { Enabled: true, Used: 142 }</text>
+              <text x="296" y="266" fill="#94a3b8" font-size="9" font-family="Inter">Direct memory pointer (&lt;1 microsecond read/write)</text>
+
+              <!-- NIC 2: lo (127.0.0.1:8081) + Server #2 -->
+              <rect id="lb-node-lo" class="node-box" x="265" y="302" width="335" height="100" rx="10" fill="#1e293b" stroke="#fbbf24" stroke-width="2" />
+              <text x="280" y="324" fill="#fbbf24" font-size="11" font-weight="700" font-family="JetBrains Mono">NIC 2: lo (127.0.0.1:8081) — Loopback ONLY</text>
+              <text x="280" y="342" fill="#f8fafc" font-size="10.5" font-weight="600" font-family="JetBrains Mono">Go HTTP Server #2 (proxy.AdminMux())</text>
+              <text x="280" y="360" fill="#fbbf24" font-size="10" font-family="JetBrains Mono">⚡ POST /admin/revoke?project=pn (STOP)</text>
+              <text x="280" y="376" fill="#fbbf24" font-size="10" font-family="JetBrains Mono">⚡ POST /admin/enable?project=pn (START)</text>
+              <text x="280" y="392" fill="#cbd5e1" font-size="9.5" font-family="Inter">Mutates p.projects["pn"] directly in RAM + saves to OpenBao</text>
+
+              <!-- RIGHT: Host Node Kubelet & Operator Laptop -->
+              <rect x="650" y="20" width="196" height="398" rx="12" fill="#0f172a" stroke="#334155" stroke-dasharray="4 4" />
+              <text x="664" y="44" fill="#fbbf24" font-size="11.5" font-weight="700" font-family="JetBrains Mono">Operator Control</text>
+              <text x="664" y="60" fill="#94a3b8" font-size="9.5" font-family="Inter">SSH / kubeconfig Admin</text>
+
+              <rect id="lb-node-laptop" class="node-box" x="664" y="88" width="168" height="86" rx="10" fill="#1e293b" stroke="#475569" stroke-width="1.5" />
+              <text x="676" y="111" fill="#f8fafc" font-size="11" font-weight="700" font-family="JetBrains Mono">Your Laptop</text>
+              <text x="676" y="129" fill="#fbbf24" font-size="9.5" font-family="JetBrains Mono">ai-gateway-ctl.sh</text>
+              <text x="676" y="145" fill="#38bdf8" font-size="9.5" font-family="JetBrains Mono">open-ai-gateway-ui.sh</text>
+              <text x="676" y="161" fill="#94a3b8" font-size="8.5" font-family="Inter">kubectl port-forward</text>
+
+              <rect id="lb-node-kubelet" class="node-box" x="664" y="295" width="168" height="105" rx="10" fill="#1e293b" stroke="#475569" stroke-width="1.5" />
+              <text x="676" y="319" fill="#f8fafc" font-size="11" font-weight="700" font-family="JetBrains Mono">K3s Host kubelet</text>
+              <text x="676" y="337" fill="#34d399" font-size="9.5" font-family="Inter">Runs as root on host VM;</text>
+              <text x="676" y="351" fill="#34d399" font-size="9.5" font-family="Inter">steps inside pod NetNS</text>
+              <text x="676" y="365" fill="#34d399" font-size="9.5" font-family="Inter">and connects directly to</text>
+              <text x="676" y="381" fill="#fbbf24" font-size="9.5" font-family="JetBrains Mono">127.0.0.1:8081</text>
+
+              <!-- EDGES -->
+              <!-- Edge A: pn-backend -> eth0:8080 -->
+              <path id="lb-edge-be-8080" d="M 196 125 L 265 120" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#lb-arrow-slate)" />
+              <text x="202" y="112" fill="#94a3b8" font-size="8.5" font-family="JetBrains Mono">:8080</text>
+
+              <!-- Edge B: pn-backend -> eth0:8081 (blocked) -->
+              <path id="lb-edge-be-8081" d="M 196 175 L 265 330" fill="none" stroke="#475569" stroke-width="2" stroke-dasharray="3 3" marker-end="url(#lb-arrow-slate)" />
+
+              <!-- Edge C: eth0 -> RAM (Direct Pointer Read) -->
+              <path id="lb-edge-eth0-ram" d="M 432 170 L 432 192" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#lb-arrow-slate)" />
+              <text x="440" y="185" fill="#34d399" font-size="8.5" font-family="JetBrains Mono">Direct RAM Read</text>
+
+              <!-- Edge D: lo -> RAM (Direct Pointer Write) -->
+              <path id="lb-edge-lo-ram" d="M 432 302 L 432 278" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#lb-arrow-slate)" />
+              <text x="440" y="294" fill="#fbbf24" font-size="8.5" font-family="JetBrains Mono">Direct RAM Write</text>
+
+              <!-- Edge G: RAM/lo -> OpenBao -->
+              <path id="lb-edge-lo-openbao" d="M 265 352 L 209 352" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#lb-arrow-slate)" />
+
+              <!-- Edge E: Laptop -> kubelet -->
+              <path id="lb-edge-laptop-kubelet" d="M 748 174 L 748 295" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#lb-arrow-slate)" />
+
+              <!-- Edge F: kubelet -> lo:8081 -->
+              <path id="lb-edge-kubelet-lo" d="M 664 350 L 600 350" fill="none" stroke="#475569" stroke-width="2" marker-end="url(#lb-arrow-slate)" />
+            </svg>
+          </div>
+
+          <div class="mt-4 bg-slate-950 border border-slate-800 rounded-xl p-4">
+            <div class="text-xs font-semibold uppercase tracking-wider text-slate-400 mono mb-2">Kernel, Loopback & In-Memory Pointer Trace</div>
+            <div id="lb-trace" class="space-y-1.5 text-xs mono"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 2: LIVE KILL-SWITCH POWER STRIP, STARTUP PROBE & GITOPS GATES     -->
+    <!-- ===================================================================== -->
+    <section id="tab-killswitch" class="hidden space-y-6">
+
+      <!-- NEW: Interactive StartupProbe (/startupz), ReadinessProbe (/readyz) & LivenessProbe (/healthz) Self-Audit -->
+      <div class="bg-slate-900/90 border border-emerald-500/40 rounded-2xl p-5 space-y-4">
+        <div class="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <span class="text-xs font-bold uppercase tracking-wider text-emerald-400 mono">Constitution Principle VII & CONTRACT_PROBES_READINESS.md</span>
+            <h2 class="text-base font-bold text-white mt-0.5">Three-Probe Architecture (`startupProbe` + `readinessProbe` + `livenessProbe`) & Live Vulnerability Self-Test</h2>
+            <p class="text-xs text-slate-400 mt-0.5">
+              Before Kubernetes ever marks <code class="text-cyan-300">vault-ai-proxy</code> Ready or routes a single packet to it, <code class="text-emerald-300">startupProbe (GET :8080/startupz)</code> executes a <strong>5-Point Live Kill-Switch & Vulnerability Self-Audit</strong> in RAM using a synthetic <code class="text-amber-300">__selftest__</code> slot:
+            </p>
+          </div>
+          <span id="probe-verdict-badge" class="mono text-xs font-semibold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+            STARTUP PROBE: 200 OK (5/5 CHECKS PASSED)
+          </span>
+        </div>
+
+        <!-- 3 Probe Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div class="rounded-xl bg-slate-950 border border-emerald-500/40 p-3.5 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-emerald-400 mono">1. startupProbe</span>
+              <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 mono text-[10px]">GET :8080/startupz</span>
+            </div>
+            <p class="text-slate-300 leading-relaxed">
+              Runs on boot before traffic is allowed. Executes the <strong>5-Point Kill-Switch & Vulnerability Self-Drill</strong> below and loads persisted switch state from OpenBao. If ANY check fails, returns <code class="text-rose-300">500</code> and halts rollout!
+            </p>
+          </div>
+          <div class="rounded-xl bg-slate-950 border border-cyan-500/40 p-3.5 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-cyan-400 mono">2. readinessProbe</span>
+              <span class="px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 mono text-[10px]">GET :8080/readyz</span>
+            </div>
+            <p class="text-slate-300 leading-relaxed">
+              Runs every 10s. Verifies <code class="text-amber-300">127.0.0.1:8081</code> loopback listener is still strictly local (<code class="text-white">IsLoopback()==true</code>), startup self-test passed, and <code class="text-white">openbao:8200</code> is reachable. Fails ➔ <code class="text-amber-300">Ready=False</code> (no restart storm).
+            </p>
+          </div>
+          <div class="rounded-xl bg-slate-950 border border-slate-700 p-3.5 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="font-bold text-slate-200 mono">3. livenessProbe</span>
+              <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-300 mono text-[10px]">GET :8080/healthz</span>
+            </div>
+            <p class="text-slate-300 leading-relaxed">
+              Runs every 15s. Process-local only (<code class="text-emerald-300">200 OK</code>, zero external calls per <code class="text-cyan-300">CONTRACT_PROBES_READINESS.md</code>). Restarts container only if the Go process itself deadlocks.
+            </p>
+          </div>
+        </div>
+
+        <!-- Interactive StartupProbe Drill Buttons -->
+        <div class="flex flex-wrap gap-2 pt-1">
+          <button onclick="runProbeDrill('healthy')" id="pbtn-healthy" class="pbtn px-3.5 py-1.5 rounded-lg text-xs font-semibold mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 transition">
+            ✅ Run Normal startupProbe (/startupz)
+          </button>
+          <button onclick="runProbeDrill('vuln_admin_leak')" id="pbtn-vuln_admin_leak" class="pbtn px-3.5 py-1.5 rounded-lg text-xs font-semibold mono bg-slate-950 text-rose-300 border border-slate-800 hover:border-rose-500/40 transition">
+            🚨 Simulate Bug #1: /admin Leaked onto :8080
+          </button>
+          <button onclick="runProbeDrill('vuln_non_loopback')" id="pbtn-vuln_non_loopback" class="pbtn px-3.5 py-1.5 rounded-lg text-xs font-semibold mono bg-slate-950 text-rose-300 border border-slate-800 hover:border-rose-500/40 transition">
+            🚨 Simulate Bug #2: :8081 Bound to 0.0.0.0
+          </button>
+          <button onclick="runProbeDrill('vuln_switch_broken')" id="pbtn-vuln_switch_broken" class="pbtn px-3.5 py-1.5 rounded-lg text-xs font-semibold mono bg-slate-950 text-rose-300 border border-slate-800 hover:border-rose-500/40 transition">
+            🚨 Simulate Bug #3: Kill Switch Fails to Block
+          </button>
+        </div>
+
+        <!-- 5-Point Self-Test Live Checklist Output -->
+        <div id="probe-drill-output" class="rounded-xl bg-slate-950 border border-slate-800 p-4 space-y-1.5 text-xs mono">
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div class="lg:col-span-7 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider text-emerald-400 mono">Interactive Power Strip</span>
+            <h2 class="text-base font-bold text-white mt-0.5">Flip the Switch & Test Calls</h2>
+          </div>
+
+          <div id="card-pn" class="rounded-xl bg-slate-950 border border-emerald-500/40 p-4 transition">
+            <div class="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <div class="flex items-center gap-2">
+                  <span class="text-sm font-bold text-white mono">Plug 1: proj-pn</span>
+                  <span id="badge-pn" class="text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 mono">SWITCH: ON (ACTIVE)</span>
+                </div>
+                <p class="text-xs text-slate-400 mt-1 mono">Verified K8s Pod: <span class="text-cyan-300">namespace=proj-pn, pod=pn-backend</span></p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button onclick="toggleSwitch('pn')" id="toggle-btn-pn" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold mono bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 transition">
+                  Send Signal: STOP pn
+                </button>
+                <button onclick="simulateCall('pn')" class="px-3.5 py-1.5 rounded-lg text-xs font-semibold mono bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-500/30 transition">
+                  Simulate pn-backend AI Call
+                </button>
+                <button onclick="simulateQuotaHit('pn')" class="px-3 py-1.5 rounded-lg text-xs font-semibold mono bg-amber-500/20 text-amber-300 border border-amber-500/40 hover:bg-amber-500/30 transition">
+                  Hit 500/500 Quota
+                </button>
+              </div>
+            </div>
+            <div class="mt-3 grid grid-cols-3 gap-3 text-xs mono">
+              <div class="bg-slate-900 rounded-lg p-2.5 border border-slate-800">
+                <span class="text-slate-400 block text-[10px]">TODAY'S ALLOWED CALLS</span>
+                <span id="count-allow-pn" class="text-emerald-400 text-sm font-bold">142</span> <span class="text-slate-500">/ 500 limit</span>
+              </div>
+              <div class="bg-slate-900 rounded-lg p-2.5 border border-slate-800">
+                <span class="text-slate-400 block text-[10px]">BLOCKED BY SWITCH</span>
+                <span id="count-block-pn" class="text-rose-400 text-sm font-bold">0</span> <span class="text-slate-500">(0 tokens)</span>
+              </div>
+              <div class="bg-slate-900 rounded-lg p-2.5 border border-slate-800">
+                <span class="text-slate-400 block text-[10px]">WIKTAPI FREE LOOKUPS</span>
+                <span class="text-cyan-400 text-sm font-bold">Always 200 OK</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2">
+            <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 mono">Live Signal & Request Feed</span>
+            <div id="killswitch-log" class="space-y-1.5 text-xs mono max-h-44 overflow-y-auto">
+              <div class="text-slate-400">Ready — click the buttons above to test the Kill Switch.</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="lg:col-span-5 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-4">
+          <div>
+            <span class="text-xs font-semibold uppercase tracking-wider text-cyan-400 mono">4-Stage Automated Pipeline</span>
+            <h2 class="text-base font-bold text-white mt-0.5">Verified on Every `git commit`, CI Run & K3s Boot</h2>
+            <p class="text-xs text-slate-400 mt-1">Currently <code class="text-rose-300">.github/workflows/gitops.yaml</code> does NOT run <code class="text-slate-200">services/vault-proxies</code> Go tests—our implementation plan wires all 4 stages end-to-end:</p>
+          </div>
+
+          <div class="space-y-2.5 text-xs">
+            <div class="rounded-xl bg-slate-950 border border-purple-500/40 p-3">
+              <div class="font-semibold text-purple-300 mono">Stage 1 · Local `git commit` Gate (.githooks/pre-commit + review-cycle.py)</div>
+              <ul class="mt-1 space-y-0.5 text-slate-300">
+                <li>• Blocks any staged <code class="text-rose-300">AIza...</code> key leak + checks <code class="text-slate-100">docs/platform-architecture.html</code> sync.</li>
+                <li>• Runs <code class="text-emerald-300">cd services/vault-proxies &amp;&amp; go test -v ./...</code> + <code class="text-emerald-300">tests/preflight</code> whenever proxy or vault manifests change!</li>
+              </ul>
+            </div>
+
+            <div class="rounded-xl bg-slate-950 border border-emerald-500/40 p-3">
+              <div class="font-semibold text-emerald-400 mono">Stage 2 · Static Preflight Gate (scripts/platform-preflight.py)</div>
+              <ul class="mt-1 space-y-0.5 text-slate-300">
+                <li>• Verifies <code class="text-slate-100">proj-*</code> has zero <code class="text-slate-100">generativelanguage.googleapis.com</code> egress &amp; zero <code class="text-slate-100">*API_KEY*</code> env vars.</li>
+                <li>• Verifies <code class="text-slate-100">Service/ai-gateway</code> exposes <strong>only</strong> <code class="text-slate-100">:8080</code> (never <code class="text-slate-100">:8081</code>) and enforces all 3 probes (<code class="text-slate-100">/startupz, /readyz, /healthz</code>).</li>
+              </ul>
+            </div>
+
+            <div class="rounded-xl bg-slate-950 border border-cyan-500/40 p-3">
+              <div class="font-semibold text-cyan-400 mono">Stage 3 · GitHub Actions CI (.github/workflows/gitops.yaml)</div>
+              <ul class="mt-1 space-y-0.5 text-slate-300">
+                <li>• Adds <code class="text-cyan-300">vault-proxies-tests</code> job running <code class="text-slate-100">go test -v -race ./...</code> on every PR &amp; push to <code class="text-slate-100">main</code>.</li>
+                <li>• Exercises <code class="text-emerald-300">/startupz</code> 5-point self-audit, <code class="text-rose-300">STOP ➔ 403</code>, <code class="text-rose-300">:8080/admin ➔ 404</code>, and daily quota breaker.</li>
+              </ul>
+            </div>
+
+            <div class="rounded-xl bg-slate-950 border border-amber-500/40 p-3">
+              <div class="font-semibold text-amber-400 mono">Stage 4 · In-Cluster K3s `startupProbe (/startupz)` &amp; `readinessProbe (/readyz)`</div>
+              <p class="mt-1 text-slate-300">
+                Runs the 5-point live vulnerability self-drill inside the container before Kubernetes routes a single packet or FluxCD (<code class="text-slate-100">wait: true</code>) marks reconciliation Ready.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 3: GO AUTH GATEWAY VS. VAULT PROXIES                              -->
+    <!-- ===================================================================== -->
+    <section id="tab-vs" class="hidden space-y-6">
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 space-y-4">
+        <h2 class="text-base font-bold text-white">Two Different Systems in Your Repo: <code class="text-cyan-300">gateway/</code> vs. <code class="text-emerald-300">services/vault-proxies/</code></h2>
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 pt-2">
+          <div class="rounded-2xl bg-slate-950 border border-slate-800 p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold uppercase tracking-wider text-purple-400 mono">1. gateway/ (Namespace: identity)</span>
+              <span class="text-xs mono px-2.5 py-0.5 rounded bg-purple-500/20 text-purple-300">Human User Login</span>
+            </div>
+            <h3 class="text-base font-semibold text-white">Go Auth Gateway (<code class="text-xs text-purple-300">gateway.identity.svc:8080</code>)</h3>
+            <ul class="space-y-2 text-xs text-slate-300">
+              <li>• Handles human visitors logging in with Google OAuth via Keycloak (<code class="text-slate-100">/oauth/start</code>, <code class="text-slate-100">/oauth/callback</code>, <code class="text-slate-100">/auth/logout</code>).</li>
+              <li>• Does <strong>not</strong> touch OpenBao API keys or Gemini.</li>
+            </ul>
+          </div>
+
+          <div class="rounded-2xl bg-slate-950 border border-emerald-500/40 p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <span class="text-xs font-semibold uppercase tracking-wider text-emerald-400 mono">2. services/vault-proxies/ (Namespace: vault)</span>
+              <span class="text-xs mono px-2.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300">Pod Secret Middlemen</span>
+            </div>
+            <h3 class="text-base font-semibold text-white">Vault Proxies (Beside OpenBao in <code class="text-xs text-emerald-300">vault</code>)</h3>
+            <ul class="space-y-2 text-xs text-slate-300">
+              <li>• Already runs <code class="text-slate-100">vault-db-proxy (:5432)</code> for Postgres and <code class="text-slate-100">vault-registry-proxy (:5000)</code> for GHCR.</li>
+              <li>• <strong class="text-emerald-300">New 3rd sibling (<code class="text-white">vault-ai-proxy</code>):</strong> Sits beside OpenBao, verifies <code class="text-slate-100">pn-backend</code>'s K8s Pod IP, enforces the Kill Switch, attaches the Gemini key from OpenBao, and proxies to Gemini.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- TAB 4: 5-SCENARIO CLUSTER SIMULATOR                                   -->
+    <!-- ===================================================================== -->
+    <section id="tab-simulator" class="hidden space-y-6">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div class="lg:col-span-4 bg-slate-900/90 border border-slate-800 rounded-2xl p-5 space-y-3">
+          <h2 class="text-base font-semibold text-white">Cluster Scenarios</h2>
+          <button onclick="runScenario('ai_allowed')" id="btn-ai_allowed" class="scenario-btn w-full text-left rounded-xl p-3 border border-emerald-500/40 bg-emerald-500/10 transition">
+            <span class="text-xs font-semibold text-emerald-400 mono">Scenario 1 · Allowed AI Call (200 OK)</span>
+          </button>
+          <button onclick="runScenario('wikt_hit')" id="btn-wikt_hit" class="scenario-btn w-full text-left rounded-xl p-3 border border-slate-800 bg-slate-950/60 transition">
+            <span class="text-xs font-semibold text-cyan-400 mono">Scenario 2 · WiktApi Hit (0 AI Used)</span>
+          </button>
+          <button onclick="runScenario('unauth_pod')" id="btn-unauth_pod" class="scenario-btn w-full text-left rounded-xl p-3 border border-slate-800 bg-slate-950/60 transition">
+            <span class="text-xs font-semibold text-rose-400 mono">Scenario 3 · Unpermitted Pod (eBPF DROP)</span>
+          </button>
+          <button onclick="runScenario('direct_gemini')" id="btn-direct_gemini" class="scenario-btn w-full text-left rounded-xl p-3 border border-slate-800 bg-slate-950/60 transition">
+            <span class="text-xs font-semibold text-rose-400 mono">Scenario 4 · Direct Gemini Bypass (DROP)</span>
+          </button>
+          <button onclick="runScenario('project_stopped')" id="btn-project_stopped" class="scenario-btn w-full text-left rounded-xl p-3 border border-slate-800 bg-slate-950/60 transition">
+            <span class="text-xs font-semibold text-amber-400 mono">Scenario 5 · Kill-Switch Active (403)</span>
+          </button>
+        </div>
+
+        <div class="lg:col-span-8 bg-slate-900/90 border border-slate-800 rounded-2xl p-5">
+          <div class="flex items-center justify-between mb-3">
+            <h2 class="text-base font-semibold text-white">Cluster Topology</h2>
+            <span id="verdict-badge" class="mono text-xs font-semibold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">VERDICT: ALLOWED</span>
+          </div>
+          <div id="scenario-trace" class="space-y-1.5 text-xs mono bg-slate-950 p-4 rounded-xl border border-slate-800"></div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="bg-slate-900/60 border border-slate-800 rounded-xl px-5 py-3 flex flex-wrap items-center justify-between gap-4 text-xs text-slate-400">
+      <span>Persistent Architecture Guide stored in <code class="text-cyan-300">docs/internal-ai-gateway.html</code> · Design Spec in <code class="text-cyan-300">docs/superpowers/specs/2026-10-24-internal-ai-gateway-design.md</code></span>
+    </footer>
+  </main>
+
+  <script>
+    function switchTab(tabId) {
+      ['vault', 'loopback', 'killswitch', 'vs', 'simulator'].forEach(id => {
+        document.getElementById('tab-' + id).classList.toggle('hidden', id !== tabId);
+        const btn = document.getElementById('tab-btn-' + id);
+        btn.className = (id === tabId)
+          ? 'tab-btn rounded-lg px-4 py-1.5 text-sm font-medium bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
+          : 'tab-btn rounded-lg px-4 py-1.5 text-sm font-medium text-slate-400 hover:text-slate-200 border border-transparent';
+      });
+    }
+
+    function simulateSaveKey() {
+      const val = document.getElementById('demo-gemini-key').value || 'AIzaSy...';
+      const masked = val.slice(0, 6) + '••••••••••••' + val.slice(-4);
+      const badge = document.getElementById('key-status-badge');
+      badge.textContent = 'SAVED & HOT-RELOADED (' + masked + ')';
+      badge.className = 'text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 mono';
+      document.getElementById('key-save-trace').innerHTML = [
+        `<div><span class="text-cyan-400">[1/4]</span> Sent <code>POST http://127.0.0.1:8081/admin/set-key</code> with <code>${masked}</code>.</div>`,
+        `<div><span class="text-emerald-400">[2/4]</span> <code>vault-ai-proxy</code> authenticated to OpenBao via K8s ServiceAccount JWT (<code>auth/kubernetes/login</code>) — <strong>0 Vault Root Token needed!</strong></div>`,
+        `<div><span class="text-emerald-400">[3/4]</span> Saved encrypted secret to OpenBao disk at <code>kv/data/ai/gemini-api-key</code>.</div>`,
+        `<div><span class="text-amber-400">[4/4]</span> Updated <code>p.geminiKey</code> in Go process RAM (&lt;1µs) — ready for <code>pn-backend</code> calls immediately!</div>`
+      ].join('');
+    }
+
+    const recoveryDetails = {
+      k8s_bypass: {
+        title: 'Option A · Get an Admin OpenBao Token Right Now Using Only kubectl (Zero Vault Token Needed!)',
+        desc: 'Because scripts/vault-configure-k8s-auth.sh bound the openbao-backup ServiceAccount to the operator-admin policy (full kv/* access), you can mint a fresh admin token anytime OpenBao is running:',
+        cmd: `# Mint a K8s JWT for openbao-backup and log straight into OpenBao (works on local-k3s or via ssh oracleCloud):
+JWT=$(kubectl create token openbao-backup -n vault)
+VAULT_TOKEN=$(kubectl exec -n vault openbao-0 -- bao write -field=token auth/kubernetes/login role=openbao-backup jwt="$JWT")
+
+# Now read or write ANY secret in kv/* without the Root Token!
+kubectl exec -n vault openbao-0 -- env VAULT_TOKEN="$VAULT_TOKEN" bao kv put kv/ai/gemini-api-key value="AIzaSyYourKeyHere"`
+      },
+      unseal_regen: {
+        title: 'Option B · Generate a Brand-New Root Token Using Your Unseal Key',
+        desc: 'If you still have your Unseal Key (from vault-init.sh) and want a fresh Root Token, run vault-seed-inventory.sh and press [Enter] when asked for the Root Token:',
+        cmd: `# Run the existing helper and press [Enter] at the Root Token prompt:
+./scripts/vault-seed-inventory.sh
+# Prompt 1: "Enter OpenBao Root Token (or press Enter to generate temporary token): " -> Press [Enter]!
+# Prompt 2: "Enter OpenBao Unseal Key to authorize Root Token generation: " -> Paste your Unseal Key!`
+      },
+      lost_both: {
+        title: 'Option C · Lost Both Root Token AND Unseal Key? Export Secrets While Unsealed, Then Re-Init',
+        desc: 'As long as openbao-0 is currently running (unsealed), Option A (openbao-backup K8s auth) still works! Export your current secrets first, then re-initialize:',
+        cmd: `# Step 1: While openbao-0 is still running, log in via K8s ServiceAccount (no Root Token or Unseal Key needed):
+JWT=$(kubectl create token openbao-backup -n vault)
+VAULT_TOKEN=$(kubectl exec -n vault openbao-0 -- bao write -field=token auth/kubernetes/login role=openbao-backup jwt="$JWT")
+
+# Step 2: Inspect/save any existing secrets you want to keep:
+kubectl exec -n vault openbao-0 -- env VAULT_TOKEN="$VAULT_TOKEN" bao kv get kv/identity/google-oauth
+
+# Step 3: When ready for a fresh Unseal Key + Root Token, wipe openbao-0 PVC and run:
+./scripts/vault-init.sh && ./scripts/vault-seed-inventory.sh && ./scripts/vault-configure-k8s-auth.sh`
+      }
+    };
+
+    function showRecovery(key) {
+      const d = recoveryDetails[key];
+      document.querySelectorAll('.rec-btn').forEach(btn => {
+        btn.className = 'rec-btn text-left rounded-xl p-3.5 border border-slate-800 bg-slate-950/60 hover:border-slate-700 transition';
+      });
+      document.getElementById('rec-btn-' + key).className = 'rec-btn text-left rounded-xl p-3.5 border border-emerald-500/50 bg-emerald-500/10 transition';
+      document.getElementById('recovery-detail-box').innerHTML = `
+        <div class="text-xs font-bold text-white">${d.title}</div>
+        <p class="text-[11px] text-slate-300">${d.desc}</p>
+        <pre class="rounded-lg bg-slate-900 border border-slate-800 p-3 text-[11px] text-emerald-300 overflow-x-auto">${d.cmd}</pre>
+      `;
+    }
+
+    // Tab 1: Loopback & Direct RAM Pointer Simulator
+    const lbCases = {
+      operator_tunnel: {
+        badge: 'VERDICT: DIRECT IN-MEMORY WRITE VIA LOOPBACK (<1µs)',
+        badgeClass: 'mono text-xs font-semibold px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40',
+        nodes: { 'lb-node-laptop': 'node-highlight-amber', 'lb-node-kubelet': 'node-highlight-amber', 'lb-node-lo': 'node-highlight-amber', 'lb-node-ram': 'node-highlight-allow', 'lb-node-openbao': 'node-highlight-info' },
+        edges: {
+          'lb-edge-laptop-kubelet': ['edge-active-amber', 'url(#lb-arrow-amber)'],
+          'lb-edge-kubelet-lo': ['edge-active-amber', 'url(#lb-arrow-amber)'],
+          'lb-edge-lo-ram': ['edge-active-allow', 'url(#lb-arrow-allow)'],
+          'lb-edge-lo-openbao': ['edge-active-info', 'url(#lb-arrow-amber)']
+        },
+        trace: [
+          '<span class="text-amber-400">[1/4]</span> You run <code>./scripts/ai-gateway-ctl.sh stop pn</code>; host <code>kubelet</code> connects directly into <code>127.0.0.1:8081 (lo)</code> inside the pod.',
+          '<span class="text-emerald-400">[2/4]</span> <strong>Direct RAM Pointer Write (&lt;1µs)</strong>: Because <code>adminMux (:8081)</code> and <code>dataMux (:8080)</code> live in the <strong>same Go process</strong>, <code>adminMux</code> calls <code>p.mu.Lock()</code> and sets <code>p.projects["pn"].Enabled = false</code> directly in RAM.',
+          '<span class="text-emerald-400">[3/4]</span> Any request arriving on <code>0.0.0.0:8080</code> one microsecond later reads that exact same <code>p.projects["pn"].Enabled</code> field in RAM and immediately sees <code>false</code>.',
+          '<span class="text-cyan-400">[4/4]</span> <code>adminMux</code> also writes <code>enabled=false</code> to OpenBao (<code>kv/ai/projects/pn</code>) so if the pod ever restarts, it reloads <code>Enabled: false</code> on boot.'
+        ]
+      },
+      pod_normal_8080: {
+        badge: 'VERDICT: DIRECT IN-MEMORY READ FROM eth0 (:8080)',
+        badgeClass: 'mono text-xs font-semibold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40',
+        nodes: { 'lb-node-be': 'node-highlight-allow', 'lb-node-eth0': 'node-highlight-allow', 'lb-node-ram': 'node-highlight-allow' },
+        edges: {
+          'lb-edge-be-8080': ['edge-active-allow', 'url(#lb-arrow-allow)'],
+          'lb-edge-eth0-ram': ['edge-active-allow', 'url(#lb-arrow-allow)']
+        },
+        trace: [
+          '<span class="text-emerald-400">[1/3]</span> <code>pn-backend</code> sends <code>POST http://ai-gateway.vault.svc:8080/v1/chat/completions</code> to <code>eth0 (:8080)</code>.',
+          '<span class="text-emerald-400">[2/3]</span> <strong>Direct RAM Pointer Read (&lt;1µs)</strong>: <code>dataMux (:8080)</code> calls <code>p.mu.RLock()</code> and reads <code>p.projects["pn"].Enabled</code> directly from the shared Go struct in RAM—zero network calls needed to check the switch!',
+          '<span class="text-emerald-400">[3/3]</span> If <code>Enabled == true</code> and <code>Used &lt; DailyLimit</code>, it increments <code>Used++</code> in RAM and forwards the request to Gemini.'
+        ]
+      },
+      pod_attack_8081: {
+        badge: 'VERDICT: CONNECTION REFUSED BY LINUX KERNEL',
+        badgeClass: 'mono text-xs font-semibold px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40',
+        nodes: { 'lb-node-be': 'node-highlight-deny', 'lb-node-lo': 'node-highlight-info' },
+        edges: {
+          'lb-edge-be-8081': ['edge-active-deny', 'url(#lb-arrow-deny)']
+        },
+        trace: [
+          '<span class="text-rose-400">[1/2]</span> Suppose <code>pn-backend</code> tries to connect to <code>10.42.0.55:8081</code> over the cluster network to flip its own Kill Switch.',
+          '<span class="text-rose-400">[2/2]</span> Both Kubernetes <code>NetworkPolicy</code> and the Linux kernel inside <code>vault-ai-proxy</code> reject the packet because <code>adminMux</code> is bound strictly to <code>127.0.0.1:8081 (lo)</code>, not <code>0.0.0.0:8081</code>.'
+        ]
+      },
+      pod_attack_8080_admin: {
+        badge: 'VERDICT: 404 NOT FOUND (NO ADMIN ROUTES ON :8080)',
+        badgeClass: 'mono text-xs font-semibold px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40',
+        nodes: { 'lb-node-be': 'node-highlight-deny', 'lb-node-eth0': 'node-highlight-deny' },
+        edges: {
+          'lb-edge-be-8080': ['edge-active-deny', 'url(#lb-arrow-deny)']
+        },
+        trace: [
+          '<span class="text-rose-400">[1/2]</span> Suppose <code>pn-backend</code> calls <code>POST http://ai-gateway.vault.svc:8080/admin/enable?project=pn</code> on port <code>:8080</code>.',
+          '<span class="text-rose-400">[2/2]</span> <code>dataMux</code> on <code>:8080</code> only registers <code>/v1/chat/completions</code>, <code>/healthz</code>, and <code>/readyz</code>. It has zero <code>/admin/*</code> handlers and returns <code>404 Not Found</code>.'
+        ]
+      },
+      set_api_key: {
+        badge: 'VERDICT: GEMINI KEY STORED IN OPENBAO & HOT-RELOADED IN RAM',
+        badgeClass: 'mono text-xs font-semibold px-3 py-1 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40',
+        nodes: { 'lb-node-laptop': 'node-highlight-info', 'lb-node-kubelet': 'node-highlight-info', 'lb-node-openbao': 'node-highlight-allow', 'lb-node-lo': 'node-highlight-amber', 'lb-node-ram': 'node-highlight-allow' },
+        edges: {
+          'lb-edge-laptop-kubelet': ['edge-active-info', 'url(#lb-arrow-amber)'],
+          'lb-edge-kubelet-lo': ['edge-active-amber', 'url(#lb-arrow-amber)'],
+          'lb-edge-lo-openbao': ['edge-active-allow', 'url(#lb-arrow-allow)'],
+          'lb-edge-lo-ram': ['edge-active-allow', 'url(#lb-arrow-allow)']
+        },
+        trace: [
+          '<span class="text-cyan-400">[1/3]</span> Because Constitution Principle V &amp; <code>.githooks/pre-commit</code> forbid putting <code>AIza...</code> keys in Git, you run <code>./scripts/ai-gateway-ctl.sh set-key</code> once on your laptop (same pattern as <code>vault-set-google-oauth.sh</code>).',
+          '<span class="text-emerald-400">[2/3]</span> The script prompts silently for your Gemini API key and writes it to <code>OpenBao</code> at <code>kv/ai/gemini-api-key</code> (persisted on OpenBao\'s encrypted disk PVC across reboots).',
+          '<span class="text-amber-400">[3/3]</span> The script then signals <code>127.0.0.1:8081/admin/reload-key</code> so <code>vault-ai-proxy</code> refreshes the key in RAM immediately with <strong>zero pod restarts</strong>.'
+        ]
+      }
+    };
+
+    const lbNodes = ['lb-node-be', 'lb-node-openbao', 'lb-node-eth0', 'lb-node-ram', 'lb-node-lo', 'lb-node-laptop', 'lb-node-kubelet'];
+    const lbEdges = ['lb-edge-be-8080', 'lb-edge-be-8081', 'lb-edge-eth0-ram', 'lb-edge-lo-ram', 'lb-edge-lo-openbao', 'lb-edge-laptop-kubelet', 'lb-edge-kubelet-lo'];
+
+    function runLoopbackCase(key) {
+      const c = lbCases[key];
+      document.getElementById('lb-verdict-badge').textContent = c.badge;
+      document.getElementById('lb-verdict-badge').className = c.badgeClass;
+
+      document.querySelectorAll('.lb-btn').forEach(btn => {
+        btn.className = 'lb-btn w-full text-left rounded-xl p-3.5 border border-slate-800 bg-slate-950/60 hover:border-slate-700 transition';
+      });
+      document.getElementById('lb-btn-' + key).className = 'lb-btn w-full text-left rounded-xl p-3.5 border border-cyan-500/50 bg-cyan-500/10 transition';
+
+      lbNodes.forEach(id => {
+        const el = document.getElementById(id);
+        el.classList.remove('node-highlight-allow', 'node-highlight-deny', 'node-highlight-info', 'node-highlight-amber', 'dimmed');
+        if (c.nodes[id]) el.classList.add(c.nodes[id]);
+        else el.classList.add('dimmed');
+      });
+
+      lbEdges.forEach(id => {
+        const el = document.getElementById(id);
+        el.classList.remove('edge-active-allow', 'edge-active-deny', 'edge-active-info', 'edge-active-amber', 'dimmed');
+        if (c.edges[id]) {
+          el.classList.add(c.edges[id][0]);
+          el.setAttribute('marker-end', c.edges[id][1]);
+        } else {
+          el.classList.add('dimmed');
+          el.setAttribute('marker-end', 'url(#lb-arrow-slate)');
+        }
+      });
+
+      document.getElementById('lb-trace').innerHTML = c.trace.map(line => `<div>${line}</div>`).join('');
+    }
+
+    // Tab 2: Power Strip
+    const plugState = { pn: { enabled: true, allowed: 142, limit: 500, blocked: 0 } };
+    function prependLog(html) {
+      const box = document.getElementById('killswitch-log');
+      const div = document.createElement('div');
+      div.innerHTML = html;
+      box.prepend(div);
+    }
+    function renderPlug(proj) {
+      const st = plugState[proj];
+      const card = document.getElementById('card-' + proj);
+      const badge = document.getElementById('badge-' + proj);
+      const btn = document.getElementById('toggle-btn-' + proj);
+      document.getElementById('count-allow-' + proj).textContent = st.allowed;
+      document.getElementById('count-block-' + proj).textContent = st.blocked;
+      if (st.enabled) {
+        card.className = 'rounded-xl bg-slate-950 border border-emerald-500/40 p-4 transition';
+        badge.className = 'text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 mono';
+        badge.textContent = 'SWITCH: ON (ACTIVE)';
+        btn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold mono bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30 transition';
+        btn.textContent = 'Send Signal: STOP ' + proj;
+      } else {
+        card.className = 'rounded-xl bg-slate-950 border border-rose-500/50 p-4 transition';
+        badge.className = 'text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 mono';
+        badge.textContent = 'SWITCH: OFF (STOPPED)';
+        btn.className = 'px-3.5 py-1.5 rounded-lg text-xs font-semibold mono bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 hover:bg-emerald-500/30 transition';
+        btn.textContent = 'Send Signal: START ' + proj;
+      }
+    }
+    function toggleSwitch(proj) {
+      const st = plugState[proj];
+      st.enabled = !st.enabled;
+      renderPlug(proj);
+      prependLog(st.enabled
+        ? `<span class="text-emerald-400">[SIGNAL SENT]</span> <code>127.0.0.1:8081/admin/enable?project=${proj}</code> ➔ Direct RAM write: <strong>ACTIVE</strong>`
+        : `<span class="text-amber-400">[SIGNAL SENT]</span> <code>127.0.0.1:8081/admin/revoke?project=${proj}</code> ➔ Direct RAM write: <strong>STOPPED</strong>`);
+    }
+    function simulateCall(proj) {
+      const st = plugState[proj];
+      if (!st.enabled) {
+        st.blocked += 1;
+        renderPlug(proj);
+        prependLog(`<span class="text-rose-400">[403 STOPPED]</span> Direct RAM read saw <code>Enabled==false</code> ➔ Blocked in &lt;1µs (0 Gemini tokens).`);
+        return;
+      }
+      st.allowed += 1;
+      if (st.allowed >= st.limit) st.enabled = false;
+      renderPlug(proj);
+      prependLog(`<span class="text-emerald-400">[200 OK]</span> Direct RAM read saw <code>Enabled==true</code> ➔ Proxied to Gemini (${st.allowed}/${st.limit} today).`);
+    }
+    function simulateQuotaHit(proj) {
+      const st = plugState[proj];
+      st.allowed = st.limit;
+      st.enabled = false;
+      renderPlug(proj);
+      prependLog(`<span class="text-amber-400">[AUTO-BREAKER]</span> Reached ${st.limit}/${st.limit} ➔ Auto-flipped RAM switch to <strong>OFF</strong>.`);
+    }
+
+    const probeDrills = {
+      healthy: {
+        badge: 'STARTUP PROBE (/startupz): 200 OK — POD READY FOR TRAFFIC',
+        badgeClass: 'mono text-xs font-semibold px-3 py-1 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40',
+        lines: [
+          '<span class="text-emerald-400">[PASS 1/5 · Loopback Socket Audit]</span> <code>adminListener.Addr() == 127.0.0.1:8081</code> (<code>IP.IsLoopback() == true</code> — unreachable from cluster eth0).',
+          '<span class="text-emerald-400">[PASS 2/5 · :8080 Route Isolation Audit]</span> Synthetic <code>POST :8080/admin/enable?project=__selftest__</code> returned <code>404 Not Found</code> (zero admin routes on cluster port).',
+          '<span class="text-emerald-400">[PASS 3/5 · Caller Auth Spoofing Audit]</span> Synthetic <code>POST :8080/v1/chat/completions</code> with caller <code>Authorization: Bearer fake</code> returned <code>403 Forbidden</code>.',
+          '<span class="text-emerald-400">[PASS 4/5 · Live Kill-Switch Flip &amp; Block Drill]</span> Flipped <code>__selftest__</code> via <code>adminMux</code> ➔ <code>Enabled==false</code> in RAM ➔ verified <code>dataMux</code> immediately returns <code>403 Forbidden</code> (0 upstream calls).',
+          '<span class="text-emerald-400">[PASS 5/5 · OpenBao &amp; K8s API Sync]</span> Loaded persisted switch states (<code>kv/ai/projects/pn</code>) from <code>openbao:8200</code>; <code>startupProbe</code> returns <strong>200 OK</strong>!'
+        ]
+      },
+      vuln_admin_leak: {
+        badge: 'STARTUP PROBE (/startupz): 500 FAILED — POD QUARANTINED (READY=FALSE)',
+        badgeClass: 'mono text-xs font-semibold px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40',
+        lines: [
+          '<span class="text-emerald-400">[PASS 1/5 · Loopback Socket Audit]</span> <code>adminListener.Addr() == 127.0.0.1:8081</code>.',
+          '<span class="text-rose-400">[FAIL 2/5 · VULNERABILITY DETECTED!]</span> Synthetic <code>POST :8080/admin/enable?project=__selftest__</code> did NOT return 404! An admin route leaked onto cluster port <code>:8080</code>!',
+          '<span class="text-rose-400">[ACTION]</span> <code>/startupz</code> immediately returns <strong>500 Internal Server Error</strong>. Kubernetes refuses to mark pod Ready, withholds all Service endpoints, and FluxCD halts rollout!'
+        ]
+      },
+      vuln_non_loopback: {
+        badge: 'STARTUP PROBE (/startupz): 500 FAILED — NON-LOOPBACK ADMIN SOCKET BLOCKED',
+        badgeClass: 'mono text-xs font-semibold px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40',
+        lines: [
+          '<span class="text-rose-400">[FAIL 1/5 · VULNERABILITY DETECTED!]</span> <code>adminListener.Addr()</code> bound to <code>0.0.0.0:8081</code> (<code>IP.IsLoopback() == false</code>)!',
+          '<span class="text-rose-400">[ACTION]</span> <code>/startupz</code> and <code>/readyz</code> return <strong>500 Internal Server Error</strong>. Pod is quarantined and restarted by kubelet before any pod can connect.'
+        ]
+      },
+      vuln_switch_broken: {
+        badge: 'STARTUP PROBE (/startupz): 500 FAILED — KILL SWITCH FAILED SELF-DRILL',
+        badgeClass: 'mono text-xs font-semibold px-3 py-1 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40',
+        lines: [
+          '<span class="text-emerald-400">[PASS 1/5..3/5]</span> Socket &amp; route isolation checks passed.',
+          '<span class="text-rose-400">[FAIL 4/5 · KILL SWITCH BROKEN!]</span> After calling <code>adminMux /admin/revoke?project=__selftest__</code>, <code>dataMux</code> did NOT return <code>403 Forbidden</code>!',
+          '<span class="text-rose-400">[ACTION]</span> <code>/startupz</code> fails closed (<strong>500</strong>) — <code>vault-ai-proxy</code> will NEVER forward a single request to Gemini if its Kill Switch cannot prove it blocks!'
+        ]
+      }
+    };
+
+    function runProbeDrill(key) {
+      const d = probeDrills[key];
+      document.getElementById('probe-verdict-badge').textContent = d.badge;
+      document.getElementById('probe-verdict-badge').className = d.badgeClass;
+      document.getElementById('probe-drill-output').innerHTML = d.lines.map(l => `<div>${l}</div>`).join('');
+    }
+
+    const scenarios = {
+      ai_allowed: { badge: 'VERDICT: ALLOWED (200 OK)', trace: ['1. pn-backend calls :8080/v1/chat/completions', '2. K8s NetPol + Pod IP verified', '3. OpenBao key injected & proxied to Gemini'] },
+      wikt_hit: { badge: 'VERDICT: WIKTAPI HIT', trace: ['1. pn-backend calls api.wiktapi.dev:443', '2. 200 OK — AI gateway not called'] },
+      unauth_pod: { badge: 'VERDICT: DROPPED BY K8S NETPOL', trace: ['1. pn-frontend tries :8080', '2. Dropped in Linux kernel by podSelector=pn-backend'] },
+      direct_gemini: { badge: 'VERDICT: DIRECT GEMINI DROPPED', trace: ['1. pn-backend tries generativelanguage.googleapis.com:443 directly', '2. Dropped by Cilium FQDN policy'] },
+      project_stopped: { badge: 'VERDICT: STOPPED BY KILL SWITCH (403)', trace: ['1. Switch is OFF in RAM', '2. Gateway returns 403 immediately (0 Gemini tokens)'] }
+    };
+    function runScenario(k) {
+      document.getElementById('verdict-badge').textContent = scenarios[k].badge;
+      document.getElementById('scenario-trace').innerHTML = scenarios[k].trace.map(t => `<div>${t}</div>`).join('');
+    }
+
+    showRecovery('k8s_bypass');
+    runLoopbackCase('operator_tunnel');
+    runProbeDrill('healthy');
+    runScenario('ai_allowed');
+    switchTab('killswitch');
+  </script>
+</body>
+</html>

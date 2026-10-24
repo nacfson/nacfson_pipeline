@@ -45,6 +45,7 @@ usage() {
   echo "  11. project-pn-client-secret"
   echo "  12. postgres-health-db-password"
   echo "  13. project-health-client-secret"
+  echo "  14. gemini-api-key"
   exit 1
 }
 
@@ -71,6 +72,7 @@ get_vault_path() {
     google-oauth-broker-secret) echo "kv/identity/google-oauth" ;;
     project-pn-client-secret) echo "kv/projects/pn/client-secret" ;;
     project-health-client-secret) echo "kv/projects/health/client-secret" ;;
+    gemini-api-key) echo "kv/ai/gemini-api-key" ;;
     *) echo "" ;;
   esac
 }

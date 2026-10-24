@@ -58,6 +58,10 @@ spec:
               value: "file:///app/db/migrations"
             - name: GATEWAY_AUTH_URL
               value: "http://gateway.identity.svc:8080/auth"
+            - name: ENRICH_PRIMARY_BASE_URL
+              value: "http://ai-gateway.vault.svc:8080/v1"
+            - name: ENRICH_PRIMARY_MODEL
+              value: "gemini-3.1-flash-lite"
             # Browser SPA /api fetches may send Cache-Control/Pragma -> CORS preflight.
             # PUBLIC_APP_URL MUST appear in ALLOWED_ORIGINS (007 browser-api-access).
             # Flux env patches override these per cluster door host.

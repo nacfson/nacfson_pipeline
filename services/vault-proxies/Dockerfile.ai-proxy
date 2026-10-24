@@ -1,0 +1,30 @@
+# Multi-stage Dockerfile for Internal AI Gateway Proxy (vault-ai-proxy)
+# Supports both linux/amd64 and linux/arm64 architectures
+
+FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /src
+
+COPY go.mod ./
+COPY cmd/ cmd/
+
+# Build statically linked binary (Go 1.22 stdlib only)
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
+    -ldflags="-w -s" \
+    -o /bin/vault-ai-proxy \
+    ./cmd/ai-proxy
+
+# Production runtime image: unprivileged non-root distroless
+FROM gcr.io/distroless/static:nonroot
+
+WORKDIR /
+COPY --from=builder /bin/vault-ai-proxy /vault-ai-proxy
+
+USER 65532:65532
+
+EXPOSE 8080
+
+ENTRYPOINT ["/vault-ai-proxy"]

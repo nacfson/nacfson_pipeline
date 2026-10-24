@@ -29,6 +29,10 @@ jobs:
             context: services/vault-proxies
             dockerfile: services/vault-proxies/Dockerfile.registry-proxy
             image_name: vault-registry-proxy
+          - name: vault-ai-proxy
+            context: services/vault-proxies
+            dockerfile: services/vault-proxies/Dockerfile.ai-proxy
+            image_name: vault-ai-proxy
           - name: platform-auth-gateway
             context: gateway
             dockerfile: gateway/Dockerfile

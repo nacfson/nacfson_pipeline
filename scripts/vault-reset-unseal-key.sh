@@ -1,0 +1,125 @@
+#!/usr/bin/env bash
+# ==============================================================================
+# Zero-Data-Loss OpenBao Unseal Key Regeneration & PostgreSQL Role Password Sync
+# Use when the Shamir Unseal Key and Root Token are both lost.
+# Wipes ONLY OpenBao's encrypted store, generates a brand-new Unseal Key,
+# re-seeds Vault credentials, and syncs the new DB role passwords into
+# postgres-0 via local Unix socket (preserving 100% of PostgreSQL tables/data).
+# ==============================================================================
+
+set -euo pipefail
+
+VAULT_NS="${VAULT_NS:-vault}"
+VAULT_POD="${VAULT_POD:-openbao-0}"
+IDENTITY_NS="${IDENTITY_NS:-identity}"
+POSTGRES_POD="${POSTGRES_POD:-postgres-0}"
+KUBE_EXEC="${KUBE_EXEC:-kubectl}"
+
+if ! ${KUBE_EXEC} --request-timeout=2s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
+  # shellcheck disable=SC2029
+  if ssh -o ConnectTimeout=5 oracleCloud "sudo k3s kubectl get pod -n ${VAULT_NS} ${VAULT_POD}" >/dev/null 2>&1; then
+    KUBE_EXEC="ssh oracleCloud sudo k3s kubectl"
+  fi
+fi
+
+KUBE_BG="${KUBE_EXEC} --as=system:admin --as-group=platform:break-glass"
+
+echo "================================================================================"
+echo "ZERO-DATA-LOSS OPENBAO UNSEAL KEY REGENERATION"
+echo "  - Wipes ONLY OpenBao Raft storage (/var/lib/openbao/data/* in ${VAULT_NS}/${VAULT_POD})"
+echo "  - Generates a brand-new Shamir Unseal Key for your password manager"
+echo "  - Re-seeds internal passwords & syncs them into ${IDENTITY_NS}/${POSTGRES_POD}"
+echo "  - Preserves 100% of PostgreSQL tables and rows (${IDENTITY_NS}/${POSTGRES_POD})"
+echo "================================================================================"
+read -r -p "Type 'RESET-OPENBAO' to confirm and regenerate a new Unseal Key: " CONFIRM
+if [ "${CONFIRM}" != "RESET-OPENBAO" ]; then
+  echo "Aborted."
+  exit 1
+fi
+
+echo "=== [1/6] Wiping OpenBao storage in ${VAULT_NS}/${VAULT_POD} and restarting pod ==="
+${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- /bin/sh -c "rm -rf /var/lib/openbao/data/* /var/lib/openbao/data/.[!.]* /openbao/data/* /openbao/data/.[!.]* 2>/dev/null || true"
+${KUBE_BG} delete pod -n "${VAULT_NS}" "${VAULT_POD}" --wait=true
+
+echo "Waiting for recreated ${VAULT_NS}/${VAULT_POD} container to start..."
+READY_FOR_INIT=false
+for _ in $(seq 1 60); do
+  STATUS_JSON=$(${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao status -format=json 2>/dev/null || true)
+  if echo "${STATUS_JSON}" | grep -Eq '"initialized":[[:space:]]*false'; then
+    READY_FOR_INIT=true
+    break
+  fi
+  sleep 2
+done
+if [ "${READY_FOR_INIT}" != "true" ]; then
+  echo "ERROR: Timed out waiting for ${VAULT_NS}/${VAULT_POD} to enter uninitialized state."
+  exit 1
+fi
+
+echo "=== [2/6] Initializing fresh OpenBao & generating new Unseal Key ==="
+INIT_OUTPUT=$(${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator init -key-shares=1 -key-threshold=1 -format=json)
+UNSEAL_KEY=$(echo "${INIT_OUTPUT}" | grep -o '"unseal_keys_b64":\["[^"]*"' | cut -d'"' -f4)
+ROOT_TOKEN=$(echo "${INIT_OUTPUT}" | grep -o '"root_token":"[^"]*"' | cut -d'"' -f4)
+
+cleanup_root_token() {
+  if [ -n "${ROOT_TOKEN:-}" ]; then
+    ${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- \
+      env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${ROOT_TOKEN}" \
+      bao token revoke -self >/dev/null 2>&1 || true
+    ROOT_TOKEN=""
+  fi
+}
+trap cleanup_root_token EXIT
+
+echo ""
+echo "********************************************************************************"
+echo "CRITICAL: SAVE THIS NEW SHAMIR UNSEAL KEY IN YOUR PASSWORD MANAGER IMMEDIATELY!"
+echo "New Unseal Key: ${UNSEAL_KEY}"
+echo "********************************************************************************"
+echo ""
+
+${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator unseal "${UNSEAL_KEY}" >/dev/null
+${KUBE_BG} wait --for=condition=Ready pod/"${VAULT_POD}" -n "${VAULT_NS}" --timeout=60s
+echo "PASS: OpenBao unsealed and Ready with new Unseal Key."
+
+echo "=== [3/6] Enabling KV v2 & Transit Engines and Configuring Least-Privilege K8s Auth ==="
+${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${ROOT_TOKEN}" \
+  bao secrets enable -version=2 kv 2>/dev/null || true
+${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${ROOT_TOKEN}" \
+  bao secrets enable transit 2>/dev/null || true
+
+VAULT_TOKEN="${ROOT_TOKEN}" KUBE_EXEC="${KUBE_BG}" ./scripts/vault-configure-k8s-auth.sh
+
+echo "=== [4/6] Seeding Fresh Internal Credentials into OpenBao ==="
+VAULT_TOKEN="${ROOT_TOKEN}" KUBE_EXEC="${KUBE_BG}" ./scripts/vault-seed-inventory.sh --force
+
+echo "=== [5/6] Syncing New Database Role Passwords into ${IDENTITY_NS}/${POSTGRES_POD} (Zero Data Loss) ==="
+NEW_PG_ADMIN=$(${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- \
+  env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${ROOT_TOKEN}" \
+  bao kv get -field=password kv/database/postgres-admin | tr -d '\r\n')
+
+# shellcheck disable=SC2016
+printf "%s" "${NEW_PG_ADMIN}" | ${KUBE_BG} exec -i -n "${IDENTITY_NS}" "${POSTGRES_POD}" -- /bin/sh -c '
+  set -eu
+  NEW_PASS="$(cat)"
+  psql -U postgres -d postgres -v ON_ERROR_STOP=1 -v new_pass="${NEW_PASS}" -c "ALTER ROLE postgres WITH PASSWORD :'\''new_pass'\'';" >/dev/null
+'
+echo "PASS: Synced postgres administrator password via local Unix socket."
+
+${KUBE_BG} delete job -n "${IDENTITY_NS}" postgres-init-job --ignore-not-found
+kubectl kustomize deploy/platform/database | ${KUBE_BG} apply -f -
+${KUBE_BG} wait --for=condition=complete job/postgres-init-job -n "${IDENTITY_NS}" --timeout=120s
+echo "PASS: postgres-init-job synced keycloak_user, user_pn, and backup_role passwords."
+
+echo "=== [6/6] Revoking Initial Root Token & Rolling Dependent Proxies ==="
+cleanup_root_token
+
+${KUBE_BG} rollout restart deployment/vault-db-proxy deployment/vault-registry-proxy deployment/vault-ai-proxy -n "${VAULT_NS}" 2>/dev/null || true
+${KUBE_BG} rollout restart deployment/keycloak deployment/gateway -n "${IDENTITY_NS}" 2>/dev/null || true
+
+echo "================================================================================"
+echo "SUCCESS: OpenBao reset complete with zero PostgreSQL data loss!"
+echo "Next steps for external API keys:"
+echo "  1. ./scripts/ai-gateway-ctl.sh set-key"
+echo "  2. ./scripts/vault-set-google-oauth.sh"
+echo "================================================================================"

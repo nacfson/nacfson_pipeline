@@ -17,6 +17,10 @@ path "sys/auth/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }
 
+path "auth/kubernetes/*" {
+  capabilities = ["create", "read", "update", "delete", "list"]
+}
+
 path "sys/mounts/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }

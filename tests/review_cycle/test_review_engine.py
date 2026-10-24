@@ -292,6 +292,18 @@ class TestReviewEngine(unittest.TestCase):
                 self.assertEqual(receipt["round"], 1)
                 self.assertEqual(receipt["gate_status"], "PASS")
 
+    def test_vault_proxy_manifest_triggers_go_vault_proxies_tests(self):
+        eng = _load_engine()
+        res = eng.run_domain_verification(
+            scope="staged",
+            changed_files_override=["deploy/platform/vault-proxies/ai-proxy.yaml"],
+            diff_text_override="+replicas: 1\n",
+        )
+        self.assertTrue(
+            any("cd services/vault-proxies && go test -v ./... && go vet ./..." in cmd for cmd in res["commands_run"]),
+            f"expected vault-proxies go test in commands_run, got {res['commands_run']}",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

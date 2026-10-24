@@ -43,6 +43,9 @@ flowchart LR
 | **`<slug>-backend`** | `proj-<slug>` | `livenessProbe` | `httpGet` | `/healthz` | `8080` | Local backend HTTP server is alive (**MUST NOT query DB**) | Container killed & restarted |
 | **`vault-db-proxy`** | `vault` | `readinessProbe` | `httpGet` | `/readyz` | `8080` | Proxy can establish TCP connection to `postgres-service.identity.svc:5432` | `Ready=False` (withholds proxy endpoints; **no container restart**) |
 | **`vault-db-proxy`** | `vault` | `livenessProbe` | `httpGet` | `/healthz` | `8080` | Local Go proxy process is alive | Container killed & restarted |
+| **`vault-ai-proxy`** | `vault` | `startupProbe` | `httpGet` | `/startupz` | `8080` | 5-point live Kill-Switch & vulnerability self-audit passed (`127.0.0.1:8081` loopback, `:8080` route isolation, caller auth block, `__selftest__` RAM flip, OpenBao sync) | Quarantines pod (`Ready=False`) and halts Flux rollout |
+| **`vault-ai-proxy`** | `vault` | `readinessProbe` | `httpGet` | `/readyz` | `8080` | Startup self-audit passed and `127.0.0.1:8081` loopback listener is healthy | `Ready=False` (withholds proxy endpoints; **no container restart**) |
+| **`vault-ai-proxy`** | `vault` | `livenessProbe` | `httpGet` | `/healthz` | `8080` | Local Go proxy process is alive (process-local only) | Container killed & restarted |
 
 ---
 

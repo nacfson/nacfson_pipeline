@@ -11,7 +11,7 @@ Per [Constitution Principle III](.specify/memory/constitution.md#L13-L14) and [S
 | Module | Path | Go Toolchain | Allowed External Modules | Published Image |
 | :--- | :--- | :--- | :--- | :--- |
 | `nacfson_pipeline/gateway` | [`gateway/go.mod`](gateway/go.mod) | `go 1.22` | **None** (`0` `require` directives) | `ghcr.io/nacfson/platform-auth-gateway` |
-| `nacfson_pipeline/services/vault-proxies` | [`services/vault-proxies/go.mod`](services/vault-proxies/go.mod) | `go 1.22` | **None** (`0` `require` directives) | `ghcr.io/nacfson/vault-db-proxy`, `ghcr.io/nacfson/vault-registry-proxy` |
+| `nacfson_pipeline/services/vault-proxies` | [`services/vault-proxies/go.mod`](services/vault-proxies/go.mod) | `go 1.22` | **None** (`0` `require` directives) | `ghcr.io/nacfson/vault-db-proxy`, `ghcr.io/nacfson/vault-registry-proxy`, `ghcr.io/nacfson/vault-ai-proxy` |
 
 > [!IMPORTANT]
 > Never run `go get <third-party-pkg>` or introduce external gateway frameworks, OAuth2 Proxy, or Redis into [`gateway/`](gateway/) or [`services/vault-proxies/`](services/vault-proxies/).

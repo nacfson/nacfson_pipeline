@@ -423,12 +423,12 @@
               <text x="24" y="122" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">• Traefik (kube-system) ➔ :80, :8080</text>
               <text x="24" y="136" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">• pn-frontend ➔ pn-backend :8080</text>
               <text x="14" y="156" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">5. In-cluster egress to:</text>
-              <text x="24" y="172" fill="#34d399" font-size="8.5" font-family="'JetBrains Mono'">• vault-db-proxy.vault.svc:5432</text>
+              <text x="24" y="172" fill="#34d399" font-size="8.5" font-family="'JetBrains Mono'">• vault-db-proxy:5432 &amp; ai-gateway:8080</text>
               <text x="24" y="186" fill="#38bdf8" font-size="8.5" font-family="'JetBrains Mono'">• gateway.identity.svc:8080</text>
               <text x="24" y="200" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">• kube-dns (UDP/TCP :53)</text>
               <text x="14" y="220" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">6. Cilium FQDN, pn-backend only:</text>
               <text x="24" y="236" fill="#34d399" font-size="8.5" font-family="'JetBrains Mono'">• api.wiktapi.dev:443</text>
-              <text x="24" y="250" fill="#34d399" font-size="8.5" font-family="'JetBrains Mono'">• generativelanguage.googleapis.com:443</text>
+              <text x="24" y="250" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">• (Gemini via vault/vault-ai-proxy:8080)</text>
               <text x="14" y="270" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">✗ Direct Postgres (:5432) BLOCKED</text>
               <text x="14" y="286" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">✗ Direct OpenBao (:8200) BLOCKED</text>
               <text x="14" y="302" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">✗ Direct Keycloak (:8080) BLOCKED</text>
@@ -1009,15 +1009,15 @@
             </div>
             <div class="flex justify-between text-slate-400">
               <span>Platform Reservation (sysReserved + Cilium/Hubble + Flux + Vault + PG + KC + GW + Cert):</span>
-              <span id="calc-plat" class="text-amber-300">1595m CPU · 5312 MiB</span>
+              <span id="calc-plat" class="text-amber-300">1620m CPU · 5376 MiB</span>
             </div>
             <div class="flex justify-between text-slate-300 border-t border-slate-800 pt-2">
               <span>Available Application Pool:</span>
-              <span id="calc-pool" class="text-cyan-300 font-bold">2405m CPU · 19264 MiB</span>
+              <span id="calc-pool" class="text-cyan-300 font-bold">2380m CPU · 19200 MiB</span>
             </div>
             <div class="flex justify-between text-slate-200">
               <span>Per-Project 1/n Slice (<code class="text-cyan-300">Pool / n</code>):</span>
-              <span id="calc-slice" class="text-emerald-300 font-bold">2405m CPU · 19264 MiB</span>
+              <span id="calc-slice" class="text-emerald-300 font-bold">2380m CPU · 19200 MiB</span>
             </div>
             <p class="text-[11px] text-amber-300/90 border-t border-slate-800 pt-2">⚠ Observed 2026-10-17: the live vps-k3s node is 2 OCPU (2000m allocatable), not the 4000m in capacity.yaml. After Cilium + Hubble (+225m), scheduled CPU requests reached 1785m/2000m and postgres-0 deadlocked against postgres-init-job (Insufficient cpu). Keycloak's CPU request was lowered to 250m (limit 500m) and init-db to 25m; correcting capacity.yaml is pending.</p>
           </div>
@@ -1373,8 +1373,8 @@
         desc: 'Self-hosted open-source Vault fork providing KV v2 secret storage, Transit cryptographic signing engine, and Kubernetes ServiceAccount JWT authentication.',
         bullets: [
           '➔ Egress tightened via CiliumNetworkPolicy/openbao-apiserver-egress (toEntities: ["kube-apiserver"]).',
-          '➔ Zero plaintext secrets ever touch Git, Helm values, or application pod env vars.',
-          '➔ Reconciled and rotated live via scripts/vault-reconcile.sh and scripts/vault-rotate.sh.'
+          '➔ Zero plaintext secrets ever touch Git, Helm values, or application pod env vars; openbao-backup uses raft-snapshot.hcl (encrypted snapshot read only, 403 on kv/*).',
+          '➔ vault-ai-proxy holds kv/ai/gemini-api-key in a mutable []byte RAM slice and zeroes every byte (0x00) immediately when the Kill Switch is STOPPED.'
         ],
         path: 'deploy/platform/vault/network-policy.yaml'
       },
@@ -1459,8 +1459,8 @@
         desc: 'Platform-owned boundary layer reconciled before tenant workloads. Enforces Restricted Pod Security Admission, zero ServiceAccount token mounts, strict egress firewalling, and 1/n ResourceQuota.',
         bullets: [
           '➔ services.nodeports: "0" and services.loadbalancers: "0" enforced at quota admission.',
-          '➔ In-cluster egress: kube-dns (:53), vault-db-proxy (:5432), gateway (:8080), and intra-namespace.',
-          '➔ Cilium FQDN allow for pn-backend only: api.wiktapi.dev:443 and generativelanguage.googleapis.com:443. Other world destinations stay dropped. check_translation_egress rejects any other public name.',
+          '➔ In-cluster egress: kube-dns (:53), vault-db-proxy (:5432), vault-ai-proxy (:8080), gateway (:8080), and intra-namespace.',
+          '➔ Cilium FQDN allow for pn-backend only: api.wiktapi.dev:443 (Gemini generativelanguage.googleapis.com:443 egresses exclusively from vault/vault-ai-proxy). Other world destinations stay dropped. check_translation_egress rejects any other public name.',
           '➔ Reconciler RBAC (pn-reconciler) cannot modify Quotas, NetworkPolicies, or RoleBindings.'
         ],
         path: 'deploy/projects/pn/boundary/network-policy.yaml'
@@ -1828,9 +1828,9 @@
           from: 'Cilium eBPF Policy Engine',
           to: 'Namespace proj-pn',
           proto: 'Default-Deny Ingress/Egress + Explicit Allowlist',
-          desc: 'Cilium compiles proj-pn policy into kernel eBPF maps. Ingress is allowed only from Traefik and intra-namespace pods. In-cluster egress is CoreDNS, vault-db-proxy, and gateway. pn-backend only: api.wiktapi.dev:443 and generativelanguage.googleapis.com:443. Every other world destination stays dropped.',
-          code: `# Allowed egress from proj-pn:\n1. kube-system CoreDNS (UDP/TCP 53)\n2. vault/vault-db-proxy (TCP 5432)\n3. identity/gateway (TCP 8080)\n4. pn-backend only: api.wiktapi.dev:443 and generativelanguage.googleapis.com:443\n# Other world destinations, postgres:5432, and openbao:8200 stay dropped`,
-          guard: 'Blocks lateral movement to PostgreSQL and OpenBao. Public egress is the two translation hosts from pn-backend only.'
+          desc: 'Cilium compiles proj-pn policy into kernel eBPF maps. Ingress is allowed only from Traefik and intra-namespace pods. In-cluster egress is CoreDNS, vault-db-proxy, vault-ai-proxy, and gateway. pn-backend only: api.wiktapi.dev:443 (while vault/vault-ai-proxy owns generativelanguage.googleapis.com:443). Every other world destination stays dropped.',
+          code: `# Allowed egress from proj-pn:\n1. kube-system CoreDNS (UDP/TCP 53)\n2. vault/vault-db-proxy (TCP 5432) & vault/vault-ai-proxy (TCP 8080)\n3. identity/gateway (TCP 8080)\n4. pn-backend only: api.wiktapi.dev:443 (Gemini via vault/vault-ai-proxy)\n# Other world destinations, postgres:5432, and openbao:8200 stay dropped`,
+          guard: 'Blocks lateral movement to PostgreSQL and OpenBao. Public egress from pn-backend is api.wiktapi.dev:443 only; Gemini egresses via vault-ai-proxy.'
         },
         {
           title: '3. CiliumNetworkPolicy Resolves kube-apiserver Entity for OpenBao',
@@ -2071,10 +2071,10 @@
         title: '3a. vault-proxies (Zero-Plaintext Proxies)',
         path: './deploy/platform/vault-proxies',
         deps: 'vault',
-        desc: 'Deploys vault-db-proxy (:5432 PostgreSQL wire proxy) and vault-registry-proxy (:5000 GHCR image pull proxy) inside namespace vault.',
+        desc: 'Deploys vault-db-proxy (:5432 PostgreSQL wire proxy), vault-registry-proxy (:5000 GHCR image pull proxy), and vault-ai-proxy (:8080 internal AI gateway + 127.0.0.1:8081 loopback Kill Switch) inside namespace vault.',
         yaml: {
-          'vps-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml (ALLOWED_PROJECTS="pn,health")\n  - registry-proxy.yaml (UPSTREAM_REGISTRY=ghcr.io)`,
-          'local-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml (ALLOWED_PROJECTS="pn,health") & registry-proxy.yaml`
+          'vps-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml (ALLOWED_PROJECTS="pn,health")\n  - registry-proxy.yaml (UPSTREAM_REGISTRY=ghcr.io)\n  - ai-proxy.yaml (Service/ai-gateway:8080, ADMIN_ADDR=127.0.0.1:8081)`,
+          'local-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml, registry-proxy.yaml & ai-proxy.yaml`
         }
       },
       'database': {
@@ -2275,6 +2275,15 @@
         details: 'Mirrors ghcr.io on :5000 for K3s containerd, injecting the GitHub PAT from OpenBao upstream and stripping auth headers on return.'
       },
       {
+        cat: 'custom',
+        name: 'vault-ai-proxy',
+        ver: 'Go 1.22 (0 external deps)',
+        license: 'First-Party (Pure Go Stdlib)',
+        role: 'Zero-Plaintext AI Gateway with Secure Memory',
+        where: 'services/vault-proxies/cmd/ai-proxy/main.go',
+        details: 'Internal AI gateway (:8080) with project-specific quota enforcement, loopback admin kill switch (127.0.0.1:8081), OpenBao credential sync, and secure RAM key wiping (0x00 overwrite) when all projects disabled. HTTP client blocks redirects.'
+      },
+      {
         cat: 'oss',
         name: 'cURL (curlimages/curl)',
         ver: '8.10.1',
@@ -2369,8 +2378,8 @@
 
       const allocCpu = 4000;
       const allocMem = env === 'vps' ? 24576 : 8192;
-      const platCpu = 1595; // Shared Platform Reservation (including Cilium + Hubble + Vault + Identity + Cert-Manager); Keycloak CPU request 250m, postgres-init-job init-db 25m
-      const platMem = 5312;
+      const platCpu = 1620; // Shared Platform Reservation (including Cilium + Hubble + Vault + vault-ai-proxy + Identity + Cert-Manager); Keycloak CPU request 250m, postgres-init-job init-db 25m
+      const platMem = 5376;
 
       const poolCpu = allocCpu - platCpu;
       const poolMem = allocMem - platMem;
@@ -2485,15 +2494,15 @@
         why: 'Unnamed world destinations such as 1.1.1.1 stay dropped. Named translation hosts are the pn-translation scenario, and only for pn-backend.'
       },
       'pn-translation': {
-        title: 'pn-backend ➔ translation hosts (:443) [WiktApi and Gemini]',
+        title: 'pn-backend ➔ api.wiktapi.dev:443 & vault-ai-proxy ➔ generativelanguage.googleapis.com:443',
         src: 'proj-pn/pn-backend (app=pn-backend)',
-        dst: 'api.wiktapi.dev:443 and generativelanguage.googleapis.com:443',
+        dst: 'api.wiktapi.dev:443 (direct) & vault/vault-ai-proxy:8080 ➔ generativelanguage.googleapis.com:443',
         allowed: true,
-        policy: 'CiliumNetworkPolicy: pn-backend-translation-egress (deploy/projects/pn/boundary/translation-egress.yaml)',
+        policy: 'CiliumNetworkPolicy: pn-backend-translation-egress (proj-pn) + ai-proxy-egress (vault)',
         kernelHook: 'eBPF toFQDNs matchName -> TCP 443 FORWARDED; any other world host DROP',
-        hubble: `TIMESTAMP             SOURCE                        DESTINATION                              TYPE            VERDICT     SUMMARY\nOct 19 12:00:01.100   proj-pn/pn-backend:44012      api.wiktapi.dev:443                      policy-verdict  FORWARDED   TCP TLS\nOct 19 12:00:01.240   proj-pn/pn-backend:44018      generativelanguage.googleapis.com:443    policy-verdict  FORWARDED   TCP TLS\nOct 19 12:00:02.010   proj-pn/pn-backend:44040      evil.example:443 (world)                 Policy denied   DROPPED     TCP SYN`,
-        yaml: `# CiliumNetworkPolicy/pn-backend-translation-egress\nendpointSelector:\n  matchLabels: { app.kubernetes.io/name: pn-backend }\ntoFQDNs:\n  - matchName: api.wiktapi.dev\n  - matchName: generativelanguage.googleapis.com\ntoPorts: [{ port: "443", protocol: TCP }]\n# Any other world host stays dropped. No 0.0.0.0/0.`,
-        why: 'Only pn-backend may call the two translation hosts on TCP 443. The reply returns on that connection. Any other world host is dropped. There is no kube-router world fallback.'
+        hubble: `TIMESTAMP             SOURCE                        DESTINATION                              TYPE            VERDICT     SUMMARY\nOct 19 12:00:01.100   proj-pn/pn-backend:44012      api.wiktapi.dev:443                      policy-verdict  FORWARDED   TCP TLS\nOct 19 12:00:01.200   proj-pn/pn-backend:44016      vault/vault-ai-proxy:8080                policy-verdict  FORWARDED   TCP HTTP\nOct 19 12:00:01.240   vault/vault-ai-proxy:51020    generativelanguage.googleapis.com:443    policy-verdict  FORWARDED   TCP TLS\nOct 19 12:00:02.010   proj-pn/pn-backend:44040      evil.example:443 (world)                 Policy denied   DROPPED     TCP SYN`,
+        yaml: `# CiliumNetworkPolicy/pn-backend-translation-egress (proj-pn)\nendpointSelector:\n  matchLabels: { app.kubernetes.io/name: pn-backend }\ntoFQDNs:\n  - matchName: api.wiktapi.dev\ntoPorts: [{ port: "443", protocol: TCP }]\n# CiliumNetworkPolicy/ai-proxy-egress (vault)\n# vault-ai-proxy owns generativelanguage.googleapis.com:443; direct tenant Gemini egress is dropped.`,
+        why: 'pn-backend may only call api.wiktapi.dev on TCP 443 directly; Gemini calls traverse vault/vault-ai-proxy:8080, which owns generativelanguage.googleapis.com:443 egress. There is no kube-router world fallback.'
       }
     };
 
