@@ -811,6 +811,12 @@
               <text x="102" y="33" text-anchor="middle" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">./deploy/projects/health/boundary</text>
             </g>
 
+            <!-- Layer 2e: project-boundaries-blog -->
+            <g class="node-box" onclick="selectDagLayer('project-boundaries-blog')" transform="translate(490, 218)">
+              <rect class="main-rect" width="205" height="28" rx="8" fill="#1f1224" stroke="#fb7185" stroke-width="1.6" />
+              <text x="102" y="18" text-anchor="middle" fill="#f8fafc" font-size="10" font-weight="700">2e. project-boundaries-blog</text>
+            </g>
+
             <!-- Layer 3a: vault-proxies -->
             <g class="node-box" onclick="selectDagLayer('vault-proxies')" transform="translate(155, 248)">
               <rect class="main-rect" width="175" height="52" rx="10" fill="#022c22" stroke="#34d399" stroke-width="1.8" />
@@ -2065,6 +2071,16 @@
         yaml: {
           'vps-k3s': `dependsOn: [governance]\npath: ./deploy/projects/health/boundary\nobjects:\n  - Namespace proj-health (pod-security.kubernetes.io/enforce: restricted)\n  - ResourceQuota project-health-quota (700m / 768Mi)\n  - NetworkPolicy project-health-isolation`,
           'local-k3s': `dependsOn: [governance]\npath: ./deploy/projects/health/boundary (identical isolation contract)`
+        }
+      },
+      'project-boundaries-blog': {
+        title: '2e. project-boundaries-blog (Tenant Sandbox — proj-blog)',
+        path: './deploy/projects/blog/boundary',
+        deps: 'cni, governance',
+        desc: 'Creates namespace proj-blog with Pod Security Restricted labels, ResourceQuota (200m CPU, 512Mi RAM, 0 NodePorts/LBs), strict NetworkPolicy allowing egress only to CoreDNS and flux-system source-controller, project-blog-sa (no token mount), and blog-reconciler RBAC.',
+        yaml: {
+          'vps-k3s': `dependsOn: [cni, governance]\npath: ./deploy/projects/blog/boundary\nobjects:\n  - Namespace proj-blog (pod-security.kubernetes.io/enforce: restricted)\n  - ResourceQuota project-blog-quota (200m / 512Mi)\n  - NetworkPolicy project-blog-isolation`,
+          'local-k3s': `dependsOn: [cni, governance]\npath: ./deploy/projects/blog/boundary (identical isolation contract)`
         }
       },
       'vault-proxies': {
