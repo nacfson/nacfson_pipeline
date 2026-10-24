@@ -2024,6 +2024,16 @@
           'vps-k3s': `dependsOn: [cert-manager, ingress, project-boundaries, project-boundaries-health]\npatches:\n  - Certificate/auth-tls:   dnsNames=[auth.nacfson.cloud],   issuer=letsencrypt-prod\n  - Certificate/pn-tls:     dnsNames=[pn.nacfson.cloud],     issuer=letsencrypt-prod\n  - Certificate/health-tls: dnsNames=[health.nacfson.cloud], issuer=letsencrypt-prod`,
           'local-k3s': `dependsOn: [cert-manager, ingress, project-boundaries, project-boundaries-health]\n# Uses base values (local-rehearsal-ca):\n  - Certificate/auth-tls:   dnsNames=[auth.example.com],   issuer=local-rehearsal-ca\n  - Certificate/pn-tls:     dnsNames=[pn.example.com],     issuer=local-rehearsal-ca\n  - Certificate/health-tls: dnsNames=[health.example.com], issuer=local-rehearsal-ca`
         }
+      },
+      'observability': {
+        title: '2e. observability (Fluent Bit & VictoriaLogs)',
+        path: './deploy/platform/observability',
+        deps: 'cni, governance',
+        desc: 'Deploys the Fluent Bit DaemonSet and VictoriaLogs StatefulSet in namespace observability. Collects node and pod logs. dependsOn is exactly cni and governance.',
+        yaml: {
+          'vps-k3s': `dependsOn: [cni, governance]\npath: ./deploy/platform/observability\nhealthChecks:\n  - kind: DaemonSet, name: fluent-bit, namespace: observability\n  - kind: StatefulSet, name: victorialogs, namespace: observability`,
+          'local-k3s': `dependsOn: [cni, governance]\npath: ./deploy/platform/observability\nhealthChecks:\n  - kind: DaemonSet, name: fluent-bit, namespace: observability\n  - kind: StatefulSet, name: victorialogs, namespace: observability`
+        }
       }
     };
 

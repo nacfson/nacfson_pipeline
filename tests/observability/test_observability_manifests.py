@@ -409,5 +409,55 @@ class TestFluentBitCollector(unittest.TestCase):
         )
 
 
+class TestLayerWiring(unittest.TestCase):
+    def test_observability_layer(self):
+        for env in ("local-k3s", "vps-k3s"):
+            path = os.path.join(BASE_DIR, "clusters", env, "layers.yaml")
+            with open(path, encoding="utf-8") as handle:
+                docs = [doc for doc in yaml.safe_load_all(handle) if doc]
+            matches = [
+                doc
+                for doc in docs
+                if doc.get("kind") == "Kustomization"
+                and doc.get("metadata", {}).get("name") == "observability"
+                and doc.get("metadata", {}).get("namespace") == "flux-system"
+            ]
+            self.assertEqual(len(matches), 1, env)
+            spec = matches[0]["spec"]
+            self.assertEqual(spec["path"], "./deploy/platform/observability")
+            self.assertIs(spec["wait"], True)
+            self.assertIs(spec["prune"], True)
+            self.assertEqual(
+                [item["name"] for item in spec["dependsOn"]],
+                ["cni", "governance"],
+            )
+            checks = {
+                (item["kind"], item["name"], item["namespace"])
+                for item in spec["healthChecks"]
+            }
+            self.assertIn(("DaemonSet", "fluent-bit", "observability"), checks)
+            self.assertIn(("StatefulSet", "victorialogs", "observability"), checks)
+
+    def test_manual_change_policy_lists_observability(self):
+        path = os.path.join(
+            BASE_DIR, "deploy", "platform", "governance", "manual-change-policy.yaml"
+        )
+        with open(path, encoding="utf-8") as handle:
+            docs = [doc for doc in yaml.safe_load_all(handle) if doc]
+        bindings = [
+            doc
+            for doc in docs
+            if doc.get("kind") == "ValidatingAdmissionPolicyBinding"
+            and doc.get("metadata", {}).get("name") == "gitops-managed-namespaces"
+        ]
+        self.assertEqual(len(bindings), 1)
+        values = []
+        for expr in bindings[0]["spec"]["matchResources"]["namespaceSelector"][
+            "matchExpressions"
+        ]:
+            if expr.get("key") == "kubernetes.io/metadata.name":
+                values.extend(expr.get("values", []))
+        self.assertIn("observability", values)
+
 if __name__ == "__main__":
     unittest.main()
