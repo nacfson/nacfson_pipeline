@@ -190,6 +190,7 @@ spec:
     - name: ingress
     - name: project-boundaries
     - name: project-boundaries-health
+    - name: project-boundaries-blog
   sourceRef:
     kind: GitRepository
     name: flux-system
@@ -235,6 +236,24 @@ spec:
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
+  name: project-boundaries-blog
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: governance
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/projects/blog/boundary
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
   name: projects
   namespace: flux-system
 spec:
@@ -246,6 +265,7 @@ spec:
   dependsOn:
     - name: project-boundaries
     - name: project-boundaries-health
+    - name: project-boundaries-blog
   sourceRef:
     kind: GitRepository
     name: flux-system

@@ -1,0 +1,83 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blog-web
+  namespace: proj-blog
+  labels:
+    app.kubernetes.io/name: blog-web
+    app.kubernetes.io/part-of: project-blog
+    platform.nacfson.io/managed-by: platform
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: blog-web
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: blog-web
+        app.kubernetes.io/part-of: project-blog
+    spec:
+      restartPolicy: Always
+      serviceAccountName: blog-workload-sa
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: blog-web
+          image: ghcr.io/nacfson/blog-web@sha256:7625cec69777f23156977162a42011b1d576a4ae3133a0b7d2e9c539a8e7b4a1
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "100m"
+              memory: "128Mi"
+          env:
+            - name: FLUX_ARTIFACT_URL
+              value: "http://source-controller.flux-system.svc.cluster.local:80/gitrepository/flux-system/nacfson-blog-content/latest.tar.gz"
+          volumeMounts:
+            - name: blog-content
+              mountPath: /var/run/blog-content
+            - name: tmp
+              mountPath: /tmp
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+            successThreshold: 1
+      volumes:
+        - name: blog-content
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

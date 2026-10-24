@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: project-blog-quota
+  namespace: proj-blog
+  labels:
+    app.kubernetes.io/name: project-blog
+    app.kubernetes.io/part-of: project-blog
+    platform.nacfson.io/managed-by: platform
+spec:
+  hard:
+    requests.cpu: "600m"
+    limits.cpu: "600m"
+    requests.memory: "512Mi"
+    limits.memory: "512Mi"
+    pods: "4"
+    # Strict perimeter backstops: Reject bypass service types at quota admission level
+    services.nodeports: "0"
+    services.loadbalancers: "0"

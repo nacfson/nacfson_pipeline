@@ -811,6 +811,12 @@
               <text x="102" y="33" text-anchor="middle" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">./deploy/projects/health/boundary</text>
             </g>
 
+            <!-- Layer 2e: project-boundaries-blog -->
+            <g class="node-box" onclick="selectDagLayer('project-boundaries-blog')" transform="translate(490, 218)">
+              <rect class="main-rect" width="205" height="28" rx="8" fill="#1f1224" stroke="#fb7185" stroke-width="1.6" />
+              <text x="102" y="18" text-anchor="middle" fill="#f8fafc" font-size="10" font-weight="700">2e. project-boundaries-blog</text>
+            </g>
+
             <!-- Layer 3a: vault-proxies -->
             <g class="node-box" onclick="selectDagLayer('vault-proxies')" transform="translate(155, 248)">
               <rect class="main-rect" width="175" height="52" rx="10" fill="#022c22" stroke="#34d399" stroke-width="1.8" />
@@ -946,6 +952,7 @@
               <th class="py-2 pr-3">Digest</th>
             </tr></thead>
             <tbody>
+              <tr class="border-b border-slate-800/60"><td class="py-2 pr-3 font-mono text-cyan-300">proj-blog</td><td class="py-2 pr-3 font-mono">blog-web</td><td class="py-2 pr-3 font-mono">blog-web</td><td class="py-2 pr-3 font-mono break-all">ghcr.io/nacfson/blog-web</td><td class="py-2 pr-3 font-mono break-all">sha256:7625cec69777f23156977162a42011b1d576a4ae3133a0b7d2e9c539a8e7b4a1</td></tr>
               <tr class="border-b border-slate-800/60"><td class="py-2 pr-3 font-mono text-cyan-300">proj-health</td><td class="py-2 pr-3 font-mono">health-backend</td><td class="py-2 pr-3 font-mono">backend</td><td class="py-2 pr-3 font-mono break-all">ghcr.io/nacfson/health-backend</td><td class="py-2 pr-3 font-mono break-all">sha256:3bab2a36c05104d6ab753850bcd74ec1b6062baa91e4a308f42c398644904e73</td></tr>
               <tr class="border-b border-slate-800/60"><td class="py-2 pr-3 font-mono text-cyan-300">proj-health</td><td class="py-2 pr-3 font-mono">health-frontend</td><td class="py-2 pr-3 font-mono">frontend</td><td class="py-2 pr-3 font-mono break-all">ghcr.io/nacfson/health-frontend</td><td class="py-2 pr-3 font-mono break-all">sha256:f22dfe18854a3ccba30d1f0b0db041ac4a68530218ff477d5df3355643179c86</td></tr>
               <tr class="border-b border-slate-800/60"><td class="py-2 pr-3 font-mono text-cyan-300">proj-pn</td><td class="py-2 pr-3 font-mono">pn-backend</td><td class="py-2 pr-3 font-mono">backend</td><td class="py-2 pr-3 font-mono break-all">ghcr.io/nacfson/project-pn-backend</td><td class="py-2 pr-3 font-mono break-all">sha256:dfdba959bf7bd36effcbafe28aaf6248859f18499d7539251317ec0fb1140504</td></tr>
@@ -2065,6 +2072,16 @@
         yaml: {
           'vps-k3s': `dependsOn: [governance]\npath: ./deploy/projects/health/boundary\nobjects:\n  - Namespace proj-health (pod-security.kubernetes.io/enforce: restricted)\n  - ResourceQuota project-health-quota (700m / 768Mi)\n  - NetworkPolicy project-health-isolation`,
           'local-k3s': `dependsOn: [governance]\npath: ./deploy/projects/health/boundary (identical isolation contract)`
+        }
+      },
+      'project-boundaries-blog': {
+        title: '2e. project-boundaries-blog (Tenant Sandbox — proj-blog)',
+        path: './deploy/projects/blog/boundary',
+        deps: 'cni, governance',
+        desc: 'Creates namespace proj-blog with Pod Security Restricted labels, ResourceQuota (200m CPU, 512Mi RAM, 0 NodePorts/LBs), strict NetworkPolicy allowing egress only to CoreDNS and flux-system source-controller, project-blog-sa (no token mount), and blog-reconciler RBAC.',
+        yaml: {
+          'vps-k3s': `dependsOn: [cni, governance]\npath: ./deploy/projects/blog/boundary\nobjects:\n  - Namespace proj-blog (pod-security.kubernetes.io/enforce: restricted)\n  - ResourceQuota project-blog-quota (200m / 512Mi)\n  - NetworkPolicy project-blog-isolation`,
+          'local-k3s': `dependsOn: [cni, governance]\npath: ./deploy/projects/blog/boundary (identical isolation contract)`
         }
       },
       'vault-proxies': {

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: blog-web
+  namespace: proj-blog
+  labels:
+    app.kubernetes.io/name: blog-web
+    app.kubernetes.io/part-of: project-blog
+spec:
+  # Strictly ClusterIP: NodePort and LoadBalancer are perimeter bypasses and strictly rejected
+  type: ClusterIP
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: blog-web
