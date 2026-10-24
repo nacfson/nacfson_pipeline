@@ -21,7 +21,7 @@ STATUS_REJECTED_UNBOUNDED = "REJECTED_UNBOUNDED"
 STATUS_REJECTED_MEMORY_SHRINK = "REJECTED_MEMORY_SHRINK"
 STATUS_REJECTED_OVER_BUDGET = "REJECTED_OVER_BUDGET"
 
-PLATFORM_NAMESPACES = {"flux-system", "platform", "vault", "identity", "governance", "kube-system", "cert-manager"}
+PLATFORM_NAMESPACES = {"flux-system", "platform", "vault", "identity", "governance", "kube-system", "cert-manager", "observability"}
 
 
 def parse_cpu(val):

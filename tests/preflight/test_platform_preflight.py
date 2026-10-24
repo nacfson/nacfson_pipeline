@@ -414,6 +414,48 @@ spec:
         self.assertEqual(hubble_svcs.get("hubble-metrics"), "ClusterIP")
         self.assertFalse(any(d.get("kind") == "IngressRoute" for d in cni_docs))
 
+    def test_25_observability_platform_hostpath_accepted(self):
+        """observability is a platform namespace; hostPath and root are exempt from project Rule 2/3."""
+        text = """
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: observability
+spec:
+  selector:
+    matchLabels:
+      app: fluent-bit
+  template:
+    metadata:
+      labels:
+        app: fluent-bit
+    spec:
+      volumes:
+        - name: varlogpods
+          hostPath:
+            path: /var/log/pods
+      containers:
+        - name: fluent-bit
+          image: fluent/fluent-bit:1.9
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: varlogpods
+              mountPath: /var/log/pods
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 10m
+              memory: 32Mi
+"""
+        rc, data = self._run_yaml(text)
+        self.assertEqual(rc, 0)
+        self.assertEqual(data["validationStatus"], "PASSED")
+
 
 if __name__ == "__main__":
     unittest.main()
