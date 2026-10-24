@@ -1,0 +1,65 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: fluent-bit-config
+  labels:
+    app.kubernetes.io/name: fluent-bit
+    app.kubernetes.io/part-of: platform-observability
+data:
+  fluent-bit.conf: |
+    [SERVICE]
+        Log_Level warn
+        Parsers_File parsers.conf
+
+    [INPUT]
+        Name tail
+        Path /var/log/pods/proj-*_*/*/*.log
+        Path_Key filepath
+        Parser cri
+        Read_from_Head On
+        DB /state/tail.db
+        Mem_Buf_Limit 5MB
+        Skip_Long_Lines On
+
+    [FILTER]
+        Name parser
+        Match *
+        Key_Name filepath
+        Parser pod_path
+        Reserve_Data On
+
+    [FILTER]
+        Name record_modifier
+        Match *
+        Record node ${NODE_NAME}
+
+    [FILTER]
+        Name modify
+        Match *
+        Rename log message
+        Remove filepath
+        Remove stream
+        Remove logtag
+
+    [OUTPUT]
+        Name http
+        Match *
+        Host victorialogs.observability.svc.cluster.local
+        Port 9428
+        URI /insert/jsonline?_stream_fields=project,container,pod&_msg_field=message&_time_field=time
+        Format json_lines
+        json_date_format iso8601
+        json_date_key time
+        Retry_Limit 5
+  parsers.conf: |
+    [PARSER]
+        Name cri
+        Format regex
+        Regex ^(?<time>[^ ]+) (?<stream>stdout|stderr) (?<logtag>[^ ]*) (?<log>.*)$
+        Time_Key time
+        Time_Format %Y-%m-%dT%H:%M:%S.%L%z
+
+    [PARSER]
+        Name pod_path
+        Format regex
+        Regex ^/var/log/pods/(?<project>[^_]+)_(?<pod>[^_]+)_(?<pod_uid>[^/]+)/(?<container>[^/]+)/[^/]+\.log$

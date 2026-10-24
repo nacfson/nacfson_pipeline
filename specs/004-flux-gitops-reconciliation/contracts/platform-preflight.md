@@ -27,13 +27,15 @@ Invocation: `python scripts/platform-preflight.py --environment <env> --candidat
 | # | Rule | Status on failure |
 |---|---|---|
 | 1 | `capacity.yaml` exists, parses, `environment` matches, and all values are > 0 | `REJECTED_NO_MEASUREMENT` |
-| 2 | Isolation in project namespaces: no Service of type NodePort or LoadBalancer; no `hostPath` volume; no `hostNetwork`, `hostPID` or `hostIPC`; no `privileged: true`; no `allowPrivilegeEscalation: true`; no `automountServiceAccountToken` other than `false` on pods; capabilities `add` only `NET_BIND_SERVICE` | `REJECTED_ISOLATION` |
+| 2 | Isolation in project namespaces: no Service of type NodePort or LoadBalancer; no `hostPath` volume; no `hostNetwork`, `hostPID` or `hostIPC`; no `privileged: true`; no `allowPrivilegeEscalation: true`; no `automountServiceAccountToken` other than `false` on pods; capabilities `add` only `NET_BIND_SERVICE`. Rule 2 does not apply inside `PLATFORM_NAMESPACES`. | `REJECTED_ISOLATION` |
 | 3 | Every container and init container in **project** layers has CPU and memory requests **equal to** limits | `REJECTED_QOS` |
 | 4 | Every container in **all** rendered layers (including Flux controllers) declares CPU and memory requests and limits | `REJECTED_UNBOUNDED` |
 | 5 | Memory freeze: for each project container present in the baseline, the candidate memory limit is ≥ the baseline limit | `REJECTED_MEMORY_SHRINK` |
 | 6 | Budget: per project, peak footprint ≤ slice (formula §4); zero projects always pass this rule | `REJECTED_OVER_BUDGET` |
 
 If every rule passes, the status is `PASSED`. On rejection the exit code is 1; on success it is 0; on a usage or parse error it is 2. Exit code 2 also fails the job (fail-closed).
+
+`PLATFORM_NAMESPACES` in [`scripts/platform-preflight.py`](../../../scripts/platform-preflight.py) is `flux-system`, `platform`, `vault`, `identity`, `governance`, `kube-system`, `cert-manager`, and `observability`. `observability` is the privileged platform namespace for the Fluent Bit collector. Its read-only `hostPath` is accepted. A `hostPath` in a project namespace is still `REJECTED_ISOLATION`. The observability reservation is not yet measured and must not be added by hand. Retention and disk values that do not depend on that measurement: 30 days, 8 GiB cap, 10Gi store PVC, 1Gi tail PVC, `proj-*` only, port-forward access, and the accepted risks in [`docs/operations-runbook.md`](../../../docs/operations-runbook.md) §15.
 
 ## 4. Calculation
 

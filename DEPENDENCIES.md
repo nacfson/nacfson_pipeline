@@ -34,6 +34,8 @@ Per [Constitution Principle I](.specify/memory/constitution.md#L6-L7), third-par
 | **cert-manager** | `quay.io/jetstack/cert-manager-{controller,cainjector,webhook}:v1.21.2` | [`deploy/platform/cert-manager/upstream/cert-manager.yaml`](deploy/platform/cert-manager/upstream/cert-manager.yaml) |
 | **Cilium CNI & Operator** | `quay.io/cilium/cilium:v1.20.3`, `quay.io/cilium/operator-generic:v1.20.3` (pinned `@sha256:...` digests) | [`deploy/platform/cni/upstream/cilium.yaml`](deploy/platform/cni/upstream/cilium.yaml) |
 | **Hubble Relay & Hubble UI** | `quay.io/cilium/hubble-relay:v1.20.3`, `quay.io/cilium/hubble-ui{,-backend}:v0.13.6` (pinned `@sha256:...` digests) | [`deploy/platform/cni/upstream/cilium.yaml`](deploy/platform/cni/upstream/cilium.yaml) |
+| **Fluent Bit** | `fluent/fluent-bit:4.2.8` | [`deploy/platform/observability/fluent-bit-daemonset.yaml`](deploy/platform/observability/fluent-bit-daemonset.yaml) |
+| **VictoriaLogs** | `victoriametrics/victoria-logs:v1.53.0` | [`deploy/platform/observability/victorialogs-statefulset.yaml`](deploy/platform/observability/victorialogs-statefulset.yaml) |
 | **Init / Wait Helper** | `curlimages/curl:8.10.1` | [`deploy/platform/identity/`](deploy/platform/identity/), [`deploy/platform/database/`](deploy/platform/database/) |
 
 ---
@@ -61,6 +63,8 @@ Per [Constitution Principle I](.specify/memory/constitution.md#L6-L7), third-par
 | `vps-k3s` (Oracle ARM64) | `4000m` CPU / `24576 MiB` RAM | `200m` CPU / `512 MiB` RAM | `1920m` CPU / `5312 MiB` RAM (`2080m` / `19264 MiB` per-project slice for $n=1$) | [`clusters/vps-k3s/capacity.yaml`](clusters/vps-k3s/capacity.yaml) |
 | `local-k3s` | `4000m` CPU / `8192 MiB` RAM | `200m` CPU / `512 MiB` RAM | `1920m` CPU / `5312 MiB` RAM (`2080m` / `2880 MiB` per-project slice for $n=1$) | [`clusters/local-k3s/capacity.yaml`](clusters/local-k3s/capacity.yaml) |
 
+The table above is the last recorded platform reservation. The observability reservation (Fluent Bit and VictoriaLogs) is not yet measured and must not be added by hand. Do not replace `1920m` or `5312` until a live `platformReservations` measurement is committed. Store sizing that does not depend on that measurement: 30-day retention, 8 GiB disk cap, 10Gi store PVC, 1Gi tail PVC `fluent-bit-state`, `proj-*` only, privileged namespace `observability`, operator access by port-forward.
+
 ---
 
 ## 5. Hosted Tenant Project Contracts (`Project_PN` & `proj-<slug>`)
@@ -71,6 +75,7 @@ Per [Constitution Principle I](.specify/memory/constitution.md#L6-L7), third-par
 - [`contracts/CONTRACT_AUTH_DOOR.md`](contracts/CONTRACT_AUTH_DOOR.md) — Direct project door, `signIn: none | shared`, and session confirmation.
 - [`contracts/CONTRACT_TLS_INGRESS.md`](contracts/CONTRACT_TLS_INGRESS.md) — Platform-owned edge TLS inventory and `IngressRoute` rules.
 - [`contracts/CONTRACT_ISOLATION_BUDGET.md`](contracts/CONTRACT_ISOLATION_BUDGET.md) — Restricted PSS, NetworkPolicy egress boundaries, and $1/n$ compute budget.
+- [`contracts/CONTRACT_LOG_SCHEMA.md`](contracts/CONTRACT_LOG_SCHEMA.md) — Required hosted-project log pattern: stdout/stderr only, platform envelope, producer-owned body schema. Every `proj-*` workload uses this. Project PN is the first registered `kind` owner, not an exception.
 
 ### 5.1 Project PN (`proj-pn` / `/home/nacfson/Projects/Project_PN`)
 
@@ -84,3 +89,4 @@ Per [Constitution Principle I](.specify/memory/constitution.md#L6-L7), third-par
 | **Health Probes & Restart** | [`deploy/projects/pn/workloads/frontend-deployment.yaml`](deploy/projects/pn/workloads/frontend-deployment.yaml)<br/>[`deploy/projects/pn/workloads/backend-deployment.yaml`](deploy/projects/pn/workloads/backend-deployment.yaml)<br/>[`deploy/platform/vault-proxies/db-proxy.yaml`](deploy/platform/vault-proxies/db-proxy.yaml) | Frontend `startupProbe` (`/api/auth/language-options`) & `readinessProbe` (`/healthz`) check backend reachability, `livenessProbe` checks local `:80/`; Backend & `vault-db-proxy` expose `:8080/healthz` (liveness) and `:8080/readyz` (DB-hop readiness); project workloads set `restartPolicy: Always`. |
 | **Database Access** | [`deploy/projects/pn/boundary/`](deploy/projects/pn/boundary/) & `vault-db-proxy` | Connects via workload identity `project:pn:workload:backend` to `vault-db-proxy.vault.svc:5432/proj_pn`, bound to restricted role `user_pn` on database `proj_pn` ([`CONTRACT_DATABASE.md`](contracts/CONTRACT_DATABASE.md)). |
 | **Security Context & Ports** | [`deploy/projects/pn/boundary/namespace.yaml`](deploy/projects/pn/boundary/namespace.yaml) | Namespace enforces `restricted` PSS; containers run as UID `10001` (`runAsNonRoot: true`), drop `ALL` capabilities, `automountServiceAccountToken: false`; Services are `ClusterIP` (`:80` FE, `:8080` BE). |
+| **Logs** | [`contracts/CONTRACT_LOG_SCHEMA.md`](contracts/CONTRACT_LOG_SCHEMA.md) | Print only. `kind:"analytics"` on stdout. `kind:"admin"` on stderr. No `ADMIN_LOG_PATH` and no log PVC. Body schemas stay in Project PN. The next project uses the same contract and adds its own `kind` row. |

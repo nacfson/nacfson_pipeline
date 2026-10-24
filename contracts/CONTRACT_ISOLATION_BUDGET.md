@@ -19,7 +19,7 @@ Every project namespace (`deploy/projects/<slug>/boundary/`) and workload (`depl
    - `automountServiceAccountToken: false` is mandatory on all project pods.
 4. **Allowed Project Manifest Kinds & Services**:
    - Project layers may render only `Deployment`, `Service`, `ConfigMap`, and `IngressRoute` (enforced by Invariant 6 in [`scripts/render-invariants.py`](../scripts/render-invariants.py)).
-   - All project `Service` objects MUST be `type: ClusterIP` (`NodePort`, `LoadBalancer`, `hostNetwork`, `hostPID`, `hostIPC`, and `hostPath` volumes are strictly rejected).
+   - All project `Service` objects MUST be `type: ClusterIP`. `NodePort`, `LoadBalancer`, `hostNetwork`, `hostPID`, `hostIPC`, and `hostPath` volumes are strictly rejected in project namespaces. The platform `observability` collector is the documented exception: one read-only `hostPath` of `/var/log/pods` in that privileged platform namespace. The observability reservation is not yet measured and must not be added by hand.
 
 ---
 

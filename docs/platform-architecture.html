@@ -61,11 +61,11 @@
         <div>
           <div class="flex flex-wrap items-center gap-2">
             <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-white">nacfson_pipeline Architecture &amp; Junior Engineer Handbook</h1>
-            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">Constitution v2.2.0</span>
+            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">Constitution v2.2.1</span>
             <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Specs 001–010</span>
             <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">Hook-Synced</span>
           </div>
-          <p class="text-xs text-slate-400 mt-0.5">Interactive topology, CNI/eBPF packet simulator, Gateway allow-vs-block auth tester, 7 lifecycle flows, Flux 10-layer DAG, 1/n budget &amp; junior mental models</p>
+          <p class="text-xs text-slate-400 mt-0.5">Interactive topology, CNI/eBPF packet simulator, Gateway allow-vs-block auth tester, 8 lifecycle flows, Flux 10-layer DAG, 1/n budget &amp; junior mental models. Log envelope schema is Git-owned in contracts/CONTRACT_LOG_SCHEMA.md; Flux applies the collector ConfigMap, not a schema server. observability is a platform namespace for the preflight exemption only. VictoriaLogs (victoriametrics/victoria-logs:v1.53.0) is the ClusterIP log store in that namespace. Fluent Bit (fluent/fluent-bit:4.2.8) is the project-log collector DaemonSet in that namespace. Day-2 search steps are in docs/operations-runbook.md section 15. The observability reservation is not yet measured and must not be added by hand.</p>
         </div>
       </div>
 
@@ -142,7 +142,7 @@
       <div class="grid grid-cols-1 xl:grid-cols-12 gap-5 items-start">
         <!-- SVG Diagram -->
         <div class="xl:col-span-8 bg-slate-900/40 border border-slate-800 rounded-2xl p-3 sm:p-4 shadow-2xl overflow-x-auto">
-          <svg id="topology-svg" viewBox="0 0 1060 760" class="w-full h-auto min-w-[780px] select-none" xmlns="http://www.w3.org/2000/svg">
+          <svg id="topology-svg" viewBox="0 0 1060 860" class="w-full h-auto min-w-[780px] select-none" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <marker id="arr-cyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
                 <path d="M 0 1 L 10 5 L 0 9 z" fill="#22d3ee" />
@@ -164,7 +164,7 @@
             <text x="28" y="30" fill="#94a3b8" font-size="10" font-family="'JetBrains Mono'" font-weight="700">EXTERNAL INTERNET &amp; UPSTREAM PROVIDERS</text>
 
             <!-- K3s Single-Node Cluster Boundary -->
-            <rect x="15" y="118" width="1030" height="630" rx="16" fill="#090d16" stroke="#1e293b" stroke-width="2" />
+            <rect x="15" y="118" width="1030" height="730" rx="16" fill="#090d16" stroke="#1e293b" stroke-width="2" />
             <text x="30" y="140" fill="#38bdf8" font-size="11" font-family="'JetBrains Mono'" font-weight="700">SINGLE-NODE K3s CLUSTER (v1.35.9+k3s1 · --flannel-backend=none · Cilium v1.20.3 eBPF)</text>
 
             <!-- Namespace: kube-system & platform & cert-manager (Left Column) -->
@@ -242,6 +242,8 @@
               <!-- GitHub -> Flux -> Governance & Cluster -->
               <path data-cat="gitops" data-from="github" data-to="flux" class="edge-line anim-edge" d="M 830 90 L 830 112 L 22 112 L 22 620 L 50 620" stroke="#fbbf24" stroke-width="2.2" fill="none" marker-end="url(#arr-amber)" />
               <path data-cat="gitops" data-from="flux" data-to="vap" class="edge-line anim-edge" d="M 185 645 L 185 670" stroke="#fbbf24" stroke-width="2" fill="none" marker-end="url(#arr-amber)" />
+              <path data-cat="logs" data-from="fluent-bit" data-to="victorialogs" class="edge-line anim-edge" d="M 280 804 L 380 804" stroke="#34d399" stroke-width="2.2" fill="none" marker-end="url(#arr-emerald)" />
+              <path data-cat="logs" data-from="pn-backend" data-to="fluent-bit" class="edge-line" d="M 1005 360 L 1032 360 L 1032 842 L 162 842 L 162 828" stroke="#22d3ee" stroke-width="1.6" stroke-dasharray="4 4" fill="none" marker-end="url(#arr-cyan)" />
             </g>
 
             <!-- ======================== NODES (ACTORS & SERVICES) ======================== -->
@@ -431,6 +433,24 @@
               <text x="14" y="286" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">✗ Direct OpenBao (:8200) BLOCKED</text>
               <text x="14" y="302" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">✗ Direct Keycloak (:8080) BLOCKED</text>
             </g>
+
+            <!-- Namespace: observability -->
+            <rect x="30" y="752" width="1000" height="88" rx="12" fill="#042f2e" fill-opacity="0.45" stroke="#14b8a6" stroke-opacity="0.6" />
+            <text x="44" y="770" fill="#5eead4" font-size="10" font-family="'JetBrains Mono'" font-weight="700">NS: observability (platform log collector; not a project workload)</text>
+
+            <!-- 21. Fluent Bit -->
+            <g class="node-box" id="node-fluent-bit" onclick="selectNode('fluent-bit')" transform="translate(44, 780)">
+              <rect class="main-rect" width="236" height="48" rx="10" fill="#042f2e" stroke="#14b8a6" stroke-width="1.8" />
+              <text x="12" y="20" fill="#ccfbf1" font-size="11" font-weight="700">Fluent Bit 4.2.8</text>
+              <text x="12" y="36" fill="#99f6e4" font-size="8.5" font-family="'JetBrains Mono'">hostPath /var/log/pods read-only · proj-* only</text>
+            </g>
+
+            <!-- 22. VictoriaLogs -->
+            <g class="node-box" id="node-victorialogs" onclick="selectNode('victorialogs')" transform="translate(380, 780)">
+              <rect class="main-rect" width="280" height="48" rx="10" fill="#042f2e" stroke="#2dd4bf" stroke-width="1.8" />
+              <text x="12" y="20" fill="#ccfbf1" font-size="11" font-weight="700">VictoriaLogs v1.53.0 (:9428)</text>
+              <text x="12" y="36" fill="#99f6e4" font-size="8.5" font-family="'JetBrains Mono'">ClusterIP · 10Gi PVC · 30d · 8Gi disk cap</text>
+            </g>
           </svg>
         </div>
 
@@ -514,6 +534,9 @@
           </button>
           <button onclick="selectFlow('probes')" id="flow-btn-probes" class="flow-btn px-3 py-2 rounded-xl text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700">
             🩺 Flow G: 3-Probe &amp; CORS (007)
+          </button>
+          <button onclick="selectFlow('logs')" id="flow-btn-logs" class="flow-btn px-3 py-2 rounded-xl text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-700">
+            📜 Flow H: Project Log Collection
           </button>
         </div>
 
@@ -1434,6 +1457,36 @@
           '➔ Reconciler RBAC (pn-reconciler) cannot modify Quotas, NetworkPolicies, or RoleBindings.'
         ],
         path: 'deploy/projects/pn/boundary/network-policy.yaml'
+      },
+      'fluent-bit': {
+        badge: 'Platform log collector (Clarification 2.2.1)',
+        title: 'Fluent Bit 4.2.8 DaemonSet',
+        ns: 'observability',
+        image: 'fluent/fluent-bit:4.2.8',
+        oss: 'Fluent Bit (Apache-2.0)',
+        res: '50m CPU · 64Mi (request = limit)',
+        desc: 'Platform collector, not a project workload. Mounts /var/log/pods read-only through hostPath and tails only proj-* container logs. Principle II and the hostPath rejection rule still apply to project namespaces and manifests.',
+        bullets: [
+          '➔ Path glob is /var/log/pods/proj-* only. identity, vault, platform, and kube-system logs are not collected.',
+          '➔ Bookmarks tail.db on PVC fluent-bit-state at /state. Not an emptyDir.',
+          '➔ Sends json lines to victorialogs.observability.svc.cluster.local:9428.'
+        ],
+        path: 'deploy/platform/observability/fluent-bit-daemonset.yaml'
+      },
+      'victorialogs': {
+        badge: 'Platform log store',
+        title: 'VictoriaLogs v1.53.0 (:9428)',
+        ns: 'observability',
+        image: 'victoriametrics/victoria-logs:v1.53.0',
+        oss: 'VictoriaLogs (Apache-2.0)',
+        res: 'request 100m CPU · limit 500m CPU · 384Mi',
+        desc: 'ClusterIP log store in namespace observability. Not exposed by an IngressRoute. Flux layer observability dependsOn cni and governance.',
+        bullets: [
+          '➔ Listens on :9428. Insert path is /insert/jsonline.',
+          '➔ 10Gi PVC, 30d retention, 8Gi disk cap.',
+          '➔ Operator UI is kubectl port-forward only (scripts/open-victorialogs-ui.sh).'
+        ],
+        path: 'deploy/platform/observability/victorialogs-statefulset.yaml'
       }
     };
 
@@ -1834,6 +1887,48 @@
           code: `env:\n  - name: PUBLIC_APP_URL\n    value: "https://pn.nacfson.cloud"\n  - name: ALLOWED_ORIGINS\n    value: "https://pn.nacfson.cloud"`,
           guard: 'platform-preflight.py rejects any manifest where PUBLIC_APP_URL is missing from ALLOWED_ORIGINS.'
         }
+      ],
+      logs: [
+        {
+          title: '1. Project container writes a log file on the node',
+          spec: 'Clarification 2.2.1 · deploy/platform/observability',
+          from: 'proj-* container',
+          to: 'Node path /var/log/pods/proj-*',
+          proto: 'containerd log file',
+          desc: 'A project pod writes its stdout to the node log directory. The collector does not receive that stream over the network. It reads the file later.',
+          code: `/var/log/pods/proj-pn_backend-7d9f_3f2c-aa/backend/0.log`,
+          guard: 'Only proj-* paths are in scope. Platform and kube-system log files stay on the node.'
+        },
+        {
+          title: '2. Fluent Bit tails proj-* files through a read-only hostPath',
+          spec: 'Clarification 2.2.1 · fluent-bit-daemonset.yaml',
+          from: 'Fluent Bit 4.2.8 (observability)',
+          to: 'hostPath /var/log/pods (read-only)',
+          proto: 'tail input · Mem_Buf_Limit · DB /state/tail.db',
+          desc: 'The platform DaemonSet mounts /var/log/pods read-only. It is not a project workload, so Principle II and the hostPath rejection rule apply to project namespaces and manifests only. The tail bookmark lives on PVC fluent-bit-state, not emptyDir.',
+          code: `image: fluent/fluent-bit:4.2.8\nPath /var/log/pods/proj-*\nDB /state/tail.db`,
+          guard: 'Project manifests still cannot declare hostPath. One read-only node mount, one platform pod.'
+        },
+        {
+          title: '3. JSON lines go to VictoriaLogs on the cluster network',
+          spec: 'deploy/platform/observability/fluent-bit-configmap.yaml',
+          from: 'Fluent Bit',
+          to: 'VictoriaLogs v1.53.0 (:9428)',
+          proto: 'HTTP POST /insert/jsonline',
+          desc: 'Fluent Bit sends json lines to victorialogs.observability.svc.cluster.local:9428. Stream fields are project, container, and pod. Egress is DNS plus that ClusterIP only.',
+          code: `Host victorialogs.observability.svc.cluster.local\nPort 9428\nURI /insert/jsonline?_stream_fields=project,container,pod&_msg_field=message&_time_field=time`,
+          guard: 'No 0.0.0.0/0 egress. VictoriaLogs has no public IngressRoute.'
+        },
+        {
+          title: '4. Operator reads the store through port-forward',
+          spec: 'scripts/open-victorialogs-ui.sh',
+          from: 'Operator workstation',
+          to: 'victorialogs.observability.svc:9428',
+          proto: 'kubectl port-forward',
+          desc: 'The store stays ClusterIP. The operator script checks rollout, queries LogsQL, and fails if a returned line is not a proj- record or if Fluent Bit repeats an [error] line.',
+          code: `POST /select/logsql/query\nquery=*\nlimit=50`,
+          guard: 'An empty query body passes. Any returned line must contain "project":"proj-".'
+        }
       ]
     };
 
@@ -2024,6 +2119,16 @@
           'vps-k3s': `dependsOn: [cert-manager, ingress, project-boundaries, project-boundaries-health]\npatches:\n  - Certificate/auth-tls:   dnsNames=[auth.nacfson.cloud],   issuer=letsencrypt-prod\n  - Certificate/pn-tls:     dnsNames=[pn.nacfson.cloud],     issuer=letsencrypt-prod\n  - Certificate/health-tls: dnsNames=[health.nacfson.cloud], issuer=letsencrypt-prod`,
           'local-k3s': `dependsOn: [cert-manager, ingress, project-boundaries, project-boundaries-health]\n# Uses base values (local-rehearsal-ca):\n  - Certificate/auth-tls:   dnsNames=[auth.example.com],   issuer=local-rehearsal-ca\n  - Certificate/pn-tls:     dnsNames=[pn.example.com],     issuer=local-rehearsal-ca\n  - Certificate/health-tls: dnsNames=[health.example.com], issuer=local-rehearsal-ca`
         }
+      },
+      'observability': {
+        title: '2e. observability (Fluent Bit & VictoriaLogs)',
+        path: './deploy/platform/observability',
+        deps: 'cni, governance',
+        desc: 'Deploys the Fluent Bit DaemonSet and VictoriaLogs StatefulSet in namespace observability. Collects node and pod logs. dependsOn is exactly cni and governance.',
+        yaml: {
+          'vps-k3s': `dependsOn: [cni, governance]\npath: ./deploy/platform/observability\nhealthChecks:\n  - kind: DaemonSet, name: fluent-bit, namespace: observability\n  - kind: StatefulSet, name: victorialogs, namespace: observability`,
+          'local-k3s': `dependsOn: [cni, governance]\npath: ./deploy/platform/observability\nhealthChecks:\n  - kind: DaemonSet, name: fluent-bit, namespace: observability\n  - kind: StatefulSet, name: victorialogs, namespace: observability`
+        }
       }
     };
 
@@ -2071,6 +2176,24 @@
         role: 'source-controller & kustomize-controller',
         where: 'clusters/*/flux-system/gotk-components.yaml',
         details: 'Continuously reconciles Git state from main branch every 5 minutes across 9 ordered Kustomization layers with prune: true.'
+      },
+      {
+        cat: 'oss',
+        name: 'VictoriaLogs',
+        ver: 'v1.53.0',
+        license: 'Apache-2.0 (VictoriaMetrics)',
+        role: 'Single-node project log store',
+        where: 'deploy/platform/observability/victorialogs-statefulset.yaml',
+        details: 'ClusterIP store on :9428 with a 10Gi PVC, 30d retention, and an 8Gi disk cap. Flux layer observability (dependsOn cni, governance). Image victoriametrics/victoria-logs:v1.53.0.'
+      },
+      {
+        cat: 'oss',
+        name: 'Fluent Bit',
+        ver: '4.2.8',
+        license: 'Apache-2.0',
+        role: 'Project log collector',
+        where: 'deploy/platform/observability/fluent-bit-daemonset.yaml',
+        details: 'DaemonSet tails /var/log/pods/proj-* only, bookmarks tail.db on PVC fluent-bit-state, and sends json lines to VictoriaLogs. Image fluent/fluent-bit:4.2.8. Read-only hostPath is the Clarification 2.2.1 exception, not a project mount. Flux layer observability.'
       },
       {
         cat: 'oss',

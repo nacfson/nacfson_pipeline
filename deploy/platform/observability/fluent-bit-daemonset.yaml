@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  labels:
+    app.kubernetes.io/name: fluent-bit
+    app.kubernetes.io/part-of: platform-observability
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: fluent-bit
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: fluent-bit
+        app.kubernetes.io/part-of: platform-observability
+    spec:
+      serviceAccountName: fluent-bit
+      automountServiceAccountToken: false
+      containers:
+        - name: fluent-bit
+          image: fluent/fluent-bit:4.2.8
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+          securityContext:
+            runAsUser: 0
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: config
+              mountPath: /fluent-bit/etc/
+              readOnly: true
+            - name: varlogpods
+              mountPath: /var/log/pods
+              readOnly: true
+            - name: state
+              mountPath: /state
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: varlogpods
+          hostPath:
+            path: /var/log/pods
+            type: Directory
+        - name: state
+          persistentVolumeClaim:
+            claimName: fluent-bit-state
+        - name: config
+          configMap:
+            name: fluent-bit-config
+        - name: tmp
+          emptyDir: {}
