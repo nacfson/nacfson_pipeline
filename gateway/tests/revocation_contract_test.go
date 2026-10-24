@@ -2,6 +2,7 @@ package tests
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -19,6 +20,7 @@ import (
 type statefulSessionRegistry struct {
 	mu       sync.Mutex
 	sessions map[string]bool
+	err      error
 }
 
 func newSessionRegistry() *statefulSessionRegistry {
@@ -40,6 +42,9 @@ func (r *statefulSessionRegistry) ExchangeTokenForProject(refreshToken, targetAu
 func (r *statefulSessionRegistry) RevokeSession(sessionID string) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.err != nil {
+		return r.err
+	}
 	delete(r.sessions, sessionID)
 	return nil
 }
@@ -47,10 +52,11 @@ func (r *statefulSessionRegistry) RevokeSession(sessionID string) error {
 // TestRevocationContract verifies the formal contract in contracts/session-revocation.md
 func TestRevocationContract(t *testing.T) {
 	cfg := &config.Config{
-		CookieName:     "PLATFORM_SESSION",
-		CookieDomain:   ".example.com",
-		HMACSecret:     []byte("test-secret-key-that-is-at-least-32-bytes!"),
-		SessionTimeout: 1 * time.Hour,
+		CookieName:         "PLATFORM_SESSION",
+		CookieDomain:       ".example.com",
+		HMACSecret:         []byte("test-secret-key-that-is-at-least-32-bytes!"),
+		SessionTimeout:     1 * time.Hour,
+		AllowedReturnHosts: []string{"pn.example.com"},
 	}
 
 	registry := newSessionRegistry()
@@ -159,10 +165,11 @@ func TestRevocationContract(t *testing.T) {
 // TestRevocationContractCSRFRejection verifies Case B Contract: Cross-site request rejected
 func TestRevocationContractCSRFRejection(t *testing.T) {
 	cfg := &config.Config{
-		CookieName:     "PLATFORM_SESSION",
-		CookieDomain:   ".example.com",
-		HMACSecret:     []byte("test-secret-key-that-is-at-least-32-bytes!"),
-		SessionTimeout: 1 * time.Hour,
+		CookieName:         "PLATFORM_SESSION",
+		CookieDomain:       ".example.com",
+		HMACSecret:         []byte("test-secret-key-that-is-at-least-32-bytes!"),
+		SessionTimeout:     1 * time.Hour,
+		AllowedReturnHosts: []string{"pn.example.com"},
 	}
 
 	registry := newSessionRegistry()
@@ -207,5 +214,88 @@ func TestRevocationContractCSRFRejection(t *testing.T) {
 	// Active victim session MUST remain untouched in Keycloak
 	if !registry.sessions["sess-active-victim"] {
 		t.Errorf("victim session was unexpectedly revoked during CSRF attack")
+	}
+}
+
+func TestRevocationFailureKeepsSessionActive(t *testing.T) {
+	cfg := &config.Config{
+		CookieName:         "PLATFORM_SESSION",
+		CookieDomain:       ".example.com",
+		HMACSecret:         []byte("test-secret-key-that-is-at-least-32-bytes!"),
+		SessionTimeout:     1 * time.Hour,
+		AllowedReturnHosts: []string{"pn.example.com"},
+	}
+	registry := newSessionRegistry()
+	registry.sessions["sess-still-live"] = true
+	registry.err = errors.New("kc down")
+	handler := auth.NewHandler(cfg, registry, nil)
+	handler.SetRevoker(registry)
+
+	sess := auth.SessionCookieData{
+		SessionID: "sess-still-live",
+		Subject:   "user-still-live",
+		Issuer:    "https://auth.example.com",
+		Tokens:    map[string]string{"project-pn": "token-still-live"},
+		CreatedAt: time.Now().Unix(),
+	}
+	form := url.Values{}
+	form.Set("redirect_uri", "https://pn.example.com/goodbye")
+	reqLogout := httptest.NewRequest(http.MethodPost, "/auth/logout", strings.NewReader(form.Encode()))
+	reqLogout.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqLogout.Header.Set("Origin", "https://pn.example.com")
+	reqLogout.AddCookie(&http.Cookie{
+		Name:  cfg.CookieName,
+		Value: encodeTestCookie(sess, cfg.HMACSecret),
+	})
+	rrLogout := httptest.NewRecorder()
+	handler.HandleLogout(rrLogout, reqLogout)
+	if rrLogout.Code != http.StatusBadGateway {
+		t.Fatalf("expected HTTP 502, got %d: %s", rrLogout.Code, rrLogout.Body.String())
+	}
+	if !registry.sessions["sess-still-live"] {
+		t.Fatal("failed revoke deleted sess-still-live")
+	}
+
+	reqAuth := httptest.NewRequest(http.MethodGet, "/auth", nil)
+	reqAuth.Header.Set("X-Forwarded-Host", "pn.example.com")
+	reqAuth.AddCookie(&http.Cookie{
+		Name:  cfg.CookieName,
+		Value: encodeTestCookie(sess, cfg.HMACSecret),
+	})
+	rrAuth := httptest.NewRecorder()
+	handler.HandleForwardAuth(rrAuth, reqAuth)
+	if rrAuth.Code != http.StatusOK {
+		t.Fatalf("expected next GET /auth with the same cookie to stay 200, got %d: %s", rrAuth.Code, rrAuth.Body.String())
+	}
+
+	handle, err := handler.SealSessionHandle(auth.SessionHandleData{
+		SessionID: "sess-still-live",
+		Subject:   "user-still-live",
+		Issuer:    "https://auth.example.com",
+		Tokens:    map[string]string{"project-pn": "token-still-live"},
+		CreatedAt: time.Now().Unix(),
+	})
+	if err != nil {
+		t.Fatalf("seal handle: %v", err)
+	}
+	reqBearerLogout := httptest.NewRequest(http.MethodPost, "/auth/logout", strings.NewReader(form.Encode()))
+	reqBearerLogout.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	reqBearerLogout.Header.Set("Authorization", "Bearer "+handle)
+	rrBearerLogout := httptest.NewRecorder()
+	handler.HandleLogout(rrBearerLogout, reqBearerLogout)
+	if rrBearerLogout.Code != http.StatusBadGateway {
+		t.Fatalf("expected bearer logout HTTP 502, got %d: %s", rrBearerLogout.Code, rrBearerLogout.Body.String())
+	}
+
+	reqBearerAuth := httptest.NewRequest(http.MethodGet, "/auth", nil)
+	reqBearerAuth.Header.Set("X-Forwarded-Host", "pn.example.com")
+	reqBearerAuth.Header.Set("Authorization", "Bearer "+handle)
+	rrBearerAuth := httptest.NewRecorder()
+	handler.HandleForwardAuth(rrBearerAuth, reqBearerAuth)
+	if rrBearerAuth.Code != http.StatusOK {
+		t.Fatalf("expected next GET /auth with the same bearer to stay 200, got %d: %s", rrBearerAuth.Code, rrBearerAuth.Body.String())
+	}
+	if !registry.sessions["sess-still-live"] {
+		t.Fatal("sess-still-live was deleted")
 	}
 }

@@ -38,15 +38,22 @@ export default function archDocSyncExtension(pi: any): void {
 
     if (process.env.SKIP_REVIEW_GATE !== "1" && !cmd.includes("SKIP_REVIEW_GATE=1")) {
       try {
-        execFileSync("python3", [reviewCyclePath, "check-gate", "--scope", "staged"], {
-          cwd: repoRoot,
-          stdio: "pipe",
-        });
-      } catch (err: any) {
-        const stderr = err?.stderr ? String(err.stderr).trim() : String(err);
+        execFileSync(
+          "python3",
+          [reviewCyclePath, "check-gate", "--scope", "staged", "--require-pipeline", "code-review"],
+          {
+            cwd: repoRoot,
+            stdio: "pipe",
+          }
+        );
+      } catch (err: unknown) {
+        const stderr =
+          err && typeof err === "object" && "stderr" in err && err.stderr
+            ? String(err.stderr).trim()
+            : String(err);
         return {
           block: true,
-          reason: `[REVIEW-CYCLE BLOCKED] Run scripts/review-cycle.py record-receipt --scope staged before committing:\n${stderr}`,
+          reason: `[REVIEW-CYCLE BLOCKED] Run the code-review skill (.agents/skills/code-review/SKILL.md) before committing. Do not self-record a receipt:\n${stderr}`,
         };
       }
     }

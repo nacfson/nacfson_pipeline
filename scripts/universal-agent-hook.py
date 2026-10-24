@@ -144,6 +144,7 @@ def main() -> int:
                 receipt_path,
                 diff_text_override=force_diff,
                 changed_files_override=force_changed,
+                require_pipeline=review_cycle.CODE_REVIEW_PIPELINE,
             )
             if not ok:
                 review_errors.extend(gate_errs)

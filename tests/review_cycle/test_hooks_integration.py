@@ -38,6 +38,8 @@ class TestHooksIntegration(unittest.TestCase):
             data = json.loads(proc.stdout.strip())
             self.assertEqual(data["decision"], "deny")
             self.assertIn("REVIEW-CYCLE", data["reason"])
+            self.assertIn("code-review skill", data["reason"])
+            self.assertNotIn("record-receipt", data["reason"])
 
     def test_omp_opencode_and_precommit_call_review_cycle_check_gate(self):
         omp_text = (ROOT / ".omp/extensions/arch-doc-sync.ts").read_text(encoding="utf-8")
@@ -46,6 +48,16 @@ class TestHooksIntegration(unittest.TestCase):
         self.assertIn("review-cycle.py", omp_text)
         self.assertIn("review-cycle.py", oc_text)
         self.assertIn("review-cycle.py check-gate --scope staged", pc_text)
+        self.assertIn('"--require-pipeline", "code-review"', omp_text)
+        self.assertIn("--require-pipeline", oc_text)
+        self.assertIn("code-review", oc_text)
+        self.assertIn("--require-pipeline code-review", pc_text)
+        self.assertIn(".agents/skills/code-review/SKILL.md", omp_text)
+        self.assertIn(".agents/skills/code-review/SKILL.md", oc_text)
+        self.assertIn(".agents/skills/code-review/SKILL.md", pc_text)
+        self.assertNotIn("record-receipt", omp_text)
+        self.assertNotIn("record-receipt", oc_text)
+        self.assertNotIn("record-receipt", pc_text)
         self.assertIn("SKIP_REVIEW_GATE", pc_text)
 
     def test_secret_scan_ignores_alg_none_example_and_keeps_real_jwt(self):

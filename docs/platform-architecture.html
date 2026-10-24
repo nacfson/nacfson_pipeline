@@ -399,7 +399,7 @@
               <text x="14" y="23" font-size="14">🖥️</text>
               <text x="36" y="23" fill="#f8fafc" font-size="11.5" font-weight="700">pn-frontend (:80)</text>
               <text x="14" y="40" fill="#fda4af" font-size="9.5" font-family="'JetBrains Mono'">Nginx + Expo Web SPA (UID 101)</text>
-              <text x="14" y="55" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">Pinned @sha256:2ee7ed4d... · NET_BIND_SERVICE</text>
+              <text x="14" y="55" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">Pinned @sha256:9757cfd8... · NET_BIND_SERVICE</text>
             </g>
 
             <!-- 19. Project PN Backend -->
@@ -408,7 +408,7 @@
               <text x="14" y="23" font-size="14">⚙️</text>
               <text x="36" y="23" fill="#f8fafc" font-size="11.5" font-weight="700">pn-backend (:8080)</text>
               <text x="14" y="40" fill="#fda4af" font-size="9.5" font-family="'JetBrains Mono'">Go API Server (UID 65532 non-root)</text>
-              <text x="14" y="54" fill="#cbd5e1" font-size="8.5" font-family="'JetBrains Mono'">Pinned @sha256:17af219c... · Zero DB Secrets</text>
+              <text x="14" y="54" fill="#cbd5e1" font-size="8.5" font-family="'JetBrains Mono'">Pinned @sha256:dfdba959... · Zero DB Secrets</text>
               <text x="14" y="66" fill="#34d399" font-size="8.5" font-family="'JetBrains Mono'">DB Host: vault-db-proxy.vault.svc:5432</text>
             </g>
 
@@ -941,8 +941,8 @@
             <tbody>
               <tr class="border-b border-slate-800/60"><td class="py-2 pr-3 font-mono text-cyan-300">proj-health</td><td class="py-2 pr-3 font-mono">health-backend</td><td class="py-2 pr-3 font-mono">backend</td><td class="py-2 pr-3 font-mono break-all">ghcr.io/nacfson/health-backend</td><td class="py-2 pr-3 font-mono break-all">sha256:3bab2a36c05104d6ab753850bcd74ec1b6062baa91e4a308f42c398644904e73</td></tr>
               <tr class="border-b border-slate-800/60"><td class="py-2 pr-3 font-mono text-cyan-300">proj-health</td><td class="py-2 pr-3 font-mono">health-frontend</td><td class="py-2 pr-3 font-mono">frontend</td><td class="py-2 pr-3 font-mono break-all">ghcr.io/nacfson/health-frontend</td><td class="py-2 pr-3 font-mono break-all">sha256:f22dfe18854a3ccba30d1f0b0db041ac4a68530218ff477d5df3355643179c86</td></tr>
-              <tr class="border-b border-slate-800/60"><td class="py-2 pr-3 font-mono text-cyan-300">proj-pn</td><td class="py-2 pr-3 font-mono">pn-backend</td><td class="py-2 pr-3 font-mono">backend</td><td class="py-2 pr-3 font-mono break-all">ghcr.io/nacfson/project-pn-backend</td><td class="py-2 pr-3 font-mono break-all">sha256:17af219c73574c43a1f2c58c38e47f2f076f463331e232fcf753a814ae70f366</td></tr>
-              <tr class="border-b border-slate-800/60"><td class="py-2 pr-3 font-mono text-cyan-300">proj-pn</td><td class="py-2 pr-3 font-mono">pn-frontend</td><td class="py-2 pr-3 font-mono">frontend</td><td class="py-2 pr-3 font-mono break-all">ghcr.io/nacfson/project-pn-frontend</td><td class="py-2 pr-3 font-mono break-all">sha256:2ee7ed4d33f54f318c8cfcc3b1196b156684361e082375dba46ecbfa972edc9c</td></tr>
+              <tr class="border-b border-slate-800/60"><td class="py-2 pr-3 font-mono text-cyan-300">proj-pn</td><td class="py-2 pr-3 font-mono">pn-backend</td><td class="py-2 pr-3 font-mono">backend</td><td class="py-2 pr-3 font-mono break-all">ghcr.io/nacfson/project-pn-backend</td><td class="py-2 pr-3 font-mono break-all">sha256:dfdba959bf7bd36effcbafe28aaf6248859f18499d7539251317ec0fb1140504</td></tr>
+              <tr class="border-b border-slate-800/60"><td class="py-2 pr-3 font-mono text-cyan-300">proj-pn</td><td class="py-2 pr-3 font-mono">pn-frontend</td><td class="py-2 pr-3 font-mono">frontend</td><td class="py-2 pr-3 font-mono break-all">ghcr.io/nacfson/project-pn-frontend</td><td class="py-2 pr-3 font-mono break-all">sha256:9757cfd8e1771c802b251ce434fd003982aef1ae61eac18c5572fbb61d16708c</td></tr>
             </tbody>
           </table>
         </div>
@@ -1418,7 +1418,7 @@
         badge: 'Tenant Workload (proj-pn)',
         title: 'Project PN Frontend (:80)',
         ns: 'proj-pn',
-        image: 'ghcr.io/nacfson/project-pn-frontend@sha256:2ee7ed4d...',
+        image: 'ghcr.io/nacfson/project-pn-frontend@sha256:9757cfd8...',
         oss: 'Nginx Unprivileged + React Native / Expo Web',
         res: '100m CPU / 128Mi RAM (req == lim)',
         desc: 'Digest-pinned frontend web application running under Kubernetes Restricted Pod Security profile (non-root UID 10001, drops ALL capabilities, restartPolicy: Always).',
@@ -1432,7 +1432,7 @@
         badge: 'Tenant Workload (proj-pn)',
         title: 'Project PN Backend API (:8080)',
         ns: 'proj-pn',
-        image: 'ghcr.io/nacfson/project-pn-backend@sha256:17af219c...',
+        image: 'ghcr.io/nacfson/project-pn-backend@sha256:dfdba959...',
         oss: 'Go Application Server (Non-root UID 10001)',
         res: '300m CPU / 512Mi RAM (req == lim)',
         desc: 'Digest-pinned backend API server running with readOnlyRootFilesystem: true, automountServiceAccountToken: false, PUBLIC_APP_URL in ALLOWED_ORIGINS, and zero database or OAuth secrets in its environment.',
@@ -1632,7 +1632,7 @@
           to: 'Go Auth Gateway -> Keycloak',
           proto: 'POST https://auth.nacfson.cloud/auth/logout',
           desc: 'User triggers logout. Gateway authenticates the current session cookie, verifies the CSRF token (X-CSRF-Token / Origin), calls Keycloak over the private cluster network as session-revocation-client (not gateway-client), and clears the cookie only as a success path. If that delete fails, logout returns 502 or 503 and does not claim the session was revoked. An optional redirect_uri is followed only if it is https, has no userinfo, and its host is in PROJECT_RETURN_HOSTS; otherwise it is ignored and the 200 JSON confirmation is returned.',
-          code: `POST /auth/logout HTTP/1.1\nHost: auth.nacfson.cloud\nCookie: PLATFORM_SESSION=...\nX-CSRF-Token: <valid-hmac>\n\n--> DELETE session as session-revocation-client; 204 clears the cookie; a failed delete is 503, not revoked`,
+          code: `POST /auth/logout HTTP/1.1\nHost: auth.nacfson.cloud\nCookie: PLATFORM_SESSION=...\nX-CSRF-Token: <valid-hmac>\n\n--> DELETE session as session-revocation-client; 204 clears the cookie; a failed delete is 502; an unconfigured revocation client is 503, not revoked`,
           guard: 'AUTH-05: The next protected request is rejected only after the Keycloak delete succeeds. A failed delete must not be reported as revoked. Other device sessions stay active.'
         }
       ],

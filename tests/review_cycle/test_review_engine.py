@@ -155,6 +155,55 @@ class TestReviewEngine(unittest.TestCase):
             self.assertFalse(ok2)
             self.assertTrue(any("diff_sha256 mismatch" in e for e in errs2))
 
+    def test_commit_gate_requires_code_review_pipeline_field(self):
+        eng = _load_engine()
+        with tempfile.TemporaryDirectory() as tmp:
+            r_path = Path(tmp) / "receipt.json"
+            s_path = Path(tmp) / "state.json"
+            diff = "+line1\n"
+            diff_sha = eng.compute_diff_sha256(diff)
+            eng.validate_and_record_receipt(
+                {"verification": {"passed": True, "commands_run": ["ok"]}, "findings": []},
+                r_path,
+                s_path,
+                diff_sha,
+                ["scripts/foo.py"],
+                self.policy,
+                self.breaker,
+            )
+            ok, errs = eng.check_gate(
+                "staged",
+                r_path,
+                diff_text_override=diff,
+                changed_files_override=["scripts/foo.py"],
+                require_pipeline="code-review",
+            )
+            self.assertFalse(ok)
+            self.assertTrue(any("code-review skill" in e for e in errs))
+            self.assertTrue(any("Do not self-record" in e for e in errs))
+
+            eng.validate_and_record_receipt(
+                {
+                    "pipeline": "code-review",
+                    "verification": {"passed": True, "commands_run": ["ok"]},
+                    "findings": [],
+                },
+                r_path,
+                s_path,
+                diff_sha,
+                ["scripts/foo.py"],
+                self.policy,
+                self.breaker,
+            )
+            ok2, errs2 = eng.check_gate(
+                "staged",
+                r_path,
+                diff_text_override=diff,
+                changed_files_override=["scripts/foo.py"],
+                require_pipeline="code-review",
+            )
+            self.assertTrue(ok2, errs2)
+
     def test_third_round_with_open_important_escalates_to_human(self):
         eng = _load_engine()
         with tempfile.TemporaryDirectory() as tmp:

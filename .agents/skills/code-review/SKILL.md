@@ -43,8 +43,9 @@ Execute the full `nacfson_pipeline` multi-agent code review cycle on `staged`, `
      ```bash
      python3 scripts/review-cycle.py record-receipt --scope staged --input - <<'EOF'
      {
-       "agent_harness": "agy",
-       "scope": "staged",
+      "agent_harness": "agy",
+      "scope": "staged",
+      "pipeline": "code-review",
        "classifier2_override": null,
        "verification": {
          "passed": true,
@@ -53,7 +54,8 @@ Execute the full `nacfson_pipeline` multi-agent code review cycle on `staged`, `
        "findings": []
      }
      EOF
-     python3 scripts/review-cycle.py check-gate --scope staged
+    python3 scripts/review-cycle.py check-gate --scope staged --require-pipeline code-review
      ```
+   - The commit hooks reject a receipt whose `pipeline` is not `code-review`. Set that field only after the stages above have run. The hook checks the field; it cannot prove these stages ran if you set the field yourself.
    - Begin the final response with the standard `REVIEW.md` summary header:
      `X Important, Y Security, N Nit, M Pre-existing`

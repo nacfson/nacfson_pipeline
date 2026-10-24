@@ -33,3 +33,4 @@ Validate a feature branch (`--scope branch` or `--scope staged`) before opening 
    python3 scripts/review-cycle.py check-gate --scope staged
    python3 scripts/review-cycle.py summary --markdown
    ```
+   - Do not set `"pipeline": "code-review"`. Only the code-review skill is supposed to set that marker. The commit hook checks the field; it does not prove which skill wrote it.

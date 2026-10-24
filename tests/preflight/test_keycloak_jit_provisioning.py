@@ -230,6 +230,19 @@ class TestKeycloakGoogleJitProvisioning(unittest.TestCase):
         self.assertNotIn("--override", text)
         self.assertIn("quay.io/keycloak/keycloak:24.0.5", text)
 
+    def test_session_revocation_service_account_can_delete_sessions(self) -> None:
+        users = self.realm["users"]
+        self.assertEqual(len(users), 1)
+        user = users[0]
+        self.assertEqual(user["username"], "service-account-session-revocation-client")
+        self.assertIs(user["enabled"], True)
+        self.assertEqual(user["serviceAccountClientId"], "session-revocation-client")
+        self.assertEqual(user["clientRoles"], {"realm-management": ["manage-users"]})
+        clients = {c["clientId"]: c for c in self.realm.get("clients") or []}
+        revocation = clients["session-revocation-client"]
+        self.assertIs(revocation["serviceAccountsEnabled"], True)
+        self.assertEqual(revocation["secret"], "${SESSION_REVOCATION_SECRET}")
+
     def _google_idp(self) -> dict:
         providers = self.realm.get("identityProviders") or []
         google = next((p for p in providers if p.get("alias") == "google"), None)
