@@ -102,4 +102,19 @@ ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- \
   client_id="${GOOGLE_CLIENT_ID}" \
   client_secret="${GOOGLE_CLIENT_SECRET}"
 
-echo "SUCCESS: Google OAuth credentials stored securely in Vault!"
+IDENTITY_NS="${IDENTITY_NS:-identity}"
+POSTGRES_POD="${POSTGRES_POD:-postgres-0}"
+KUBE_BG="${KUBE_EXEC} --as=system:admin --as-group=platform:break-glass"
+
+if ${KUBE_EXEC} get pod -n "${IDENTITY_NS}" "${POSTGRES_POD}" >/dev/null 2>&1; then
+  echo "Syncing Google OAuth credentials into Keycloak PostgreSQL database (${IDENTITY_NS}/${POSTGRES_POD})..."
+  SAFE_ID="${GOOGLE_CLIENT_ID//\'/\'\'}"
+  SAFE_SECRET="${GOOGLE_CLIENT_SECRET//\'/\'\'}"
+  cat <<EOF | ${KUBE_BG} exec -i -n "${IDENTITY_NS}" "${POSTGRES_POD}" -- psql -U postgres -d keycloak -v ON_ERROR_STOP=1 >/dev/null
+UPDATE identity_provider_config SET value = '${SAFE_ID}' WHERE name = 'clientId' AND identity_provider_id IN (SELECT internal_id FROM identity_provider WHERE provider_alias = 'google');
+UPDATE identity_provider_config SET value = '${SAFE_SECRET}' WHERE name = 'clientSecret' AND identity_provider_id IN (SELECT internal_id FROM identity_provider WHERE provider_alias = 'google');
+EOF
+  ${KUBE_BG} rollout restart deployment/keycloak -n "${IDENTITY_NS}" >/dev/null 2>&1 || true
+fi
+
+echo "SUCCESS: Google OAuth credentials stored securely in Vault and synced to Keycloak!"

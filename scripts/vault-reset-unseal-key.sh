@@ -95,7 +95,7 @@ VAULT_TOKEN="${ROOT_TOKEN}" KUBE_EXEC="${KUBE_BG}" ./scripts/vault-configure-k8s
 echo "=== [4/6] Seeding Fresh Internal Credentials into OpenBao ==="
 VAULT_TOKEN="${ROOT_TOKEN}" KUBE_EXEC="${KUBE_BG}" ./scripts/vault-seed-inventory.sh --force
 
-echo "=== [5/6] Syncing New Database Role Passwords into ${IDENTITY_NS}/${POSTGRES_POD} (Zero Data Loss) ==="
+echo "=== [5/6] Syncing New Database Role Passwords & Keycloak Client Secrets into ${IDENTITY_NS}/${POSTGRES_POD} ==="
 NEW_PG_ADMIN=$(${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- \
   env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${ROOT_TOKEN}" \
   bao kv get -field=password kv/database/postgres-admin | tr -d '\r\n')
@@ -114,6 +114,31 @@ ${KUBE_BG} delete job -n "${IDENTITY_NS}" postgres-init-job --ignore-not-found
 kubectl kustomize deploy/platform/database | ${KUBE_BG} apply -f -
 ${KUBE_BG} wait --for=condition=complete job/postgres-init-job -n "${IDENTITY_NS}" --timeout=120s
 echo "PASS: postgres-init-job synced keycloak_user, user_pn, and backup_role passwords."
+
+# Sync rotated OIDC client secrets into Keycloak's existing 'platform' realm in PostgreSQL
+# (kc.sh start --import-realm uses IGNORE_EXISTING and skips updating existing realms).
+GW_SECRET=$(${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${ROOT_TOKEN}" bao kv get -field=client_secret kv/gateway/client-secret | tr -d '\r\n')
+REV_SECRET=$(${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${ROOT_TOKEN}" bao kv get -field=client_secret kv/gateway/session-revocation-secret | tr -d '\r\n')
+PN_SECRET=$(${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${ROOT_TOKEN}" bao kv get -field=client_secret kv/projects/pn/client-secret | tr -d '\r\n')
+HL_SECRET=$(${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${ROOT_TOKEN}" bao kv get -field=client_secret kv/projects/health/client-secret | tr -d '\r\n')
+
+cat <<EOF | ${KUBE_BG} exec -i -n "${IDENTITY_NS}" "${POSTGRES_POD}" -- psql -U postgres -d keycloak -v ON_ERROR_STOP=1 >/dev/null
+UPDATE client SET secret = '${GW_SECRET}' WHERE realm_id = (SELECT id FROM realm WHERE name = 'platform') AND client_id = 'gateway-client';
+UPDATE client SET secret = '${REV_SECRET}' WHERE realm_id = (SELECT id FROM realm WHERE name = 'platform') AND client_id = 'session-revocation-client';
+UPDATE client SET secret = '${PN_SECRET}' WHERE realm_id = (SELECT id FROM realm WHERE name = 'platform') AND client_id = 'project-pn';
+UPDATE client SET secret = '${HL_SECRET}' WHERE realm_id = (SELECT id FROM realm WHERE name = 'platform') AND client_id = 'project-health';
+EOF
+echo "PASS: Synced rotated OIDC client secrets into Keycloak PostgreSQL database."
+
+# Preserve existing Google OAuth credentials from Keycloak PostgreSQL into OpenBao if present
+EXISTING_GOOGLE_ID=$(${KUBE_BG} exec -n "${IDENTITY_NS}" "${POSTGRES_POD}" -- psql -U postgres -d keycloak -Atc "SELECT value FROM identity_provider_config WHERE name = 'clientId' AND identity_provider_id IN (SELECT internal_id FROM identity_provider WHERE provider_alias = 'google');" 2>/dev/null | tr -d '\r\n ' || true)
+EXISTING_GOOGLE_SECRET=$(${KUBE_BG} exec -n "${IDENTITY_NS}" "${POSTGRES_POD}" -- psql -U postgres -d keycloak -Atc "SELECT value FROM identity_provider_config WHERE name = 'clientSecret' AND identity_provider_id IN (SELECT internal_id FROM identity_provider WHERE provider_alias = 'google');" 2>/dev/null | tr -d '\r\n ' || true)
+if [ -n "${EXISTING_GOOGLE_ID}" ] && [ "${EXISTING_GOOGLE_ID}" != "google-apps.apps.googleusercontent.com" ] && [ -n "${EXISTING_GOOGLE_SECRET}" ]; then
+  ${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- \
+    env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${ROOT_TOKEN}" \
+    bao kv put kv/identity/google-oauth client_id="${EXISTING_GOOGLE_ID}" client_secret="${EXISTING_GOOGLE_SECRET}" >/dev/null
+  echo "PASS: Preserved existing Google OAuth credentials in OpenBao kv/identity/google-oauth."
+fi
 
 echo "=== [6/6] Revoking Initial Root Token & Rolling Dependent Proxies ==="
 cleanup_root_token
