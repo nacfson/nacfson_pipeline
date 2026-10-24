@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Store 30 days (cap 9 GiB) of `proj-*` container logs in VictoriaLogs, collected by a Fluent Bit DaemonSet, searchable in a browser through a private `kubectl port-forward`.
+**Goal:** Store 30 days (cap 8 GiB) of `proj-*` container logs in VictoriaLogs, collected by a Fluent Bit DaemonSet, searchable in a browser through a private `kubectl port-forward`.
 
-**Architecture:** A new `observability` Flux layer (`deploy/platform/observability/`) holds a VictoriaLogs StatefulSet (PVC on `local-path`) and a Fluent Bit DaemonSet that tails `/var/log/pods/proj-*_*/*/*.log` through one read-only `hostPath`. No project manifest changes. Access is a tunnel script modeled on `scripts/open-hubble-ui.sh`; live logs stay with Headlamp/`kubectl logs` and the existing `operator-readonly` account.
+**Architecture:** A new `observability` Flux layer (`deploy/platform/observability/`) holds a VictoriaLogs StatefulSet (10 GiB PVC on `local-path`, 8 GiB cap) and a Fluent Bit DaemonSet that tails `/var/log/pods/proj-*_*/*/*.log` through one read-only `hostPath`. The tail bookmark is a 1 GiB PVC, not an `emptyDir`. The namespace label is `pod-security.kubernetes.io/enforce: privileged`. No project manifest changes. Access is a tunnel script modeled on `scripts/open-hubble-ui.sh`; live logs stay with Headlamp/`kubectl logs` and the existing `operator-readonly` account.
 
 **Tech Stack:** Kubernetes manifests + Kustomize + FluxCD, Fluent Bit, VictoriaLogs, Python `unittest` (manifest/preflight tests), Bash.
 
-**Spec:** [`docs/superpowers/specs/2026-10-22-log-viewer-design.md`](../specs/2026-10-22-log-viewer-design.md) (approved 2026-10-22). Read it before starting; it carries the reasons behind every value below.
+**Spec:** [`docs/superpowers/specs/2026-10-22-log-viewer-design.md`](../specs/2026-10-22-log-viewer-design.md) (approved 2026-10-22, amended 2026-10-24). Read it before starting; it carries the reasons behind every value below.
 
 ## Global Constraints
 
@@ -16,8 +16,11 @@
 - No Kubernetes `Secret`, no `IngressRoute`/`Ingress`, no `NodePort`/`LoadBalancer`: every `observability` Service is `ClusterIP`.
 - The only `hostPath` is Fluent Bit's `/var/log/pods`, `readOnly: true`; Fluent Bit has `automountServiceAccountToken: false` and no Kubernetes API access.
 - Stored scope is project namespaces only: Fluent Bit tail path is exactly `/var/log/pods/proj-*_*/*/*.log`.
-- Retention: `-retentionPeriod=30d` and `-retention.maxDiskSpaceUsageBytes=9663676416` (9 GiB) on a `10Gi` PVC.
+- Retention: `-retentionPeriod=30d` and `-retention.maxDiskSpaceUsageBytes=8589934592` (8 GiB) on a `10Gi` PVC. 8 GiB is `8 * 1024**3`.
+- Tail bookmark: one `ReadWriteOnce` PVC `fluent-bit-state`, `1Gi`, mounted at `/state`. Not an `emptyDir`. Not a second `hostPath`. One node only.
+- Namespace PSA: `pod-security.kubernetes.io/enforce`, `warn`, and `audit` are `privileged`. Do not copy `deploy/platform/vault/namespace.yaml`; that file is `restricted` and would reject this collector.
 - Standard record fields: `project`, `pod`, `container`, `node`, `pod_uid`, `time`, `message`; VictoriaLogs stream fields are only `project,container,pod`.
+- Log schema: `contracts/CONTRACT_LOG_SCHEMA.md` is the GitOps source for the envelope. The Fluent Bit ConfigMap must match its field names and stream fields. Do not add a schema-registry pod. Do not parse `message`.
 - Initial resources: Fluent Bit `cpu 50m` request / `memory 64Mi`; VictoriaLogs `cpu 100m` request / `memory 384Mi` (memory request == limit for both). Reservation delta must be exactly `+150m` CPU and `+448Mi` memory.
 - Same manifests on `local-k3s` and `vps-k3s`. Flux layer `observability` `dependsOn: cni, governance` only (not `vault`).
 - Any change under `deploy/`, `clusters/`, `scripts/platform-preflight.py`, `.specify/memory/constitution.md` also updates `docs/platform-architecture.html` in the same change (AGENTS.md rule 8).
@@ -32,7 +35,7 @@
 2. Pod/container/uid extraction from the log path for pod names with dots and hyphens, and uids with hyphens → Task 3 regex test.
 3. Disk cap must stay below the PVC size, or a heavy project fills the volume → Task 2 test.
 4. VictoriaLogs down or slow: Fluent Bit memory must stay bounded below its container limit and it must not restart in a loop → Task 3 config test (`Mem_Buf_Limit`, `Retry_Limit`).
-5. Fluent Bit restart must not lose its position or add a second `hostPath`; only one read-only `hostPath`, others `emptyDir` → Task 3 test.
+5. A Fluent Bit restart must keep its tail position on PVC `fluent-bit-state` and must not add a second `hostPath`. Exactly one `hostPath`, read-only `/var/log/pods` → Task 3 test.
 6. A future edit must not expose the UI: no `IngressRoute`/`Ingress`/non-ClusterIP in the render → Task 2 and Task 3 tests.
 
 Files changed by pre-existing uncommitted work in the main checkout (`contracts/CONTRACT_AUTH_DOOR.md`, `docs/platform-architecture.html`, `specs/001-project-platform/contracts/session-revocation.md`, and the untracked `kubectl` binary) are **not** part of this plan; work in a separate worktree so they are never staged.
@@ -48,7 +51,7 @@ Files changed by pre-existing uncommitted work in the main checkout (`contracts/
 **Interfaces:**
 - Produces: `observability` ∈ `PLATFORM_NAMESPACES`; platform `hostPath`/root pods in that namespace are exempt from project Rule 2/3.
 
-- [ ] **Step 1: Create the worktree and branch.** From the repo root: `git worktree add ../nacfson_pipeline_log-history -b feat/project-log-history main`. All following work happens in that directory. Copy `docs/superpowers/specs/2026-10-22-log-viewer-design.md` and this plan into the same relative paths there. Commit them with `git_commit` (`repo_path` = the worktree, `files` = those two, message `docs(observability): add log history design and plan`).
+- [ ] **Step 1: Use the existing worktree.** `feat/project-log-history` and `../nacfson_pipeline_log-history` already exist. Do not run `git worktree add -b`. All following work happens in that directory. If the spec and this plan still have uncommitted decision edits, commit those two files first with `git_commit` (message `docs(observability): record 2026-10-24 log history decisions`).
 
 - [ ] **Step 2: Write the failing test** `test_25_observability_platform_hostpath_accepted(self)` using `self._run_yaml(text)`. Input: one `DaemonSet` named `fluent-bit` in namespace `observability` with a read-only `hostPath` volume `/var/log/pods`, `runAsUser: 0`, and cpu and memory requests and limits all set. Assert `rc == 0` and `data["validationStatus"] == "PASSED"`.
 
@@ -73,8 +76,8 @@ Files changed by pre-existing uncommitted work in the main checkout (`contracts/
 - Test helper: `render() -> list[dict]` runs `kubectl kustomize deploy/platform/observability` and returns the parsed documents (used by Task 3 tests).
 
 - [ ] **Step 1: Write failing tests** in `tests/observability/test_observability_manifests.py` (class `TestVictoriaLogsStore`):
-  - `test_namespace_declared_without_pod_security_enforce`: Namespace `observability` exists, annotation `kustomize.toolkit.fluxcd.io/prune: disabled`, no label starting `pod-security.kubernetes.io/enforce`.
-  - `test_retention_flags_and_disk_cap_below_pvc`: StatefulSet `victorialogs` args contain `-retentionPeriod=30d` and `-retention.maxDiskSpaceUsageBytes=9663676416`; `volumeClaimTemplates[0]` requests `10Gi`; assert `9663676416 < 10 * 1024**3`.
+  - `test_namespace_is_privileged`: Namespace `observability` exists, annotation `kustomize.toolkit.fluxcd.io/prune: disabled`, and labels `pod-security.kubernetes.io/enforce`, `warn`, and `audit` are all `privileged`. No label value is `restricted` or `baseline`.
+  - `test_retention_flags_and_disk_cap_below_pvc`: StatefulSet `victorialogs` args contain `-retentionPeriod=30d` and `-retention.maxDiskSpaceUsageBytes=8589934592`; `volumeClaimTemplates[0]` requests `10Gi`; assert `8589934592 == 8 * 1024**3` and `8589934592 < 10 * 1024**3`.
   - `test_victorialogs_hardening_and_resources`: `automountServiceAccountToken` is `False`; container `allowPrivilegeEscalation: false`, `capabilities.drop == ["ALL"]`, `runAsNonRoot: true`; requests `cpu 100m`, `memory 384Mi`; limits `cpu 500m`, `memory 384Mi`.
   - `test_service_clusterip_9428_and_nothing_public`: Service `victorialogs` is `ClusterIP` on port 9428; render has no `Secret`, `IngressRoute`, `Ingress`, and every `Service` is `ClusterIP`.
   - `test_network_policies`: a policy with `podSelector: {}`, `policyTypes == ["Ingress","Egress"]`, empty `ingress`, and egress only DNS (UDP/TCP 53 to `kube-system` / `k8s-app: kube-dns`, copied from `vault-default-deny`); no `0.0.0.0/0`. A policy selecting `victorialogs` whose only ingress source is pods labeled `app.kubernetes.io/name: fluent-bit` on TCP 9428.
@@ -82,7 +85,7 @@ Files changed by pre-existing uncommitted work in the main checkout (`contracts/
 
 - [ ] **Step 2: Run to see failure.** `python3 -m unittest tests.observability.test_observability_manifests -v` → FAIL (directory missing).
 
-- [ ] **Step 3: Write the manifests.** Follow the patterns in `deploy/platform/vault/` (`namespace.yaml`, `openbao-statefulset.yaml`, `network-policy.yaml`) and `deploy/platform/vault/kustomization.yaml` (`namespace: observability`). Namespace labels `app.kubernetes.io/part-of: platform-observability`. VictoriaLogs runs the single-node binary with `-storageDataPath` on the PVC mount, `-httpListenAddr=:9428`, the two retention flags above, a non-root `runAsUser`/`fsGroup` the builder verifies against the image, `readinessProbe`/`livenessProbe` on `/health`, requests `cpu 100m` / `memory 384Mi`, limits `cpu 500m` / `memory 384Mi`. Omit `storageClassName` (same as Postgres and OpenBao; k3s default is `local-path`). If SSH to the VPS works, record `df -B1 /` before writing the PVC; do not change the 10Gi PVC or the 9 GiB cap — stop and report if free space is under 10Gi. Default-deny policy allows DNS only (copy the `vault-default-deny` DNS egress rule).
+- [ ] **Step 3: Write the manifests.** Copy the DNS egress rule from `vault-default-deny` and the StatefulSet hardening from `deploy/platform/vault/openbao-statefulset.yaml`. Do not copy `deploy/platform/vault/namespace.yaml`: its `enforce: restricted` label rejects this collector. Namespace labels are `app.kubernetes.io/part-of: platform-observability` plus `pod-security.kubernetes.io/enforce: privileged`, `warn: privileged`, and `audit: privileged`. `kustomization.yaml` sets `namespace: observability`. VictoriaLogs runs the single-node binary with `-storageDataPath` on the PVC mount, `-httpListenAddr=:9428`, the two retention flags above, a non-root `runAsUser`/`fsGroup` the builder verifies against the image, `readinessProbe`/`livenessProbe` on `/health`, requests `cpu 100m` / `memory 384Mi`, limits `cpu 500m` / `memory 384Mi`. Omit `storageClassName`. If SSH to the VPS works, record `df -B1 /` before writing the PVC. Stop and report if VPS free space is under 10 GiB. Do not check `local-k3s` disk, and do not change the 10 GiB PVC or the 8 GiB cap.
 
 - [ ] **Step 4: Verify the flag names against the pinned image.** Run the image with `--help` (or read its docs for the pinned tag) and confirm `-retentionPeriod`, `-retention.maxDiskSpaceUsageBytes` and `-storageDataPath` exist; adjust the flags and tests together if a name differs.
 
@@ -95,7 +98,7 @@ Files changed by pre-existing uncommitted work in the main checkout (`contracts/
 ### Task 3: Fluent Bit collector
 
 **Files:**
-- Create: `deploy/platform/observability/fluent-bit-configmap.yaml`, `fluent-bit-serviceaccount.yaml`, `fluent-bit-daemonset.yaml`
+- Create: `deploy/platform/observability/fluent-bit-configmap.yaml`, `fluent-bit-serviceaccount.yaml`, `fluent-bit-daemonset.yaml`, `fluent-bit-state-pvc.yaml`
 - Modify: `deploy/platform/observability/kustomization.yaml`, `deploy/platform/observability/network-policy.yaml` (add Fluent Bit egress)
 - Modify: `tests/observability/test_observability_manifests.py` (class `TestFluentBitCollector` + reservation test)
 
@@ -104,17 +107,17 @@ Files changed by pre-existing uncommitted work in the main checkout (`contracts/
 - Produces: DaemonSet `fluent-bit` (pods labeled `app.kubernetes.io/name: fluent-bit`) in `observability`.
 
 - [ ] **Step 1: Write failing tests** (class `TestFluentBitCollector`):
-  - `test_only_one_readonly_hostpath_and_hardening`: exactly one volume has `hostPath`, path `/var/log/pods`, and its mount is `readOnly: true`; every other volume is `emptyDir` or `configMap`; `serviceAccountName: fluent-bit`; `automountServiceAccountToken: false` on both the pod and that ServiceAccount; container `runAsUser: 0`, `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, `capabilities.drop == ["ALL"]`, and no `capabilities.add`; env `NODE_NAME` from `fieldRef: spec.nodeName`; requests `cpu 50m`, `memory 64Mi`; limits `cpu 50m`, `memory 64Mi`; no `secret`/`secretKeyRef` anywhere.
+  - `test_only_one_readonly_hostpath_and_hardening`: exactly one volume has `hostPath`, path `/var/log/pods`, and its mount is `readOnly: true`; exactly one other volume is a `persistentVolumeClaim` named `fluent-bit-state`; every remaining volume is `emptyDir` or `configMap`; `serviceAccountName: fluent-bit`; `automountServiceAccountToken: false` on both the pod and that ServiceAccount; container `runAsUser: 0`, `allowPrivilegeEscalation: false`, `readOnlyRootFilesystem: true`, `capabilities.drop == ["ALL"]`, and no `capabilities.add`; env `NODE_NAME` from `fieldRef: spec.nodeName`; requests `cpu 50m`, `memory 64Mi`; limits `cpu 50m`, `memory 64Mi`; no `secret`/`secretKeyRef` anywhere. PVC `fluent-bit-state` is `ReadWriteOnce` and requests `1Gi`.
   - `test_tail_glob_matches_only_project_namespaces`: read `Path` from the ConfigMap's `fluent-bit.conf`; with `fnmatch`, these match: `/var/log/pods/proj-pn_backend-7d9f_3f2c-aa/backend/0.log`, `/var/log/pods/proj-health_web-1_uid-1/web/0.log`; these do **not**: paths starting `identity_`, `vault_`, `platform_`, `kube-system_`, `flux-system_`, `cert-manager_`, `governance_`, `observability_`, and `projx_x_uid/c/0.log`.
-  - `test_path_regex_extracts_fields`: compile the regex from the `pod_path` parser in `parsers.conf` (named groups `project`, `pod`, `pod_uid`, `container`). For `/var/log/pods/proj-pn_openbao-0.my-set_3f2c-aa-bb/backend/12.log` assert `project=proj-pn`, `pod=openbao-0.my-set`, `pod_uid=3f2c-aa-bb`, `container=backend`.
-  - `test_output_to_victorialogs_and_bounded_memory`: config has `Host victorialogs.observability.svc.cluster.local`, `Port 9428`, `URI /insert/jsonline?_stream_fields=project,container,pod&_msg_field=message&_time_field=time`, `Format json_lines`, `json_date_format iso8601`, `json_date_key time`; the tail input has `Mem_Buf_Limit` and `DB` under the `emptyDir` mount; the output has `Retry_Limit`; `Log_Level warn`.
+  - `test_path_regex_extracts_fields`: read the `pod_path` regex from `parsers.conf`. It must use Fluent Bit named groups `(?<project>...)`. Before `re.compile`, translate `(?<` to `(?P<`. Do not write `(?P<` into the ConfigMap. For `/var/log/pods/proj-pn_openbao-0.my-set_3f2c-aa-bb/backend/12.log` assert `project=proj-pn`, `pod=openbao-0.my-set`, `pod_uid=3f2c-aa-bb`, `container=backend`.
+  - `test_output_to_victorialogs_and_bounded_memory`: config has `Host victorialogs.observability.svc.cluster.local`, `Port 9428`, `URI /insert/jsonline?_stream_fields=project,container,pod&_msg_field=message&_time_field=time`, `Format json_lines`, `json_date_format iso8601`, `json_date_key time`; the tail input has `Mem_Buf_Limit` and `DB /state/tail.db`; that path is on the `fluent-bit-state` PVC mount, not an `emptyDir`; the output has `Retry_Limit`; `Log_Level warn`.
   - `test_fluent_bit_network_policy`: a policy selecting `fluent-bit` with egress only to DNS (UDP/TCP 53 in `kube-system`) and to pods `victorialogs` on TCP 9428; no `0.0.0.0/0`.
   - `test_platform_reservation_delta`: pipe `render()` through `scripts/platform-preflight.py` with `tests/preflight/fixtures/valid_capacity.yaml` (same pattern as `test_24` in `tests/preflight/test_platform_preflight.py`); assert `validationStatus == "PASSED"`, `platformReservations.cpuMillicores == 350` and `memoryMib == 960` (200m/512Mi system reserved + 150m/448Mi).
 
 - [ ] **Step 2: Run to see failures.** Same unittest command → the new tests FAIL.
 
-- [ ] **Step 3: Write the manifests.** ConfigMap `fluent-bit-config` with `fluent-bit.conf` and `parsers.conf`; the DaemonSet mounts it at `/fluent-bit/etc/`, the hostPath at `/var/log/pods` (read-only), an `emptyDir` at `/state`. `serviceAccountName: fluent-bit`. Stay on `runAsUser: 0`; do not switch to `DAC_READ_SEARCH` in this version (the test pins root). Limits `cpu 50m` and `memory 64Mi` (Rule 4). Pin from the spec:
-  - Input: `Name tail`, `Path /var/log/pods/proj-*_*/*/*.log`, `Path_Key filepath`, `Parser cri`, `Read_from_Head On`, `DB /state/tail.db`, `Mem_Buf_Limit 5MB`, `Skip_Long_Lines On`. A multiline parser for stack traces is optional and must not change this path, the `pod_path` regex, or the stream fields.
+- [ ] **Step 3: Write the manifests.** ConfigMap `fluent-bit-config` with `fluent-bit.conf` and `parsers.conf`; the DaemonSet mounts it at `/fluent-bit/etc/`, the hostPath at `/var/log/pods` (read-only), and PVC `fluent-bit-state` at `/state`. `serviceAccountName: fluent-bit`. Stay on `runAsUser: 0`; do not switch to `DAC_READ_SEARCH` in this version (the test pins root). Limits `cpu 50m` and `memory 64Mi` (Rule 4). Pin from the spec:
+  - Input: `Name tail`, `Path /var/log/pods/proj-*_*/*/*.log`, `Path_Key filepath`, `Parser cri`, `Read_from_Head On`, `DB /state/tail.db`, `Mem_Buf_Limit 5MB`, `Skip_Long_Lines On`. A multiline parser for stack traces is optional and must not change this path, the `pod_path` regex, or the stream fields. `Read_from_Head` applies to new files. The PVC bookmark stops a collector restart from re-reading files already sent.
   - A `parser` filter on key `filepath` with parser `pod_path`, regex `^/var/log/pods/(?<project>[^_]+)_(?<pod>[^_]+)_(?<pod_uid>[^/]+)/(?<container>[^/]+)/[^/]+\.log$`, `Reserve_Data On`.
   - A `record_modifier` adding `node ${NODE_NAME}`, and a `modify` renaming `log` → `message`; drop `filepath`, `stream`, `logtag`.
   - Output: `Name http` with the exact values in the test above; `Retry_Limit` set to a finite number (builder's choice).
@@ -173,7 +176,7 @@ Files changed by pre-existing uncommitted work in the main checkout (`contracts/
   1. `rollout status` for `daemonset/fluent-bit` and `statefulset/victorialogs`.
   2. Services in `observability` are `ClusterIP`, and no `IngressRoute` references `victorialogs` or `fluent-bit`.
   3. The tunnel serves HTTP 200 at `/select/vmui/`.
-  4. `POST /select/logsql/query` with `query=*`, `limit=50` returns at least one line, and **no** returned line lacks `"project":"proj-`.
+  4. `POST /select/logsql/query` with `query=*` and `limit=50`. An empty body passes. If any JSON line is returned, every line must contain `"project":"proj-`.
   5. Fluent Bit logs contain no repeated `[error]` output lines in the last 5 minutes.
 
 - [ ] **Step 4: Run the tests.** Same command → PASS.
@@ -210,12 +213,12 @@ Files changed by pre-existing uncommitted work in the main checkout (`contracts/
 
 **Files:**
 - Modify: `docs/operations-runbook.md` (new section `## 15. Project Log History (VictoriaLogs)`; add a Headlamp live-logs paragraph to §6)
-- Modify: `ARCHITECTURE.md` (new §3.7), `DEPENDENCIES.md` (§4 budget table numbers + pinned versions of Fluent Bit and VictoriaLogs), `INDEX.md` (new paths), `contracts/CONTRACT_ISOLATION_BUDGET.md` (line 22: `hostPath` ban is for project namespaces; platform `observability` collector is the documented exception), `specs/004-flux-gitops-reconciliation/contracts/platform-preflight.md` (Rule 2 note and `PLATFORM_NAMESPACES` now includes `observability`)
+- Modify: `ARCHITECTURE.md` (new §3.7), `DEPENDENCIES.md` (§4 budget table numbers + pinned versions of Fluent Bit and VictoriaLogs), `INDEX.md` (new paths, including `contracts/CONTRACT_LOG_SCHEMA.md`), `contracts/CONTRACT_ISOLATION_BUDGET.md` (line 22: `hostPath` ban is for project namespaces; platform `observability` collector is the documented exception), `specs/004-flux-gitops-reconciliation/contracts/platform-preflight.md` (Rule 2 note and `PLATFORM_NAMESPACES` now includes `observability`). `contracts/CONTRACT_LOG_SCHEMA.md` already exists; do not invent a second schema file.
 
 **Interfaces:**
 - Consumes: measured `platformReservations` from Task 4. Per-project slice is `(4000 - measured CPU millicores)` and `(24576 - measured memory MiB)` for `vps-k3s`, `(8192 - measured memory MiB)` for `local-k3s`. If the measured reservation is `2070`/`5760`, the slices are `1930m`/`18816 MiB` and `1930m`/`2432 MiB`. Do not compute slices from `1745`.
 
-- [ ] **Step 1: Write the runbook section.** Cover: starting the tunnel (`./scripts/open-victorialogs-ui.sh`, SSH forward for `vps-k3s`), the browser URL, example LogsQL (`{project="proj-pn"}`, time range, `container`/`pod` filters), `--verify`, the 30-day / 9 GiB limit and silent drop, the **accepted risks** (disk loss, viewer down with node, only `proj-*` stored; platform logs live-only), and the first step up (off-node copy). In §6 add: desktop Headlamp loading the kubeconfig from `./scripts/operator-kubeconfig.sh`, and `kubectl logs --previous`.
+- [ ] **Step 1: Write the runbook section.** Cover: starting the tunnel (`./scripts/open-victorialogs-ui.sh`, SSH forward for `vps-k3s`), the browser URL, example LogsQL (`{project="proj-pn"}`, time range, `container`/`pod` filters), `--verify`, the 30-day / 8 GiB limit and silent drop, the tail PVC (survives a collector restart, not node-disk loss), the **accepted risks** (disk loss, residual volume fill, viewer down with node, local-k3s disk not checked, only `proj-*` stored; platform logs live-only), and the first step up (off-node copy). In §6 add: desktop Headlamp loading the kubeconfig from `./scripts/operator-kubeconfig.sh`, and `kubectl logs --previous`.
 
 - [ ] **Step 2: Update the other docs** listed above with the values from the spec and the measured numbers. In `ARCHITECTURE.md` §3.7 include a Mermaid flow `project stdout → containerd file → Fluent Bit → VictoriaLogs → port-forward UI`.
 
@@ -231,7 +234,7 @@ Files changed by pre-existing uncommitted work in the main checkout (`contracts/
 
 - [ ] **Step 1: Run every gate from `AGENTS.md` §5** in the worktree: gateway and vault-proxies Go tests/vet, `python3 -m unittest discover tests/preflight`, `python3 -m unittest discover tests/observability`, both `./scripts/render-validate.sh` runs, `python3 scripts/check-arch-doc-sync.py --worktree`, `python3 -m unittest discover tests/review_cycle`, `python3 scripts/review-cycle.py verify --scope staged`, `python3 scripts/review-cycle.py classify-risk --scope branch`, `python3 scripts/review-cycle.py eval`, `./scripts/rollback-change.sh --dry-run HEAD`. Expected: all exit 0. Record any gate that cannot run locally (for example missing `flux`, `kubeconform`, `shellcheck`) in the PR description.
 
-- [ ] **Step 2: Live check (needs a cluster).** After Flux reconciles, run `./scripts/open-victorialogs-ui.sh --verify` against `local-k3s`, then `vps-k3s`; expected `ALL CHECKS PASSED`. Also run `./scripts/open-hubble-ui.sh --verify`. That script greps `grafana|prometheus|loki` only, so `fluent-bit-*` and `victorialogs-*` do not fail it; a failure is a regression, not a rename. Confirm the `observability` namespace has no `pod-security.kubernetes.io/enforce` label. `git diff --name-only main...HEAD` must not include `deploy/projects/`.
+- [ ] **Step 2: Live check (needs a cluster).** After Flux reconciles, run `./scripts/open-victorialogs-ui.sh --verify` against `vps-k3s`; expected `ALL CHECKS PASSED`, including an empty store. Run it against `local-k3s` too. If a local PVC is pending because the disk was not checked, record that and do not change the sizes. Also run `./scripts/open-hubble-ui.sh --verify`. That script greps `grafana|prometheus|loki` only, so `fluent-bit-*` and `victorialogs-*` do not fail it. Confirm `observability` has `pod-security.kubernetes.io/enforce: privileged`. `git diff --name-only main...HEAD` must not include `deploy/projects/`.
 
 - [ ] **Step 3: Push and open the PR** with `git_push` (branch `feat/project-log-history`) then `pr_create` (title `feat(observability): project log history with Fluent Bit and VictoriaLogs`; body: summary, the spec link, measured budget numbers, accepted risks, and gates that could not run locally). Do not merge or push to `main`.
 
