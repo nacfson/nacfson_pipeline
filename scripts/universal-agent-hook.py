@@ -2,6 +2,10 @@
 """
 universal-agent-hook.py — Multi-Agent Lifecycle Hook Adapter for nacfson_pipeline.
 
+On `SessionStart`, performs a non-mutating remote refresh
+(`scripts/agent-start-git-fetch.py`) so the agent starts with current
+remote-tracking refs.
+
 Enforces that `docs/platform-architecture.html` stays synchronized whenever
 architecture-affecting files are modified across all major AI coding agents:
   - Antigravity CLI / IDE / 2.0 (.agents/hooks.json)
@@ -37,6 +41,13 @@ review_cycle = importlib.util.module_from_spec(_review_spec)
 assert _review_spec and _review_spec.loader
 _review_spec.loader.exec_module(review_cycle)
 
+_fetch_spec = importlib.util.spec_from_file_location(
+    "agent_start_git_fetch", SCRIPT_DIR / "agent-start-git-fetch.py"
+)
+agent_start_fetch = importlib.util.module_from_spec(_fetch_spec)
+assert _fetch_spec and _fetch_spec.loader
+_fetch_spec.loader.exec_module(agent_start_fetch)
+
 
 def load_stdin_json() -> dict:
     try:
@@ -67,6 +78,32 @@ def is_git_commit_command(cmd: str) -> bool:
     return "git commit" in cmd or "git-commit" in cmd
 
 
+def run_session_start(agent: str) -> int:
+    """Refresh remote-tracking refs without blocking or mutating the work tree."""
+    result = agent_start_fetch.fetch()
+    message = str(result.get("message") or "")
+    if not message or result.get("status") == "skipped":
+        return 0
+
+    if agent in ("claude", "codex", "grok"):
+        print(
+            json.dumps(
+                {
+                    "hookSpecificOutput": {
+                        "hookEventName": "SessionStart",
+                        "additionalContext": message,
+                    }
+                }
+            )
+        )
+    elif agent == "cursor":
+        print(json.dumps({"additional_context": message}))
+    else:
+        # Antigravity and generic adapters: plain stdout is shown/logged as context.
+        print(message)
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Universal multi-agent hook adapter.")
     parser.add_argument(
@@ -76,7 +113,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--event",
-        choices=["auto", "PreToolUse", "Stop"],
+        choices=["auto", "SessionStart", "PreToolUse", "Stop"],
         default="auto",
     )
     args = parser.parse_args()
@@ -92,7 +129,10 @@ def main() -> int:
             or payload.get("event")
             or "Stop"
         )
-        if str(raw_event).lower() in ("pretooluse", "pre_tool_use", "beforeshellexecution"):
+        normalized_event = str(raw_event).lower()
+        if normalized_event in ("sessionstart", "session_start"):
+            event = "SessionStart"
+        elif normalized_event in ("pretooluse", "pre_tool_use", "beforeshellexecution"):
             event = "PreToolUse"
         else:
             event = "Stop"
@@ -113,6 +153,9 @@ def main() -> int:
     ):
         print(json.dumps({"decision": "allow"}))
         return 0
+
+    if event == "SessionStart":
+        return run_session_start(agent)
 
     arch_errors: list[str] = []
     review_errors: list[str] = []

@@ -1,6 +1,11 @@
 {
   "version": 1,
   "hooks": {
+    "sessionStart": [
+      {
+        "command": "python3 scripts/universal-agent-hook.py --agent cursor --event SessionStart"
+      }
+    ],
     "beforeShellExecution": [
       {
         "command": "python3 scripts/universal-agent-hook.py --agent cursor --event PreToolUse"

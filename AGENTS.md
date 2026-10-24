@@ -112,6 +112,9 @@ Run the relevant validation commands after making changes:
 # 3. Platform preflight unit tests (1/n budget, QoS, isolation, door & TLS rules)
 python3 -m unittest discover tests/preflight
 
+# 3b. Agent session-start git fetch tests (throttle, fail-open, no working-tree changes)
+python3 -m unittest discover tests/hooks
+
 # 4. Full Kustomize render, kubeconform schema validation & preflight gate (local-k3s & vps-k3s)
 ./scripts/render-validate.sh local-k3s
 ./scripts/render-validate.sh vps-k3s
