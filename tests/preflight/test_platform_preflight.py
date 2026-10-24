@@ -456,6 +456,65 @@ spec:
         self.assertEqual(rc, 0)
         self.assertEqual(data["validationStatus"], "PASSED")
 
+    def test_25_project_health_vps_and_local_render_accepted(self):
+        """Both local-k3s and vps-k3s render proj-pn + proj-health (projectCount == 2) without spec.images overrides."""
+        import yaml
+
+        for env, expected_host in (("local-k3s", "health.example.com"), ("vps-k3s", "health.nacfson.cloud")):
+            proj_kustom = os.path.join(BASE_DIR, "clusters", env, "projects", "kustomization.yaml")
+            with open(proj_kustom, encoding="utf-8") as fh:
+                kdoc = yaml.safe_load(fh)
+            self.assertIn("proj-health.yaml", kdoc.get("resources") or [])
+
+            proj_health_path = os.path.join(BASE_DIR, "clusters", env, "projects", "proj-health.yaml")
+            self.assertTrue(os.path.exists(proj_health_path), f"Missing {proj_health_path}")
+            with open(proj_health_path, encoding="utf-8") as fh:
+                hdoc = yaml.safe_load(fh)
+            self.assertEqual(hdoc["metadata"]["name"], "proj-health")
+            self.assertEqual(hdoc["metadata"]["namespace"], "proj-health")
+            self.assertEqual(hdoc["spec"]["serviceAccountName"], "health-reconciler")
+            self.assertNotIn("images", hdoc["spec"], f"{proj_health_path} must not override workload digest pins via spec.images")
+
+            render_res = subprocess.run(
+                [os.path.join(BASE_DIR, "scripts", "render-validate.sh"), env],
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+            rendered_file = render_res.stdout.strip().splitlines()[-1]
+            try:
+                rc, data, err = self.run_preflight(
+                    rendered_file,
+                    os.path.join(BASE_DIR, "clusters", env, "capacity.yaml"),
+                    env=env,
+                )
+                self.assertEqual(rc, 0, err or data.get("rejectionReason"))
+                self.assertEqual(data.get("validationStatus"), "PASSED")
+                self.assertEqual(data.get("projectCount"), 2)
+
+                with open(rendered_file, encoding="utf-8") as rf:
+                    rdocs = [d for d in yaml.safe_load_all(rf) if isinstance(d, dict)]
+                ing = next(
+                    d for d in rdocs
+                    if d.get("kind") == "IngressRoute"
+                    and (d.get("metadata") or {}).get("name") == "project-health-ingress"
+                )
+                self.assertEqual(ing["spec"]["routes"][0]["match"], f"Host(`{expected_host}`)")
+                self.assertEqual(ing["spec"]["routes"][1]["match"], f"Host(`{expected_host}`) && PathPrefix(`/api`)")
+
+                dep = next(
+                    d for d in rdocs
+                    if d.get("kind") == "Deployment"
+                    and (d.get("metadata") or {}).get("name") == "health-backend"
+                )
+                env_list = dep["spec"]["template"]["spec"]["containers"][0]["env"]
+                env_map = {e["name"]: e["value"] for e in env_list}
+                self.assertEqual(env_map.get("PUBLIC_APP_URL"), f"https://{expected_host}")
+                self.assertIn(f"https://{expected_host}", env_map.get("ALLOWED_ORIGINS", "").split(","))
+            finally:
+                if os.path.exists(rendered_file):
+                    os.remove(rendered_file)
+
 
 if __name__ == "__main__":
     unittest.main()

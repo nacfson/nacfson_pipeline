@@ -22,8 +22,32 @@ spec:
     - name: vault-proxies
       namespace: flux-system
   path: ./deploy/projects/health/workloads
-  images:
-    - name: ghcr.io/nacfson/health-backend
-      digest: sha256:3bab2a36c05104d6ab753850bcd74ec1b6062baa91e4a308f42c398644904e73
-    - name: ghcr.io/nacfson/health-frontend
-      digest: sha256:f22dfe18854a3ccba30d1f0b0db041ac4a68530218ff477d5df3355643179c86
+  patches:
+    - target:
+        kind: IngressRoute
+        name: project-health-ingress
+      patch: |
+        - op: replace
+          path: /spec/routes/0/match
+          value: Host(`health.example.com`)
+        - op: replace
+          path: /spec/routes/1/match
+          value: Host(`health.example.com`) && PathPrefix(`/api`)
+    - target:
+        kind: Deployment
+        name: health-backend
+      patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: health-backend
+        spec:
+          template:
+            spec:
+              containers:
+                - name: backend
+                  env:
+                    - name: ALLOWED_ORIGINS
+                      value: "http://localhost:8081,http://localhost:19006,tauri://localhost,http://tauri.localhost,https://health.example.com"
+                    - name: PUBLIC_APP_URL
+                      value: "https://health.example.com"
