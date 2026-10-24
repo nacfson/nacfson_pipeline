@@ -33,7 +33,7 @@ The operator wants to read container logs in a GUI (live logs of any pod; **stor
 - `hostPath` rules: the constitution's ban (Principle II and the "Controlled Ingress Bypass Prevention" bullet) covers **project** namespaces and manifests only. A platform namespace is not in violation (Cilium already uses `hostPath` in `kube-system`). No formal amendment is needed; a short clarifying note in the constitution records that the collector's read-only `hostPath` in a platform namespace is intended (PATCH-level wording change). **(operator accepted the note)**
 - `scripts/platform-preflight.py` keeps a fixed `PLATFORM_NAMESPACES` set. `observability` must be added to it, with a unit test in `tests/preflight/`; otherwise Rule 2 treats it as a project namespace and rejects the `hostPath`.
 - Any change under `deploy/`, `clusters/`, `scripts/platform-preflight.py` or `.specify/memory/constitution.md` must also update `docs/platform-architecture.html` and pass preflight and `render-validate.sh` for both environments.
-- Commits, pushes and PRs only through the `gh-mcp` tools.
+- Commits, pushes, and pull requests use `git` and `gh` on a feature branch. `gh-mcp` is gone. Never push to `main`. Never merge a feature branch into local `main`.
 
 ## Approaches considered
 1. **Loki + Alloy + Grafana.** Standard stack, roughly 600–1000 Mi. Grafana's Keycloak login needs a client secret, which clashes with the zero-plaintext rule. Not chosen.

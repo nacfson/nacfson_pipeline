@@ -27,7 +27,8 @@ Always consult these top-level indexes before exploring or modifying the codebas
 | [`DEPENDENCIES.md`](DEPENDENCIES.md) | **Dependencies, Pinned Versions & Tenant Contracts**: Go stdlib-only rule, pinned infra/image tags, CI toolchains, capacity envelopes, and `Project_PN` integration contracts. |
 | [`README.md`](README.md) & [`SPEC.md`](SPEC.md) | **Onboarding Portal & Baseline Spec**: High-level traceability matrix, quickstart progression, and original platform specification baseline. |
 | [`REVIEW.md`](REVIEW.md) & [`CLAUDE.md`](CLAUDE.md) | **Code Review Rulebook & Multi-Agent Entrypoint**: Severity taxonomy (`Important`, `Security`, `Nit`, `Pre-existing`), `file:line` evidence requirement, 2-nit cap, 3-round convergence limit, and Claude/multi-agent entrypoint. |
-| Direct push to `main` | **Rejected** by the `main_PR` ruleset. Land every change through a pull request. Never `git push` to `main`. |
+| Direct push or local merge to `main` | **Rejected** by the `main_PR` ruleset. Land every change through a pull request. Never `git push` to `main`. Never `git merge` a feature branch into local `main`. |
+| Git tooling | `gh-mcp` is gone. Commit, push, and open pull requests with `git` and `gh` on a feature branch. |
 
 ---
 
