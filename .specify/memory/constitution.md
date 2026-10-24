@@ -108,4 +108,18 @@ For public browser SPAs that call the project API on the project's published ori
 
 **Maintainer approval**: Requested by the repository maintainer on 2026-10-12 (analysis finding C1 of feature 008, option A). Merging this amendment's pull request records approval. This minor bump builds on the 2.0.0 and 2.1.0 records above, which are still marked unapproved; the maintainer's merge approves the revision set 2.0.0–2.2.0.
 
-**Version**: 2.2.0 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-10-12
+## Clarification 2.2.1
+
+**Rationale**: Project log collection needs a read-only view of container log files on the node, and that mount is a platform collector, not a project workload.
+
+The log collector in the platform namespace `observability` may mount `/var/log/pods` read-only through `hostPath`. It is not a project workload, so Principle II and the `hostPath` rejection rule apply to project namespaces and manifests only.
+
+**Impact**:
+
+- Security: one read-only node mount for one platform pod.
+- Resource: counted in the platform reservation.
+- Portability: unchanged.
+
+**Maintainer approval**: The operator accepted this note on 2026-10-22 with the design.
+
+**Version**: 2.2.1 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-10-22
