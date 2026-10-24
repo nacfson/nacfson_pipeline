@@ -18,3 +18,4 @@ spec:
     - secretName: auth-tls
     - secretName: pn-tls
     - secretName: health-tls
+    - secretName: blog-tls

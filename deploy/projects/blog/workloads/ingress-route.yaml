@@ -1,0 +1,23 @@
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: project-blog-ingress
+  namespace: proj-blog
+  labels:
+    app.kubernetes.io/name: project-blog
+    app.kubernetes.io/part-of: project-blog
+spec:
+  entryPoints:
+    - websecure
+  # The platform selects the certificate by hostname (TLSStore platform/default). HTTP is redirected by platform/http-to-https.
+  tls: {}
+  routes:
+    - match: Host(`blog.example.com`)
+      kind: Rule
+      priority: 10
+      middlewares:
+        - name: strip-forged-headers
+          namespace: platform
+      services:
+        - name: blog-web
+          port: 8080
