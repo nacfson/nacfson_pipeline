@@ -515,6 +515,34 @@ spec:
                 if os.path.exists(rendered_file):
                     os.remove(rendered_file)
 
+    def test_26_vault_seed_and_rotate_cover_all_project_slugs(self):
+        """vault-seed-inventory.sh and vault-rotate.sh must cover every slug in postgres-init-job PROJECT_SLUGS."""
+        import yaml
+
+        init_job_path = os.path.join(BASE_DIR, "deploy", "platform", "database", "postgres-init-job.yaml")
+        with open(init_job_path, encoding="utf-8") as fh:
+            job_doc = yaml.safe_load(fh)
+        init_envs = {
+            e["name"]: e["value"]
+            for e in job_doc["spec"]["template"]["spec"]["initContainers"][0]["env"]
+        }
+        slugs = [s.strip() for s in init_envs["PROJECT_SLUGS"].split(",") if s.strip()]
+        self.assertIn("pn", slugs)
+        self.assertIn("health", slugs)
+
+        with open(os.path.join(BASE_DIR, "scripts", "vault-seed-inventory.sh"), encoding="utf-8") as fh:
+            seed_script = fh.read()
+        with open(os.path.join(BASE_DIR, "scripts", "vault-rotate.sh"), encoding="utf-8") as fh:
+            rotate_script = fh.read()
+
+        for slug in slugs:
+            self.assertIn(f'seed_secret "kv/database/{slug}-user"', seed_script)
+            self.assertIn(f'username="user_{slug}"', seed_script)
+            self.assertIn(f'seed_secret "kv/projects/{slug}/client-secret"', seed_script)
+            self.assertIn(f'client_id="project-{slug}"', seed_script)
+            self.assertIn(f"postgres-{slug}-db-password) echo \"kv/database/{slug}-user\"", rotate_script)
+            self.assertIn(f"project-{slug}-client-secret) echo \"kv/projects/{slug}/client-secret\"", rotate_script)
+
 
 if __name__ == "__main__":
     unittest.main()
