@@ -47,3 +47,37 @@ spec:
       ports:
         - protocol: TCP
           port: 9428
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: fluent-bit-egress
+  labels:
+    app.kubernetes.io/name: fluent-bit-policy
+    app.kubernetes.io/part-of: platform-observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: fluent-bit
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: victorialogs
+      ports:
+        - protocol: TCP
+          port: 9428

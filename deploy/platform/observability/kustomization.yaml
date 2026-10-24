@@ -8,3 +8,7 @@ resources:
   - network-policy.yaml
   - victorialogs-statefulset.yaml
   - victorialogs-service.yaml
+  - fluent-bit-configmap.yaml
+  - fluent-bit-serviceaccount.yaml
+  - fluent-bit-daemonset.yaml
+  - fluent-bit-state-pvc.yaml
