@@ -151,6 +151,8 @@ Operators inspect cluster state from their local workstation using read-only cre
    flux events --for Kustomization/<layer-name>
    ```
 
+Desktop Headlamp loads the kubeconfig written by `./scripts/operator-kubeconfig.sh` and shows live container logs. `kubectl logs --previous` shows the previous container instance after a restart. Historical `proj-*` search is section 15, not Headlamp.
+
 ---
 
 ## 7. Standard Deployment Workflow
@@ -282,3 +284,34 @@ If a misconfigured `ValidatingAdmissionPolicy` locks out even break-glass operat
 All legacy manual deployment, rollback, and budget scripts, baseline state files, and manual `kubectl apply -k deploy/...` or `kubectl apply -f deploy/...` procedures from prior versions have been permanently retired and deleted.
 
 Any manual deployment outside the authorized break-glass workflow is strictly blocked by the admission controller.
+
+---
+
+## 15. Project Log History (VictoriaLogs)
+
+Stored history is `proj-*` stdout and stderr only. Platform namespaces stay live-only (`kubectl logs` or Headlamp). The collector and store run in the privileged platform namespace `observability`. There is no public `IngressRoute`. The observability reservation is not yet measured and must not be added by hand.
+
+### Open the UI
+
+1. For `vps-k3s`, open an SSH forward, then start the tunnel. `local-k3s` needs only the tunnel.
+   ```bash
+   ssh -L 9428:127.0.0.1:9428 <vps-host>
+   ./scripts/open-victorialogs-ui.sh
+   ```
+2. Browser URL: `http://127.0.0.1:9428/select/vmui/`.
+3. Example LogsQL: `{project="proj-pn"}`. Narrow with a time range and `container` or `pod` filters.
+4. Live check: `./scripts/open-victorialogs-ui.sh --verify`.
+
+### Limits
+
+VictoriaLogs keeps 30 days and at most 8 GiB (`-retention.maxDiskSpaceUsageBytes=8589934592`). Lines past either limit are deleted with no alert. The store PVC is 10Gi. The Fluent Bit tail bookmark is PVC `fluent-bit-state` (1Gi). That PVC survives a collector restart. It does not survive node-disk loss.
+
+### Accepted risks
+
+- Disk loss deletes the store and the tail bookmark.
+- Residual volume fill: the 8 GiB cap can still be passed between checks, and the last two days are kept even over the cap. A full volume makes the store read-only.
+- The viewer is down when the node is down.
+- `local-k3s` disk is not checked. The same PVCs are applied there.
+- Only `proj-*` is stored. Platform logs are live-only.
+
+The first step up, if those risks stop being acceptable, is an off-node copy (a second Fluent Bit output to S3-compatible object storage).

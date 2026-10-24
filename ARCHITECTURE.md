@@ -147,3 +147,21 @@ flowchart LR
 - **Project PN Translation Egress**: Portable `proj-*` policies stay on `networking.k8s.io/v1`. [`CiliumNetworkPolicy/pn-backend-translation-egress`](deploy/projects/pn/boundary/translation-egress.yaml) names only `api.wiktapi.dev` and `generativelanguage.googleapis.com` on TCP 443 for `pn-backend`. Other world destinations stay dropped. There is no `0.0.0.0/0` fallback.
 - **Private Operator Access Only**: `Service/hubble-ui` and `Service/hubble-relay` are strictly `ClusterIP` with zero public `IngressRoute`. Operators access Hubble UI via [`scripts/open-hubble-ui.sh`](scripts/open-hubble-ui.sh) (`127.0.0.1:12000`) and run automated 5-point live verification via `./scripts/open-hubble-ui.sh --verify`.
 - **Reference**: [`specs/010-cilium-hubble-observability/`](specs/010-cilium-hubble-observability/)
+
+### 3.7 Project Log History (VictoriaLogs)
+
+Hosted project stdout and stderr are the only stored history. Platform component logs stay live-only. The Flux layer `observability` (`deploy/platform/observability/`) depends on `cni` and `governance`. Namespace `observability` is privileged so the collector may mount `/var/log/pods` read-only. That `hostPath` is a platform exception, not a project mount. The envelope is [`contracts/CONTRACT_LOG_SCHEMA.md`](contracts/CONTRACT_LOG_SCHEMA.md). The observability reservation is not yet measured and must not be added by hand.
+
+```mermaid
+flowchart LR
+    Stdout["project stdout"] --> File["containerd file"]
+    File --> FB["Fluent Bit"]
+    FB --> VL["VictoriaLogs"]
+    VL --> UI["port-forward UI"]
+```
+
+- **Store**: VictoriaLogs `victoriametrics/victoria-logs:v1.53.0`, ClusterIP only, 10Gi PVC, 30-day retention, 8 GiB disk cap. Lines past either limit are dropped with no alert.
+- **Collector**: Fluent Bit `fluent/fluent-bit:4.2.8` tails `proj-*` only. Tail bookmark PVC `fluent-bit-state` is 1Gi. It survives a collector restart, not node-disk loss.
+- **Access**: [`scripts/open-victorialogs-ui.sh`](scripts/open-victorialogs-ui.sh) port-forwards to `http://127.0.0.1:9428/select/vmui/`. No public route.
+- **Accepted risks**: disk loss, residual volume fill, viewer down with the node, `local-k3s` disk not checked, only `proj-*` stored. First step up is an off-node copy.
+- **Reference**: [`docs/operations-runbook.md`](docs/operations-runbook.md) §15 | [`docs/superpowers/specs/2026-10-22-log-viewer-design.md`](docs/superpowers/specs/2026-10-22-log-viewer-design.md)

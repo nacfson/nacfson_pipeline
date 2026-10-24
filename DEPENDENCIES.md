@@ -34,6 +34,8 @@ Per [Constitution Principle I](.specify/memory/constitution.md#L6-L7), third-par
 | **cert-manager** | `quay.io/jetstack/cert-manager-{controller,cainjector,webhook}:v1.21.2` | [`deploy/platform/cert-manager/upstream/cert-manager.yaml`](deploy/platform/cert-manager/upstream/cert-manager.yaml) |
 | **Cilium CNI & Operator** | `quay.io/cilium/cilium:v1.20.3`, `quay.io/cilium/operator-generic:v1.20.3` (pinned `@sha256:...` digests) | [`deploy/platform/cni/upstream/cilium.yaml`](deploy/platform/cni/upstream/cilium.yaml) |
 | **Hubble Relay & Hubble UI** | `quay.io/cilium/hubble-relay:v1.20.3`, `quay.io/cilium/hubble-ui{,-backend}:v0.13.6` (pinned `@sha256:...` digests) | [`deploy/platform/cni/upstream/cilium.yaml`](deploy/platform/cni/upstream/cilium.yaml) |
+| **Fluent Bit** | `fluent/fluent-bit:4.2.8` | [`deploy/platform/observability/fluent-bit-daemonset.yaml`](deploy/platform/observability/fluent-bit-daemonset.yaml) |
+| **VictoriaLogs** | `victoriametrics/victoria-logs:v1.53.0` | [`deploy/platform/observability/victorialogs-statefulset.yaml`](deploy/platform/observability/victorialogs-statefulset.yaml) |
 | **Init / Wait Helper** | `curlimages/curl:8.10.1` | [`deploy/platform/identity/`](deploy/platform/identity/), [`deploy/platform/database/`](deploy/platform/database/) |
 
 ---
@@ -60,6 +62,8 @@ Per [Constitution Principle I](.specify/memory/constitution.md#L6-L7), third-par
 | :--- | :--- | :--- | :--- | :--- |
 | `vps-k3s` (Oracle ARM64) | `4000m` CPU / `24576 MiB` RAM | `200m` CPU / `512 MiB` RAM | `1920m` CPU / `5312 MiB` RAM (`2080m` / `19264 MiB` per-project slice for $n=1$) | [`clusters/vps-k3s/capacity.yaml`](clusters/vps-k3s/capacity.yaml) |
 | `local-k3s` | `4000m` CPU / `8192 MiB` RAM | `200m` CPU / `512 MiB` RAM | `1920m` CPU / `5312 MiB` RAM (`2080m` / `2880 MiB` per-project slice for $n=1$) | [`clusters/local-k3s/capacity.yaml`](clusters/local-k3s/capacity.yaml) |
+
+The table above is the last recorded platform reservation. The observability reservation (Fluent Bit and VictoriaLogs) is not yet measured and must not be added by hand. Do not replace `1920m` or `5312` until a live `platformReservations` measurement is committed. Store sizing that does not depend on that measurement: 30-day retention, 8 GiB disk cap, 10Gi store PVC, 1Gi tail PVC `fluent-bit-state`, `proj-*` only, privileged namespace `observability`, operator access by port-forward.
 
 ---
 
