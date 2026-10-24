@@ -121,3 +121,26 @@ To guarantee this issue cannot recur when adding new projects or updating servic
 ### Rule 4: Explicit Per-Field Error Messages & Post-Merge Image Digest Pinning
 * Never collapse multiple validation checks into `ident == nil` with a generic `"gateway returned invalid identity claims"` message. Log the exact field that failed (`audience mismatch: got X want Y`, `missing X-User-Email`, `issuer mismatch`).
 * When modifying `gateway/` source code, wait for `.github/workflows/build-images.yaml` to publish the new multi-arch image on `main`, then pin the resulting `@sha256:<digest>` in [`deploy/platform/identity/gateway-deployment.yaml`](deploy/platform/identity/gateway-deployment.yaml).
+
+---
+
+## 6. Project Pods Unreachable (`503 Service Unavailable` on `https://pn.nacfson.cloud`) & `pn-backend` Stuck in `0/1 Pending (Insufficient cpu)`
+
+*See also [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) for the complete operational runbook.*
+
+### Symptoms
+- Visiting `https://pn.nacfson.cloud` returns HTTP `503 Service Unavailable`.
+- `pn-backend` is stuck in `0/1 Pending` (`0/1 nodes are available: 1 Insufficient cpu`), causing `pn-frontend`'s readiness probe (`/healthz` $\rightarrow$ `pn-backend:8080`) to fail (`502 Bad Gateway`) and withhold endpoints from Traefik.
+
+### Root Cause
+- The Oracle Cloud `vps-k3s` node (`oracle-free`) has **2 OCPUs (`2000m` total CPU)**.
+- Adding `observability` (`150m`), `proj-health` (`300m`), and `vault-ai-proxy` (`25m`) alongside `proj-pn` (`400m`: `300m` backend + `100m` frontend) pushed total node CPU requests to **`2135m / 2000m`** (`135m` over capacity).
+- Right-sizing `pn-backend` (`150m`), `pn-frontend` (`50m`), and `health-backend` (`150m`) reduces total cluster CPU requests to **`1835m / 2000m`**, leaving `165m` CPU headroom on the 2-OCPU node.
+
+---
+
+## 7. `scripts/open-observe.sh` Unified 3-UI Loopback Tunnel & Auto-Reconnect
+
+### Symptoms & Fix
+- Previously, [`scripts/open-observe.sh`](scripts/open-observe.sh) only port-forwarded Hubble UI (`:12000`) and VictoriaLogs (`:9428`), and terminated immediately (`Error: a tunnel exited.`) if `kubectl port-forward` closed an idle stream.
+- [`scripts/open-observe.sh`](scripts/open-observe.sh) now forwards all **3 platform UIs** over the `127.0.0.1:16443` SSH API tunnel (`http://127.0.0.1:12000` Hubble UI, `http://127.0.0.1:9428/select/vmui/` VictoriaLogs, and `http://127.0.0.1:18081/` AI Gateway UI) and automatically restarts any dropped `kubectl port-forward` child process.
