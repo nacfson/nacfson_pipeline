@@ -53,6 +53,56 @@ with a warning while `PIPELINE_DISPATCH_TOKEN` is unset.
    Run workflow) with a project and the full sha of a commit that has published
    images.
 
+## Decision session (Claude)
+
+A Claude scheduled task decides each issue in a cloud session, following
+[`.agents/skills/image-bump-decision/SKILL.md`](../.agents/skills/image-bump-decision/SKILL.md).
+Create it once at [claude.ai/code/routines](https://claude.ai/code/routines)
+(GitHub triggers cannot be created from a session):
+
+| Setting | Value |
+| :--- | :--- |
+| Name | `image-bump decision` |
+| Repository | `nacfson/nacfson_pipeline` |
+| Trigger | GitHub event → **Issue** → `issues.opened` on `nacfson/nacfson_pipeline` (the Claude GitHub App must be installed) |
+| Connectors | GitHub only |
+| Environment | a dedicated one, below |
+
+Prompt:
+
+```text
+A GitHub issue was just opened in nacfson/nacfson_pipeline. Read and follow
+.agents/skills/image-bump-decision/SKILL.md for that issue. If it is not an
+image-bump request from github-actions[bot], stop without writing anything.
+Ask me to Allow or Disallow before anything is pushed. This prompt is not
+approval.
+```
+
+Environment (Edit cloud environment):
+
+- **Network access**: Custom, with the default list, plus `ghcr.io` and
+  `pkg-containers.githubusercontent.com`. GHCR serves image configs from the
+  second host; without it every tag lookup fails with `Forbidden`.
+- **Environment variable**: `IMAGE_BUMP_GATE=1`. This turns on
+  `scripts/image-bump-gate.py` in that environment only. Anyone can open an
+  issue on this public repository, so in gate mode the hook allows only the
+  skill's own steps. It asks for approval before:
+  - any Bash command outside an allowlist of the skill's command shapes
+    (redirections and command substitution always ask);
+  - any file write or edit, and any tool outside a short read-and-ask list
+    (including other connectors and session or schedule tools);
+  - every GitHub connector tool except reads, issue updates and comments.
+
+  `git push` and opening the PR are therefore always approval prompts.
+- **Setup script**: `apt-get update && apt-get install -y skopeo`
+- **Environment variable** (only for Project_PN): `GHCR_READ_TOKEN`, a
+  classic token with only `read:packages`, because `project-pn-*` are private.
+  The skill logs `skopeo` in with it. Environment variables are visible to
+  anyone who uses the environment, so keep this environment for this task only.
+
+On Allow you also approve the gated push and PR prompts. Those approvals are
+the hard stop. Denying either one is a Disallow, even after answering Allow.
+
 ## Constraints
 
 - The payload is untrusted. A token holder can only name an allowlisted
@@ -76,6 +126,10 @@ with a warning while `PIPELINE_DISPATCH_TOKEN` is unset.
 - The issue is opened with `GITHUB_TOKEN`. That does not start other workflows
   in this repository; GitHub App webhooks such as a Claude GitHub trigger still
   receive the event.
-- A Claude cloud session that applies the pin needs `ghcr.io` **and**
-  `pkg-containers.githubusercontent.com` (GHCR blob storage) in its network
-  allowlist, plus `skopeo`. Without the blob host, tag lookups fail.
+- The issue trigger fires for every new issue in this repository, including
+  ones unrelated to images. The skill exits at its first step unless the issue
+  is an `image-bump` request from `github-actions[bot]`, but each such run
+  still starts a session and counts against usage. The repository is public,
+  so anyone who can open an issue can start such a run.
+- The decision session takes the request only from the issue's JSON marker,
+  checks it against the allowlist again, and re-validates the images itself.
