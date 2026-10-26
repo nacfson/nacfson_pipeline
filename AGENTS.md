@@ -78,7 +78,7 @@ Before modifying code, manifests, or scripts, read the corresponding domain docu
 
 - **Hosted Tenant Workloads / Project PN (`deploy/projects/pn/`, `clusters/*/projects/proj-pn.yaml`), probes, or browser API CORS**:
   - To update project image pins from GHCR, Actions, commit, or digest links, use the [`update-project-images`](.agents/skills/update-project-images/SKILL.md) skill; it validates the images and opens one PR per project.
-  - New images arrive as `image-bump` issues opened by [`.github/workflows/image-bump-request.yaml`](.github/workflows/image-bump-request.yaml); see [`docs/image-bump-dispatch.md`](docs/image-bump-dispatch.md). Apply an allowed issue with the same skill and `Closes #<issue>` in the PR.
+  - New images arrive as `image-bump` issues opened by [`.github/workflows/image-bump-request.yaml`](.github/workflows/image-bump-request.yaml); see [`docs/image-bump-dispatch.md`](docs/image-bump-dispatch.md). A cloud session decides each issue with the [`image-bump-decision`](.agents/skills/image-bump-decision/SKILL.md) skill: Allow opens one pin PR with `Closes #<issue>`, Disallow closes the issue.
   - [`DEPENDENCIES.md`](DEPENDENCIES.md) (§5 Hosted Tenant Project Contracts)
   - [`docs/project-auth-verification.md`](docs/project-auth-verification.md)
   - [`specs/006-separate-project-auth/contracts/`](specs/006-separate-project-auth/contracts/) (`project-door.md`, `sign-in-choice.md`, `session-return.md`)
