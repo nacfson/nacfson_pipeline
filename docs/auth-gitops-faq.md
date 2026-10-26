@@ -181,9 +181,13 @@ Email is still not used as the platform identity (that remains `(issuer, subject
 
 **Q: I merged the realm JSON. When does a cluster pick it up?**
 
-Flux reconciles `identity`, then Keycloak must re-import the realm. The Deployment uses `--import-realm` with `-Dkeycloak.migration.strategy=OVERWRITE_EXISTING`, so a Keycloak pod restart reloads `platform-realm.json`. The `platform.nacfson.io/realm-scope-sync` annotation on the Deployment is bumped when the realm JSON changes so the pod rolls. After rollout, the first Google login for a given Google `sub` creates the user; the next login reuses that federated identity.
+Only a fresh database picks it up. `kc.sh start --import-realm` imports `platform-realm.json` when the `platform` realm does not exist yet, and skips it when it does (`Realm 'platform' already exists. Import skipped`). The `-Dkeycloak.migration.strategy=OVERWRITE_EXISTING` flag on the Deployment does not change that, and bumping `platform.nacfson.io/realm-scope-sync` only restarts the pod.
 
-`OVERWRITE_EXISTING` replaces the realm from Git, including users that existed only in the database. After a restart, those visitors are provisioned again on their next Google sign-in. Do not create users in the admin console as the source of truth.
+So on a running cluster, a realm change in Git must also be applied to the live realm. Session lifetimes have a written procedure in [`operations-runbook.md`](operations-runbook.md) §7 (**Applying realm session lifetimes**). Users and federated identities stay in the database across restarts. The first Google login for a given Google `sub` creates the user; the next login reuses that federated identity. Do not create users in the admin console as the source of truth.
+
+**Q: How long does a sign-in last?**
+
+See [`contracts/CONTRACT_AUTH_DOOR.md`](../contracts/CONTRACT_AUTH_DOOR.md) §5. In short: the access token lasts 5 minutes, and the session lasts 1 hour without a refresh, up to 8 hours in total. Only a protected project API call after the access token expires renews the session. Frontend-only activity does not.
 
 ## 7. How a change reaches the cluster
 

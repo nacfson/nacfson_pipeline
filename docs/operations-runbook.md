@@ -177,7 +177,32 @@ All infrastructure and application changes are made declaratively:
    - `platform-preflight`: validates QoS (`requests == limits`), memory freeze, and 1/n capacity budgeting.
 5. Review and merge the Pull Request.
 6. Flux detects the merge within 1 minute and reconciles changes without human intervention.
-7. **Keycloak realm JSON** (`deploy/platform/identity/keycloak-realm-config.yaml`) is applied only when the Keycloak pod starts (`kc.sh start --import-realm` with `OVERWRITE_EXISTING`). Bumping `platform.nacfson.io/realm-scope-sync` on the Deployment forces that rollout. After import, first-time Google SSO creates the Keycloak user via `google jit first broker login` (AUTH-01); see [`contracts/CONTRACT_AUTH_DOOR.md`](../contracts/CONTRACT_AUTH_DOOR.md) §4. Do not create users in the Keycloak admin console as the source of truth.
+7. **Keycloak realm JSON** (`deploy/platform/identity/keycloak-realm-config.yaml`) is imported only on a fresh database. `kc.sh start --import-realm` skips a realm that already exists (`Realm 'platform' already exists. Import skipped`), and the `-Dkeycloak.migration.strategy=OVERWRITE_EXISTING` flag on the Deployment has no effect on that import. Bumping `platform.nacfson.io/realm-scope-sync` restarts Keycloak but does not re-import the realm. A realm setting changed in Git must also be applied to the live realm (see **Applying realm session lifetimes** below). First-time Google SSO creates the Keycloak user via `google jit first broker login` (AUTH-01); see [`contracts/CONTRACT_AUTH_DOOR.md`](../contracts/CONTRACT_AUTH_DOOR.md) §4. Do not create users in the Keycloak admin console as the source of truth.
+
+### Applying realm session lifetimes
+
+The contracted values live in [`contracts/CONTRACT_AUTH_DOOR.md`](../contracts/CONTRACT_AUTH_DOOR.md) §5. After the realm JSON change is merged, an operator applies them to the live realm on the node:
+
+1. Read the current values (read-only):
+   ```bash
+   sudo k3s kubectl exec -n identity postgres-0 -- psql -U postgres -d keycloak -c "
+   select access_token_lifespan, sso_idle_timeout, sso_max_lifespan, revoke_refresh_token
+   from realm where name='platform';
+   select 'realm' as level, name, value from realm_attribute
+    where realm_id=(select id from realm where name='platform') and name like 'clientSession%'
+   union all
+   select c.client_id, a.name, a.value from client_attributes a join client c on c.id=a.client_id
+    where c.realm_id=(select id from realm where name='platform') and a.name like 'client.session%';"
+   ```
+2. Write the contracted values:
+   ```bash
+   sudo k3s kubectl exec -n identity postgres-0 -- psql -U postgres -d keycloak -v ON_ERROR_STOP=1 -c "
+   update realm set access_token_lifespan=300, sso_idle_timeout=3600, sso_max_lifespan=36000, revoke_refresh_token=false
+   where name='platform';"
+   ```
+   If step 1 listed a non-zero client-level `clientSession*` or `client.session.*` value, remove it too. The contract forbids those overrides.
+3. Restart Keycloak so it reloads the realm from the database: `sudo k3s kubectl rollout restart deployment/keycloak -n identity`. Keycloak 24 keeps user sessions in memory, so **every signed-in user is signed out once** and signs in again through Google.
+4. Rerun step 1 and confirm `300 | 3600 | 36000 | f` and no client-level rows.
 
 ---
 

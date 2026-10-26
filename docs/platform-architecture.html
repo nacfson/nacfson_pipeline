@@ -1640,6 +1640,16 @@
           guard: 'NetworkPolicy in proj-pn allows egress to gateway.identity.svc:8080 for JWKS/session confirmation while blocking direct Keycloak access.'
         },
         {
+          title: '6b. Session Refresh & Lifetimes (Contract AUTH_DOOR §5)',
+          spec: 'Issue #93 · CONTRACT_AUTH_DOOR.md §5',
+          from: 'Go Auth Gateway',
+          to: 'Keycloak Token Endpoint (Internal)',
+          proto: 'POST http://keycloak-service.identity.svc:8080/realms/platform/protocol/openid-connect/token (grant_type=refresh_token)',
+          desc: 'The access token sealed in the session handle lasts 5 minutes. The gateway refreshes only when a protected project API call reaches GET /auth after that token has expired; a check while it is still valid does not renew the Keycloak session, and frontend-only activity sends no request. Each refresh resets the 1-hour SSO idle clock and returns a new handle in X-Refreshed-Session-Handle. With no protected call for 1 hour the refresh token expires (Keycloak: REFRESH_TOKEN_ERROR Token is not active), the gateway returns 401, and sign-in goes through Google again. The gateway caps any session at 8 hours from sign-in.',
+          code: `# keycloak-realm-config.yaml (realm import, fresh DB only)\n"accessTokenLifespan": 300,      # 5 min\n"ssoSessionIdleTimeout": 3600,   # 1 h, reset by each refresh\n"ssoSessionMaxLifespan": 36000,  # 10 h\n"revokeRefreshToken": false\n# Gateway SessionTimeout: 8h from sign-in`,
+          guard: 'Startup import skips an existing realm, so a lifespan change is applied to the live realm with the operations-runbook §7 procedure. Client-level session overrides are forbidden.'
+        },
+        {
           title: '7. Synchronous Current-Session Revocation (/auth/logout)',
           spec: 'Spec 001 · AUTH-05',
           from: 'User Browser',
