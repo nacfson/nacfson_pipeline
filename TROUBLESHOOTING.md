@@ -127,3 +127,28 @@ Run the automated zero-data-loss recovery script:
 ### Permanent Fix
 - [`scripts/ai-gateway-ctl.sh`](scripts/ai-gateway-ctl.sh) now passes `-n </dev/null` to background `ssh` / `kubectl port-forward` processes so `stdin` is preserved exclusively for `curl --data-binary @-`.
 - [`scripts/ai-gateway-ctl.sh`](scripts/ai-gateway-ctl.sh), [`scripts/vault-reset-unseal-key.sh`](scripts/vault-reset-unseal-key.sh), and [`scripts/vault-configure-k8s-auth.sh`](scripts/vault-configure-k8s-auth.sh) stream inputs directly via `exec -i` (`stdin`) without nested `/bin/sh -c` strings.
+
+---
+
+## 6. Signed Out After a Break, and Sign-In Asks Google Again
+
+### Symptoms
+- Sign-in succeeds, but after a while the next action in `https://pn.nacfson.cloud` fails with `401` (`session rejected by gateway`) and the app shows the signed-out state.
+- Signing in again goes through Google instead of returning silently.
+- `kubectl logs -n identity deploy/keycloak` shows, at the time of the sign-out:
+  ```text
+  WARN  [org.keycloak.events] type="INTROSPECT_TOKEN_ERROR", clientId="gateway-client", error="token_introspection_failed", reason="... JWT check failed"
+  WARN  [org.keycloak.events] type="REFRESH_TOKEN_ERROR", clientId="gateway-client", error="invalid_token", reason="Token is not active", grant_type="refresh_token"
+  ```
+
+### Root Cause
+- `Token is not active` means the refresh token sealed in the session handle had passed its expiry. Keycloak and the client secret are working.
+- The gateway refreshes only when a protected project API call arrives after the 5-minute access token expires. With no such call for one SSO idle period, the Keycloak session expires. Frontend-only activity does not count. See [`contracts/CONTRACT_AUTH_DOOR.md`](contracts/CONTRACT_AUTH_DOOR.md) §5.
+- Until issue #93, the realm import set no lifespans and the live realm ran on the Keycloak 24 default idle of 30 minutes.
+
+### Diagnosis
+- Different reasons point elsewhere: `Stale token` (refresh-token rotation), `Session not active` (Keycloak restarted or the session was deleted), `invalid_client_credentials` (client secret drift between OpenBao and the Keycloak database).
+- Read the live values with step 1 of [`docs/operations-runbook.md`](docs/operations-runbook.md) §7 (**Applying realm session lifetimes**).
+
+### Permanent Fix
+- The realm import declares `ssoSessionIdleTimeout=3600` (1 hour). Because startup import skips an existing realm, apply it to the live realm with the runbook procedure, which restarts Keycloak and signs everyone out once. Details: [`docs/issues/FIX_GithubIssue93.md`](docs/issues/FIX_GithubIssue93.md).

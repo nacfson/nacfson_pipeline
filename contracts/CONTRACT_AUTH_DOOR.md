@@ -72,3 +72,25 @@ Keycloak, not the gateway and not a project, creates the platform user on first 
 Subsequent Google logins skip first-broker-login because Keycloak already stores `FederatedIdentity(google, sub)`.
 
 Source of truth: [`deploy/platform/identity/keycloak-realm-config.yaml`](../deploy/platform/identity/keycloak-realm-config.yaml). Config validation: [`tests/preflight/test_keycloak_jit_provisioning.py`](../tests/preflight/test_keycloak_jit_provisioning.py).
+
+---
+
+## 5. Session Lifetimes
+
+How long a sign-in lasts. These are the only contracted values. The realm import and [`tests/preflight/test_keycloak_session_lifetimes.py`](../tests/preflight/test_keycloak_session_lifetimes.py) must match this table.
+
+| Setting | Value | Resets? | Meaning |
+| :--- | :--- | :--- | :--- |
+| `accessTokenLifespan` | `300` | New token on each refresh | Project access token, 5 minutes. The gateway refreshes only after it expires. |
+| `ssoSessionIdleTimeout` | `3600` | Yes, on every refresh | Keycloak session and refresh token, 1 hour without a refresh. |
+| `ssoSessionMaxLifespan` | `36000` | No | Keycloak absolute cap, 10 hours from sign-in. |
+| `revokeRefreshToken` | `false` | — | No refresh-token rotation. An older handle stays usable until its refresh token expires. |
+| Gateway `SessionTimeout` | `8h` | No | Gateway absolute cap from sign-in (`gateway/internal/config/config.go`). It ends a session before Keycloak's 10 hours. |
+
+1. **What renews a session**: only a request to a protected project API (wrapped in `projectauth.RequireAuth`) that reaches `GET /auth` after the access token has expired. The gateway then refreshes with Keycloak and returns `X-Refreshed-Session-Handle`. A check while the access token is still valid does not renew the Keycloak session.
+2. **What does not renew a session**: static page loads, `/api/auth/*`, unprotected endpoints, and frontend-only actions (navigation over cached data, scrolling, typing before save).
+3. **Resulting behavior**: a visitor who makes a protected API call at least once in each window between 5 and 60 minutes after the last refresh stays signed in up to 8 hours. With no such call for 60 minutes, the next call gets `REFRESH_TOKEN_ERROR` `Token is not active` in Keycloak, a `401` from the gateway, and a new Google sign-in.
+4. **Applying a change**: `kc.sh start --import-realm` skips a realm that already exists, so editing the realm import does not change a running cluster. After merging, apply the values to the live realm with the procedure in [`docs/operations-runbook.md`](../docs/operations-runbook.md) §7, then confirm them with the read-only query there.
+5. Client-level overrides (`client.session.idle.timeout`, `client.session.max.lifespan`, realm `clientSessionIdleTimeout`) MUST NOT be set. They would silently shorten this table.
+
+Source of truth: [`deploy/platform/identity/keycloak-realm-config.yaml`](../deploy/platform/identity/keycloak-realm-config.yaml). Background: [`docs/issues/FIX_GithubIssue93.md`](../docs/issues/FIX_GithubIssue93.md).

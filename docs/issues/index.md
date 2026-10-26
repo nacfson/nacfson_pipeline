@@ -17,6 +17,7 @@ Opening this repo in OpenCode runs scripts/sync-github-issues.py once. That refr
 
 | Issue | State | Note | Live contract |
 | :--- | :--- | :--- | :--- |
+| [#93](https://github.com/nacfson/nacfson_pipeline/issues/93) Login session refreshes on a ~5 minute window | OPEN | [`FIX_GithubIssue93.md`](FIX_GithubIssue93.md) | [`CONTRACT_AUTH_DOOR.md`](../../contracts/CONTRACT_AUTH_DOOR.md) §5 |
 | [#65](https://github.com/nacfson/nacfson_pipeline/issues/65) Add a static project hub page on the main domain (nacfson.cloud) that routes to every project in the cluster | OPEN | [`FIX_GithubIssue65.md`](FIX_GithubIssue65.md) | [`CONTRACT_TLS_INGRESS.md`](../../contracts/CONTRACT_TLS_INGRESS.md) |
 | [#63](https://github.com/nacfson/nacfson_pipeline/issues/63) Edge ingress: no defined load balancer in front of Traefik; 80/443 exposure relies on implicit k3s ServiceLB and hand-set firewall rules | OPEN | [`FIX_GithubIssue63.md`](FIX_GithubIssue63.md) | [`CONTRACT_TLS_INGRESS.md`](../../contracts/CONTRACT_TLS_INGRESS.md) |
 | [#62](https://github.com/nacfson/nacfson_pipeline/issues/62) proj-pn backend has no defined public egress; outbound internet paths are implicit or unrestricted | CLOSED | [`FIX_GithubIssue62.md`](FIX_GithubIssue62.md) | [`CONTRACT_ISOLATION_BUDGET.md`](../../contracts/CONTRACT_ISOLATION_BUDGET.md) |
@@ -25,5 +26,5 @@ Opening this repo in OpenCode runs scripts/sync-github-issues.py once. That refr
 | [#54](https://github.com/nacfson/nacfson_pipeline/issues/54) KeyCloak login issue. | CLOSED | [`FIX_GithubIssue54.md`](FIX_GithubIssue54.md) | [`CONTRACT_AUTH_DOOR.md`](../../contracts/CONTRACT_AUTH_DOOR.md) §4 |
 | [#48](https://github.com/nacfson/nacfson_pipeline/issues/48) Modifying GHCR Pull architecture | CLOSED | [`FIX_GithubIssue48.md`](FIX_GithubIssue48.md) | Not a live contract. Images are digest-pinned. |
 | [#18](https://github.com/nacfson/nacfson_pipeline/issues/18) CI: GitOps Reconciliation Gate failing on main (test_14_project_pn_shared_door_accepted) | CLOSED | [`FIX_GithubIssue18.md`](FIX_GithubIssue18.md) | [`CONTRACT_AUTH_DOOR.md`](../../contracts/CONTRACT_AUTH_DOOR.md) §2 |
-| [#4](https://github.com/nacfson/nacfson_pipeline/issues/4) The SSO pipeline | CLOSED | [`FIX_GithubIssue4.md`](FIX_GithubIssue4.md) | Not in the live contract. |
+| [#4](https://github.com/nacfson/nacfson_pipeline/issues/4) The SSO pipeline | CLOSED | [`FIX_GithubIssue4.md`](FIX_GithubIssue4.md) | [`CONTRACT_AUTH_DOOR.md`](../../contracts/CONTRACT_AUTH_DOOR.md) §5 |
 | [#69](https://github.com/nacfson/nacfson_pipeline/issues/69) On-demand network-policy check matching VPS/k3s rules, also small enough for CI | OPEN | [`FIX_GithubIssue69.md`](FIX_GithubIssue69.md) | Not checked. |

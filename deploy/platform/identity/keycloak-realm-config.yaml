@@ -18,6 +18,10 @@ data:
         "loginWithEmailAllowed": false,
         "duplicateEmailsAllowed": false,
         "sslRequired": "external",
+        "accessTokenLifespan": 300,
+        "ssoSessionIdleTimeout": 3600,
+        "ssoSessionMaxLifespan": 36000,
+        "revokeRefreshToken": false,
         "defaultDefaultClientScopes": [
             "profile",
             "email",

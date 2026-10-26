@@ -2,7 +2,11 @@
 
 - Issue: https://github.com/nacfson/nacfson_pipeline/issues/4
 - State: CLOSED on GitHub. Lifetimes were not read from the live realm in this note.
-- Live contract: none. Session length is not in `contracts/CONTRACT_*.md`.
+- Live contract: [`contracts/CONTRACT_AUTH_DOOR.md`](../../contracts/CONTRACT_AUTH_DOOR.md) §5, added for issue #93.
+
+## Update (issue #93, 2026-10-26)
+
+The live realm was read: access token 300 s, SSO idle 1800 s, SSO max 36000 s, all Keycloak 24 defaults. The 7-day idle and 30-day max asked for here were never applied. The chosen values are now access token 5 minutes, SSO idle 1 hour, SSO max 10 hours, gateway cap 8 hours, recorded in the contract above and declared in the realm import. See [`FIX_GithubIssue93.md`](FIX_GithubIssue93.md). The sections below are the original note.
 
 ## What is wrong
 

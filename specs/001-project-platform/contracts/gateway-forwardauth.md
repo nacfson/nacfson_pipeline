@@ -98,7 +98,7 @@ Content-Type: application/json
 4. At `/oauth/callback`, the gateway asserts HMAC signature validity, enforces timestamp freshness (rejecting requests older than 300 seconds), and passes `code_verifier` to Keycloak to complete token exchange.
 
 ### 3.3 Token Expiration & Refresh Flow
-1. User SSO Sessions have a typical lifespan of 8–12 hours; project access JWTs are short-lived (5–15 minutes).
+1. User SSO Sessions have a typical lifespan of 8–12 hours; project access JWTs are short-lived (5–15 minutes). The live values are in [`contracts/CONTRACT_AUTH_DOOR.md`](../../../contracts/CONTRACT_AUTH_DOOR.md) §5 (access token 5 minutes, SSO idle 1 hour, gateway cap 8 hours); this historical note does not override them.
 2. On every ForwardAuth check, if the project access token is near expiry but the Keycloak session is valid, the gateway uses the session refresh token to synchronously fetch a new project access token from Keycloak over the internal cluster network.
 3. If the user session itself is expired, revoked, or signed for another project, confirmation returns HTTP 401 and does not redirect the visitor. If the sign-in service is unreachable, confirmation returns HTTP 503 and does not confirm the user. The project door still answers for parts that do not need a known user.
 
