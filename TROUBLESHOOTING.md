@@ -152,3 +152,34 @@ Run the automated zero-data-loss recovery script:
 
 ### Permanent Fix
 - The realm import declares `ssoSessionIdleTimeout=3600` (1 hour). Because startup import skips an existing realm, apply it to the live realm with the runbook procedure, which restarts Keycloak and signs everyone out once. Details: [`docs/issues/FIX_GithubIssue93.md`](docs/issues/FIX_GithubIssue93.md).
+
+---
+
+## 7. `blog-web` Image Rollout Stuck and `proj-blog` Kustomization Not Ready
+
+### Symptoms
+- A new `blog-web` image pin merges, but `https://blog.nacfson.cloud` keeps serving the old image.
+- `kubectl get pods -n proj-blog` shows the old `blog-web` pod `Running` next to a new `blog-web` pod stuck in `Pending`.
+- `kubectl describe pod -n proj-blog <pending-pod>` reports:
+  ```text
+  Warning  FailedScheduling  default-scheduler  0/1 nodes are available: 1 Insufficient cpu.
+  ```
+- `kubectl get kustomization -n proj-blog proj-blog` reports a health-check timeout, and Flux keeps retrying.
+
+### Root Cause
+- `blog-web` rolled out with `maxSurge: 1, maxUnavailable: 0`: start the new pod first, then stop the old one. During the swap the node must fit a second `100m` pod.
+- §1 set `maxSurge: 0` on `proj-pn` and `proj-health`, but `proj-blog` was onboarded just before and kept `maxSurge: 1`. Steady-state CPU requests on the 2-OCPU node sit at about `1935m / 2000m`, so the extra `100m` pod cannot be scheduled.
+- `maxUnavailable: 0` keeps the old pod serving, and `proj-blog` (`wait: true`, `timeout: 5m`) never becomes healthy.
+- Preflight did not catch it: [`clusters/vps-k3s/capacity.yaml`](clusters/vps-k3s/capacity.yaml) still records `4000m` allocatable CPU, so the surge fits on paper.
+
+### Diagnostic Commands
+```bash
+ssh oracleCloud "sudo k3s kubectl get pods -n proj-blog -o wide"
+ssh oracleCloud "sudo k3s kubectl get events -n proj-blog --sort-by=.lastTimestamp | tail -20"
+ssh oracleCloud "sudo k3s kubectl describe node | grep -A8 'Allocated resources'"
+```
+
+### Permanent Fix
+- [`deploy/projects/blog/workloads/deployment.yaml`](deploy/projects/blog/workloads/deployment.yaml) now uses `maxSurge: 0, maxUnavailable: 1`: stop the old pod, then start the new one on the CPU it freed. Each rollout has a few seconds of downtime because `blog-web` runs a single replica.
+- Every single-replica tenant on `vps-k3s` must use `maxSurge: 0` unless the node keeps spare CPU for the surge pod.
+- Follow-up: correct `capacity.yaml` to the node's real allocatable CPU and memory so preflight rejects surge that does not fit.
