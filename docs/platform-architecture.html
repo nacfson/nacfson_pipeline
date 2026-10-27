@@ -2088,9 +2088,9 @@
         title: '2e. project-boundaries-blog (Tenant Sandbox — proj-blog)',
         path: './deploy/projects/blog/boundary',
         deps: 'cni, governance',
-        desc: 'Creates namespace proj-blog with Pod Security Restricted labels, ResourceQuota (200m CPU, 512Mi RAM, 0 NodePorts/LBs), strict NetworkPolicy allowing egress only to CoreDNS and flux-system source-controller, project-blog-sa (no token mount), and blog-reconciler RBAC.',
+        desc: 'Creates namespace proj-blog with Pod Security Restricted labels, ResourceQuota (600m CPU, 512Mi RAM, 0 NodePorts/LBs), strict NetworkPolicy allowing egress only to CoreDNS and flux-system source-controller, project-blog-sa (no token mount), and blog-reconciler RBAC. The proj-blog workload (blog-web, 100m CPU, 1 replica) rolls out with maxSurge: 0 / maxUnavailable: 1 so an image update never needs a second pod on the 2-OCPU vps-k3s node.',
         yaml: {
-          'vps-k3s': `dependsOn: [cni, governance]\npath: ./deploy/projects/blog/boundary\nobjects:\n  - Namespace proj-blog (pod-security.kubernetes.io/enforce: restricted)\n  - ResourceQuota project-blog-quota (200m / 512Mi)\n  - NetworkPolicy project-blog-isolation`,
+          'vps-k3s': `dependsOn: [cni, governance]\npath: ./deploy/projects/blog/boundary\nobjects:\n  - Namespace proj-blog (pod-security.kubernetes.io/enforce: restricted)\n  - ResourceQuota project-blog-quota (600m / 512Mi)\n  - NetworkPolicy project-blog-isolation`,
           'local-k3s': `dependsOn: [cni, governance]\npath: ./deploy/projects/blog/boundary (identical isolation contract)`
         }
       },
