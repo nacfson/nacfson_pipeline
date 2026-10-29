@@ -1016,7 +1016,7 @@
             </div>
             <div class="flex justify-between text-slate-400">
               <span>Platform Reservation (sysReserved + Cilium/Hubble + Flux + Vault + PG + KC + GW + Cert):</span>
-              <span id="calc-plat" class="text-amber-300">1620m CPU · 5376 MiB</span>
+              <span id="calc-plat" class="text-amber-300">1795m CPU · 5856 MiB</span>
             </div>
             <div class="flex justify-between text-slate-300 border-t border-slate-800 pt-2">
               <span>Available Application Pool:</span>
@@ -2098,10 +2098,10 @@
         title: '3a. vault-proxies (Zero-Plaintext Proxies)',
         path: './deploy/platform/vault-proxies',
         deps: 'vault',
-        desc: 'Deploys vault-db-proxy (:5432 PostgreSQL wire proxy), vault-registry-proxy (:5000 GHCR image pull proxy), and vault-ai-proxy (:8080 internal AI gateway + 127.0.0.1:8081 loopback Kill Switch) inside namespace vault.',
+        desc: 'Deploys vault-db-proxy (:5432 PostgreSQL wire proxy), vault-registry-proxy (:5000 GHCR image pull proxy), vault-ai-proxy (:8080 internal AI gateway + 127.0.0.1:8081 loopback Kill Switch), and vault-notify-proxy (:8080 destination-neutral notify API + 127.0.0.1:8081 loopback webhook admin) inside namespace vault.',
         yaml: {
-          'vps-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml (ALLOWED_PROJECTS="pn,health")\n  - registry-proxy.yaml (UPSTREAM_REGISTRY=ghcr.io)\n  - ai-proxy.yaml (Service/ai-gateway:8080, ADMIN_ADDR=127.0.0.1:8081)`,
-          'local-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml, registry-proxy.yaml & ai-proxy.yaml`
+          'vps-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml (ALLOWED_PROJECTS="pn,health")\n  - registry-proxy.yaml (UPSTREAM_REGISTRY=ghcr.io)\n  - ai-proxy.yaml (Service/ai-gateway:8080, ADMIN_ADDR=127.0.0.1:8081)\n  - notify-proxy.yaml (Service/notify-gateway:8080, ADMIN_ADDR=127.0.0.1:8081, NOTIFY_GRANTS="errors:observability:error-detector,ai-debug:observability:error-investigator")`,
+          'local-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml, registry-proxy.yaml, ai-proxy.yaml & notify-proxy.yaml`
         }
       },
       'database': {
@@ -2311,6 +2311,15 @@
         details: 'Internal AI gateway (:8080) with project-specific quota enforcement, loopback admin kill switch (127.0.0.1:8081), OpenBao credential sync, and secure RAM key wiping (0x00 overwrite) when all projects disabled. HTTP client blocks redirects.'
       },
       {
+        cat: 'custom',
+        name: 'vault-notify-proxy',
+        ver: 'Go 1.22 (0 external deps)',
+        license: 'First-Party (Pure Go Stdlib)',
+        role: 'Pod-Attributed Notification Gateway',
+        where: 'services/vault-proxies/cmd/notify-proxy/main.go',
+        details: 'Destination-neutral notify API (:8080): POST /v1/notify/{channel} is accepted only from a pod the grant names (attributed by pod IP), answered 202 on delivery and 403 otherwise. Owns the Discord webhook URLs in OpenBao and never returns them: the loopback webhook admin (127.0.0.1:8081) seeds them and /admin/status reports configured/sent/failed only. Discord rendering with 429/5xx retry ladder; egress is FQDN-pinned to discord.com:443.'
+      },
+      {
         cat: 'oss',
         name: 'cURL (curlimages/curl)',
         ver: '8.10.1',
@@ -2405,8 +2414,8 @@
 
       const allocCpu = 4000;
       const allocMem = env === 'vps' ? 24576 : 8192;
-      const platCpu = 1620; // Shared Platform Reservation (including Cilium + Hubble + Vault + vault-ai-proxy + Identity + Cert-Manager); Keycloak CPU request 250m, postgres-init-job init-db 25m
-      const platMem = 5376;
+      const platCpu = 1795; // Shared Platform Reservation (including Cilium + Hubble + Vault + vault-ai-proxy + vault-notify-proxy + Identity + Cert-Manager); Keycloak CPU request 250m, postgres-init-job init-db 25m
+      const platMem = 5856;
 
       const poolCpu = allocCpu - platCpu;
       const poolMem = allocMem - platMem;

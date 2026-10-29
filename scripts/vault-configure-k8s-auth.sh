@@ -170,6 +170,7 @@ create_k8s_role "gateway" "gateway" "identity" "gateway-transit"
 create_k8s_role "vault-db-proxy" "vault-db-proxy" "vault" "db-proxy"
 create_k8s_role "vault-registry-proxy" "vault-registry-proxy" "vault" "registry-proxy"
 create_k8s_role "vault-ai-proxy" "vault-ai-proxy" "vault" "ai-proxy"
+create_k8s_role "vault-notify-proxy" "vault-notify-proxy" "vault" "notify-proxy"
 create_k8s_role "openbao-backup" "openbao-backup" "vault" "raft-snapshot"
 
 echo "SUCCESS: Kubernetes Auth and all workload roles successfully configured!"

@@ -345,3 +345,113 @@ spec:
         - ports:
             - port: "443"
               protocol: TCP
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: notify-proxy-policy
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: notify-proxy-policy
+    app.kubernetes.io/part-of: platform-vault
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: vault-notify-proxy
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    # Only the two pods the grants name may post here. The proxy attributes the
+    # caller by pod IP, so this is the second lock on the same door: a pod that
+    # reached the port but was not granted a channel still gets 403.
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: error-detector
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: error-investigator
+      ports:
+        - protocol: TCP
+          port: 8080
+  egress:
+    # OpenBao holds the Discord webhook URLs; the proxy keeps no secret of its own.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: openbao
+      ports:
+        - protocol: TCP
+          port: 8200
+    # kube-router fallback to kube-apiserver for pod-IP attribution (same as
+    # ai-proxy-policy): under Cilium ipBlock never matches node IPs, so the
+    # CiliumNetworkPolicy below covers that path.
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: notify-proxy-egress
+  namespace: vault
+  labels:
+    app.kubernetes.io/name: notify-proxy-policy
+    app.kubernetes.io/part-of: platform-vault
+spec:
+  endpointSelector:
+    matchLabels:
+      app.kubernetes.io/name: vault-notify-proxy
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": kube-system
+            "k8s:k8s-app": kube-dns
+      toPorts:
+        - ports:
+            - port: "53"
+              protocol: ANY
+          rules:
+            dns:
+              - matchPattern: "*"
+    - toEndpoints:
+        - matchLabels:
+            "k8s:io.kubernetes.pod.namespace": vault
+            "k8s:app.kubernetes.io/name": openbao
+      toPorts:
+        - ports:
+            - port: "8200"
+              protocol: TCP
+    - toEntities:
+        - kube-apiserver
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
+            - port: "6443"
+              protocol: TCP
+    # Discord only, and by exact name: a wildcard would let a compromised proxy
+    # exfiltrate to any Discord-adjacent host, and Cilium would learn it as a
+    # DNS name from whatever the proxy asked for.
+    - toFQDNs:
+        - matchName: discord.com
+      toPorts:
+        - ports:
+            - port: "443"
+              protocol: TCP
