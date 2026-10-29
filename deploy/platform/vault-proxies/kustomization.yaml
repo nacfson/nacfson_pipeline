@@ -7,3 +7,4 @@ resources:
   - registry-proxy.yaml
   - db-proxy.yaml
   - ai-proxy.yaml
+  - notify-proxy.yaml

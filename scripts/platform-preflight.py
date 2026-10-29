@@ -482,6 +482,160 @@ def check_database_and_readiness_contract(projects_dict, platform_docs):
     return violations
 
 
+def _image_pinned_by_digest(image):
+    """Report whether image is pinned as name@sha256:<64 hex>, never a tag."""
+    if not isinstance(image, str):
+        return False
+    _, sep, digest = image.partition("@sha256:")
+    if not sep:
+        return False
+    if len(digest) != 64:
+        return False
+    return all(c in "0123456789abcdef" for c in digest.lower())
+
+
+def check_notify_gateway_contract(platform_docs):
+    """Enforce the notify gateway contract: loopback-only admin, discord.com-only egress.
+
+    The proxy is the one component that holds a live Discord webhook URL, so its
+    blast radius is the point of this rule: the admin listener that seeds those
+    URLs must be unreachable from any pod, and egress must reach Discord and
+    nothing else. A tag rather than a digest is rejected because a silent rebuild
+    would change what #errors posts with and no manifest would show it.
+    """
+    violations = []
+
+    def fail(obj, detail):
+        violations.append({"rule": 2, "object": obj, "detail": detail})
+
+    found_netpol = False
+    found_cnp = False
+    deploy_seen = False
+
+    for doc in platform_docs:
+        if not isinstance(doc, dict):
+            continue
+        kind = doc.get("kind", "")
+        name = (doc.get("metadata") or {}).get("name", "")
+
+        if kind == "Service" and name == "notify-gateway":
+            ports = (doc.get("spec") or {}).get("ports") or []
+            port_nums = [_as_port(p.get("port")) for p in ports if isinstance(p, dict)]
+            if port_nums != [8080]:
+                fail(
+                    "vault/Service/notify-gateway",
+                    f"Service/notify-gateway must expose port 8080 only (never admin port 8081), got {port_nums}",
+                )
+
+        elif kind == "Deployment" and name == "vault-notify-proxy":
+            deploy_seen = True
+            pod_spec, _ = get_pod_spec_and_meta(doc)
+            if not pod_spec:
+                continue
+            obj = "vault/Deployment/vault-notify-proxy"
+            if str(pod_spec.get("serviceAccountName") or "").strip() != "vault-notify-proxy":
+                fail(
+                    obj,
+                    "vault-notify-proxy must run as least-privilege serviceAccountName 'vault-notify-proxy', "
+                    f"got {pod_spec.get('serviceAccountName')!r}",
+                )
+            for c in pod_spec.get("containers") or []:
+                if c.get("name") != "notify-proxy":
+                    continue
+                c_obj = f"{obj}:notify-proxy"
+                if not _image_pinned_by_digest(c.get("image")):
+                    fail(c_obj, f"image must be pinned by digest (name@sha256:...), got {c.get('image')!r}")
+
+                s_path = ((c.get("startupProbe") or {}).get("httpGet") or {}).get("path")
+                r_path = ((c.get("readinessProbe") or {}).get("httpGet") or {}).get("path")
+                l_path = ((c.get("livenessProbe") or {}).get("httpGet") or {}).get("path")
+                if s_path != "/startupz" or r_path != "/readyz" or l_path != "/healthz":
+                    fail(
+                        c_obj,
+                        "vault-notify-proxy must declare startupProbe (/startupz), readinessProbe (/readyz), "
+                        f"and livenessProbe (/healthz), got startup={s_path!r} readiness={r_path!r} liveness={l_path!r}",
+                    )
+
+                env_map = {
+                    str(e.get("name") or "").strip(): str(e.get("value") or "").strip()
+                    for e in (c.get("env") or [])
+                    if isinstance(e, dict) and e.get("name")
+                }
+                if env_map.get("ADMIN_ADDR") != "127.0.0.1:8081":
+                    fail(c_obj, f"ADMIN_ADDR must be strictly 127.0.0.1:8081, got {env_map.get('ADMIN_ADDR')!r}")
+                if env_map.get("OPENBAO_ROLE") != "vault-notify-proxy":
+                    fail(c_obj, f"OPENBAO_ROLE must be least-privilege 'vault-notify-proxy', got {env_map.get('OPENBAO_ROLE')!r}")
+                for ename in env_map:
+                    if "WEBHOOK" in ename.upper() and "URL" in ename.upper():
+                        fail(c_obj, f"the webhook URL must live in OpenBao, not in env ({ename})")
+
+        elif kind == "NetworkPolicy" and name == "notify-proxy-policy":
+            found_netpol = True
+            ingress_rules = (doc.get("spec") or {}).get("ingress") or []
+            if not ingress_rules:
+                fail(
+                    "vault/NetworkPolicy/notify-proxy-policy",
+                    "NetworkPolicy/notify-proxy-policy must declare explicit ingress rules",
+                )
+            for rule in ingress_rules:
+                peers = (rule or {}).get("from") or []
+                if not peers:
+                    fail(
+                        "vault/NetworkPolicy/notify-proxy-policy",
+                        "NetworkPolicy/notify-proxy-policy ingress rule must not allow unrestricted sources "
+                        "(missing 'from')",
+                    )
+                for peer in peers:
+                    ns_labels = ((peer or {}).get("namespaceSelector") or {}).get("matchLabels") or {}
+                    pod_labels = ((peer or {}).get("podSelector") or {}).get("matchLabels") or {}
+                    if not ns_labels or not pod_labels:
+                        fail(
+                            "vault/NetworkPolicy/notify-proxy-policy",
+                            "NetworkPolicy/notify-proxy-policy ingress peers must specify both non-empty "
+                            "namespaceSelector.matchLabels and podSelector.matchLabels",
+                        )
+
+        elif kind == "CiliumNetworkPolicy" and name == "notify-proxy-egress":
+            found_cnp = True
+            fqdn_hosts = set()
+            for rule in (doc.get("spec") or {}).get("egress") or []:
+                if not isinstance(rule, dict):
+                    continue
+                if "toCIDR" in rule or "toCIDRSet" in rule:
+                    fail(
+                        "vault/CiliumNetworkPolicy/notify-proxy-egress",
+                        "CiliumNetworkPolicy/notify-proxy-egress must not use toCIDR or toCIDRSet",
+                    )
+                for ent in rule.get("toEntities") or []:
+                    if ent in ("world", "all"):
+                        fail(
+                            "vault/CiliumNetworkPolicy/notify-proxy-egress",
+                            f"CiliumNetworkPolicy/notify-proxy-egress must not allow unrestricted entity {ent!r}",
+                        )
+                for fqdn in rule.get("toFQDNs") or []:
+                    if not isinstance(fqdn, dict) or "matchPattern" in fqdn or set(fqdn.keys()) != {"matchName"}:
+                        fail(
+                            "vault/CiliumNetworkPolicy/notify-proxy-egress",
+                            f"CiliumNetworkPolicy/notify-proxy-egress toFQDNs must use exact matchName only, got {fqdn!r}",
+                        )
+                    else:
+                        fqdn_hosts.add(fqdn["matchName"])
+            if fqdn_hosts != {"discord.com"}:
+                fail(
+                    "vault/CiliumNetworkPolicy/notify-proxy-egress",
+                    f"CiliumNetworkPolicy/notify-proxy-egress must allow exact FQDN discord.com only, "
+                    f"got {sorted(fqdn_hosts)}",
+                )
+
+    if deploy_seen:
+        if not found_netpol:
+            fail("vault/NetworkPolicy/notify-proxy-policy", "missing NetworkPolicy/notify-proxy-policy in vault namespace")
+        if not found_cnp:
+            fail("vault/CiliumNetworkPolicy/notify-proxy-egress", "missing CiliumNetworkPolicy/notify-proxy-egress in vault namespace")
+
+    return violations
+
+
 def check_ai_gateway_contract(projects_dict, platform_docs):
     """Enforce Internal AI Gateway (vault-ai-proxy) isolation, loopback admin, and three-probe contract."""
     violations = []
@@ -1208,6 +1362,14 @@ def main():
             status = STATUS_REJECTED_ISOLATION
             if not rejection_reason:
                 rejection_reason = ai_gw_violations[0]["detail"]
+            exit_code = 1
+
+        notify_gw_violations = check_notify_gateway_contract(platform_docs)
+        if notify_gw_violations:
+            violations.extend(notify_gw_violations)
+            status = STATUS_REJECTED_ISOLATION
+            if not rejection_reason:
+                rejection_reason = notify_gw_violations[0]["detail"]
             exit_code = 1
 
     project_count = len(projects_dict)

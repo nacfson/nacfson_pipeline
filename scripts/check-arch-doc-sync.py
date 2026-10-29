@@ -139,11 +139,11 @@ def check_static_invariants() -> list[str]:
         if flow_key not in html:
             errors.append(f"{HTML_REL_PATH} FLOWS object is missing flow '{flow_key}'.")
 
-    # 6. Live budget constants check (1620m CPU, 5376 MiB platform reservation including vault-ai-proxy)
-    if "1620" not in html or "5376" not in html:
+    # 6. Live budget constants check (1795m CPU, 5856 MiB platform reservation including vault-ai-proxy and vault-notify-proxy)
+    if "1795" not in html or "5856" not in html:
         errors.append(
             f"{HTML_REL_PATH} budget calculator does not match platform reservation "
-            f"(1620m CPU / 5376 MiB)."
+            f"(1795m CPU / 5856 MiB)."
         )
 
     return errors
