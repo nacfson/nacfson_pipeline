@@ -350,6 +350,10 @@ spec:
       kind: StatefulSet
       name: victorialogs
       namespace: observability
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: error-detector
+      namespace: observability
   dependsOn:
     - name: cni
     - name: governance

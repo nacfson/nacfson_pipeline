@@ -44,6 +44,9 @@ spec:
         - podSelector:
             matchLabels:
               app.kubernetes.io/name: fluent-bit
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: error-detector
       ports:
         - protocol: TCP
           port: 9428
@@ -81,3 +84,60 @@ spec:
       ports:
         - protocol: TCP
           port: 9428
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: error-detector-egress
+  labels:
+    app.kubernetes.io/name: error-detector-policy
+    app.kubernetes.io/part-of: platform-observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: error-detector
+  policyTypes:
+    - Egress
+  egress:
+    # DNS first: every peer below is named by Service, so nothing resolves
+    # without it.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # The tail and catch-up queries.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: victorialogs
+      ports:
+        - protocol: TCP
+          port: 9428
+    # #errors alerts. The proxy owns the Discord URL; the detector never sees it.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vault
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault-notify-proxy
+      ports:
+        - protocol: TCP
+          port: 8080
+    # The investigator handoff. Empty INVESTIGATOR_URL today, but the door is
+    # declared so enabling workstream 3 is a config change, not a policy change.
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: error-investigator
+      ports:
+        - protocol: TCP
+          port: 8080

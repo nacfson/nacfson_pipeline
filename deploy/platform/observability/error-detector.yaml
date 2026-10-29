@@ -1,0 +1,135 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: error-detector
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: error-detector
+    app.kubernetes.io/part-of: platform-observability
+# Explicit, and mirrored on the pod: the detector needs no API access, and
+# saying so twice is what keeps a later edit from adding one by accident.
+automountServiceAccountToken: false
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: error-detector-state
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: error-detector
+    app.kubernetes.io/part-of: platform-observability
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: error-detector
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: error-detector
+    app.kubernetes.io/part-of: platform-observability
+spec:
+  # The state PVC is ReadWriteOnce and holds the cursor: two replicas would each
+  # tail the same stream from their own cursor and double every alert.
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: error-detector
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: error-detector
+        app.kubernetes.io/part-of: platform-observability
+    spec:
+      restartPolicy: Always
+      serviceAccountName: error-detector
+      # The detector talks to VictoriaLogs and the notify proxy over the network
+      # and needs no Kubernetes API access at all, so it gets no token.
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: error-detector
+          # Pinned by digest (Task 13 Step 3 of the WS1 plan). The digest is
+          # published by build-images.yaml once PR 1a merges.
+          image: ghcr.io/nacfson/error-detector@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          env:
+            - name: LISTEN_ADDR
+              value: "0.0.0.0:8080"
+            - name: VLOGS_URL
+              value: "http://victorialogs.observability.svc:9428"
+            - name: NOTIFY_URL
+              value: "http://notify-gateway.vault.svc:8080"
+            # Workstream 3 has not landed. Empty disables the handoff, so a
+            # closed group is alerted and saved, never handed to a service that
+            # is not there.
+            - name: INVESTIGATOR_URL
+              value: ""
+            - name: STATE_PATH
+              value: "/state/detector.json"
+          # requests == limits gives Guaranteed QoS: the detector must not be
+          # evicted while it holds an unwritten cursor and a queued skip notice.
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: state
+              mountPath: /state
+          # /readyz checks VictoriaLogs reachability and that a tail is live, and
+          # can wait 10 s on the VLogs probe, so it needs a timeout above that.
+          startupProbe:
+            httpGet:
+              path: /startupz
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 3
+            timeoutSeconds: 2
+            failureThreshold: 20
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 15
+            timeoutSeconds: 15
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: error-detector-state
