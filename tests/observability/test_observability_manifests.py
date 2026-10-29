@@ -152,11 +152,18 @@ class TestVictoriaLogsStore(unittest.TestCase):
         ingress = selected[0]["spec"]["ingress"]
         self.assertEqual(len(ingress), 1)
         sources = ingress[0]["from"]
-        self.assertEqual(len(sources), 1)
+        # fluent-bit writes the lines; error-detector tails them back out.
+        self.assertEqual(len(sources), 2)
         self.assertEqual(
-            sources[0]["podSelector"]["matchLabels"],
-            {"app.kubernetes.io/name": "fluent-bit"},
+            [s["podSelector"]["matchLabels"]["app.kubernetes.io/name"] for s in sources],
+            ["fluent-bit", "error-detector"],
         )
+        for source in sources:
+            self.assertEqual(
+                set(source["podSelector"]["matchLabels"]),
+                {"app.kubernetes.io/name"},
+                "each ingress source must be selected by name alone, never by a namespace wildcard",
+            )
         self.assertEqual(ingress[0]["ports"], [{"protocol": "TCP", "port": 9428}])
 
     def test_image_is_pinned(self):
@@ -376,8 +383,9 @@ class TestFluentBitCollector(unittest.TestCase):
             os.remove(path)
         data = json.loads(res.stdout) if res.stdout.strip() else {}
         self.assertEqual(data.get("validationStatus"), "PASSED", data.get("rejectionReason"))
-        self.assertEqual(data.get("platformReservations", {}).get("cpuMillicores"), 350)
-        self.assertEqual(data.get("platformReservations", {}).get("memoryMib"), 960)
+        # fluent-bit + victorialogs + error-detector (50m/64Mi).
+        self.assertEqual(data.get("platformReservations", {}).get("cpuMillicores"), 400)
+        self.assertEqual(data.get("platformReservations", {}).get("memoryMib"), 1024)
 
     def test_record_fields_match_log_schema_contract(self):
         docs = render()
@@ -458,6 +466,141 @@ class TestLayerWiring(unittest.TestCase):
             if expr.get("key") == "kubernetes.io/metadata.name":
                 values.extend(expr.get("values", []))
         self.assertIn("observability", values)
+
+class TestErrorDetector(unittest.TestCase):
+    """Contracts for Deployment/error-detector (WS1 Task 13).
+
+    The detector is the only workload that both reads the whole project log
+    stream and can post to Discord, so its blast radius is what these tests
+    bound: no host access, no API token, guaranteed-QoS so it cannot be evicted
+    mid-flush, and egress that reaches exactly three places.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.docs = render()
+        cls.deployment = _by_kind_name(cls.docs, "Deployment", "error-detector")
+        cls.pod_spec = cls.deployment["spec"]["template"]["spec"]
+        cls.containers = cls.pod_spec["containers"]
+        cls.detector = next(c for c in cls.containers if c["name"] == "error-detector")
+
+    def test_detector_has_no_hostpath_and_no_sa_token(self):
+        self.assertIs(
+            self.pod_spec.get("automountServiceAccountToken"),
+            False,
+            "the detector needs no API access; a mounted token is a credential to steal",
+        )
+        volumes = self.pod_spec.get("volumes") or []
+        for volume in volumes:
+            self.assertNotIn("hostPath", volume, f"volume {volume.get('name')} uses hostPath")
+
+    def test_detector_guaranteed_qos(self):
+        res = self.detector["resources"]
+        self.assertEqual(res["requests"]["cpu"], res["limits"]["cpu"], "CPU requests must equal limits")
+        self.assertEqual(
+            res["requests"]["memory"], res["limits"]["memory"], "memory requests must equal limits"
+        )
+        self.assertEqual(res["requests"]["cpu"], "50m")
+        self.assertEqual(res["requests"]["memory"], "64Mi")
+
+    def test_detector_image_pinned_by_digest(self):
+        image = self.detector["image"]
+        self.assertRegex(
+            image,
+            r"@sha256:[0-9a-f]{64}$",
+            "the detector image must be pinned by digest, never a tag",
+        )
+
+    def test_detector_egress_only_vlogs_notify_investigator_dns(self):
+        netpol = _by_kind_name(self.docs, "NetworkPolicy", "error-detector-egress")
+        peers = [
+            peer
+            for rule in netpol["spec"].get("egress") or []
+            for peer in rule.get("to") or []
+        ]
+
+        # DNS is the one peer that may be selected by namespace label alone.
+        dns = [
+            p
+            for p in peers
+            if p.get("namespaceSelector", {})
+            .get("matchLabels", {})
+            .get("kubernetes.io/metadata.name")
+            == "kube-system"
+        ]
+        self.assertEqual(len(dns), 1, "the detector must reach kube-dns to resolve service names")
+
+        names = set()
+        for peer in peers:
+            if peer in dns:
+                continue
+            ns = (peer.get("namespaceSelector") or {}).get("matchLabels", {}).get(
+                "kubernetes.io/metadata.name"
+            )
+            pod = (peer.get("podSelector") or {}).get("matchLabels", {}).get(
+                "app.kubernetes.io/name"
+            )
+            # An empty namespaceSelector means the pod's own namespace, which is
+            # observability; anything else must name its namespace explicitly.
+            names.add(f"{ns or 'observability'}/{pod}")
+
+        self.assertEqual(
+            names,
+            {
+                "observability/victorialogs",
+                "vault/vault-notify-proxy",
+                "observability/error-investigator",
+            },
+            f"unexpected egress peers: {sorted(names)}",
+        )
+        for peer in peers:
+            self.assertNotIn("ipBlock", peer, "the detector must not reach any CIDR")
+
+    def test_victorialogs_ingress_allows_detector(self):
+        netpol = _by_kind_name(self.docs, "NetworkPolicy", "victorialogs-ingress")
+        names = {
+            peer.get("podSelector", {}).get("matchLabels", {}).get("app.kubernetes.io/name")
+            for rule in netpol["spec"]["ingress"]
+            for peer in rule.get("from") or []
+        }
+        self.assertIn(
+            "error-detector",
+            names,
+            "the detector tails victorialogs; without this it cannot read a single line",
+        )
+
+    def test_layer_health_checks_include_detector(self):
+        for env in ("local-k3s", "vps-k3s"):
+            path = os.path.join(BASE_DIR, "clusters", env, "layers.yaml")
+            with open(path, encoding="utf-8") as handle:
+                docs = [doc for doc in yaml.safe_load_all(handle) if doc]
+            layer = next(
+                doc
+                for doc in docs
+                if doc.get("kind") == "Kustomization"
+                and doc.get("metadata", {}).get("name") == "observability"
+            )
+            checks = {
+                (item["kind"], item["name"], item["namespace"])
+                for item in layer["spec"]["healthChecks"]
+            }
+            self.assertIn(
+                ("Deployment", "error-detector", "observability"),
+                checks,
+                f"{env}: the detector must gate the layer health check",
+            )
+
+    def test_investigator_url_empty_until_ws3(self):
+        env = {
+            item["name"]: item.get("value")
+            for item in self.detector.get("env") or []
+        }
+        self.assertEqual(
+            env.get("INVESTIGATOR_URL", ""),
+            "",
+            "workstream 3 has not landed; the handoff must stay disabled by config",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

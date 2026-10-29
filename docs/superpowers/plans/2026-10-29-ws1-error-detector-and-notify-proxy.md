@@ -433,11 +433,11 @@ git commit -m "feat(notify-proxy): deploy vault-notify-proxy with discord.com-on
 **Interfaces:**
 - Consumes: `notify-gateway.vault.svc:8080` (Task 12), `victorialogs.observability.svc:9428`.
 
-- [ ] **Step 1: Write the failing manifest tests** — `test_detector_has_no_hostpath_and_no_sa_token`; `test_detector_guaranteed_qos` (50m/64Mi, `requests == limits`); `test_detector_image_pinned_by_digest`; `test_detector_egress_only_vlogs_notify_investigator_dns`; `test_victorialogs_ingress_allows_detector`; `test_layer_health_checks_include_detector` (both environments); `test_investigator_url_empty_until_ws3`.
-- [ ] **Step 2: Run them to verify they fail** — `python3 -m unittest tests.observability.test_observability_manifests` → FAIL.
-- [ ] **Step 3: Implement** the manifests and docs.
-- [ ] **Step 4: Run the full gate list from `CLAUDE.md`** (Go tests in both modules, preflight, hooks, render-validate for both environments, arch-doc sync) → all PASS.
-- [ ] **Step 5: Commit and open PR 1b**
+- [x] **Step 1: Write the failing manifest tests** — `test_detector_has_no_hostpath_and_no_sa_token`; `test_detector_guaranteed_qos` (50m/64Mi, `requests == limits`); `test_detector_image_pinned_by_digest`; `test_detector_egress_only_vlogs_notify_investigator_dns`; `test_victorialogs_ingress_allows_detector`; `test_layer_health_checks_include_detector` (both environments); `test_investigator_url_empty_until_ws3`.
+- [x] **Step 2: Run them to verify they fail** — `python3 -m unittest tests.observability.test_observability_manifests` → FAIL.
+- [x] **Step 3: Implement** the manifests and docs.
+- [x] **Step 4: Run the full gate list from `CLAUDE.md`** (Go tests in both modules, preflight, hooks, render-validate for both environments, arch-doc sync) → all PASS.
+- [x] **Step 5: Commit and open PR 1b**
 
 ```bash
 git add deploy/platform/observability clusters tests/observability docs ARCHITECTURE.md DEPENDENCIES.md

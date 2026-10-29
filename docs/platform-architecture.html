@@ -1016,7 +1016,7 @@
             </div>
             <div class="flex justify-between text-slate-400">
               <span>Platform Reservation (sysReserved + Cilium/Hubble + Flux + Vault + PG + KC + GW + Cert):</span>
-              <span id="calc-plat" class="text-amber-300">1795m CPU · 5856 MiB</span>
+              <span id="calc-plat" class="text-amber-300">1845m CPU · 5920 MiB</span>
             </div>
             <div class="flex justify-between text-slate-300 border-t border-slate-800 pt-2">
               <span>Available Application Pool:</span>
@@ -2155,13 +2155,13 @@
         }
       },
       'observability': {
-        title: '2e. observability (Fluent Bit & VictoriaLogs)',
+        title: '2e. observability (Fluent Bit, VictoriaLogs & Error Detector)',
         path: './deploy/platform/observability',
         deps: 'cni, governance',
-        desc: 'Deploys the Fluent Bit DaemonSet and VictoriaLogs StatefulSet in namespace observability. Collects proj-* container logs only, not node or platform logs. dependsOn is exactly cni and governance. The reservation is not yet measured and must not be added by hand.',
+        desc: 'Deploys the Fluent Bit DaemonSet and VictoriaLogs StatefulSet in namespace observability, plus the error-detector Deployment that tails proj-* logs, classifies them against contract v2, and alerts #errors through vault-notify-proxy. Collects proj-* container logs only, not node or platform logs. dependsOn is exactly cni and governance. The detector is Guaranteed QoS (50m/64Mi) and runs with automountServiceAccountToken: false.',
         yaml: {
-          'vps-k3s': `dependsOn: [cni, governance]\npath: ./deploy/platform/observability\nhealthChecks:\n  - kind: DaemonSet, name: fluent-bit, namespace: observability\n  - kind: StatefulSet, name: victorialogs, namespace: observability`,
-          'local-k3s': `dependsOn: [cni, governance]\npath: ./deploy/platform/observability\nhealthChecks:\n  - kind: DaemonSet, name: fluent-bit, namespace: observability\n  - kind: StatefulSet, name: victorialogs, namespace: observability`
+          'vps-k3s': `dependsOn: [cni, governance]\npath: ./deploy/platform/observability\nhealthChecks:\n  - kind: DaemonSet, name: fluent-bit, namespace: observability\n  - kind: StatefulSet, name: victorialogs, namespace: observability\n  - kind: Deployment, name: error-detector, namespace: observability`,
+          'local-k3s': `dependsOn: [cni, governance]\npath: ./deploy/platform/observability\nhealthChecks:\n  - kind: DaemonSet, name: fluent-bit, namespace: observability\n  - kind: StatefulSet, name: victorialogs, namespace: observability\n  - kind: Deployment, name: error-detector, namespace: observability`
         }
       }
     };
@@ -2320,6 +2320,15 @@
         details: 'Destination-neutral notify API (:8080): POST /v1/notify/{channel} is accepted only from a pod the grant names (attributed by pod IP), answered 202 on delivery and 403 otherwise. Owns the Discord webhook URLs in OpenBao and never returns them: the loopback webhook admin (127.0.0.1:8081) seeds them and /admin/status reports configured/sent/failed only. Discord rendering with 429/5xx retry ladder; egress is FQDN-pinned to discord.com:443.'
       },
       {
+        cat: 'custom',
+        name: 'error-detector',
+        ver: 'Go 1.22 (0 external deps)',
+        license: 'First-Party (Pure Go Stdlib)',
+        role: 'Log Tailing, Classification & Alerting',
+        where: 'services/error-pipeline/cmd/error-detector/main.go',
+        details: 'Tails proj-* logs from VictoriaLogs, classifies against contract v2 (JSON lines, exception.*, event.name), fingerprints and groups them per 3-minute window, and alerts #errors through vault-notify-proxy under a 10/minute burst cap with one "+N more new errors" overflow message. Holds the cursor and group table on PVC error-detector-state, saves atomically every 30 s and on SIGTERM, and retries notifications from a bounded queue. Keeps no secret: the webhook URL never leaves the notify proxy.'
+      },
+      {
         cat: 'oss',
         name: 'cURL (curlimages/curl)',
         ver: '8.10.1',
@@ -2414,8 +2423,8 @@
 
       const allocCpu = 4000;
       const allocMem = env === 'vps' ? 24576 : 8192;
-      const platCpu = 1795; // Shared Platform Reservation (including Cilium + Hubble + Vault + vault-ai-proxy + vault-notify-proxy + Identity + Cert-Manager); Keycloak CPU request 250m, postgres-init-job init-db 25m
-      const platMem = 5856;
+      const platCpu = 1845; // Shared Platform Reservation (including Cilium + Hubble + Vault + vault-ai-proxy + vault-notify-proxy + error-detector + Identity + Cert-Manager); Keycloak CPU request 250m, postgres-init-job init-db 25m
+      const platMem = 5920;
 
       const poolCpu = allocCpu - platCpu;
       const poolMem = allocMem - platMem;
