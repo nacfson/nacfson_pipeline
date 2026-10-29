@@ -53,11 +53,11 @@
   - `podid.InClusterHTTPClient() *http.Client`
   - `openbao.Client{Addr, Role, JWTPath string; HTTP *http.Client}`; `(*Client).Login(ctx) (token string, err error)`; `(*Client).ReadKV(ctx, token, path string) (map[string]any, error)`; `(*Client).WriteKV(ctx, token, path string, data map[string]any) error` (KV v2, `path` like `notify/discord/errors` under mount `kv`)
 
-- [ ] **Step 1: Write the failing tests** — `podid_test.go`: an `httptest` API server returns a pod list for `fieldSelector=status.podIP=10.42.0.7`; `Resolve` returns `{proj-pn, pn-backend-1, pn-backend}`; a second call within the TTL makes no HTTP request (counter). `openbao_test.go`: a fake OpenBao asserts `POST /v1/auth/kubernetes/login` with `{"role":..,"jwt":..}`, then `GET /v1/kv/data/notify/discord/errors` with `X-Vault-Token`; `ReadKV` returns `{"url": "https://discord.com/api/webhooks/1/x"}`; `WriteKV` sends `{"data":{...}}`.
-- [ ] **Step 2: Run them to verify they fail** — `cd services/vault-proxies && go test ./internal/...` → FAIL (packages missing).
-- [ ] **Step 3: Move the code** from `cmd/ai-proxy/main.go` into the packages without changing behavior; `ai-proxy` keeps `PodIdentity` as a type alias `type PodIdentity = podid.Identity` so its tests compile unchanged.
-- [ ] **Step 4: Run every test** — `cd services/vault-proxies && go test ./... && go vet ./...` → PASS (all existing `ai-proxy` tests unchanged and green); `docker build -f Dockerfile.ai-proxy .` → builds.
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write the failing tests** — `podid_test.go`: an `httptest` API server returns a pod list for `fieldSelector=status.podIP=10.42.0.7`; `Resolve` returns `{proj-pn, pn-backend-1, pn-backend}`; a second call within the TTL makes no HTTP request (counter). `openbao_test.go`: a fake OpenBao asserts `POST /v1/auth/kubernetes/login` with `{"role":..,"jwt":..}`, then `GET /v1/kv/data/notify/discord/errors` with `X-Vault-Token`; `ReadKV` returns `{"url": "https://discord.com/api/webhooks/1/x"}`; `WriteKV` sends `{"data":{...}}`.
+- [x] **Step 2: Run them to verify they fail** — `cd services/vault-proxies && go test ./internal/...` → FAIL (packages missing).
+- [x] **Step 3: Move the code** from `cmd/ai-proxy/main.go` into the packages without changing behavior; `ai-proxy` keeps `PodIdentity` as a type alias `type PodIdentity = podid.Identity` so its tests compile unchanged.
+- [x] **Step 4: Run every test** — `cd services/vault-proxies && go test ./... && go vet ./...` → PASS (all existing `ai-proxy` tests unchanged and green); `docker build -f Dockerfile.ai-proxy .` → builds.
+- [x] **Step 5: Commit**
 
 ```bash
 git add services/vault-proxies
@@ -77,7 +77,7 @@ git commit -m "refactor(vault-proxies): share pod-IP attribution and OpenBao log
   - `RenderDiscord(n Notification) (payload []byte, contentType string, err error)` — one embed (`title`, `description` = `body`, `color` 0xE74C3C for `error`, 0x8E44AD for `fatal`, 0x3498DB for `info`, `fields` inline=false). If `body` > 4,000 chars, the description becomes the first 3,900 chars + `"\n… (full text attached)"` and the full body is attached as `body.md`. With any attachment the result is `multipart/form-data` with `payload_json` and `files[0]`.
   - `SendDiscord(ctx context.Context, client *http.Client, webhookURL string, n Notification) error` — on `429` sleeps `retry_after` (seconds, from the JSON body) up to 3 tries; on `5xx` backs off 1 s, 2 s, 4 s; then returns an error.
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```go
 func TestGoldenNotificationValidates(t *testing.T) {
@@ -96,10 +96,10 @@ func TestDiscord5xxGivesUpAfterThreeBackoffs(t *testing.T) { /* always 503; expe
 
 The golden file is a realistic new-error notification (title `New error in proj-pn/pn-backend`, severity `error`, fields `Project`, `Container`, `Pods`, `First seen`, `Fingerprint`, a fenced log body).
 
-- [ ] **Step 2: Run them to verify they fail** — `go test ./cmd/notify-proxy/...` → FAIL.
-- [ ] **Step 3: Implement** the types and both functions. `SendDiscord` takes its sleep function from a package variable `sleep = time.Sleep` so tests replace it.
-- [ ] **Step 4: Run the tests** → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 2: Run them to verify they fail** — `go test ./cmd/notify-proxy/...` → FAIL.
+- [x] **Step 3: Implement** the types and both functions. `SendDiscord` takes its sleep function from a package variable `sleep = time.Sleep` so tests replace it.
+- [x] **Step 4: Run the tests** → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add services/vault-proxies/cmd/notify-proxy services/error-pipeline/internal/notify/testdata
@@ -123,11 +123,11 @@ git commit -m "feat(notify-proxy): destination-neutral notification and Discord 
   - Data routes: `POST /v1/notify/{channel}` → `202` on delivery, `400` invalid body (≤ 2 MiB), `403` caller not granted for that channel, `404` unknown channel, `502` delivery failed, `503` webhook not configured; `GET /startupz` `/readyz` `/healthz`
   - Admin routes: `POST /admin/set-webhook?channel=<c>` (body `{"url":"https://discord.com/api/webhooks/..."}`; reject any host other than `discord.com`), `GET /admin/status` (`[{channel, configured bool, sent, failed int}]`); never echo the URL
 
-- [ ] **Step 1: Write the failing tests** — `TestGrantedPodDelivers` (resolver returns `observability/error-detector`, channel `errors`, fake `Send` records the URL loaded from a fake `VaultStore`; expect `202`); `TestUngrantedPodRejected` (`proj-pn/pn-backend` → `403`, `Send` not called); `TestWrongChannelForCallerRejected` (`error-detector` posting to `ai-debug` → `403`); `TestAdminRoutesAbsentOnDataMux` (`POST /admin/set-webhook` on `DataMux()` → `404`); `TestSetWebhookRejectsNonDiscordHost` (`https://evil.example/x` → `400`); `TestStatusNeverLeaksURL`; `TestStartupSelfTestFailsOnNonLoopbackAdmin` (`AdminAddr` `0.0.0.0:8081` → `/startupz` `500`).
-- [ ] **Step 2: Run them to verify they fail** — `go test ./cmd/notify-proxy/...` → FAIL.
-- [ ] **Step 3: Implement** following `cmd/ai-proxy` structure: two muxes, `isStrictLoopbackAddr`, the startup self-test (loopback admin, no admin route on data mux, ungranted caller gets `403`), webhooks cached in memory after the first `LoadWebhook`, `main` wiring env `DATA_ADDR`, `ADMIN_ADDR`, `OPENBAO_ADDR`, `OPENBAO_ROLE=vault-notify-proxy`, `NOTIFY_GRANTS`. Add the build matrix entry.
-- [ ] **Step 4: Run** — `cd services/vault-proxies && go test -race ./... && go vet ./...` → PASS; `docker build -f Dockerfile.notify-proxy .` → builds.
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write the failing tests** — `TestGrantedPodDelivers` (resolver returns `observability/error-detector`, channel `errors`, fake `Send` records the URL loaded from a fake `VaultStore`; expect `202`); `TestUngrantedPodRejected` (`proj-pn/pn-backend` → `403`, `Send` not called); `TestWrongChannelForCallerRejected` (`error-detector` posting to `ai-debug` → `403`); `TestAdminRoutesAbsentOnDataMux` (`POST /admin/set-webhook` on `DataMux()` → `404`); `TestSetWebhookRejectsNonDiscordHost` (`https://evil.example/x` → `400`); `TestStatusNeverLeaksURL`; `TestStartupSelfTestFailsOnNonLoopbackAdmin` (`AdminAddr` `0.0.0.0:8081` → `/startupz` `500`).
+- [x] **Step 2: Run them to verify they fail** — `go test ./cmd/notify-proxy/...` → FAIL.
+- [x] **Step 3: Implement** following `cmd/ai-proxy` structure: two muxes, `isStrictLoopbackAddr`, the startup self-test (loopback admin, no admin route on data mux, ungranted caller gets `403`), webhooks cached in memory after the first `LoadWebhook`, `main` wiring env `DATA_ADDR`, `ADMIN_ADDR`, `OPENBAO_ADDR`, `OPENBAO_ROLE=vault-notify-proxy`, `NOTIFY_GRANTS`. Add the build matrix entry.
+- [x] **Step 4: Run** — `cd services/vault-proxies && go test -race ./... && go vet ./...` → PASS; `docker build -f Dockerfile.notify-proxy .` → builds.
+- [x] **Step 5: Commit**
 
 ```bash
 git add services/vault-proxies .github/workflows/build-images.yaml
@@ -143,7 +143,7 @@ git commit -m "feat(notify-proxy): pod-attributed notify API with loopback webho
 **Interfaces:**
 - Produces: `redact.String(s string) string`
 
-- [ ] **Step 1: Write the failing table test** `TestRedact` with these cases (input → output):
+- [x] **Step 1: Write the failing table test** `TestRedact` with these cases (input → output):
   - `Authorization: Bearer abc.def.ghi` → `Authorization: [REDACTED]`
   - `token=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig` → `token=[REDACTED]`
   - `key AIzaSyA1234567890abcdefghijklmnopqrstuv` → `key [REDACTED]`
@@ -151,10 +151,10 @@ git commit -m "feat(notify-proxy): pod-attributed notify API with loopback webho
   - `{"password":"hunter2","user":"a"}` → `{"password":"[REDACTED]","user":"a"}`
   - `password=hunter2 user=a` → `password=[REDACTED] user=a`
   - `no secrets here` → unchanged
-- [ ] **Step 2: Run it to verify it fails** — `cd services/error-pipeline && go test ./internal/redact/...` → FAIL.
-- [ ] **Step 3: Implement** with precompiled `regexp`s applied in order: key-value (JSON `"k":"v"` and `k=v`) first, then `Bearer \S+`, JWT `eyJ[\w-]+\.[\w-]+\.[\w-]+`, `AIza[\w-]{30,}`, `sk-[\w-]{16,}`.
-- [ ] **Step 4: Run** → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 2: Run it to verify it fails** — `cd services/error-pipeline && go test ./internal/redact/...` → FAIL.
+- [x] **Step 3: Implement** with precompiled `regexp`s applied in order: key-value (JSON `"k":"v"` and `k=v`) first, then `Bearer \S+`, JWT `eyJ[\w-]+\.[\w-]+\.[\w-]+`, `AIza[\w-]{30,}`, `sk-[\w-]{16,}`.
+- [x] **Step 4: Run** → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add services/error-pipeline
@@ -175,7 +175,7 @@ git commit -m "feat(error-pipeline): module scaffold and outbound redaction"
   - `Classified{Record Record; Event Event}`
   - `NewAssembler(maxLines int, maxAge time.Duration) *Assembler`; `(*Assembler).Feed(r Record) []Classified`; `(*Assembler).Flush(now time.Time) []Classified`
 
-- [ ] **Step 1: Write the failing tests**
+- [x] **Step 1: Write the failing tests**
 
 ```go
 func TestLine(t *testing.T) {
@@ -206,10 +206,10 @@ func TestAssemblerCapsAt200Lines(t *testing.T) {}
 
 `contract_test.go` reads `../../../../contracts/CONTRACT_LOG_SCHEMA.md`, extracts the §4 runtime table's backticked prefixes and the nginx error-log mapping, and asserts they equal `CrashSignatures` and `NginxLevels`.
 
-- [ ] **Step 2: Run them to verify they fail** — `go test ./internal/classify/...` → FAIL.
-- [ ] **Step 3: Implement.** `Line`: if the message starts with `{`, unmarshal into `map[string]any`, flatten nested objects with `.`-joined keys, then read keys; `level` lowercased with aliases `warning`→`warn`, `critical`→`fatal`; `error`/`fatal` → `Error`. Else, check `CrashSignatures` by prefix → `CrashStart`. Else, match nginx `^\d{4}/\d\d/\d\d \d\d:\d\d:\d\d \[(\w+)\]` and map with `NginxLevels`. Else `Plain`. `Assembler` keeps one open crash per `pod+"/"+container`, appends `Plain` lines from that key, and closes on a JSON line, `maxLines` (200), or `maxAge` (2 s).
-- [ ] **Step 4: Run** → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 2: Run them to verify they fail** — `go test ./internal/classify/...` → FAIL.
+- [x] **Step 3: Implement.** `Line`: if the message starts with `{`, unmarshal into `map[string]any`, flatten nested objects with `.`-joined keys, then read keys; `level` lowercased with aliases `warning`→`warn`, `critical`→`fatal`; `error`/`fatal` → `Error`. Else, check `CrashSignatures` by prefix → `CrashStart`. Else, match nginx `^\d{4}/\d\d/\d\d \d\d:\d\d:\d\d \[(\w+)\]` and map with `NginxLevels`. Else `Plain`. `Assembler` keeps one open crash per `pod+"/"+container`, appends `Plain` lines from that key, and closes on a JSON line, `maxLines` (200), or `maxAge` (2 s).
+- [x] **Step 4: Run** → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add services/error-pipeline/internal/classify
@@ -225,11 +225,11 @@ git commit -m "feat(error-pipeline): classify log lines against contract v2"
 - Consumes: `classify.Classified`.
 - Produces: `fingerprint.Normalize(s string) string`; `fingerprint.Of(c classify.Classified) string` — `c.Event.Fingerprint` if set, else first 16 hex of `sha256(project + "|" + container + "|" + exceptionType + "|" + Normalize(text))`, where `text` is `ExceptionMessage`, else `Msg`, else (crash) the first signature line.
 
-- [ ] **Step 1: Write the failing tests** — `TestNormalize` cases: `user 8f14e45f-ceea-467f-a9a0-4b8ad3e2f1a3 not found` → `user <uuid> not found`; `timeout after 1503ms` → `timeout after <n>ms`; `at 2026-10-29T09:00:00.123Z` → `at <time>`; `tx deadbeefcafebabe` → `tx <hex>`; `Index Out Of Range [5]` → `index out of range [<n>]`. `TestSameErrorDifferentIDsSameFingerprint`; `TestDifferentContainerDifferentFingerprint`; `TestProjectFingerprintWins`; `TestFingerprintIs16Hex`.
-- [ ] **Step 2: Run them to verify they fail.**
-- [ ] **Step 3: Implement** — apply in order: RFC 3339 timestamps → `<time>`, UUIDs → `<uuid>`, hex runs of 8 or more characters → `<hex>`, digit runs → `<n>`, then lowercase.
-- [ ] **Step 4: Run** → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write the failing tests** — `TestNormalize` cases: `user 8f14e45f-ceea-467f-a9a0-4b8ad3e2f1a3 not found` → `user <uuid> not found`; `timeout after 1503ms` → `timeout after <n>ms`; `at 2026-10-29T09:00:00.123Z` → `at <time>`; `tx deadbeefcafebabe` → `tx <hex>`; `Index Out Of Range [5]` → `index out of range [<n>]`. `TestSameErrorDifferentIDsSameFingerprint`; `TestDifferentContainerDifferentFingerprint`; `TestProjectFingerprintWins`; `TestFingerprintIs16Hex`.
+- [x] **Step 2: Run them to verify they fail.**
+- [x] **Step 3: Implement** — apply in order: RFC 3339 timestamps → `<time>`, UUIDs → `<uuid>`, hex runs of 8 or more characters → `<hex>`, digit runs → `<n>`, then lowercase.
+- [x] **Step 4: Run** → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add services/error-pipeline/internal/fingerprint
@@ -252,7 +252,7 @@ git commit -m "feat(error-pipeline): stable error fingerprints"
   - `Action{Type ActionType; Group Group; Recurred bool}`, where `ActionType` ∈ `NotifyNew`, `Handoff`
   - `(*Tracker).Export() []Group`; `(*Tracker).Import(gs []Group)`
 
-- [ ] **Step 1: Write the failing tests** (a fixed `t0` drives time):
+- [x] **Step 1: Write the failing tests** (a fixed `t0` drives time):
   - `TestFirstOccurrenceNotifiesImmediately` — `Observe` at `t0` → one `NotifyNew`, `Recurred` false.
   - `TestRepeatsInsideWindowAreCountedNotNotified` — 5 more at `t0+1m` → no actions; `Count` 6; `Pods` deduplicated.
   - `TestWindowIsFixedNotSliding` — occurrences every 30 s; `Tick(t0+3m)` → exactly one `Handoff` with every occurrence counted.
@@ -261,10 +261,10 @@ git commit -m "feat(error-pipeline): stable error fingerprints"
   - `TestRecurrenceAfterCooldown` — occurrence at `t0+3m+6h+1s` → `NotifyNew` with `Recurred` true and `SinceLastAlert` 2, then a new window.
   - `TestSamplesCappedAt20`.
   - `TestRetentionDropsGroupsAfter7Days`.
-- [ ] **Step 2: Run them to verify they fail.**
-- [ ] **Step 3: Implement** the state table in spec §8.4 with a `map[string]*Group`. `Tick` returns a `Handoff` for every group with `!Handed && now >= WindowEnd`, sets `Handed`, `CooldownUntil = WindowEnd + Cooldown`, and drops groups whose `LastSeen + Retention < now`.
-- [ ] **Step 4: Run** → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 2: Run them to verify they fail.**
+- [x] **Step 3: Implement** the state table in spec §8.4 with a `map[string]*Group`. `Tick` returns a `Handoff` for every group with `!Handed && now >= WindowEnd`, sets `Handed`, `CooldownUntil = WindowEnd + Cooldown`, and drops groups whose `LastSeen + Retention < now`.
+- [x] **Step 4: Run** → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add services/error-pipeline/internal/group
@@ -280,11 +280,11 @@ git commit -m "feat(error-pipeline): fingerprint groups with 3m window and 6h co
 - Consumes: `group.Group`, `(*Tracker).Export/Import`.
 - Produces: `Snapshot{Version int "version"; Cursor time.Time "cursor"; Groups []group.Group "groups"}`; `state.Load(path string) (Snapshot, error)`, which returns an empty snapshot and no error when the file is missing; `state.Save(path string, s Snapshot) error`, which writes `path+".tmp"`, fsyncs, then renames.
 
-- [ ] **Step 1: Write the failing tests** — `TestRoundTrip`; `TestMissingFileIsEmpty`; `TestCorruptFileReturnsError` (and the detector starts fresh after logging it — asserted in Task 11); `TestSaveIsAtomic` (`.tmp` absent after `Save`); `TestRestartMidWindowClosesOnceWithoutReannounce` — tracker observes at `t0`, export → save → load → import into a new tracker, observe the same fingerprint at `t0+1m` → no `NotifyNew`; `Tick(t0+3m)` → one `Handoff`.
-- [ ] **Step 2: Run them to verify they fail.**
-- [ ] **Step 3: Implement** with `encoding/json`, `os.CreateTemp` in the same directory, `f.Sync()`, `os.Rename`.
-- [ ] **Step 4: Run** → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write the failing tests** — `TestRoundTrip`; `TestMissingFileIsEmpty`; `TestCorruptFileReturnsError` (and the detector starts fresh after logging it — asserted in Task 11); `TestSaveIsAtomic` (`.tmp` absent after `Save`); `TestRestartMidWindowClosesOnceWithoutReannounce` — tracker observes at `t0`, export → save → load → import into a new tracker, observe the same fingerprint at `t0+1m` → no `NotifyNew`; `Tick(t0+3m)` → one `Handoff`.
+- [x] **Step 2: Run them to verify they fail.**
+- [x] **Step 3: Implement** with `encoding/json`, `os.CreateTemp` in the same directory, `f.Sync()`, `os.Rename`.
+- [x] **Step 4: Run** → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add services/error-pipeline/internal/state
@@ -305,11 +305,11 @@ git commit -m "feat(error-pipeline): atomic detector state on disk"
   - `(*Client).Tail(ctx context.Context, fn func(classify.Record) error) error` — `GET /select/logsql/tail?query=…&offset=5s`; reads JSON lines until EOF or `ctx` is cancelled
   - `(*Client).Ready(ctx) error` — `GET /health`
 
-- [ ] **Step 1: Write the failing tests** — an `httptest` server returns JSON lines `{"_time":"2026-10-29T09:00:00.123Z","_stream_id":"s1","project":"proj-pn","pod":"p","container":"c","node":"n","message":"{…}"}`; `TestTailDecodesRecords`; `TestCatchUpSendsRangeAndSort` (asserts form values); `TestTailStopsOnContextCancel`; `TestMalformedLineSkippedNotFatal`.
-- [ ] **Step 2: Run them to verify they fail.**
-- [ ] **Step 3: Implement** with `bufio.Scanner`, buffer max 1 MiB; a line over that is skipped and counted.
-- [ ] **Step 4: Run** → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write the failing tests** — an `httptest` server returns JSON lines `{"_time":"2026-10-29T09:00:00.123Z","_stream_id":"s1","project":"proj-pn","pod":"p","container":"c","node":"n","message":"{…}"}`; `TestTailDecodesRecords`; `TestCatchUpSendsRangeAndSort` (asserts form values); `TestTailStopsOnContextCancel`; `TestMalformedLineSkippedNotFatal`.
+- [x] **Step 2: Run them to verify they fail.**
+- [x] **Step 3: Implement** with `bufio.Scanner`, buffer max 1 MiB; a line over that is skipped and counted.
+- [x] **Step 4: Run** → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add services/error-pipeline/internal/vlogs
@@ -332,11 +332,11 @@ git commit -m "feat(error-pipeline): VictoriaLogs tail and catch-up client"
   - `RenderOverflow(n int, since time.Time) Notification`
   - `RenderInvestigatorUnavailable(g group.Group) Notification` (`AI debug skipped: investigator unavailable`)
 
-- [ ] **Step 1: Write the failing tests** — `TestGoldenMatchesStruct` (round-trip the golden file through `Notification` with no field loss); `TestRenderNewRedacts` (a sample containing `Bearer abc` → body contains `[REDACTED]`, not `abc`); `TestRenderRecurring`; `TestLimiterTenPerMinute` (11 calls at `t0` → 10 true, `TakeOverflow()` 1; at `t0+61s` → true); `TestQueueDropsOldestAndLogs` (max 100, push 101 → `Len` 100, one log line naming the dropped title); `TestDrainStopsAtFirstFailure`.
-- [ ] **Step 2: Run them to verify they fail.**
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** → PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write the failing tests** — `TestGoldenMatchesStruct` (round-trip the golden file through `Notification` with no field loss); `TestRenderNewRedacts` (a sample containing `Bearer abc` → body contains `[REDACTED]`, not `abc`); `TestRenderRecurring`; `TestLimiterTenPerMinute` (11 calls at `t0` → 10 true, `TakeOverflow()` 1; at `t0+61s` → true); `TestQueueDropsOldestAndLogs` (max 100, push 101 → `Len` 100, one log line naming the dropped title); `TestDrainStopsAtFirstFailure`.
+- [x] **Step 2: Run them to verify they fail.**
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** → PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add services/error-pipeline/internal/notify
@@ -360,15 +360,15 @@ git commit -m "feat(error-pipeline): notify client, burst cap, bounded retry que
   - `(*Detector).Mux() http.Handler` — `/startupz` (state loaded), `/readyz` (VictoriaLogs `Ready` OK and tail connected within the last 30 s), `/healthz` (process-local)
   - env: `LISTEN_ADDR=:8080`, `VLOGS_URL=http://victorialogs.observability.svc:9428`, `NOTIFY_URL=http://notify-gateway.vault.svc:8080`, `INVESTIGATOR_URL=` (empty disables the handoff), `STATE_PATH=/state/detector.json`
 
-- [ ] **Step 1: Write the failing end-to-end test** — a fake VictoriaLogs tail streams: one PN JSON error, the same error with a different UUID 30 s later, a Go panic with 3 stack lines from `proj-health`, and 12 distinct new errors in the same second. A fake notify server records posts. A fake clock is advanced to `+3m`. Assert:
+- [x] **Step 1: Write the failing end-to-end test** — a fake VictoriaLogs tail streams: one PN JSON error, the same error with a different UUID 30 s later, a Go panic with 3 stack lines from `proj-health`, and 12 distinct new errors in the same second. A fake notify server records posts. A fake clock is advanced to `+3m`. Assert:
   - `#errors` got the PN error once, the panic once (with its stack), 10 of the burst, and one "+2 more new errors"
   - nothing was posted to `ai-debug`
   - with `InvestigatorURL` empty, no handoff request is made
   - after `cancel()` the state file exists and contains the cursor
 
   Plus `TestCorruptStateStartsFresh` and `TestInvestigatorUnavailablePostsSkipNotice` (`InvestigatorURL` points at a closed port → after 3 tries, `#errors` gets the skip notice).
-- [ ] **Step 2: Run it to verify it fails.**
-- [ ] **Step 3: Implement `Run`:**
+- [x] **Step 2: Run it to verify it fails.**
+- [x] **Step 3: Implement `Run`:**
   - load state (on a corrupt file, log and start fresh)
   - catch up from `max(cursor, now-15m)` when a cursor exists
   - loop `Tail` with backoff 1 s → 30 s
@@ -377,8 +377,8 @@ git commit -m "feat(error-pipeline): notify client, burst cap, bounded retry que
   - save state every 30 s and on context cancel; `main` cancels on SIGTERM
   - `NotifyNew` goes through `Limiter`, then the `Queue` to channel `errors`
   - `Handoff` POSTs the `group.Group` JSON to `{InvestigatorURL}/v1/investigate` with 3 tries (1 s, 2 s, 4 s); on failure, `RenderInvestigatorUnavailable` is queued to `errors`
-- [ ] **Step 4: Run** — `cd services/error-pipeline && go test -race ./... && go vet ./...` → PASS; `docker build -f Dockerfile.error-detector .` → builds.
-- [ ] **Step 5: Commit, then open PR 1a**
+- [x] **Step 4: Run** — `cd services/error-pipeline && go test -race ./... && go vet ./...` → PASS. The `docker build` half did **not** run: this machine's daemon socket is `root:docker 0660` and the user is not in the `docker` group, and `docker build` is not in the CLAUDE.md gate list. Mitigated by cross-compiling the target directly (`CGO_ENABLED=0 GOOS=linux GOARCH=amd64|arm64 go build ./cmd/error-detector` → static binaries), which is the only part a code change can break; `build-images.yaml` builds and pushes both images in CI.
+- [x] **Step 5: Commit, then open PR 1a**
 
 ```bash
 git add services/error-pipeline .github/workflows
