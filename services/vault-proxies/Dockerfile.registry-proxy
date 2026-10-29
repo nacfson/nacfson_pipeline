@@ -10,6 +10,7 @@ WORKDIR /src
 
 COPY go.mod ./
 COPY cmd/ cmd/
+COPY internal/ internal/
 
 # Build statically linked binary
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \

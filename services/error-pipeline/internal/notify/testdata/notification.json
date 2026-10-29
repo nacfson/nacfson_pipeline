@@ -1,0 +1,12 @@
+{
+  "title": "New error in proj-pn/pn-backend",
+  "severity": "error",
+  "fields": [
+    {"name": "Project", "value": "proj-pn"},
+    {"name": "Container", "value": "pn-backend"},
+    {"name": "Pods", "value": "pn-backend-6f7c9d8b5-x2k4q"},
+    {"name": "First seen", "value": "2026-10-29T03:14:07Z"},
+    {"name": "Fingerprint", "value": "9b1c4e7a0d3f"}
+  ],
+  "body": "```\njava.lang.IllegalStateException: connection pool exhausted\n\tat com.pn.db.Pool.acquire(Pool.java:88)\n\tat com.pn.api.OrderController.list(OrderController.java:41)\n```"
+}
