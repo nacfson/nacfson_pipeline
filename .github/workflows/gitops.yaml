@@ -56,9 +56,27 @@ jobs:
           go test -v -race ./...
           go vet ./...
 
+  error-pipeline-tests:
+    name: error-pipeline-tests (Error Detector)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go 1.22
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Run error-pipeline unit & end-to-end tests
+        run: |
+          cd services/error-pipeline
+          go test -v -race ./...
+          go vet ./...
+
   render-validate:
     name: render-validate (${{ matrix.env }})
-    needs: [preflight-tests, vault-proxies-tests]
+    needs: [preflight-tests, vault-proxies-tests, error-pipeline-tests]
     runs-on: ubuntu-latest
     strategy:
       matrix:

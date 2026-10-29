@@ -1,0 +1,31 @@
+# Multi-stage Dockerfile for Notify Proxy (vault-notify-proxy)
+# Supports both linux/amd64 and linux/arm64 architectures
+
+FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /src
+
+COPY go.mod ./
+COPY cmd/ cmd/
+COPY internal/ internal/
+
+# Build statically linked binary (Go 1.22 stdlib only)
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
+    -ldflags="-w -s" \
+    -o /bin/vault-notify-proxy \
+    ./cmd/notify-proxy
+
+# Production runtime image: unprivileged non-root distroless
+FROM gcr.io/distroless/static:nonroot
+
+WORKDIR /
+COPY --from=builder /bin/vault-notify-proxy /vault-notify-proxy
+
+USER 65532:65532
+
+EXPOSE 8080
+
+ENTRYPOINT ["/vault-notify-proxy"]

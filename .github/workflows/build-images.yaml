@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - "services/vault-proxies/**"
+      - "services/error-pipeline/**"
       - "gateway/**"
       - ".github/workflows/build-images.yaml"
   workflow_dispatch:
@@ -33,6 +34,14 @@ jobs:
             context: services/vault-proxies
             dockerfile: services/vault-proxies/Dockerfile.ai-proxy
             image_name: vault-ai-proxy
+          - name: vault-notify-proxy
+            context: services/vault-proxies
+            dockerfile: services/vault-proxies/Dockerfile.notify-proxy
+            image_name: vault-notify-proxy
+          - name: error-detector
+            context: services/error-pipeline
+            dockerfile: services/error-pipeline/Dockerfile.error-detector
+            image_name: error-detector
           - name: platform-auth-gateway
             context: gateway
             dockerfile: gateway/Dockerfile

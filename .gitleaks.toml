@@ -9,4 +9,8 @@ regexTarget = "secret"
 regexes = [
   '''eyJhbGciOiJub25lIn0\.eyJzdWIiOiJwcm9qZWN0OnBuOndvcmtsb2FkOmJhY2tlbmQifQ\.invalidsig''',
   '''duration=87600h''',
+  # redact's own test fixtures: inputs that must be redacted, so they have to
+  # look like the secrets the patterns match. Both are non-functional.
+  '''AIzaSyA1234567890abcdefghijklmnopqrstuv''',
+  '''eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxIn0\.sig''',
 ]

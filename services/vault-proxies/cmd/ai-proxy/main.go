@@ -3,8 +3,6 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -20,13 +18,15 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"nacfson_pipeline/services/vault-proxies/internal/openbao"
+	"nacfson_pipeline/services/vault-proxies/internal/podid"
 )
 
 const (
 	maxChatBodyBytes = 1 << 20 // 1 MiB cap per Review Focus #2
 	selfTestProject  = "__selftest__"
 	defaultSAJWTPath = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-	defaultSACAPath  = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 )
 
 type ProjectGrant struct {
@@ -42,16 +42,8 @@ type ProjectGrant struct {
 	CurrentUTCDate string          `json:"current_utc_date"`
 }
 
-type PodIdentity struct {
-	Namespace string `json:"namespace"`
-	PodName   string `json:"pod_name"`
-	AppLabel  string `json:"app_label"`
-}
-
-type cachedPodIdentity struct {
-	identity  *PodIdentity
-	expiresAt time.Time
-}
+// PodIdentity is the resolved identity of a calling pod.
+type PodIdentity = podid.Identity
 
 type AIProxyConfig struct {
 	DataAddr          string
@@ -75,10 +67,8 @@ type AIProxy struct {
 	geminiKey     []byte
 	startupPassed bool
 	openBaoSynced bool
-	podCacheMu    sync.Mutex
-	podCache      map[string]cachedPodIdentity
 	httpClient    *http.Client
-	k8sHTTPClient *http.Client
+	bao           *openbao.Client
 	dataMux       http.Handler
 	adminMux      http.Handler
 }
@@ -112,15 +102,14 @@ func NewAIProxy(cfg AIProxyConfig) *AIProxy {
 	p := &AIProxy{
 		cfg:      cfg,
 		projects: make(map[string]*ProjectGrant),
-		podCache: make(map[string]cachedPodIdentity),
 		httpClient: &http.Client{
 			Timeout: 30 * time.Second,
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				return http.ErrUseLastResponse
 			},
 		},
-		k8sHTTPClient: buildK8sHTTPClient(),
 	}
+	p.bao = &openbao.Client{Addr: cfg.OpenBaoAddr, Role: cfg.OpenBaoRole, JWTPath: cfg.SAJWTPath, HTTP: p.httpClient}
 	p.setGeminiKeyLocked(strings.TrimSpace(cfg.InitialAPIKey))
 
 	today := cfg.NowFunc().UTC().Format("2006-01-02")
@@ -164,7 +153,9 @@ func NewAIProxy(cfg AIProxyConfig) *AIProxy {
 	}
 
 	if p.cfg.ResolvePodIP == nil {
-		p.cfg.ResolvePodIP = p.resolvePodIPFromKubeAPIServer
+		resolver := podid.NewResolver(podid.InClusterAPIServer(), podid.InClusterHTTPClient(), cfg.SAJWTPath, 60*time.Second)
+		resolver.Now = cfg.NowFunc
+		p.cfg.ResolvePodIP = resolver.Resolve
 	}
 
 	p.dataMux = p.buildDataMux()
@@ -380,7 +371,7 @@ func (p *AIProxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Extract caller peer IP strictly from TCP socket (r.RemoteAddr), ignoring X-Forwarded-For
-	peerIP := extractPeerIP(r.RemoteAddr)
+	peerIP := podid.PeerIP(r.RemoteAddr)
 	var identity *PodIdentity
 	if peerIP == "127.0.0.254" {
 		identity = &PodIdentity{Namespace: "__selftest_ns__", PodName: "__selftest_pod__", AppLabel: "__selftest_pod__"}
@@ -708,91 +699,24 @@ refresh();
 </script></body></html>`))
 }
 
-func (p *AIProxy) loginOpenBaoK8s() (string, error) {
-	jwtBytes, err := os.ReadFile(p.cfg.SAJWTPath)
-	if err != nil {
-		return "", fmt.Errorf("read serviceaccount jwt: %w", err)
-	}
-	loginBody, _ := json.Marshal(map[string]string{
-		"role": p.cfg.OpenBaoRole,
-		"jwt":  strings.TrimSpace(string(jwtBytes)),
-	})
-	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(p.cfg.OpenBaoAddr, "/")+"/v1/auth/kubernetes/login", bytes.NewReader(loginBody))
-	if err != nil {
-		return "", err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("openbao k8s login status %d", resp.StatusCode)
-	}
-	var parsed struct {
-		Auth struct {
-			ClientToken string `json:"client_token"`
-		} `json:"auth"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&parsed); err != nil || parsed.Auth.ClientToken == "" {
-		return "", errors.New("missing client_token in openbao login response")
-	}
-	return parsed.Auth.ClientToken, nil
-}
-
 func (p *AIProxy) writeGeminiKeyToOpenBao(apiKey string) error {
-	token, err := p.loginOpenBaoK8s()
+	token, err := p.bao.Login(context.Background())
 	if err != nil {
 		return err
 	}
-	body, _ := json.Marshal(map[string]any{
-		"data": map[string]string{"value": apiKey},
-	})
-	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(p.cfg.OpenBaoAddr, "/")+"/v1/kv/data/ai/gemini-api-key", bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Vault-Token", token)
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("openbao kv write status %d", resp.StatusCode)
-	}
-	return nil
+	return p.bao.WriteKV(context.Background(), token, "ai/gemini-api-key", map[string]any{"value": apiKey})
 }
 
 func (p *AIProxy) persistProjectStateToOpenBao(g ProjectGrant) error {
-	token, err := p.loginOpenBaoK8s()
+	token, err := p.bao.Login(context.Background())
 	if err != nil {
 		return err
 	}
-	body, _ := json.Marshal(map[string]any{
-		"data": map[string]any{
-			"enabled":        g.Enabled,
-			"manual_revoked": g.ManualRevoked,
-			"daily_limit":    g.DailyLimit,
-		},
+	return p.bao.WriteKV(context.Background(), token, "ai/projects/"+url.PathEscape(g.Project), map[string]any{
+		"enabled":        g.Enabled,
+		"manual_revoked": g.ManualRevoked,
+		"daily_limit":    g.DailyLimit,
 	})
-	req, err := http.NewRequest(http.MethodPost, strings.TrimRight(p.cfg.OpenBaoAddr, "/")+"/v1/kv/data/ai/projects/"+url.PathEscape(g.Project), bytes.NewReader(body))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Vault-Token", token)
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode >= 300 {
-		return fmt.Errorf("openbao kv project state write status %d", resp.StatusCode)
-	}
-	return nil
 }
 
 func parseFlexibleBool(v any, def bool) bool {
@@ -827,31 +751,18 @@ func parseFlexibleInt(v any, def int) int {
 }
 
 func (p *AIProxy) syncFromOpenBao() error {
-	token, err := p.loginOpenBaoK8s()
+	ctx := context.Background()
+	token, err := p.bao.Login(ctx)
 	if err != nil {
 		return err
 	}
-	baseAddr := strings.TrimRight(p.cfg.OpenBaoAddr, "/")
 
 	// 1. Sync upstream Gemini API key from kv/data/ai/gemini-api-key
-	req, err := http.NewRequest(http.MethodGet, baseAddr+"/v1/kv/data/ai/gemini-api-key", nil)
-	if err != nil {
-		return err
-	}
-	req.Header.Set("X-Vault-Token", token)
-	if resp, err := p.httpClient.Do(req); err == nil {
-		var parsed struct {
-			Data struct {
-				Data map[string]string `json:"data"`
-			} `json:"data"`
-		}
-		if resp.StatusCode == http.StatusOK && json.NewDecoder(resp.Body).Decode(&parsed) == nil {
-			v := strings.TrimSpace(parsed.Data.Data["value"])
-			p.mu.Lock()
-			p.setGeminiKeyLocked(v)
-			p.mu.Unlock()
-		}
-		resp.Body.Close()
+	if d, err := p.bao.ReadKV(ctx, token, "ai/gemini-api-key"); err == nil {
+		v, _ := d["value"].(string)
+		p.mu.Lock()
+		p.setGeminiKeyLocked(strings.TrimSpace(v))
+		p.mu.Unlock()
 	}
 
 	// 2. Sync persisted per-project Kill-Switch & quota state from kv/data/ai/projects/<slug>
@@ -865,119 +776,23 @@ func (p *AIProxy) syncFromOpenBao() error {
 	p.mu.RUnlock()
 
 	for _, slug := range slugs {
-		projReq, err := http.NewRequest(http.MethodGet, baseAddr+"/v1/kv/data/ai/projects/"+url.PathEscape(slug), nil)
-		if err != nil {
+		d, err := p.bao.ReadKV(ctx, token, "ai/projects/"+url.PathEscape(slug))
+		if err != nil || d == nil {
 			continue
 		}
-		projReq.Header.Set("X-Vault-Token", token)
-		resp, err := p.httpClient.Do(projReq)
-		if err != nil {
-			continue
-		}
-		if resp.StatusCode == http.StatusOK {
-			var parsed struct {
-				Data struct {
-					Data map[string]any `json:"data"`
-				} `json:"data"`
-			}
-			if json.NewDecoder(resp.Body).Decode(&parsed) == nil && parsed.Data.Data != nil {
-				d := parsed.Data.Data
-				p.mu.Lock()
-				if g, ok := p.projects[slug]; ok {
-					g.DailyLimit = parseFlexibleInt(d["daily_limit"], g.DailyLimit)
-					g.ManualRevoked = parseFlexibleBool(d["manual_revoked"], g.ManualRevoked)
-					persistedEnabled := parseFlexibleBool(d["enabled"], g.Enabled)
-					g.Enabled = persistedEnabled && !g.ManualRevoked && g.UsedToday < g.DailyLimit
-					if !p.anyProjectEnabledLocked() {
-						p.wipeGeminiKeyLocked()
-					}
-				}
-				p.mu.Unlock()
+		p.mu.Lock()
+		if g, ok := p.projects[slug]; ok {
+			g.DailyLimit = parseFlexibleInt(d["daily_limit"], g.DailyLimit)
+			g.ManualRevoked = parseFlexibleBool(d["manual_revoked"], g.ManualRevoked)
+			persistedEnabled := parseFlexibleBool(d["enabled"], g.Enabled)
+			g.Enabled = persistedEnabled && !g.ManualRevoked && g.UsedToday < g.DailyLimit
+			if !p.anyProjectEnabledLocked() {
+				p.wipeGeminiKeyLocked()
 			}
 		}
-		resp.Body.Close()
+		p.mu.Unlock()
 	}
 	return nil
-}
-
-func (p *AIProxy) resolvePodIPFromKubeAPIServer(ctx context.Context, ip string) (*PodIdentity, error) {
-	now := p.cfg.NowFunc()
-	p.podCacheMu.Lock()
-	if cached, ok := p.podCache[ip]; ok && now.Before(cached.expiresAt) {
-		p.podCacheMu.Unlock()
-		return cached.identity, nil
-	}
-	p.podCacheMu.Unlock()
-
-	host := os.Getenv("KUBERNETES_SERVICE_HOST")
-	port := os.Getenv("KUBERNETES_SERVICE_PORT")
-	if host == "" || port == "" {
-		return nil, errors.New("KUBERNETES_SERVICE_HOST/PORT not set")
-	}
-	jwtBytes, err := os.ReadFile(p.cfg.SAJWTPath)
-	if err != nil {
-		return nil, err
-	}
-	u := fmt.Sprintf("https://%s/api/v1/pods?fieldSelector=%s", net.JoinHostPort(host, port), url.QueryEscape("status.podIP="+ip))
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(string(jwtBytes)))
-	resp, err := p.k8sHTTPClient.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("kube-apiserver status %d", resp.StatusCode)
-	}
-	var podList struct {
-		Items []struct {
-			Metadata struct {
-				Name      string            `json:"name"`
-				Namespace string            `json:"namespace"`
-				Labels    map[string]string `json:"labels"`
-			} `json:"metadata"`
-		} `json:"items"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&podList); err != nil || len(podList.Items) == 0 {
-		return nil, errors.New("no matching pod for IP")
-	}
-	item := podList.Items[0]
-	id := &PodIdentity{
-		Namespace: item.Metadata.Namespace,
-		PodName:   item.Metadata.Name,
-		AppLabel:  item.Metadata.Labels["app.kubernetes.io/name"],
-	}
-	p.podCacheMu.Lock()
-	p.podCache[ip] = cachedPodIdentity{identity: id, expiresAt: now.Add(60 * time.Second)}
-	p.podCacheMu.Unlock()
-	return id, nil
-}
-
-func buildK8sHTTPClient() *http.Client {
-	pool := x509.NewCertPool()
-	if caBytes, err := os.ReadFile(defaultSACAPath); err == nil {
-		_ = pool.AppendCertsFromPEM(caBytes)
-	}
-	return &http.Client{
-		Timeout: 5 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				MinVersion: tls.VersionTLS12,
-				RootCAs:    pool,
-			},
-		},
-	}
-}
-
-func extractPeerIP(remoteAddr string) string {
-	host, _, err := net.SplitHostPort(strings.TrimSpace(remoteAddr))
-	if err != nil {
-		return strings.TrimSpace(remoteAddr)
-	}
-	return host
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
