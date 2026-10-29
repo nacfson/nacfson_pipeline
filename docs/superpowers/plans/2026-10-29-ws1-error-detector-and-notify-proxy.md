@@ -409,11 +409,11 @@ Run the full gate list from `CLAUDE.md` before opening the PR. After merge, `bui
 **Interfaces:**
 - Produces: `Service/notify-gateway.vault.svc:8080`, consumed by Task 13 and workstream 3.
 
-- [ ] **Step 1: Write the failing preflight tests** — `test_valid_notify_gateway_passes`; `test_service_exposing_8081_rejected`; `test_missing_probe_rejected`; `test_unrestricted_ingress_rejected` (empty `podSelector`); `test_egress_fqdn_other_than_discord_rejected` (`matchPattern: "*.discord.com"` and an extra `matchName` both rejected); `test_latest_tag_rejected`.
-- [ ] **Step 2: Run them to verify they fail** — `python3 -m unittest tests.preflight.test_notify_gateway_contract` → FAIL.
-- [ ] **Step 3: Implement** the manifests, the preflight rule, the script, the hook entry, and the docs.
-- [ ] **Step 4: Run** — `python3 -m unittest discover tests/preflight && python3 -m unittest discover tests/hooks && ./scripts/render-validate.sh local-k3s && ./scripts/render-validate.sh vps-k3s && python3 scripts/check-arch-doc-sync.py --worktree` → all PASS.
-- [ ] **Step 5: Commit**
+- [x] **Step 1: Write the failing preflight tests** — `test_valid_notify_gateway_passes`; `test_service_exposing_8081_rejected`; `test_missing_probe_rejected`; `test_unrestricted_ingress_rejected` (empty `podSelector`); `test_egress_fqdn_other_than_discord_rejected` (`matchPattern: "*.discord.com"` and an extra `matchName` both rejected); `test_latest_tag_rejected`.
+- [x] **Step 2: Run them to verify they fail** — `python3 -m unittest tests.preflight.test_notify_gateway_contract` → FAIL.
+- [x] **Step 3: Implement** the manifests, the preflight rule, the script, and the docs. The plan's `scripts/universal-agent-hook.py` `SSH_HELPER_SCRIPTS` entry, `tests/hooks/test_ssh_command_gate.py` case, and `AGENTS.md` rule 9 do not exist in this repository, so `notify-ctl.sh` is not registered with a hook gate.
+- [x] **Step 4: Run** — `python3 -m unittest discover tests/preflight && python3 -m unittest discover tests/hooks && ./scripts/render-validate.sh local-k3s && ./scripts/render-validate.sh vps-k3s && python3 scripts/check-arch-doc-sync.py --worktree` → all PASS.
+- [x] **Step 5: Commit**
 
 ```bash
 git add deploy/platform/vault-proxies deploy/platform/vault scripts tests AGENTS.md docs ARCHITECTURE.md DEPENDENCIES.md
