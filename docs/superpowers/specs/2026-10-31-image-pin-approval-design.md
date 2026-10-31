@@ -56,7 +56,9 @@ nacfson_pipeline: .github/workflows/image-pin.yaml
   pin job        environment: image-pin (waits for the operator's review)
                    Reject → job never runs
                    Approve → newer-request check → apply exact digests
-                           → diff check → handbook sync → push branch → open PR
+                           → diff check → handbook sync → render-validate
+                             (preflight + kubeconform + invariants, both envs)
+                           → push branch → open PR
         ▼
   report job     runs always, edits the Discord message with the outcome
         ▼
@@ -121,14 +123,14 @@ Permissions: `contents: read`, `actions: read`, `packages: read`, `pull-requests
 3. **Reuse an existing PR.** If an open PR already exists from this branch, set outcome `pr_exists`.
 4. **Apply the approved digests.** Run the helper with `--image <role>=<repo>@sha256:<digest>` and a new `--skip-validation` flag. The digest path still confirms the digest exists in GHCR, so an image deleted while the request waited stops the run. **(my call: this existence check isn't a second validation)** Two caveats the implementer must handle: the `<repo>@sha256:` form is not free-text — it is repo-equality checked against the container's current repo and rejected on mismatch, so it can only ever re-pin the same repository and intentionally cannot express a repo move (§9 catches that as a violation rather than performing it). And a bare `sha256:<hex>` would be silently reinterpreted as the *current* repo, so pass the full `<repo>@<digest>` form and assert the applied `old_repo` matches what `validate` recorded.
 5. **Stop if already pinned.** If `main` already has these digests, set outcome `already_pinned`.
-6. **Run the short checks:** the diff check (§9), then `check-arch-doc-sync.py --worktree`. Optionally also `platform-preflight`, if we accept the extra runtime: Principle I says a revision reaches a cluster "only after a revision has passed that environment's required checks, including `platform-preflight`", and a pin PR becomes the deployment source on merge. A digest-only change cannot move a budget, so the check would pass, and its absence is disclosed rather than silently assumed. **(operator decision still open)**
+6. **Run the full gate, not a subset.** In order: the diff check (§9), then `check-arch-doc-sync.py --worktree`, then `./scripts/render-validate.sh <env>` for both `local-k3s` and `vps-k3s`. That last step is the real admission gate, and it runs three checks, not one: `platform-preflight` (capacity, QoS, isolation, memory freeze, budgets), `kubeconform` schema validation, and the render invariants. Principle I requires `platform-preflight` before a revision becomes the deployment source, and merging this PR is exactly that promotion, so it must run here rather than be carved out. Measured cost is about 7.4s per environment locally, so roughly 30s in CI including the `flux` and `kubeconform` install. A digest-only diff cannot move a budget and will pass, but the gate runs anyway so the rule holds without a new exception and the schema and invariant checks are not silently lost. **(operator)**
 7. **Commit, push and open the PR** with `GITHUB_TOKEN`, as `github-actions[bot]`, on `chore/images-<project>-<sha7>`. The commit message is `chore(proj-<project>): update <roles> image pin(s)`.
 
 The PR description holds:
 - a table of role, old digest, new digest, tag and source link
 - the validation results `validate` recorded — passed to `pin` as job outputs, because `pin` itself runs with `--skip-validation` and therefore has no evidence of its own. For `project-pn-*`, publish only the pass/fail summary and the checks that ran, never the raw `evidence` dict (user, source, revision, entrypoint), per §4
-- the short checks that ran
-- a statement that normal CI didn't run on this PR, and a link to the run
+- the checks that ran, per check and per environment
+- a statement that GitHub's normal PR workflows didn't run on this PR, that the pin job ran the render, preflight, schema, invariant, diff and handbook checks instead, and a link to the run
 
 PRs opened with `GITHUB_TOKEN` start no workflows, and that is how pin PRs skip CI. No path filter or CI change is needed. **(operator)**
 
@@ -169,7 +171,7 @@ Changes    Commit · Compare old…new
 
 ## 9. Diff check
 
-This is what makes skipping CI safe. Any failure stops the run and no PR opens. **(operator)**
+This is what makes skipping CI's PR workflows safe: the pin job runs the same admission gate itself. Any failure stops the run and no PR opens. **(operator)**
 
 - **Files:** the changed set must equal exactly the `path` values of roles the helper actually wrote, plus `docs/platform-architecture.html`. The helper only writes roles whose image changed (`html_updates` filter), so a multi-role request where one role is already pinned yields fewer paths than roles. The checker must derive the expected set from the run's own writes, not from every requested role — otherwise a legitimately partial change fails. The handbook may legitimately be unchanged too (when no pins-block row and no short `Pinned @` token matches), so it is allowed but not required.
 - **Project scope:** every YAML path must be under `deploy/projects/<project>/workloads/`.
@@ -220,7 +222,7 @@ Adding a project needs its `deploy/projects/<slug>/workloads/` folder, a line in
 - **What a token holder can do outside this flow:** more than the sentence above suggests. `Actions: write` dispatches any workflow with `workflow_dispatch` on any existing branch, so it also reaches `build-images.yaml` and can republish `:latest` tags (§11). Treat the token as "can disturb CI and `:latest` images in this repository", not "can only ask for older images".
 - **Requests can be crowded out, not silently forged:** duplicate and newer-request checks (§7.1 step 2, §7.2 step 2) compare against a marker each `validate` run writes about itself, and only when that run concluded `success` — never against requester-authored `run-name` text. A failed or decoy run therefore cannot suppress a legitimate request. Residual gap: if two requests for the same commit are dispatched within seconds, neither has reached `waiting` yet, so both can pass §7.1 step 2 (see §13). They still gain no write access — nothing merges without the operator — and the manual `update-project-images` skill remains the fallback.
 - **What a pin PR can change:** only image digests and their handbook entries (§9).
-- **Final check:** the operator merges, and normal CI doesn't run first. The PR shows the old and new digests, and `gitops`, `lint` and `secret-scan` run on `main` after merge without blocking Flux.
+- **Final check:** the operator merges. The pin job already ran the admission gate — render, `platform-preflight`, schema, invariants, the diff check and the handbook check (§7.2 step 6) — so the revision is verified before it becomes the deployment source, as Principle I requires. What is *not* covered: `gitops`, `lint` and `secret-scan` still run on `main` after merge, and they don't block Flux. A digest-only change cannot fail them, but that is an expectation, not a guarantee.
 
 ## 13. Edge cases
 
@@ -239,7 +241,7 @@ Adding a project needs its `deploy/projects/<slug>/workloads/` folder, a line in
 
 ## 14. CI changes
 
-No required checks, no `ci.yaml`, and no `ci-required`. **(operator)** `gitops`, `lint` and `secret-scan` keep their triggers.
+No required checks, no `ci.yaml`, and no `ci-required`. **(operator)** `gitops`, `lint` and `secret-scan` keep their triggers. The admission gate for pin PRs is not a CI required check — the pin job runs it directly (§7.2 step 6), which is why no ruleset change is needed.
 
 `review-gate.yaml` is deleted. **(operator)** It is the only CI that runs three checks, so they move into the `preflight-tests` job in `gitops.yaml`: **(my call)**
 
@@ -288,6 +290,7 @@ Removed entirely, in step 4. **(operator)** None of this has ever run: no `image
 - Diff check accepts a **partial** change: a two-role request where one role is already pinned writes one YAML path; and accepts an unchanged handbook.
 - Message rendering: `allowed_mentions` is empty, each outcome in §7.3 maps to the right text, and the review button URL is the `nacfson_pipeline` run URL.
 - `--skip-validation`: skips `validate_image`, still confirms the digest exists, and is off by default.
+- Gate ordering: a failure in any of render, `platform-preflight`, schema, invariants, diff or handbook check stops the run before a branch is pushed. Assert the pin job invokes `render-validate.sh` for both `local-k3s` and `vps-k3s`, so the Principle I gate can't be dropped silently later.
 - Unset `DISCORD_WEBHOOK_URL`: `validate` warns, still reaches the approval gate, and does not fail.
 
 **Live acceptance**, run by hand for `blog` before any sender is connected:
@@ -306,12 +309,12 @@ Removed entirely, in step 4. **(operator)** None of this has ever run: no `image
 
 Each step lands through its own PR.
 
-1. **Workflow and approval:** `image-pin.yaml`, `scripts/image-pin.py`, the diff check, the helper flag, the environment and the repository setting. Includes `config/image-pin-sources.json` — the rename in §16 must happen here, not in step 4, because §7.1 step 1 reads that file. Run it by hand for `blog`, and try approving from a phone.
+1. **Workflow and approval:** `image-pin.yaml`, `scripts/image-pin.py`, the diff check, the helper flag, the gate steps (`render-validate` for both environments), the environment and the repository setting. Includes `config/image-pin-sources.json` — the rename in §16 must happen here, not in step 4, because §7.1 step 1 reads that file. Run it by hand for `blog`, and try approving from a phone.
 2. **Discord:** the channel, the webhook, the message and the `report` job.
 3. **Projects:** `blog`, then `Project_PN` with its package access, then `nacfson_health`. Each repo is a separate PR.
 4. **Cleanup:** §15, §16 and §14 together, then `docs/image-pin.md`.
 
-**Decision point after step 1:** if phone approval is too awkward, add Discord buttons with a serverless endpoint. Only the approval step changes. Note what step 1 can and cannot tell us: with no Discord yet, it tests *approving from a phone* (via the GitHub app's Notifications tab and the run page in a phone browser), not the Discord-to-phone hop. That hop is only tested once step 2 lands. If the goal is to de-risk the full phone path, consider swapping steps 1 and 2, or accept that step 2 carries the remaining unknown.
+**Decision point after step 1:** if phone approval is too awkward, add Discord buttons with a serverless endpoint. Only the approval step changes. The environment gate notifies the required reviewer directly — GitHub app push and email — independently of Discord, so step 1 does test the real phone approval UX: a pending deployment, a notification, a tap, an approve. What step 1 cannot prove is that a *Discord* link specifically lands on an approvable page; that moves to step 2. **(operator: keep this order)**
 
 **Operator setup** (needs the operator's accounts):
 - Create `#image-bumps` and its webhook.
@@ -319,7 +322,7 @@ Each step lands through its own PR.
 - Grant package access for `project-pn-*`.
 
 **Prerequisites found in review, not in the original design:**
-- A constitution amendment for GitHub-held automation secrets (§11).
+- A constitution amendment for GitHub-held automation secrets (§11). No digest-only carve-out for `platform-preflight` is needed, because the pin job now runs the real gate (§7.2 step 6).
 - Pin `deploy/platform/vault-proxies/ai-proxy.yaml` and `registry-proxy.yaml` to digests, so the token's `Actions: write` can't repoint `:latest` (§11, §20).
 - Give `check-arch-doc-sync.py` a real diff mode for CI; `--worktree` sees an empty diff on a fresh checkout (§14).
 
