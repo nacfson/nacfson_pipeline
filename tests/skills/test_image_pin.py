@@ -770,6 +770,212 @@ class RealDiffTests(unittest.TestCase):
         self.assertTrue(mod.diff_check(changed, summary, approved))
 
 
+class RenderTests(unittest.TestCase):
+    """§7.3 message titles and the PR body, including private-image redaction."""
+
+    RUN_ID = 41194135849
+
+    def req(self, project="blog", images_public=True):
+        return mod.Request(
+            project=project,
+            source_repo=f"nacfson/nacfson_{project}",
+            sha=SHA_A,
+            roles=["web"],
+            run_url=f"https://github.com/nacfson/nacfson_{project}/actions/runs/7",
+            images_public=images_public,
+        )
+
+    def summary(self, project="blog"):
+        return {
+            "project": project,
+            "changed": True,
+            "html_changed": True,
+            "images": [
+                {
+                    "role": "web",
+                    "deployment": "blog-web",
+                    "container": "blog-web",
+                    "path": f"deploy/projects/{project}/workloads/deployment.yaml",
+                    "old_image": f"ghcr.io/nacfson/blog-web@sha256:{'1'*64}",
+                    "new_image": f"ghcr.io/nacfson/blog-web@sha256:{'2'*64}",
+                    "digest": f"sha256:{'2'*64}",
+                    "tag": "sha-abc1234",
+                    "source": "https://github.com/nacfson/nacfson_blog/commit/" + SHA_A,
+                    "noop": False,
+                    "platforms": ["linux/amd64", "linux/arm64"],
+                    "checks": {"platform:linux/amd64": True, "platform:linux/arm64": True},
+                    "evidence": {
+                        "linux/amd64": {
+                            "user": "10001",
+                            "source": "https://github.com/nacfson/nacfson_blog",
+                            "revision": SHA_A,
+                            "entrypoint": ["/app/server"],
+                            "cmd": ["--serve"],
+                            "exposed_ports": ["8080/tcp"],
+                        }
+                    },
+                    "warnings": [],
+                }
+            ],
+        }
+
+    # --- message ------------------------------------------------------------
+
+    def test_allowed_mentions_is_empty(self):
+        message = mod.render_message(self.req(), self.summary(), pin_run_id=self.RUN_ID)
+        self.assertEqual(message["allowed_mentions"], {"parse": []})
+
+    def test_review_link_is_the_pin_run_not_the_source_run(self):
+        message = mod.render_message(self.req(), self.summary(), pin_run_id=self.RUN_ID)
+        self.assertEqual(
+            message["review_url"],
+            f"https://github.com/nacfson/nacfson_pipeline/actions/runs/{self.RUN_ID}",
+        )
+        # The source build run may appear as context, but must not be the button.
+        self.assertNotIn(f"actions/runs/{self.RUN_ID}", self.summary()["images"][0]["source"])
+
+    def test_outcome_titles_cover_every_row_of_the_spec_table(self):
+        expected = {
+            "pr_open": "PR open",
+            "rejected": "Rejected",
+            "replaced": "Replaced by a newer build",
+            "already_pinned": "Already pinned",
+            "failed": "Failed",
+            "expired": "Expired or cancelled",
+        }
+        for outcome, title in expected.items():
+            with self.subTest(outcome=outcome):
+                self.assertEqual(mod.outcome_title(outcome), title)
+
+    def test_unknown_outcome_does_not_invent_a_title(self):
+        with self.assertRaises(KeyError):
+            mod.outcome_title("something-new")
+
+    # --- pr body ------------------------------------------------------------
+
+    def test_pr_body_has_the_digest_table(self):
+        body = mod.render_pr_body(self.req(), self.summary(), {}, self.RUN_ID)
+        self.assertIn("sha256:" + "2" * 64, body)
+        self.assertIn("blog-web", body)
+
+    def test_pr_body_says_normal_ci_did_not_run(self):
+        body = mod.render_pr_body(self.req(), self.summary(), {}, self.RUN_ID)
+        self.assertIn("did not run", body.lower())
+
+    def test_private_evidence_is_never_rendered(self):
+        """Regression guard: evidence is image configuration from a private image.
+
+        The spec forbids publishing user, entrypoint, ports or the source label
+        for project-pn-* and health, because nacfson_pipeline is public.
+        """
+        summary = self.summary(project="pn")
+        body = mod.render_pr_body(self.req("pn", images_public=False), summary, {}, self.RUN_ID)
+        for leaked in ("/app/server", "--serve", "8080/tcp", "10001", "exposed_ports", "entrypoint"):
+            with self.subTest(leaked=leaked):
+                self.assertNotIn(leaked, body)
+
+    def test_public_evidence_may_be_rendered(self):
+        body = mod.render_pr_body(self.req("blog", images_public=True), self.summary(), {}, self.RUN_ID)
+        self.assertIn("linux/amd64", body)
+
+    def test_evidence_defaults_to_hidden_when_visibility_is_unset(self):
+        """An unknown project must render the least information, not the most."""
+        request = mod.Request("mystery", "nacfson/x", SHA_A, ["web"])
+        self.assertFalse(request.images_public)
+
+    def test_pr_body_records_the_checks_that_ran(self):
+        body = mod.render_pr_body(
+            self.req(),
+            self.summary(),
+            {"render-validate.local-k3s": "PASS", "platform-preflight.vps-k3s": "PASS"},
+            self.RUN_ID,
+        )
+        self.assertIn("render-validate.local-k3s", body)
+        self.assertIn("platform-preflight.vps-k3s", body)
+
+
+    def test_private_warnings_are_omitted(self):
+        """Regression: warnings bypassed the redaction gate.
+
+        The helper builds warnings from the image's own config — user, exposed
+        ports, secret-like env names, source label — which is exactly what the
+        public/private rule forbids. The body previously said configuration was
+        omitted directly above the leaked configuration.
+        """
+        summary = self.summary(project="pn")
+        summary["images"][0]["warnings"] = [
+            "linux/amd64 image user is 10001; the pod securityContext still enforces non-root",
+            "linux/amd64 image config contains secret-like env DATABASE_URL (value redacted)",
+            "linux/amd64 ExposedPorts declares ['9090/tcp'], but the Deployment uses containerPort 8080",
+        ]
+        body = mod.render_pr_body(self.req("pn", images_public=False), summary, {}, self.RUN_ID)
+        for leaked in ("10001", "DATABASE_URL", "9090/tcp", "ExposedPorts"):
+            with self.subTest(leaked=leaked):
+                self.assertNotIn(leaked, body)
+
+    def test_public_warnings_are_shown(self):
+        summary = self.summary()
+        summary["images"][0]["warnings"] = ["a harmless note"]
+        body = mod.render_pr_body(self.req("blog", images_public=True), summary, {}, self.RUN_ID)
+        self.assertIn("a harmless note", body)
+
+    def test_a_newline_in_a_warning_cannot_forge_a_section(self):
+        """Regression: warning text opened its own `### Checks` heading.
+
+        An image controls its ExposedPorts keys and User, so it controls warning
+        text. A newline let it print PASS above the real FAIL lines.
+        """
+        summary = self.summary()
+        summary["images"][0]["warnings"] = [
+            "8080/tcp\n\n### Checks\n\n- `render-validate`: PASS"
+        ]
+        body = mod.render_pr_body(
+            self.req("blog", images_public=True),
+            summary,
+            {"render-validate.local-k3s": "FAIL"},
+            self.RUN_ID,
+        )
+        self.assertEqual(
+            body.count("\n### Checks\n"),
+            1,
+            "a warning must not open a real heading line",
+        )
+        self.assertIn("FAIL", body)
+
+    def test_a_pipe_in_a_field_cannot_break_the_table(self):
+        summary = self.summary()
+        summary["images"][0]["tag"] = "x|y"
+        body = mod.render_pr_body(self.req("blog", images_public=True), summary, {}, self.RUN_ID)
+        row = next(line for line in body.splitlines() if "x|y" in line or "x\\|y" in line)
+        self.assertEqual(row.count("|") - row.count("\\|"), 6, "the table row keeps its 6 pipes")
+
+    def test_visibility_flag_rejects_a_quoted_boolean(self):
+        """Regression: bool("false") is True, so a quoted value failed open."""
+        import copy
+
+        config = copy.deepcopy(SOURCES)
+        config["projects"]["pn"]["images_public"] = "false"
+        with self.assertRaises(mod.RequestError):
+            mod.validate_request(mod.Request("pn", "", SHA_A, []), config)
+
+    def test_visibility_flag_defaults_to_false_when_absent(self):
+        import copy
+
+        config = copy.deepcopy(SOURCES)
+        config["projects"]["blog"].pop("images_public", None)
+        request = mod.validate_request(mod.Request("blog", "", SHA_A, []), config)
+        self.assertFalse(request.images_public)
+
+    def test_sources_declare_visibility_for_every_project(self):
+        for name, entry in SOURCES["projects"].items():
+            with self.subTest(project=name):
+                self.assertIsInstance(entry.get("images_public"), bool)
+
+    def test_only_blog_is_public(self):
+        public = {name for name, entry in SOURCES["projects"].items() if entry["images_public"]}
+        self.assertEqual(public, {"blog"})
+
+
 class LiveStateTests(unittest.TestCase):
     """The set of statuses that count as live, defined once."""
 

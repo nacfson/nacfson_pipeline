@@ -1,17 +1,20 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "projects": {
     "blog": {
       "source_repo": "nacfson/nacfson_blog",
-      "roles": ["web"]
+      "roles": ["web"],
+      "images_public": true
     },
     "health": {
       "source_repo": "nacfson/nacfson_health",
-      "roles": ["backend", "frontend"]
+      "roles": ["backend", "frontend"],
+      "images_public": false
     },
     "pn": {
       "source_repo": "nacfson/Project_PN",
-      "roles": ["backend", "frontend"]
+      "roles": ["backend", "frontend"],
+      "images_public": false
     }
   }
 }

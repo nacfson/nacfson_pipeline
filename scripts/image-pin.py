@@ -48,6 +48,9 @@ class Request:
     sha: str
     roles: list[str] = field(default_factory=list)
     run_url: str | None = None
+    # Whether the project's images are publicly readable. Defaults to False so
+    # an unset value renders the least information, never the most.
+    images_public: bool = False
 
     def commit_url(self) -> str:
         return f"https://github.com/{self.source_repo}/commit/{self.sha}"
@@ -173,7 +176,24 @@ def validate_request(request: Request, sources: dict) -> Request:
         sha=request.sha,
         roles=[role for role in allowed_roles if role in roles],
         run_url=run_url,
+        images_public=_bool_flag(entry.get("images_public"), "images_public", request.project),
     )
+
+
+def _bool_flag(value, field_name: str, project: str) -> bool:
+    """Read a security-relevant boolean from config without truthiness coercion.
+
+    `bool("false")` is True, so a quoted value in the JSON would flip a private
+    project into publishing image configuration. Anything that is not a real
+    JSON boolean is an error, not a default.
+    """
+    if value is None:
+        return False
+    if not isinstance(value, bool):
+        raise RequestError(
+            f"projects.{project}.{field_name} must be a JSON boolean, got {type(value).__name__}"
+        )
+    return value
 
 
 def write_marker(marker: Marker, path: Path) -> None:
@@ -283,6 +303,186 @@ def run_gh(args: list[str]) -> str:
     if result.returncode != 0:
         raise RequestError(f"gh {' '.join(args[:2])} failed: {result.stderr.strip()}")
     return result.stdout
+
+
+# ---------------------------------------------------------------------------
+# Rendering (spec §7.3, §8)
+# ---------------------------------------------------------------------------
+
+PIN_REPO = "nacfson/nacfson_pipeline"
+PIN_RUN_URL = f"https://github.com/{PIN_REPO}/actions/runs"
+
+# Every row of the §7.3 table. Keeping this as a dict rather than an if-chain
+# means an unknown outcome raises instead of quietly rendering a blank message.
+OUTCOME_TITLES = {
+    "pr_open": "PR open",
+    "rejected": "Rejected",
+    "replaced": "Replaced by a newer build",
+    "already_pinned": "Already pinned",
+    "failed": "Failed",
+    "expired": "Expired or cancelled",
+}
+
+
+def outcome_title(outcome: str) -> str:
+    return OUTCOME_TITLES[outcome]
+
+
+def _short_digest(image: dict) -> str:
+    """The 8-hex form used in messages: enough to tell two digests apart."""
+    digest = str(image.get("digest") or "")
+    return digest.split(":", 1)[1][:8] if ":" in digest else digest[:8]
+
+
+def render_message(
+    request: Request,
+    summary: dict,
+    *,
+    pin_run_id: int | None = None,
+) -> dict:
+    """The Discord payload for a new request.
+
+    The review button points at the *pin run*, which is the only page that can
+    approve the gate. Pointing it at the source project's build run would look
+    right and approve nothing.
+    """
+    lines = [f"New images ready: proj-{request.project}"]
+    changed = [image for image in summary.get("images", []) if not image.get("noop")]
+    width = max((len(str(image["role"])) for image in changed), default=0)
+    for image in changed:
+        old = _short_digest({"digest": image.get("old_image", "")})
+        lines.append(f"{str(image['role']).ljust(width)}   {old} -> {_short_digest(image)}")
+    if request.run_url:
+        lines.append(f"Build {request.run_url}")
+
+    link = f"{PIN_RUN_URL}/{pin_run_id}" if pin_run_id is not None else None
+    return {
+        "content": "\n".join(lines),
+        "allowed_mentions": {"parse": []},
+        "review_url": link,
+    }
+
+
+def _md_cell(value: object) -> str:
+    """Make a string safe inside a markdown table cell."""
+    text = " ".join(str(value).split())
+    return text.replace("|", "\\|").replace("`", "'")
+
+
+def _md_line(value: object, limit: int = 300) -> str:
+    """Make a string safe as a single markdown line.
+
+    Newlines are the dangerous part: they let a value open its own heading, so
+    warning text from an image could forge a `### Checks` section above the
+    real one. Collapsing whitespace is the fix; truncation bounds the damage.
+    """
+    text = " ".join(str(value).split())
+    if len(text) > limit:
+        text = text[:limit] + "…"
+    return text.replace("`", "'")
+
+
+def _evidence_rows(image: dict, include_evidence: bool) -> list[str]:
+    """Per-platform lines. Image configuration only when the image is public."""
+    rows = []
+    platforms = image.get("platforms") or []
+    if platforms:
+        rows.append(f"- platforms: {', '.join(platforms)}")
+    failed = sorted(
+        key for key, ok in (image.get("checks") or {}).items() if not ok
+    )
+    if failed:
+        rows.append(f"- failed checks: {', '.join(failed)}")
+    if not include_evidence:
+        return rows
+    for platform, values in sorted((image.get("evidence") or {}).items()):
+        details = []
+        for field in ("user", "source", "revision"):
+            if values.get(field):
+                details.append(f"{field}={values[field]}")
+        entrypoint = values.get("entrypoint") or []
+        if entrypoint:
+            details.append(f"entrypoint={' '.join(str(part) for part in entrypoint)}")
+        ports = values.get("exposed_ports") or []
+        if ports:
+            details.append(f"ports={', '.join(str(port) for port in ports)}")
+        if details:
+            rows.append(f"- {platform}: {'; '.join(details)}")
+    return rows
+
+
+def render_pr_body(
+    request: Request,
+    summary: dict,
+    checks: dict[str, str],
+    pin_run_id: int | None = None,
+) -> str:
+    """The PR description.
+
+    `request.images_public` decides whether image configuration is included.
+    It is False unless the allowlist says otherwise, so an unset or unknown
+    project renders the least information rather than the most.
+    """
+    include_evidence = bool(request.images_public)
+    lines = [
+        f"Pins `proj-{request.project}` to the digests approved in "
+        f"{f'[run {pin_run_id}]({PIN_RUN_URL}/{pin_run_id})' if pin_run_id else 'the pin run'}.",
+        "",
+        f"Built from `{request.source_repo}@{request.sha[:7]}`.",
+        "",
+        "| Role | Container | Old digest | New digest | Tag |",
+        "| :--- | :--- | :--- | :--- | :--- |",
+    ]
+    for image in summary.get("images", []):
+        if image.get("noop"):
+            continue
+        old = _short_digest({"digest": image.get("old_image", "")})
+        tag = image.get("tag") or "—"
+        lines.append(
+            f"| {_md_cell(image['role'])} | {_md_cell(image.get('container') or image.get('deployment'))} | "
+            f"`{old}` | `{_short_digest(image)}` | `{_md_cell(tag)}` |"
+        )
+
+    lines += ["", "### Validation", ""]
+    for image in summary.get("images", []):
+        if image.get("noop"):
+            continue
+        lines.append(f"**{_md_cell(image['role'])}** `{_md_cell(image.get('digest'))}`")
+        lines += _evidence_rows(image, include_evidence)
+        # Warnings are omitted for private images. They are not a fixed
+        # vocabulary: the helper builds them from the image's own config —
+        # `image user is 10001`, `ExposedPorts declares [...]`,
+        # `secret-like env DATABASE_URL`, the source label — which is exactly
+        # the data the public/private rule forbids publishing.
+        if include_evidence:
+            for warning in image.get("warnings") or []:
+                lines.append(f"- warning: {_md_line(warning)}")
+        lines.append("")
+
+    if not include_evidence:
+        lines += [
+            "Image configuration and its warnings are omitted because this "
+            "project's images are not public.",
+            "",
+        ]
+
+    lines += ["### Checks", ""]
+    if checks:
+        for name in sorted(checks):
+            lines.append(f"- `{_md_line(name, limit=120)}`: {_md_line(checks[name], limit=200)}")
+    else:
+        lines.append("- none recorded")
+    lines += [
+        "",
+        "### CI",
+        "",
+        "GitHub's normal PR workflows did not run on this PR: it was opened with "
+        "`GITHUB_TOKEN`, which starts no workflows. The pin job ran the admission "
+        "gate instead — the diff check, the handbook check, and `render-validate` "
+        "plus `platform-preflight` for both environments.",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
@@ -683,6 +883,23 @@ def main(argv: list[str] | None = None) -> int:
     )
     diffp.add_argument("--json", action="store_true")
 
+    render = sub.add_parser("render-message", help="the Discord payload for a request")
+    render.add_argument("--project", required=True)
+    render.add_argument("--sha", required=True)
+    render.add_argument("--roles", default="")
+    render.add_argument("--summary", required=True, type=Path)
+    render.add_argument("--pin-run-id", type=int, default=None)
+    render.add_argument("--out", type=Path, help="write the payload here instead of stdout")
+
+    body = sub.add_parser("render-pr-body", help="the PR description for a pin")
+    body.add_argument("--project", required=True)
+    body.add_argument("--sha", required=True)
+    body.add_argument("--roles", default="")
+    body.add_argument("--summary", required=True, type=Path)
+    body.add_argument("--checks", type=Path, help="JSON object of check name -> result")
+    body.add_argument("--pin-run-id", type=int, default=None)
+    body.add_argument("--out", type=Path, help="write the body here instead of stdout")
+
     args = parser.parse_args(argv)
 
     try:
@@ -750,6 +967,26 @@ def main(argv: list[str] | None = None) -> int:
                 print(json.dumps(payload, sort_keys=True))
             else:
                 print(f"{request.project} {request.sha[:7]} {','.join(request.roles)}")
+            return 0
+
+        if args.command in ("render-message", "render-pr-body"):
+            summary = json.loads(Path(args.summary).read_text(encoding="utf-8"))
+            if args.command == "render-message":
+                payload = json.dumps(
+                    render_message(request, summary, pin_run_id=args.pin_run_id),
+                    indent=2,
+                    sort_keys=True,
+                )
+            else:
+                checks = {}
+                if args.checks:
+                    checks = json.loads(Path(args.checks).read_text(encoding="utf-8"))
+                payload = render_pr_body(request, summary, checks, args.pin_run_id)
+            if args.out:
+                Path(args.out).write_text(payload + "\n", encoding="utf-8")
+                print(f"wrote {args.out}")
+            else:
+                print(payload)
             return 0
 
         live = _markers_from_json(args.live)
