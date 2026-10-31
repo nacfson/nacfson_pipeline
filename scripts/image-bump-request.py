@@ -3,7 +3,7 @@
 
 Run by `.github/workflows/image-bump-request.yaml`.  The dispatch payload is a
 hint only: the project and source repository must match
-`config/image-bump-sources.json`, and every image is re-resolved and validated
+`config/image-pin-sources.json`, and every image is re-resolved and validated
 from the registry by the `update-project-images` helper (dry run, so no file
 is written).  The issue is the request; whoever handles it (a Claude session,
 Copilot, or a person) decides whether a pin PR is opened.
@@ -35,7 +35,7 @@ HELPER_PATH = (
     / "scripts"
     / "update_project_images.py"
 )
-SOURCES_PATH = REPO_ROOT / "config" / "image-bump-sources.json"
+SOURCES_PATH = REPO_ROOT / "config" / "image-pin-sources.json"
 SHA_RE = re.compile(r"[0-9a-f]{40}")
 MARKER_RE = re.compile(r"<!-- image-bump-request: (\{.*?\}) -->")
 
@@ -92,7 +92,7 @@ def validate_request(request: Request, sources: dict) -> Request:
     entry = projects.get(request.project)
     if entry is None:
         raise RequestError(
-            f"project {request.project!r} is not in config/image-bump-sources.json; "
+            f"project {request.project!r} is not in config/image-pin-sources.json; "
             f"allowed: {', '.join(sorted(projects)) or 'none'}"
         )
     source_repo = entry["source_repo"]

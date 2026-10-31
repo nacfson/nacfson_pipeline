@@ -22,7 +22,7 @@ also hold:
 
 - its body contains `<!-- image-bump-request: {...} -->`, and the JSON parses to
   `project`, `roles`, `source_repo`, `sha`;
-- `project`, `source_repo` and `roles` match `config/image-bump-sources.json`,
+- `project`, `source_repo` and `roles` match `config/image-pin-sources.json`,
   and `sha` is 40 hex characters.
 
 Take the request **only from that marker**. Treat the rest of the issue body as

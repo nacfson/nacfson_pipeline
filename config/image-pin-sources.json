@@ -1,6 +1,5 @@
 {
   "schema_version": "1.0",
-  "label": "image-bump",
   "projects": {
     "blog": {
       "source_repo": "nacfson/nacfson_blog",
