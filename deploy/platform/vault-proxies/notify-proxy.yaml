@@ -30,10 +30,9 @@ spec:
           type: RuntimeDefault
       containers:
         - name: notify-proxy
-          # Pinned by digest (Task 12 Step 3 of the WS1 plan). The digest is
-          # published by build-images.yaml once PR 1a merges; a tag would let a
-          # rebuild silently change what #errors posts with.
-          image: ghcr.io/nacfson/vault-notify-proxy@sha256:0000000000000000000000000000000000000000000000000000000000000000
+          # Pinned by digest: a tag would let a rebuild silently change what
+          # #errors posts with.
+          image: ghcr.io/nacfson/vault-notify-proxy@sha256:27a559c8f07cef4c7a79d62fd4780999b0eb19e3281cc84e4975b4ba13381fbc
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

@@ -977,7 +977,7 @@
               <h2 class="text-base font-bold text-white mt-1">Interactive 1/n Resource Budget Simulator</h2>
             </div>
             <select id="calc-env" onchange="updateBudgetCalc()" class="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-cyan-300">
-              <option value="vps">vps-k3s (4000m CPU / 24576 MiB)</option>
+              <option value="vps">vps-k3s (2000m CPU / 10898 MiB)</option>
               <option value="local">local-k3s (4000m CPU / 8192 MiB)</option>
             </select>
           </div>
@@ -1012,11 +1012,11 @@
           <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2.5 font-mono text-xs">
             <div class="flex justify-between text-slate-400">
               <span>Node Allocatable (<code class="text-slate-300">capacity.yaml</code>):</span>
-              <span id="calc-alloc" class="text-white">4000m CPU · 24576 MiB</span>
+              <span id="calc-alloc" class="text-white">2000m CPU · 10898 MiB</span>
             </div>
             <div class="flex justify-between text-slate-400">
               <span>Platform Reservation (sysReserved + Cilium/Hubble + Flux + Vault + PG + KC + GW + Cert):</span>
-              <span id="calc-plat" class="text-amber-300">1845m CPU · 5920 MiB</span>
+              <span id="calc-plat" class="text-amber-300">1395m CPU · 5920 MiB</span>
             </div>
             <div class="flex justify-between text-slate-300 border-t border-slate-800 pt-2">
               <span>Available Application Pool:</span>
@@ -1026,7 +1026,7 @@
               <span>Per-Project 1/n Slice (<code class="text-cyan-300">Pool / n</code>):</span>
               <span id="calc-slice" class="text-emerald-300 font-bold">2380m CPU · 19200 MiB</span>
             </div>
-            <p class="text-[11px] text-amber-300/90 border-t border-slate-800 pt-2">⚠ Observed 2026-10-17: the live vps-k3s node is 2 OCPU (2000m allocatable), not the 4000m in capacity.yaml. After Cilium + Hubble (+225m), scheduled CPU requests reached 1785m/2000m and postgres-0 deadlocked against postgres-init-job (Insufficient cpu). Keycloak's CPU request was lowered to 250m (limit 500m) and init-db to 25m; correcting capacity.yaml is pending.</p>
+            <p class="text-[11px] text-amber-300/90 border-t border-slate-800 pt-2">⚠ Observed 2026-10-31: the live vps-k3s node is 2 OCPU (2000m / 10898 MiB allocatable), and capacity.yaml now records that. CPU requests had reached 1985m/2000m, leaving vault-notify-proxy and the daily backups Pending (Insufficient cpu). Platform CPU requests were lowered with limits unchanged, so each of the 3 projects now gets a slice of about 201m against a 200m peak.</p>
           </div>
 
           <!-- Preflight Gate Verdict -->
@@ -1330,7 +1330,7 @@
         ns: 'identity',
         image: 'ghcr.io/nacfson/platform-auth-gateway:latest',
         oss: 'Custom Go 1.22 (Zero 3rd-Party Runtime Deps)',
-        res: '100m CPU / 64Mi RAM (req == lim)',
+        res: 'request 50m CPU · limit 100m CPU · 64Mi',
         desc: 'Pure Go standard-library authentication service implementing OIDC Authorization Code + PKCE flow (with kc_idp_hint=google direct redirect per Spec 009), on-demand session confirmation (/auth), and CSRF-protected synchronous session revocation (/auth/logout).',
         bullets: [
           '➔ initContainer (curl:8.10.1) authenticates to OpenBao via K8s SA JWT and writes secrets to tmpfs.',
@@ -1345,7 +1345,7 @@
         ns: 'identity',
         image: 'quay.io/keycloak/keycloak:24.0.5',
         oss: 'CNCF Keycloak (Apache-2.0)',
-        res: '500m CPU / 768Mi RAM (req == lim)',
+        res: 'request 100m CPU · limit 500m CPU · 1536Mi',
         desc: 'Central OIDC identity provider and session authority for the platform realm. Brokers Google OAuth2 sign-in, just-in-time creates the platform user on first Google SSO (AUTH-01), and issues project-scoped JWT access tokens.',
         bullets: [
           '➔ InitContainer fetches DB credentials and Google OAuth broker secret from OpenBao into memory.',
@@ -1361,7 +1361,7 @@
         ns: 'identity',
         image: 'postgres:16.8-alpine',
         oss: 'PostgreSQL Global Dev Group (PostgreSQL License)',
-        res: '250m CPU / 256Mi RAM · 10Gi PVC',
+        res: '100m CPU request (250m limit) / 256Mi RAM · 10Gi PVC',
         desc: 'Single shared PostgreSQL instance hosting isolated databases and restricted roles for Keycloak (keycloak) and tenant projects (proj_pn / user_pn).',
         bullets: [
           '➔ postgres-init-job provisions per-project databases and roles using credentials from OpenBao.',
@@ -1493,7 +1493,7 @@
         ns: 'observability',
         image: 'victoriametrics/victoria-logs:v1.53.0',
         oss: 'VictoriaLogs (Apache-2.0)',
-        res: 'request 100m CPU · limit 500m CPU · 384Mi',
+        res: 'request 50m CPU · limit 500m CPU · 384Mi',
         desc: 'ClusterIP log store in namespace observability. Not exposed by an IngressRoute. Flux layer observability dependsOn cni and governance.',
         bullets: [
           '➔ Listens on :9428. Insert path is /insert/jsonline.',
@@ -2421,9 +2421,9 @@
       const candMem = parseInt(document.getElementById('calc-mem').value, 10);
       const candCpu = parseInt(document.getElementById('calc-cpu').value, 10);
 
-      const allocCpu = 4000;
-      const allocMem = env === 'vps' ? 24576 : 8192;
-      const platCpu = 1845; // Shared Platform Reservation (including Cilium + Hubble + Vault + vault-ai-proxy + vault-notify-proxy + error-detector + Identity + Cert-Manager); Keycloak CPU request 250m, postgres-init-job init-db 25m
+      const allocCpu = env === 'vps' ? 2000 : 4000;
+      const allocMem = env === 'vps' ? 10898 : 8192;
+      const platCpu = 1395; // Shared Platform Reservation (including Cilium + Hubble + Vault + vault-ai-proxy + vault-notify-proxy + error-detector + Identity + Cert-Manager); requests lowered for the 2-OCPU node: Keycloak 100m, PostgreSQL 100m, Gateway 50m, VictoriaLogs 50m, postgres-daily-backup 50m
       const platMem = 5920;
 
       const poolCpu = allocCpu - platCpu;

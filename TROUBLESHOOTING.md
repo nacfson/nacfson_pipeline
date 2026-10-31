@@ -196,7 +196,7 @@ Run the automated zero-data-loss recovery script:
 - `blog-web` rolled out with `maxSurge: 1, maxUnavailable: 0`: start the new pod first, then stop the old one. During the swap the node must fit a second `100m` pod.
 - §1 set `maxSurge: 0` on `proj-pn` and `proj-health`, but `proj-blog` was onboarded just before and kept `maxSurge: 1`. Steady-state CPU requests on the 2-OCPU node sit at about `1935m / 2000m`, so the extra `100m` pod cannot be scheduled.
 - `maxUnavailable: 0` keeps the old pod serving, and `proj-blog` (`wait: true`, `timeout: 5m`) never becomes healthy.
-- Preflight did not catch it: [`clusters/vps-k3s/capacity.yaml`](clusters/vps-k3s/capacity.yaml) still records `4000m` allocatable CPU, so the surge fits on paper.
+- Preflight did not catch it: at the time, [`clusters/vps-k3s/capacity.yaml`](clusters/vps-k3s/capacity.yaml) recorded `4000m` allocatable CPU, so the surge fit on paper. It now records the real `2000m`.
 
 ### Diagnostic Commands
 ```bash

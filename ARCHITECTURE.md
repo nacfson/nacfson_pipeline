@@ -131,7 +131,7 @@ flowchart LR
 - **Restricted Pod Security**: Every project namespace enforces `pod-security.kubernetes.io/enforce: restricted`, `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: ["ALL"]`, `automountServiceAccountToken: false`, and `ClusterIP`-only Services.
 - **Deterministic $1/n$ Slicing**:
   $$\text{Project Slice} = \frac{\text{Node Allocatable} - \text{System Reserved} - \text{Platform Reservation}}{n_{\text{projects}}}$$
-- **Guaranteed QoS**: Every container must set `requests.cpu == limits.cpu` and `requests.memory == limits.memory`. Verified statically before merge by [`scripts/platform-preflight.py`](scripts/platform-preflight.py).
+- **Guaranteed QoS**: Every project container must set `requests.cpu == limits.cpu` and `requests.memory == limits.memory`. Verified statically before merge by [`scripts/platform-preflight.py`](scripts/platform-preflight.py).
 
 ### 3.5 Dependent Workload Probes & Browser CORS Contract (Constitution Principle VII & Spec 007)
 - **Three Probe Roles**:

@@ -494,6 +494,25 @@ def _image_pinned_by_digest(image):
     return all(c in "0123456789abcdef" for c in digest.lower())
 
 
+def check_placeholder_image_digests(docs):
+    """Reject all-zero image digests: no image can exist at one, so it never pulls."""
+    violations = []
+    for doc in docs:
+        pod_spec, _ = get_pod_spec_and_meta(doc)
+        if not pod_spec:
+            continue
+        obj = f"{doc.get('metadata', {}).get('namespace', '')}/{doc.get('kind', '')}/{doc.get('metadata', {}).get('name', '')}"
+        for c in pod_spec.get("containers", []) + pod_spec.get("initContainers", []):
+            _, sep, digest = str(c.get("image") or "").partition("@sha256:")
+            if sep and digest and set(digest) == {"0"}:
+                violations.append({
+                    "rule": 2,
+                    "object": f"{obj}:{c.get('name')}",
+                    "detail": f"image {c.get('image')!r} uses a placeholder digest; pin the published digest",
+                })
+    return violations
+
+
 def check_notify_gateway_contract(platform_docs):
     """Enforce the notify gateway contract: loopback-only admin, discord.com-only egress.
 
@@ -1370,6 +1389,14 @@ def main():
             status = STATUS_REJECTED_ISOLATION
             if not rejection_reason:
                 rejection_reason = notify_gw_violations[0]["detail"]
+            exit_code = 1
+
+        placeholder_violations = check_placeholder_image_digests(candidate_docs)
+        if placeholder_violations:
+            violations.extend(placeholder_violations)
+            status = STATUS_REJECTED_ISOLATION
+            if not rejection_reason:
+                rejection_reason = placeholder_violations[0]["detail"]
             exit_code = 1
 
     project_count = len(projects_dict)
