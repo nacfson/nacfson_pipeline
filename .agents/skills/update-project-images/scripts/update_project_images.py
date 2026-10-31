@@ -971,6 +971,13 @@ def _summary_images(updates: list[ImageUpdate], root: Path) -> list[dict]:
                 "warnings": report.warnings if report else [],
                 "resolution_warnings": update.resolution_warnings,
                 "skipped": report.skipped if report else [],
+                # Explicit, because empty platforms/checks/evidence otherwise
+                # reads the same as "validated and clean". True means the image
+                # was never inspected; a consumer must say so rather than imply
+                # a pass. A noop role is not "skipped": it needed no work.
+                "validation_skipped": bool(
+                    report is None and update.new_image != target.old_image
+                ),
             }
         )
     return images
@@ -985,6 +992,7 @@ def run_update(
     pull_check: bool,
     summary_file: Path | None = None,
     allow_unmatched_job: bool = False,
+    skip_validation: bool = False,
 ) -> dict:
     root = Path(root).resolve()
     requests = _parse_image_args(image_args)
@@ -1012,7 +1020,13 @@ def run_update(
 
         new_image = f"{target.old_repo}@{resolved.digest}"
         noop = target.old_image == new_image
-        if noop:
+        if noop or skip_validation:
+            # `skip_validation` suppresses only the image inspection: the
+            # multi-arch, label, port and entrypoint checks. It does not skip
+            # `resolve_digest_ref` above, so a digest that does not exist in the
+            # registry still fails, and it does not bypass the repo-equality
+            # guard in `resolve_link`. Empty `checks`/`platforms`/`evidence` in
+            # the summary are how a caller tells the two paths apart.
             validation = None
         else:
             validation = validate_image(
@@ -1119,7 +1133,26 @@ def main(argv: list[str] | None = None) -> int:
         help="allow an Actions run whose job names do not mention the role",
     )
     parser.add_argument("--summary-file", type=Path)
+    parser.add_argument(
+        "--skip-validation",
+        action="store_true",
+        help=(
+            "skip the image inspection (multi-arch, labels, ports, entrypoint). "
+            "The digest is still resolved from the registry, and the repository "
+            "must still match. Off by default."
+        ),
+    )
     args = parser.parse_args(argv)
+    if args.skip_validation and (args.strict or args.pull_check):
+        # Both flags are consumed only inside validate_image, so with validation
+        # skipped they would be silently inert. Refusing is better than exiting 0
+        # on a run where the caller asked for checks that never happened.
+        print(
+            "error: --skip-validation cannot be combined with --strict or "
+            "--pull-check; those checks run only inside validation",
+            file=sys.stderr,
+        )
+        return 2
 
     try:
         run_update(
@@ -1131,6 +1164,7 @@ def main(argv: list[str] | None = None) -> int:
             pull_check=args.pull_check,
             summary_file=args.summary_file,
             allow_unmatched_job=args.allow_unmatched_job,
+            skip_validation=args.skip_validation,
         )
     except UpdateError as exc:
         print(f"error: {exc}", file=sys.stderr)
