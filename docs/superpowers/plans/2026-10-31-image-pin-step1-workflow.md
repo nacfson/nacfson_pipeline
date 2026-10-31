@@ -65,9 +65,17 @@ update_project_images.py              edit  add --skip-validation (3 call sites)
 
 ---
 
-## Task 0: Phone-approval spike (do this first)
+## Task 0: Phone-approval spike — DONE 2026-10-31
 
-Everything below is roughly a day of work. Task 12 is the test that can invalidate the whole design — the spec says so, and if phone approval is awkward the approval step changes. So prove the gate and the phone *before* building, not after.
+**Result: PASSED.** Approving a pending `image-pin` deployment from a phone browser works, and the **"Review deployments" button is visible** on the run page. The job ran only after approval (`Approved at 2026-10-31T10:51:42Z`), and the run page shows `Deployment protection rules → nacfson → approved`.
+
+This settles the biggest unknown in the design: the approval gate is real, reachable on a phone, and blocks correctly. It also confirms the §8 Discord link can point at the `nacfson_pipeline` run URL and be sufficient on its own, without depending on notification delivery.
+
+Not tested: the GitHub app's Notifications-tab path. The browser path is confirmed, so that is the fallback rather than the requirement.
+
+Cleanup done: branch `spike/approval-only` deleted, workflow file removed, worktree removed. **One setting left for the operator:** `image-pin` → Deployment branches back to `main only` (it is currently `null`, i.e. all branches, which only the spike needed).
+
+Everything below is roughly a day of work. The rest of this section is kept for the record.
 
 **Why not just run Task 12 early:** a `workflow_dispatch` workflow only runs if its file exists on the **default branch**. `image-pin.yaml` genuinely cannot be exercised from a feature branch, so Tasks 1–10 must exist first for the real test.
 
