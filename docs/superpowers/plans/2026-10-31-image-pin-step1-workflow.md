@@ -31,6 +31,8 @@
 4. **The admission gate runs but does not include preflight.** `render-validate.sh` passes while `platform-preflight` was never called. → assert both commands run, per environment; `TestGateRunsPreflightForBothEnvironments` in Task 8.
 5. **A hand-run cannot be made, so the phone test never happens.** `run_url` required, or a config file that does not exist yet, blocks the first manual dispatch. → `run_url` optional (as `image-bump-request.py:118` already treats it), and the config rename lands in Task 1; `TestHandRunWithoutRunUrlPasses` in Task 2 and Task 12.
 
+**Sequencing risk, addressed by Task 0:** the whole plan is about a day of work, and the acceptance test is last. If phone approval turns out awkward, the spec says the approval step changes — so Task 0 proves the environment gate and the phone notification with a throwaway `push` workflow first, before any of the real machinery exists. It cannot test `image-pin.yaml`, because `workflow_dispatch` only runs a workflow whose file is on the default branch, but it does test the gate itself, which is the actual unknown.
+
 ## Interfaces
 
 One script, one flag, one config, one workflow. Everything else is reused.
@@ -63,6 +65,53 @@ update_project_images.py              edit  add --skip-validation (3 call sites)
 
 ---
 
+## Task 0: Phone-approval spike (do this first)
+
+Everything below is roughly a day of work. Task 12 is the test that can invalidate the whole design — the spec says so, and if phone approval is awkward the approval step changes. So prove the gate and the phone *before* building, not after.
+
+**Why not just run Task 12 early:** a `workflow_dispatch` workflow only runs if its file exists on the **default branch**. `image-pin.yaml` genuinely cannot be exercised from a feature branch, so Tasks 1–10 must exist first for the real test.
+
+**Why the gate can still be tested now:** the environment gate does not need `image-pin.yaml`. Any job with `environment:` produces a real pending deployment, and a `push` trigger *does* run from a branch.
+
+**Files:**
+- Create: `.github/workflows/spike-approval.yaml` (temporary — deleted in Step 6)
+
+- [ ] **Step 1: Set the environment to allow all branches.** Settings → Environments → `image-pin` → Deployment branches → **All branches**. If you leave it on `main only`, the spike job from a feature branch will *fail* rather than wait for approval, and you will wrongly conclude the gate is broken. (If the environment does not exist yet, create it now with the operator as required reviewer, Prevent self-review **off**.)
+- [ ] **Step 2: Write the throwaway workflow**
+
+```yaml
+name: Approval Spike (temporary)
+on:
+  push:
+    branches: [spike/approval-only]
+
+jobs:
+  spike:
+    environment: image-pin
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prove the gate
+        run: echo "approved on $(date -u +%FT%TZ)"
+```
+
+- [ ] **Step 3: Push the branch and watch it wait** — `git push origin HEAD:spike/approval-only`, then the run shows the `spike` job in **Pending** with a review request. No email or push means the reviewer is not set correctly; fix that before judging anything else.
+- [ ] **Step 4: Approve from the phone — this is the measurement.**
+  - Path A: GitHub app → **Notifications** tab → the deployment review request → approve.
+  - Path B: open the run in a mobile browser → "Review deployments" → approve.
+
+  Record for each: did the notification arrive, how many taps, did the button appear, and did it feel safe to do one-handed. Note whether Path B was reachable from anything other than a hand-typed URL — that is what the Discord link will depend on in step 2.
+- [ ] **Step 5: Confirm the job ran after approval** — the log shows `approved on …`. Then repeat once, rejecting instead: the job must not run and the run must show failure.
+- [ ] **Step 6: Clean up.**
+  - Delete the workflow file and push, then `git push origin --delete spike/approval-only`.
+  - Settings → Environments → `image-pin` → Deployment branches back to **main only**.
+  - Record the verdict in the PR that continues step 1: comfortable, or move to Discord buttons before building the workflow.
+- [ ] **Step 7: Delete this task's workflow file from the repository** and confirm `git ls-files .github/workflows | grep spike` returns nothing.
+
+```bash
+git rm .github/workflows/spike-approval.yaml
+git commit -m "chore(image-pin): remove the temporary approval spike workflow"
+```
+
 ## Task 1: Config rename (must land first)
 
 `§7.1` step 1 reads this file, so it has to exist before any manual dispatch.
@@ -75,7 +124,7 @@ update_project_images.py              edit  add --skip-validation (3 call sites)
 - Produces: `config/image-pin-sources.json` with `{"schema_version": "1.0", "projects": {"blog": {"source_repo": "nacfson/nacfson_blog", "roles": ["web"]}, "health": {...}, "pn": {...}}}` — identical project data, no `label`.
 
 - [ ] **Step 1: Copy and edit the config** — `git mv config/image-bump-sources.json config/image-pin-sources.json`, then delete the `"label": "image-bump"` line. Leave `schema_version` and all three projects untouched.
-- [ ] **Step 2: Repoint the old script** so the suite stays green until step 4 deletes it — change `SOURCES_PATH` at `scripts/image-bump-request.py:42`, and any literal path in `tests/skills/test_image_bump_request.py`.
+- [ ] **Step 2: Repoint the old script** so the suite stays green until step 4 deletes it — change `SOURCES_PATH` at `scripts/image-bump-request.py:38`, and any literal path in `tests/skills/test_image_bump_request.py`.
 - [ ] **Step 3: Run the affected tests** — `python3 -m unittest tests.skills.test_image_bump_request` → PASS.
 - [ ] **Step 4: Verify the file parses and matches the old project data**
 
