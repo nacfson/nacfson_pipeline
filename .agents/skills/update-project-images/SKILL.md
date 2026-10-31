@@ -80,6 +80,14 @@ The helper validates without downloading layers:
 
 Blocking failures stop the update. Missing config blobs are recorded as skipped and manifest-level validation continues. `--strict` makes every warning block. `--pull-check` is optional, local, and non-blocking.
 
+**`--skip-validation`** suppresses *only* the inspection above, and exists for the `image-pin` flow's `pin` job, which applies a digest the operator already approved in an earlier `validate` run. Even with it set:
+
+- the digest is still resolved from the registry, so an image deleted while the request waited fails loudly;
+- the repository must still match the container's current one — a pin changes the digest, never the repo;
+- a tag or commit link still resolves normally, so passing one by mistake pins whatever it resolves to with no inspection;
+
+and in the summary, `validation_skipped: true` marks the image, with empty `platforms`, `checks` and `evidence`. Never turn it on for the validate path or the `update-project-images` skill itself; it cannot be combined with `--strict` or `--pull-check`.
+
 ### 5. Validate the repository
 
 ```bash

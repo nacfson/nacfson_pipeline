@@ -894,6 +894,28 @@ class RenderTests(unittest.TestCase):
         self.assertIn("platform-preflight.vps-k3s", body)
 
 
+    def test_pr_body_discloses_a_skipped_validation(self):
+        """Regression: a skipped validation rendered as an empty, clean pass.
+
+        The pin job runs with --skip-validation, so an approving reader must be
+        told the image was not inspected here — empty platforms/checks alone
+        looks like success.
+        """
+        summary = self.summary()
+        summary["images"][0]["validation_skipped"] = True
+        summary["images"][0]["platforms"] = []
+        summary["images"][0]["checks"] = {}
+        summary["images"][0]["evidence"] = {}
+        body = mod.render_pr_body(self.req(), summary, {}, self.RUN_ID)
+        self.assertIn("not inspected in this job", body)
+
+    def test_pr_body_does_not_claim_skipping_when_validation_ran(self):
+        summary = self.summary()
+        summary["images"][0]["validation_skipped"] = False
+        body = mod.render_pr_body(self.req(), summary, {}, self.RUN_ID)
+        self.assertNotIn("not inspected in this job", body)
+        self.assertIn("linux/amd64", body)
+
     def test_private_warnings_are_omitted(self):
         """Regression: warnings bypassed the redaction gate.
 
