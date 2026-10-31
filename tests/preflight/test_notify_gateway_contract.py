@@ -35,6 +35,21 @@ def _container(docs):
     return dep["spec"]["template"]["spec"]["containers"][0]
 
 
+class TestPlaceholderImageDigest(unittest.TestCase):
+    def setUp(self):
+        self.module = _preflight()
+        self.docs = copy.deepcopy(_load_all(NOTIFY_PROXY_YAML))
+
+    def test_published_digest_passes(self):
+        self.assertEqual(self.module.check_placeholder_image_digests(self.docs), [])
+
+    def test_all_zero_digest_rejected(self):
+        _container(self.docs)["image"] = "ghcr.io/nacfson/vault-notify-proxy@sha256:" + "0" * 64
+        violations = self.module.check_placeholder_image_digests(self.docs)
+        self.assertEqual(len(violations), 1)
+        self.assertIn("placeholder digest", violations[0]["detail"])
+
+
 class TestNotifyGatewayPreflightContract(unittest.TestCase):
     def setUp(self):
         self.module = _preflight()

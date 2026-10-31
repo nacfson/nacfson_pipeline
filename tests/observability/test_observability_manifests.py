@@ -84,7 +84,7 @@ class TestVictoriaLogsStore(unittest.TestCase):
         self.assertEqual(sec["capabilities"]["drop"], ["ALL"])
         self.assertIs(pod["securityContext"]["runAsNonRoot"], True)
         resources = container["resources"]
-        self.assertEqual(resources["requests"]["cpu"], "100m")
+        self.assertEqual(resources["requests"]["cpu"], "50m")
         self.assertEqual(resources["requests"]["memory"], "384Mi")
         self.assertEqual(resources["limits"]["cpu"], "500m")
         self.assertEqual(resources["limits"]["memory"], "384Mi")
@@ -384,7 +384,7 @@ class TestFluentBitCollector(unittest.TestCase):
         data = json.loads(res.stdout) if res.stdout.strip() else {}
         self.assertEqual(data.get("validationStatus"), "PASSED", data.get("rejectionReason"))
         # fluent-bit + victorialogs + error-detector (50m/64Mi).
-        self.assertEqual(data.get("platformReservations", {}).get("cpuMillicores"), 400)
+        self.assertEqual(data.get("platformReservations", {}).get("cpuMillicores"), 350)
         self.assertEqual(data.get("platformReservations", {}).get("memoryMib"), 1024)
 
     def test_record_fields_match_log_schema_contract(self):

@@ -60,10 +60,10 @@ Per [Constitution Principle I](.specify/memory/constitution.md#L6-L7), third-par
 
 | Environment | Node Allocatable | System Reserved | Platform Reservation (incl. Cilium + Hubble) | Capacity File |
 | :--- | :--- | :--- | :--- | :--- |
-| `vps-k3s` (Oracle ARM64) | `4000m` CPU / `24576 MiB` RAM | `200m` CPU / `512 MiB` RAM | `1920m` CPU / `5312 MiB` RAM (`2080m` / `19264 MiB` per-project slice for $n=1$) | [`clusters/vps-k3s/capacity.yaml`](clusters/vps-k3s/capacity.yaml) |
+| `vps-k3s` (Oracle ARM64) | `2000m` CPU / `10898 MiB` RAM | `200m` CPU / `512 MiB` RAM | `1395m` CPU / `5920 MiB` RAM (about `201m` / `1659 MiB` per-project slice for $n=3$) | [`clusters/vps-k3s/capacity.yaml`](clusters/vps-k3s/capacity.yaml) |
 | `local-k3s` | `4000m` CPU / `8192 MiB` RAM | `200m` CPU / `512 MiB` RAM | `1920m` CPU / `5312 MiB` RAM (`2080m` / `2880 MiB` per-project slice for $n=1$) | [`clusters/local-k3s/capacity.yaml`](clusters/local-k3s/capacity.yaml) |
 
-The table above is the last recorded platform reservation. The observability reservation (Fluent Bit and VictoriaLogs) is not yet measured and must not be added by hand. Do not replace `1920m` or `5312` until a live `platformReservations` measurement is committed. Store sizing that does not depend on that measurement: 30-day retention, 8 GiB disk cap, 10Gi store PVC, 1Gi tail PVC `fluent-bit-state`, `proj-*` only, privileged namespace `observability`. VPS access is `scripts/open-observe.sh`. `local-k3s` access is `scripts/open-victorialogs-ui.sh`.
+The `vps-k3s` row is the `platformReservations` preflight reports for the 2026-10-31 node measurement. The `local-k3s` row is the last recorded reservation and excludes the unmeasured observability reservation (Fluent Bit and VictoriaLogs). Do not add that by hand or replace its `1920m` or `5312` until a live measurement is committed. Store sizing that does not depend on that measurement: 30-day retention, 8 GiB disk cap, 10Gi store PVC, 1Gi tail PVC `fluent-bit-state`, `proj-*` only, privileged namespace `observability`. VPS access is `scripts/open-observe.sh`. `local-k3s` access is `scripts/open-victorialogs-ui.sh`.
 
 ---
 

@@ -1,9 +1,9 @@
 environment: vps-k3s
 nodeName: vps-k3s-control-plane
-observedAt: "2026-10-04T00:00:00Z"
+observedAt: "2026-10-31T00:00:00Z"
 allocatable:
-  cpuMillicores: 4000
-  memoryMib: 24576
+  cpuMillicores: 2000
+  memoryMib: 10898
 systemReserved:
   cpuMillicores: 200
   memoryMib: 512

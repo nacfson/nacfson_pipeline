@@ -155,12 +155,12 @@ spec:
             - name: management
               containerPort: 9000
               protocol: TCP
-          # CPU request 250m (limit 500m): steady-state usage is ~2m and the 2-OCPU vps-k3s node
-          # ran out of schedulable CPU after the Cilium + Hubble reservation (+225m). Memory keeps
+          # CPU request 100m (limit 500m): steady-state usage is ~2m and the 2-OCPU vps-k3s node
+          # ran out of schedulable CPU at 1985m of 2000m requested. Memory keeps
           # requests == limits. Platform namespace, so Rule 3 (project Guaranteed QoS) does not apply.
           resources:
             requests:
-              cpu: 250m
+              cpu: 100m
               memory: 1536Mi
             limits:
               cpu: 500m
