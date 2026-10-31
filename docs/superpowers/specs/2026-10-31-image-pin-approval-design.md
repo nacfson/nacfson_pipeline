@@ -169,7 +169,7 @@ Changes    Commit · Compare old…new
 ```
 
 - **The button's URL is the run page:** `https://github.com/nacfson/nacfson_pipeline/actions/runs/<run_id>`. This is the one place the approval can be given, and the spec must build it explicitly — the only URL otherwise present is `run_url`, which is the *source project's* build run and cannot approve anything. **(my call)**
-- **Phone approval is the biggest unknown, and it has two paths.** Pending deployments are approvable from the GitHub mobile app's **Notifications** tab and its push notifications (the app has supported deployment review since 2021). What the app does *not* do reliably is show approve/reject on a workflow-run page opened from a link — the run page in the app can show only "Cancel workflow". So the Discord link alone is not a dependable phone path. Plan for the operator to approve from the notification, and keep the link as the fallback that opens the run page in a phone browser, where "Review deployments" is present. **(operator: this is the step-1 test)**
+- **Phone approval works, verified 2026-10-31.** A pending `image-pin` deployment was approved from a phone browser: the run page showed **"Review deployments"**, the job stayed pending until approval, then ran. So the review button in this message is sufficient on its own — it can point at the `nacfson_pipeline` run URL and the operator can approve from the link. The GitHub app's **Notifications** tab is a second path, not the required one. One caveat remains from the same test: opening a run page *inside the app* may show only "Cancel workflow", so the link is expected to open in a mobile browser. **(operator: tested via a throwaway push workflow, since `workflow_dispatch` cannot run from a feature branch)**
 - `allowed_mentions: {"parse": []}`, so no message can ping anyone. **(my call)**
 - `#image-bumps` is a new private channel, set to notify on all messages. Phone alerts come from this channel setting, so no user ID is stored. **(my call)**
 - The compare link uses the old and new revision labels. Without an old revision, only the commit link is shown.
@@ -320,7 +320,7 @@ Each step lands through its own PR.
 3. **Projects:** `blog`, then `Project_PN` with its package access, then `nacfson_health`. Each repo is a separate PR.
 4. **Cleanup:** §15, §16 and §14 together, then `docs/image-pin.md`.
 
-**Decision point after step 1:** if phone approval is too awkward, add Discord buttons with a serverless endpoint. Only the approval step changes. The environment gate notifies the required reviewer directly — GitHub app push and email — independently of Discord, so step 1 does test the real phone approval UX: a pending deployment, a notification, a tap, an approve. What step 1 cannot prove is that a *Discord* link specifically lands on an approvable page; that moves to step 2. **(operator: keep this order)**
+**Decision point after step 1:** if phone approval is too awkward, add Discord buttons with a serverless endpoint. Only the approval step changes. The gate has now been tested directly (Task 0 of the step-1 plan): a phone browser shows "Review deployments", the job waits, and approving releases it. The fallback stays available but is not currently needed.
 
 **Operator setup** (needs the operator's accounts):
 - Create `#image-bumps` and its webhook.
@@ -332,11 +332,14 @@ Each step lands through its own PR.
 - Pin `deploy/platform/vault-proxies/ai-proxy.yaml` and `registry-proxy.yaml` to digests, so the token's `Actions: write` can't repoint `:latest` (§11, §20).
 - Give `check-arch-doc-sync.py` a real diff mode for CI; `--worktree` sees an empty diff on a fresh checkout (§14).
 
-## 19. Not yet verified
+## 19. Verification status
+
+Verified on this repository:
+
+- **Approving a pending deployment from a phone.** Tested 2026-10-31 with a throwaway `push` workflow on the `image-pin` environment: a phone browser showed "Review deployments", the job stayed pending, ran only after approval, and the run page recorded `Deployment protection rules → nacfson → approved`. The GitHub app's Notifications-tab path was not exercised and is now a fallback rather than a requirement.
 
 Documented behaviour, not yet run on this repository:
 
-- Approving a pending deployment **from a phone**. Partly checked: GitHub mobile supports deployment review from its Notifications tab and push notifications (changelog, 2021), but opening a workflow-run page from a *link* in the app may show no approve button, so the in-app path depends on notifications rather than the Discord link. Not verified on this repository.
 - The link button rendering through a plain webhook.
 - `GITHUB_TOKEN` opening a PR, and that PR starting no workflows.
 - `GITHUB_TOKEN` reading PN's private packages after the access grant.
