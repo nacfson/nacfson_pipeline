@@ -7,6 +7,7 @@ the only thing that may suppress another request, and only when that run's
 
 import importlib.util
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -380,6 +381,393 @@ class CanonicalMarkerTests(unittest.TestCase):
                 )
             self.assertEqual(code, 2)
             self.assertFalse(out.exists(), "a rejected request must not leave a marker")
+
+
+class DiffCheckTests(unittest.TestCase):
+    """§9: the changed set must be exactly the approved digests and nothing else.
+
+    This is what makes skipping CI's PR workflows safe, so every reject case here
+    is a way a pin PR could smuggle in a change the operator never approved.
+    """
+
+    OLD = "sha256:" + "1" * 64
+    NEW = "sha256:" + "2" * 64
+    REPO = "ghcr.io/nacfson/blog-web"
+    YAML_PATH = "deploy/projects/blog/workloads/deployment.yaml"
+    HTML_PATH = "docs/platform-architecture.html"
+
+    def yaml_diff(self, old=None, new=None, repo=None, indent="          "):
+        old = old or self.OLD
+        new = new or self.NEW
+        repo = repo or self.REPO
+        return (
+            f"--- a/{self.YAML_PATH}\n"
+            f"+++ b/{self.YAML_PATH}\n"
+            "@@ -34,7 +34,7 @@ spec:\n"
+            "           type: RuntimeDefault\n"
+            "       containers:\n"
+            "         - name: blog-web\n"
+            f"-{indent}image: {repo}@{old}\n"
+            f"+{indent}image: {repo}@{new}\n"
+            "           imagePullPolicy: IfNotPresent\n"
+        )
+
+    def html_diff(self, old=None, new=None, row=None):
+        old = old or self.OLD
+        new = new or self.NEW
+        row = row if row is not None else (
+            '<tr class="border-b"><td>proj-blog</td><td>blog-web</td>'
+            '<td>ghcr.io/nacfson/blog-web</td><td>'
+        )
+        return (
+            f"--- a/{self.HTML_PATH}\n"
+            f"+++ b/{self.HTML_PATH}\n"
+            "@@ -952,7 +952,7 @@\n"
+            "             <tbody>\n"
+            f"-              {row}{old}</td></tr>\n"
+            f"+              {row}{new}</td></tr>\n"
+            "             </tbody>\n"
+        )
+
+    def summary(self, *, noop=False, html_changed=True):
+        return {
+            "project": "blog",
+            "changed": not noop,
+            "html_changed": html_changed,
+            "images": [
+                {
+                    "role": "web",
+                    "path": self.YAML_PATH,
+                    "old_image": f"{self.REPO}@{self.OLD}",
+                    "new_image": f"{self.REPO}@{self.NEW}",
+                    "digest": self.NEW,
+                    "noop": noop,
+                }
+            ],
+        }
+
+    def approved(self):
+        return {"web": f"{self.REPO}@{self.NEW}"}
+
+    def check(self, changed, summary=None, approved=None):
+        return mod.diff_check(
+            changed,
+            summary if summary is not None else self.summary(),
+            approved if approved is not None else self.approved(),
+        )
+
+    # --- accept -------------------------------------------------------------
+
+    def test_accepts_a_real_pin_diff(self):
+        """The shape of commit a52a27f: one image line, one handbook digest."""
+        violations = self.check(
+            {self.YAML_PATH: self.yaml_diff(), self.HTML_PATH: self.html_diff()}
+        )
+        self.assertEqual(violations, [])
+
+    def test_accepts_when_the_handbook_did_not_change(self):
+        """html_changed False is legitimate: no row or short token matched."""
+        violations = self.check(
+            {self.YAML_PATH: self.yaml_diff()},
+            summary=self.summary(html_changed=False),
+        )
+        self.assertEqual(violations, [])
+
+    def test_accepts_a_two_role_request_where_one_role_is_noop(self):
+        """Only the changed role's path may appear; the noop role writes nothing."""
+        summary = self.summary()
+        summary["images"].append(
+            {
+                "role": "extra",
+                "path": "deploy/projects/blog/workloads/other.yaml",
+                "old_image": f"{self.REPO}@{self.OLD}",
+                "new_image": f"{self.REPO}@{self.OLD}",
+                "digest": self.OLD,
+                "noop": True,
+            }
+        )
+        violations = self.check(
+            {self.YAML_PATH: self.yaml_diff(), self.HTML_PATH: self.html_diff()},
+            summary=summary,
+        )
+        self.assertEqual(violations, [])
+
+    def test_the_noop_role_path_is_not_required_in_the_diff(self):
+        """The converse: reporting the noop role's path is an error."""
+        summary = self.summary()
+        summary["images"].append(
+            {
+                "role": "extra",
+                "path": "deploy/projects/blog/workloads/other.yaml",
+                "old_image": f"{self.REPO}@{self.OLD}",
+                "new_image": f"{self.REPO}@{self.OLD}",
+                "digest": self.OLD,
+                "noop": True,
+            }
+        )
+        violations = self.check(
+            {
+                self.YAML_PATH: self.yaml_diff(),
+                self.HTML_PATH: self.html_diff(),
+                "deploy/projects/blog/workloads/other.yaml": self.yaml_diff(),
+            },
+            summary=summary,
+        )
+        self.assertTrue(violations, "a noop role must not produce a file change")
+
+    # --- reject -------------------------------------------------------------
+
+    def test_rejects_a_tag_instead_of_a_digest(self):
+        bad = self.yaml_diff(new="").replace(
+            f"+          image: {self.REPO}@\n",
+            f"+          image: {self.REPO}:latest\n",
+        )
+        violations = self.check({self.YAML_PATH: bad})
+        self.assertTrue(violations, "a floating tag must never be pinnable")
+
+    def test_rejects_a_changed_repository(self):
+        violations = self.check(
+            {self.YAML_PATH: self.yaml_diff(repo="ghcr.io/other/blog-web")}
+        )
+        self.assertTrue(violations)
+
+    def test_rejects_an_unapproved_digest(self):
+        violations = self.check(
+            {self.YAML_PATH: self.yaml_diff(new="sha256:" + "9" * 64)}
+        )
+        self.assertTrue(violations)
+
+    def test_rejects_an_extra_added_yaml_line(self):
+        bad = self.yaml_diff().replace(
+            "           imagePullPolicy: IfNotPresent\n",
+            "           imagePullPolicy: IfNotPresent\n+          env:\n",
+        )
+        violations = self.check({self.YAML_PATH: bad})
+        self.assertTrue(violations)
+
+    def test_rejects_changed_indentation(self):
+        violations = self.check({self.YAML_PATH: self.yaml_diff(indent="            ")})
+        self.assertTrue(violations)
+
+    def test_rejects_an_extra_file(self):
+        violations = self.check(
+            {
+                self.YAML_PATH: self.yaml_diff(),
+                "deploy/projects/blog/workloads/extra.yaml": self.yaml_diff(),
+            }
+        )
+        self.assertTrue(violations)
+
+    def test_rejects_a_path_in_another_project(self):
+        other = self.YAML_PATH.replace("/blog/", "/pn/")
+        bad = self.yaml_diff().replace(self.YAML_PATH, other)
+        violations = self.check({other: bad})
+        self.assertTrue(violations)
+
+    def test_rejects_an_unrelated_handbook_change(self):
+        html = self.html_diff().replace(
+            "             </tbody>\n",
+            "             </tbody>\n+            <p>an unrelated sentence</p>\n",
+        )
+        violations = self.check({self.YAML_PATH: self.yaml_diff(), self.HTML_PATH: html})
+        self.assertTrue(violations)
+
+    def test_rejects_a_handbook_digest_that_is_not_approved(self):
+        html = self.html_diff(new="sha256:" + "9" * 64)
+        violations = self.check({self.YAML_PATH: self.yaml_diff(), self.HTML_PATH: html})
+        self.assertTrue(violations)
+
+    def test_rejects_a_missing_handbook_change_when_the_helper_rewrote_it(self):
+        """html_changed True but the file is absent from the diff."""
+        violations = self.check({self.YAML_PATH: self.yaml_diff()})
+        self.assertTrue(violations)
+
+    def test_rejects_a_missing_yaml_change(self):
+        violations = self.check({})
+        self.assertTrue(violations)
+
+    def test_rejects_two_replaced_lines_in_one_file(self):
+        doubled = self.yaml_diff() + self.yaml_diff().split("@@", 1)[1]
+        violations = self.check({self.YAML_PATH: doubled})
+        self.assertTrue(violations)
+
+    # --- the parser's own trust boundary ------------------------------------
+
+    def test_rejects_a_real_diff_whose_content_starts_with_plus_plus(self):
+        """Regression: the `+++` header skip also swallowed `++` content.
+
+        git renders a content line beginning `+` as `++...`, so a naive
+        startswith("+++") skip dropped it. An injected line like
+        `++hostNetwork: true` then rode along with a clean-looking pin.
+        """
+        injected = self.yaml_diff() + "+++hostNetwork: true\n"
+        violations = self.check({self.YAML_PATH: injected})
+        self.assertTrue(violations, "a content line beginning '++' must not be skipped")
+
+    def test_rejects_a_real_diff_whose_content_starts_with_minus_minus(self):
+        """The mirror case: removing a `--` line renders as `----`."""
+        removed = self.yaml_diff() + "----removed-separator\n"
+        violations = self.check({self.YAML_PATH: removed})
+        self.assertTrue(violations)
+
+    def test_rejects_a_blank_added_line(self):
+        injected = self.yaml_diff() + "+\n"
+        violations = self.check({self.YAML_PATH: injected})
+        self.assertTrue(violations, "a blank-line insertion is still a change")
+
+    def test_rejects_a_binary_diff(self):
+        binary = (
+            f"--- a/{self.YAML_PATH}\n+++ b/{self.YAML_PATH}\n"
+            f"Binary files a/{self.YAML_PATH} and b/{self.YAML_PATH} differ\n"
+        )
+        violations = self.check({self.YAML_PATH: binary})
+        self.assertTrue(violations)
+
+    def test_rejects_a_multi_hunk_diff_that_hides_a_second_change(self):
+        second = "@@ -50,3 +50,3 @@\n context\n-          runAsNonRoot: true\n+          runAsNonRoot: false\n"
+        violations = self.check({self.YAML_PATH: self.yaml_diff() + second})
+        self.assertTrue(violations)
+
+    def test_rejects_an_empty_handbook_diff_when_html_changed(self):
+        """Regression: html_changed True with no handbook hunk validated as clean."""
+        violations = self.check({self.YAML_PATH: self.yaml_diff(), self.HTML_PATH: ""})
+        self.assertTrue(violations)
+
+    def test_rejects_a_header_only_handbook_diff(self):
+        violations = self.check(
+            {
+                self.YAML_PATH: self.yaml_diff(),
+                self.HTML_PATH: f"--- a/{self.HTML_PATH}\n+++ b/{self.HTML_PATH}\n",
+            }
+        )
+        self.assertTrue(violations)
+
+    def test_rejects_digest_rows_swapped_between_repositories(self):
+        """Regression: any approved digest was accepted anywhere in the handbook."""
+        other_repo = "ghcr.io/nacfson/project-pn-frontend"
+        other_new = "sha256:" + "4" * 64
+        # A row for blog-web rewritten with the digest approved for pn-frontend.
+        row = '<tr><td>proj-blog</td><td>blog-web</td><td>ghcr.io/nacfson/blog-web</td><td>'
+        violations = self.check(
+            {self.YAML_PATH: self.yaml_diff(), self.HTML_PATH: self.html_diff(new=other_new, row=row)},
+            approved={"web": f"{self.REPO}@{self.NEW}", "frontend": f"{other_repo}@{other_new}"},
+        )
+        self.assertTrue(violations, "a digest approved for another repo must be rejected")
+
+    def test_accepts_a_short_badge_rewrite(self):
+        """Regression: the short-token test compared bare hex to a prefixed string.
+
+        It was always False, so every pn pin touching a `Pinned @sha256:` badge
+        failed its own gate and no PR could ever open.
+        """
+        short_old = "sha256:" + self.OLD.split(":")[1][:8]
+        short_new = "sha256:" + self.NEW.split(":")[1][:8]
+        html = (
+            f"--- a/{self.HTML_PATH}\n+++ b/{self.HTML_PATH}\n@@ -1,2 +1,2 @@\n"
+            f"-  <text>Pinned @{short_old}... </text>\n"
+            f"+  <text>Pinned @{short_new}... </text>\n"
+            " c\n"
+        )
+        violations = self.check({self.YAML_PATH: self.yaml_diff(), self.HTML_PATH: html})
+        self.assertEqual(violations, [])
+
+    def test_rejects_a_short_badge_for_an_unapproved_digest(self):
+        short_new = "sha256:99999999"
+        html = (
+            f"--- a/{self.HTML_PATH}\n+++ b/{self.HTML_PATH}\n@@ -1,2 +1,2 @@\n"
+            f"-  <text>Pinned @sha256:{self.OLD.split(':')[1][:8]}... </text>\n"
+            f"+  <text>Pinned @{short_new}... </text>\n"
+            " c\n"
+        )
+        violations = self.check({self.YAML_PATH: self.yaml_diff(), self.HTML_PATH: html})
+        self.assertTrue(violations)
+
+    def test_rejects_a_traversal_path(self):
+        """Regression: startswith() accepted `.../workloads/../../pn/...`."""
+        evil = "deploy/projects/blog/workloads/../../pn/workloads/x.yaml"
+        violations = self.check({evil: self.yaml_diff().replace(self.YAML_PATH, evil)})
+        self.assertTrue(violations)
+
+
+class RealDiffTests(unittest.TestCase):
+    """Run the checker against git's own output, not hand-written fixtures.
+
+    Hand-written fixtures can agree with a bug in the parser. Commit a52a27f is a
+    real pin commit, so its diff is the ground truth for what must be accepted.
+    """
+
+    PIN_COMMIT = "a52a27f"
+    YAML = "deploy/projects/blog/workloads/deployment.yaml"
+    HTML = "docs/platform-architecture.html"
+    NEW = "sha256:ac28e84ff5716443b9b68568f3f43321dbf2980736e9562f8efeb98934a9aacf"
+    OLD = "sha256:38375007f07ff7c0ab6dcbc5341f1d5a95bcc6e650eee9b901352d79319bdddf"
+
+    def _show(self, rev: str, path: str) -> str:
+        return subprocess.run(
+            ["git", "show", f"{self.PIN_COMMIT}{rev}:{path}"],
+            cwd=ROOT, capture_output=True, text=True, check=True,
+        ).stdout
+
+    def _udiff(self, path: str) -> str:
+        with tempfile.TemporaryDirectory() as tmp:
+            before, after = Path(tmp) / "a", Path(tmp) / "b"
+            before.write_text(self._show("^", path), encoding="utf-8")
+            after.write_text(self._show("", path), encoding="utf-8")
+            return subprocess.run(
+                ["diff", "-u", "--label", f"a/{path}", "--label", f"b/{path}",
+                 str(before), str(after)],
+                capture_output=True, text=True, check=False,
+            ).stdout
+
+    def test_accepts_a_real_historical_pin_commit(self):
+        try:
+            self._show("", self.YAML)
+        except subprocess.CalledProcessError:
+            self.skipTest(f"commit {self.PIN_COMMIT} is not available in this clone")
+
+        summary = {
+            "project": "blog",
+            "changed": True,
+            "html_changed": True,
+            "images": [
+                {
+                    "role": "web",
+                    "path": self.YAML,
+                    "old_image": f"ghcr.io/nacfson/blog-web@{self.OLD}",
+                    "new_image": f"ghcr.io/nacfson/blog-web@{self.NEW}",
+                    "digest": self.NEW,
+                    "noop": False,
+                }
+            ],
+        }
+        approved = {"web": f"ghcr.io/nacfson/blog-web@{self.NEW}"}
+        changed = {self.YAML: self._udiff(self.YAML), self.HTML: self._udiff(self.HTML)}
+        self.assertEqual(mod.diff_check(changed, summary, approved), [])
+
+    def test_rejects_the_same_real_diff_with_a_wrong_approved_digest(self):
+        try:
+            self._show("", self.YAML)
+        except subprocess.CalledProcessError:
+            self.skipTest(f"commit {self.PIN_COMMIT} is not available in this clone")
+
+        summary = {
+            "project": "blog",
+            "changed": True,
+            "html_changed": True,
+            "images": [
+                {
+                    "role": "web",
+                    "path": self.YAML,
+                    "old_image": f"ghcr.io/nacfson/blog-web@{self.OLD}",
+                    "new_image": f"ghcr.io/nacfson/blog-web@{self.NEW}",
+                    "digest": self.NEW,
+                    "noop": False,
+                }
+            ],
+        }
+        approved = {"web": f"ghcr.io/nacfson/blog-web@{'0' * 64}"}
+        changed = {self.YAML: self._udiff(self.YAML), self.HTML: self._udiff(self.HTML)}
+        self.assertTrue(mod.diff_check(changed, summary, approved))
 
 
 class LiveStateTests(unittest.TestCase):

@@ -285,6 +285,305 @@ def run_gh(args: list[str]) -> str:
     return result.stdout
 
 
+# ---------------------------------------------------------------------------
+# Diff check (spec §9)
+# ---------------------------------------------------------------------------
+
+YAML_PREFIX = "deploy/projects/"
+YAML_SUFFIX = "/workloads/"
+HANDBOOK_PATH = "docs/platform-architecture.html"
+# A full digest, and the 8-hex short form the handbook uses in `Pinned @sha256:`
+# badges. The short form is only ever compared, never approved.
+FULL_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}")
+SHORT_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{8}(?![0-9a-f])")
+IMAGE_LINE_RE = re.compile(r"^(\s*)image:\s*(\S+)\s*$")
+
+
+class _DiffError(Exception):
+    """Raised inside a per-file check; collected into the violation list."""
+
+
+@dataclass(frozen=True)
+class _DiffLine:
+    """One content line of a unified diff, with its marker stripped."""
+
+    sign: str  # "+" or "-"
+    body: str
+    hunk: int
+
+
+FILE_HEADER_PREFIXES = ("diff --git ", "index ", "old mode ", "new mode ")
+BINARY_MARKER = "Binary files "
+
+
+def _parse_diff(diff_text: str, path: str) -> list[_DiffLine]:
+    """Parse a unified diff into content lines, strictly.
+
+    A naive `startswith("+++")` skip-list is wrong: a *content* line whose text
+    begins with `+` renders as `+++...`, so it was dropped and an arbitrary
+    change could ride along with a legitimate pin. Instead this tracks the hunk
+    header state and decides by position: the first line of a hunk is a content
+    line, and `---`/`+++` are only file headers *before* any hunk.
+
+    Anything unrecognised is an error rather than a skip, because a diff this
+    parser cannot read is a diff it must not approve.
+    """
+    lines = diff_text.splitlines()
+    content: list[_DiffLine] = []
+    hunk = -1
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        if line.startswith(FILE_HEADER_PREFIXES):
+            index += 1
+            continue
+        if line.startswith(BINARY_MARKER):
+            raise _DiffError(f"{path}: binary diff is not a pin")
+        if line.startswith("--- ") and hunk < 0:
+            # File header. The +++ line must follow.
+            if index + 1 >= len(lines) or not lines[index + 1].startswith("+++ "):
+                raise _DiffError(f"{path}: malformed diff header")
+            index += 2
+            continue
+        if line.startswith("@@ "):
+            hunk += 1
+            index += 1
+            continue
+        if hunk < 0 and not line.strip():
+            index += 1
+            continue
+        if hunk < 0:
+            raise _DiffError(f"{path}: content before the first hunk: {line[:80]!r}")
+        if line.startswith("\\"):
+            # "\ No newline at end of file"
+            index += 1
+            continue
+        if not line:
+            raise _DiffError(f"{path}: empty line inside a hunk")
+        sign, body = line[0], line[1:]
+        if sign not in "+- ":
+            raise _DiffError(f"{path}: unparseable diff line: {line[:80]!r}")
+        if sign in "+-":
+            content.append(_DiffLine(sign=sign, body=body, hunk=hunk))
+        index += 1
+    return content
+
+
+def _require_prefix(prefix: str) -> tuple[str, ...]:
+    """Reject any path segment that could escape the directory it claims."""
+    return tuple(prefix.strip("/").split("/"))
+
+
+def _segments(path: str) -> list[str]:
+    return [segment for segment in path.split("/") if segment not in ("", ".")]
+
+
+def _is_under(path: str, prefix: str) -> bool:
+    """True only if `path` is inside `prefix`, with no traversal segments."""
+    if ".." in _segments(path):
+        return False
+    wanted = _segments(prefix)
+    actual = _segments(path)
+    return actual[: len(wanted)] == wanted and len(actual) > len(wanted)
+
+
+def _check_yaml_file(path: str, diff_text: str, project: str, approved: dict[str, str]) -> str:
+    """Validate one workload file's diff; return the digest it pins."""
+    expected_prefix = f"{YAML_PREFIX}{project}{YAML_SUFFIX}"
+    if not _is_under(path, expected_prefix):
+        raise _DiffError(f"{path}: not under {expected_prefix}")
+
+    removed: list[str] = []
+    added: list[str] = []
+    for change in _parse_diff(diff_text, path):
+        stripped = change.body.strip()
+        if not stripped:
+            raise _DiffError(f"{path}: a changed line is blank")
+        if not stripped.startswith("image:"):
+            raise _DiffError(f"{path}: changed line is not an `image:` line: {stripped[:80]!r}")
+        (added if change.sign == "+" else removed).append(change.body)
+
+    if len(removed) != 1 or len(added) != 1:
+        raise _DiffError(
+            f"{path}: expected exactly one removed and one added line, "
+            f"found {len(removed)} removed and {len(added)} added"
+        )
+
+    old_line, new_line = removed[0], added[0]
+    old_match = IMAGE_LINE_RE.match(old_line)
+    new_match = IMAGE_LINE_RE.match(new_line)
+    if old_match is None or new_match is None:
+        raise _DiffError(f"{path}: cannot parse the image line")
+    if old_match.group(1) != new_match.group(1):
+        raise _DiffError(
+            f"{path}: indentation changed "
+            f"({len(old_match.group(1))} -> {len(new_match.group(1))} spaces)"
+        )
+
+    old_ref, new_ref = old_match.group(2), new_match.group(2)
+    if not FULL_DIGEST_RE.search(new_ref):
+        raise _DiffError(f"{path}: new image is not pinned by digest: {new_ref!r}")
+    old_repo = old_ref.rsplit("@", 1)[0]
+    if "@" not in new_ref:
+        raise _DiffError(f"{path}: new image has no digest: {new_ref!r}")
+    new_repo, new_digest = new_ref.rsplit("@", 1)
+    if new_repo != old_repo:
+        raise _DiffError(
+            f"{path}: repository changed ({old_repo!r} -> {new_repo!r}); "
+            "a pin may only change the digest"
+        )
+
+    approved_refs = {ref for ref in approved.values()}
+    if new_ref not in approved_refs:
+        raise _DiffError(f"{path}: {new_ref} is not one of the approved images")
+    return new_digest
+
+
+def _check_handbook(diff_text: str, approved: dict[str, str]) -> None:
+    """Every handbook difference must map an old digest to an approved new one.
+
+    Two independent guarantees, because checking only that the new digest is
+    somewhere in the approved set lets rows swap digests:
+
+      1. the line, with digest tokens blanked, is otherwise unchanged; and
+      2. the old digest on that line is one the pin is replacing with the new
+         digest on that same line.
+    """
+    if not diff_text.strip():
+        raise _DiffError(f"{HANDBOOK_PATH}: html_changed was reported but the diff is empty")
+
+    approved_pairs = set()
+    for ref in approved.values():
+        repo, _, digest = ref.partition("@")
+        if digest:
+            approved_pairs.add((repo, digest))
+
+    content = _parse_diff(diff_text, HANDBOOK_PATH)
+    removed = [change.body for change in content if change.sign == "-"]
+    added = [change.body for change in content if change.sign == "+"]
+
+    if not removed and not added:
+        raise _DiffError(f"{HANDBOOK_PATH}: the diff changes no lines")
+    if len(removed) != len(added):
+        raise _DiffError(
+            f"{HANDBOOK_PATH}: {len(removed)} removed vs {len(added)} added lines"
+        )
+
+    for old_line, new_line in zip(removed, added):
+        old_full = FULL_DIGEST_RE.findall(old_line)
+        new_full = FULL_DIGEST_RE.findall(new_line)
+        old_short = SHORT_DIGEST_RE.findall(old_line)
+        new_short = SHORT_DIGEST_RE.findall(new_line)
+
+        # 1. Nothing but digest tokens may differ.
+        if _blank(old_line, old_full + old_short) != _blank(new_line, new_full + new_short):
+            raise _DiffError(
+                f"{HANDBOOK_PATH}: a change is not a digest swap: {new_line.strip()[:80]!r}"
+            )
+
+        # 2. Each new digest must be the replacement for an old one present on
+        #    the same line. A line may carry several rows, so compare sets.
+        if len(old_full) != len(new_full):
+            raise _DiffError(
+                f"{HANDBOOK_PATH}: digest count changed "
+                f"({len(old_full)} -> {len(new_full)})"
+            )
+        if old_full:
+            # Full digests: the repository is on the same line, so require the
+            # approved (repo, digest) pair to be an exact repin of an old digest.
+            for new_digest in new_full:
+                if new_digest in old_full:
+                    continue  # an unchanged digest elsewhere in the same row
+                if not any(
+                    digest == new_digest and repo in new_line
+                    for repo, digest in approved_pairs
+                ):
+                    raise _DiffError(
+                        f"{HANDBOOK_PATH}: {new_digest} is not an approved digest for "
+                        "a repository on that line"
+                    )
+            if set(new_full) == set(old_full) and old_line != new_line:
+                raise _DiffError(f"{HANDBOOK_PATH}: a digest line changed without a repin")
+
+        # Short badges are 8-hex prefixes of a full digest. They must be the
+        # prefix of an approved digest, compared against the same field the
+        # approved refs carry (`sha256:<hex>`), not against bare hex.
+        for new_token in new_short:
+            hex_part = new_token.split(":", 1)[1]
+            if not any(
+                approved_digest.split(":", 1)[1].startswith(hex_part)
+                for _, approved_digest in approved_pairs
+            ):
+                raise _DiffError(f"{HANDBOOK_PATH}: short digest {new_token} is not approved")
+        for old_token, new_token in zip(old_short, new_short):
+            if old_token == new_token:
+                continue
+            # The badge must still be the prefix of the digest that row pins,
+            # so a badge cannot be repointed at a different role's image.
+            if not any(
+                approved_digest.split(":", 1)[1].startswith(new_token.split(":", 1)[1])
+                for _, approved_digest in approved_pairs
+            ):
+                raise _DiffError(f"{HANDBOOK_PATH}: short digest {new_token} is not approved")
+
+
+def _blank(text: str, tokens: list[str]) -> str:
+    for token in tokens:
+        text = text.replace(token, "\x00")
+    return text
+
+
+def diff_check(changed: dict[str, str], summary: dict, approved: dict[str, str]) -> list[str]:
+    """Validate the pin diff. Returns violations; empty means it passed.
+
+    `changed` maps path -> unified diff text for every modified file.
+    `summary` is the helper's summary dict.
+    `approved` maps role -> `repo@sha256:<64-hex>` that the operator approved.
+
+    Rules, in the order they are checked:
+      1. The file set equals the paths the helper actually wrote (roles whose
+         image changed), plus the handbook when the helper rewrote it.
+      2. Every workload path is under this project's workloads directory.
+      3. Each workload file has exactly one removed and one added `image:` line,
+         same repository, same indentation, new digest approved.
+      4. Every handbook difference maps an old digest to an approved new one.
+    """
+    project = summary["project"]
+    violations: list[str] = []
+
+    written_paths = {
+        image["path"] for image in summary.get("images", []) if not image.get("noop")
+    }
+    expected = set(written_paths)
+    if summary.get("html_changed"):
+        expected.add(HANDBOOK_PATH)
+
+    actual = set(changed)
+    for path in sorted(actual - expected):
+        violations.append(f"{path}: changed but the helper did not write it")
+    for path in sorted(expected - actual):
+        violations.append(f"{path}: the helper wrote it but it is not in the diff")
+    if violations:
+        return violations
+
+    if not expected:
+        return [f"diff is empty: nothing was written (project {project})"]
+
+    for path in sorted(written_paths & actual):
+        try:
+            _check_yaml_file(path, changed[path], project, approved)
+        except _DiffError as exc:
+            violations.append(str(exc))
+
+    if HANDBOOK_PATH in actual:
+        try:
+            _check_handbook(changed[HANDBOOK_PATH], approved)
+        except _DiffError as exc:
+            violations.append(str(exc))
+
+    return violations
+
+
 def request_from_env(project: str, sha: str, roles: str, run_url: str | None) -> Request:
     return Request(
         project=(project or "").strip().lower(),
@@ -367,6 +666,23 @@ def main(argv: list[str] | None = None) -> int:
     mark.add_argument("--conclusion", default="success")
     mark.add_argument("--out", required=True, type=Path)
 
+    diffp = sub.add_parser("diff-check", help="validate the pin diff before opening a PR")
+    diffp.add_argument(
+        "--changed-dir",
+        required=True,
+        type=Path,
+        help="directory of per-file unified diffs, named after each changed path "
+        "(created with `git diff --name-only` + `git diff -- <path>`)",
+    )
+    diffp.add_argument("--summary", required=True, type=Path, help="helper summary JSON")
+    diffp.add_argument(
+        "--approved",
+        required=True,
+        type=Path,
+        help="JSON object mapping role -> approved repo@sha256:<64-hex>",
+    )
+    diffp.add_argument("--json", action="store_true")
+
     args = parser.parse_args(argv)
 
     try:
@@ -396,6 +712,26 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"marker written to {args.out}")
             return 0
+
+        if args.command == "diff-check":
+            summary = json.loads(Path(args.summary).read_text(encoding="utf-8"))
+            approved = json.loads(Path(args.approved).read_text(encoding="utf-8"))
+            changed = {}
+            base = Path(args.changed_dir)
+            for path in sorted(base.rglob("*")):
+                if path.is_file():
+                    rel = path.relative_to(base).as_posix()
+                    # The dir name encodes the repository path with '/' kept as
+                    # directories, so the relative path is the repo path.
+                    changed[rel] = path.read_text(encoding="utf-8")
+            violations = diff_check(changed, summary, approved)
+            if args.json:
+                print(json.dumps({"passed": not violations, "violations": violations}))
+            else:
+                for violation in violations:
+                    print(f"::error::{violation}")
+                print("diff check passed" if not violations else "diff check FAILED")
+            return 0 if not violations else 1
 
         request = validate_request(
             request_from_env(args.project, args.sha, args.roles, getattr(args, "run_url", "")),
