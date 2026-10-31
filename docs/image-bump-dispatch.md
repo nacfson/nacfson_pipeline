@@ -10,7 +10,7 @@ source repo build (blog / Project_PN / health)
         payload: project, source_repo, sha, roles, run_url   (a hint only)
               ▼
 .github/workflows/image-bump-request.yaml  →  scripts/image-bump-request.py
-  1. project + source_repo must match config/image-bump-sources.json
+  1. project + source_repo must match config/image-pin-sources.json
   2. dry-run update-project-images with a commit link per role:
      tag lookup by sha, amd64+arm64, ports, source + revision labels
   3. invalid or failed         → red run, no issue
@@ -28,7 +28,7 @@ issue labelled `image-bump`   →   Allow: one PR "Closes #N"  /  Disallow: clos
 | :--- | :--- |
 | `.github/workflows/image-bump-request.yaml` | Receives `image-built` (and manual `workflow_dispatch`) |
 | `scripts/image-bump-request.py` | Validates the request and opens or supersedes issues |
-| `config/image-bump-sources.json` | Allowlist: project → source repository and roles |
+| `config/image-pin-sources.json` | Allowlist: project → source repository and roles |
 | `tests/skills/test_image_bump_request.py` | Unit tests (run by `gitops.yaml`) |
 
 Each source repository's publish workflow ends with a `notify-pipeline` job
