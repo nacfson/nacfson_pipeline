@@ -57,7 +57,7 @@ nacfson_pipeline: .github/workflows/image-pin.yaml
                    Reject → job never runs
                    Approve → newer-request check → apply exact digests
                            → diff check → handbook sync → render-validate
-                             (preflight + kubeconform + invariants, both envs)
+                             + platform-preflight (both envs)
                            → push branch → open PR
         ▼
   report job     runs always, edits the Discord message with the outcome
@@ -123,7 +123,13 @@ Permissions: `contents: read`, `actions: read`, `packages: read`, `pull-requests
 3. **Reuse an existing PR.** If an open PR already exists from this branch, set outcome `pr_exists`.
 4. **Apply the approved digests.** Run the helper with `--image <role>=<repo>@sha256:<digest>` and a new `--skip-validation` flag. The digest path still confirms the digest exists in GHCR, so an image deleted while the request waited stops the run. **(my call: this existence check isn't a second validation)** Two caveats the implementer must handle: the `<repo>@sha256:` form is not free-text — it is repo-equality checked against the container's current repo and rejected on mismatch, so it can only ever re-pin the same repository and intentionally cannot express a repo move (§9 catches that as a violation rather than performing it). And a bare `sha256:<hex>` would be silently reinterpreted as the *current* repo, so pass the full `<repo>@<digest>` form and assert the applied `old_repo` matches what `validate` recorded.
 5. **Stop if already pinned.** If `main` already has these digests, set outcome `already_pinned`.
-6. **Run the full gate, not a subset.** In order: the diff check (§9), then `check-arch-doc-sync.py --worktree`, then `./scripts/render-validate.sh <env>` for both `local-k3s` and `vps-k3s`. That last step is the real admission gate, and it runs three checks, not one: `platform-preflight` (capacity, QoS, isolation, memory freeze, budgets), `kubeconform` schema validation, and the render invariants. Principle I requires `platform-preflight` before a revision becomes the deployment source, and merging this PR is exactly that promotion, so it must run here rather than be carved out. Measured cost is about 7.4s per environment locally, so roughly 30s in CI including the `flux` and `kubeconform` install. A digest-only diff cannot move a budget and will pass, but the gate runs anyway so the rule holds without a new exception and the schema and invariant checks are not silently lost. **(operator)**
+6. **Run the full gate, not a subset.** In order:
+   1. the diff check (§9)
+   2. `check-arch-doc-sync.py` in a diff mode that works on a fresh checkout (§14)
+   3. for each of `local-k3s` and `vps-k3s`: `./scripts/render-validate.sh <env>`, which renders the candidate and runs `kubeconform` schema validation plus the render invariants
+   4. `platform-preflight.py --environment <env> --candidate <the file render-validate printed> --capacity clusters/<env>/capacity.yaml`
+
+   Step 4 is separate on purpose: `render-validate.sh` does **not** invoke `platform-preflight` — it only prints the candidate path for a caller to feed in. Principle I requires `platform-preflight` before a revision becomes the deployment source, and merging this PR is exactly that promotion, so both steps must run here rather than be carved out. Measured locally: about 7.4s per render and 1.1s for preflight that passed (CPU=4000m, Mem=8192Mi, 3 projects, 868.33m/757.33Mi per slice), so roughly 20s for both environments plus the `flux` and `kubeconform` install. A digest-only diff cannot move a budget and will pass, but the gate runs anyway so the rule holds without a new exception and the schema and invariant checks are not silently lost. **(operator)**
 7. **Commit, push and open the PR** with `GITHUB_TOKEN`, as `github-actions[bot]`, on `chore/images-<project>-<sha7>`. The commit message is `chore(proj-<project>): update <roles> image pin(s)`.
 
 The PR description holds:
@@ -290,7 +296,7 @@ Removed entirely, in step 4. **(operator)** None of this has ever run: no `image
 - Diff check accepts a **partial** change: a two-role request where one role is already pinned writes one YAML path; and accepts an unchanged handbook.
 - Message rendering: `allowed_mentions` is empty, each outcome in §7.3 maps to the right text, and the review button URL is the `nacfson_pipeline` run URL.
 - `--skip-validation`: skips `validate_image`, still confirms the digest exists, and is off by default.
-- Gate ordering: a failure in any of render, `platform-preflight`, schema, invariants, diff or handbook check stops the run before a branch is pushed. Assert the pin job invokes `render-validate.sh` for both `local-k3s` and `vps-k3s`, so the Principle I gate can't be dropped silently later.
+- Gate ordering: a failure in any of render, `platform-preflight`, schema, invariants, diff or handbook check stops the run before a branch is pushed. Assert the pin job runs both `render-validate.sh` **and** `platform-preflight.py` for `local-k3s` and `vps-k3s`, so the Principle I gate can't be dropped silently later — `render-validate.sh` alone does not satisfy it.
 - Unset `DISCORD_WEBHOOK_URL`: `validate` warns, still reaches the approval gate, and does not fail.
 
 **Live acceptance**, run by hand for `blog` before any sender is connected:
@@ -309,7 +315,7 @@ Removed entirely, in step 4. **(operator)** None of this has ever run: no `image
 
 Each step lands through its own PR.
 
-1. **Workflow and approval:** `image-pin.yaml`, `scripts/image-pin.py`, the diff check, the helper flag, the gate steps (`render-validate` for both environments), the environment and the repository setting. Includes `config/image-pin-sources.json` — the rename in §16 must happen here, not in step 4, because §7.1 step 1 reads that file. Run it by hand for `blog`, and try approving from a phone.
+1. **Workflow and approval:** `image-pin.yaml`, `scripts/image-pin.py`, the diff check, the helper flag, the gate steps (`render-validate` **and** `platform-preflight` for both environments), the environment and the repository setting. Includes `config/image-pin-sources.json` — the rename in §16 must happen here, not in step 4, because §7.1 step 1 reads that file. Run it by hand for `blog`, and try approving from a phone.
 2. **Discord:** the channel, the webhook, the message and the `report` job.
 3. **Projects:** `blog`, then `Project_PN` with its package access, then `nacfson_health`. Each repo is a separate PR.
 4. **Cleanup:** §15, §16 and §14 together, then `docs/image-pin.md`.
