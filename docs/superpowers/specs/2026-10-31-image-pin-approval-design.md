@@ -93,14 +93,20 @@ gh workflow run image-pin.yaml -R nacfson/nacfson_pipeline --ref main \
 
 ## 7. `image-pin.yaml`
 
-Triggered only by `workflow_dispatch`, so the operator can also start a request by hand. `run-name` carries the project, roles and commit so later runs can compare themselves with waiting ones. There is no `concurrency` group, because one would cancel waiting requests.
+Triggered only by `workflow_dispatch`, so the operator can also start a request by hand. `run-name` carries the project, roles and commit for readability. There is no `concurrency` group, because one would cancel waiting requests.
+
+**Request identity is not derived from `run-name`.** Duplicate and newer-request decisions (§7.1 step 2, §7.2 step 2) must be made from state the receiver validated itself, never from a name the requester authored. The old `image-bump-request.py` got this right with a machine-readable marker in an issue body (`MARKER_RE`, L40, and `plan()` at L176-197); moving to run-name string parsing would lose it. The replacement: each `validate` run writes a small marker (project, sha, roles, conclusion) as a **job artifact or a comment on its own run**, and later runs compare against that marker only when the referenced run's `validate` concluded `success`. That makes a red or forged run unable to suppress anything.
+
+Two timing facts shape the rules below, and the original design got both wrong:
+- A run is `queued` from dispatch until its `validate` finishes and `pin` reaches the environment gate; only then is it `waiting`. Two dispatches seconds apart both see no `waiting` run, so a pure "waiting" filter cannot prevent the duplicate §13 promises to prevent.
+- A run leaves `waiting` the moment it is **approved** and enters `in_progress`. So "is a newer *waiting* run covering my roles?" answers "no" for a newer request the operator already approved — the older run then proceeds, which is exactly the outcome §13 says cannot happen.
 
 ### 7.1 `validate` job
 
 Permissions: `contents: read`, `actions: read`, `packages: read`, `pull-requests: read`. Secret: `DISCORD_WEBHOOK_URL`.
 
 1. **Check the request.** `project`, `roles` and `run_url` must match `config/image-pin-sources.json`, and `sha` must be 40 hex characters. These rules move unchanged from `scripts/image-bump-request.py`. Note that there `run_url` is **optional** — it is only format-checked when present (`if run_url and not re.fullmatch(...)`, L118) and pinned to `https://github.com/<source_repo>/actions/runs/<digits>(/attempts/<digits>)?`. A hand-run has no such URL, so `run_url` must stay optional here too, and the message must simply omit the build link. Requiring it would make the step-1 hand test impossible without a fabricated value.
-2. **Skip duplicates.** Stop quietly if a waiting run already covers this project, commit and these roles, or if an open PR exists from `chore/images-<project>-<sha7>`.
+2. **Skip duplicates.** Stop quietly if an earlier request for this project, commit and these roles is still live — meaning its marker exists, its `validate` concluded `success`, and its run is `queued`, `waiting` or `in_progress` — or if an open PR exists from `chore/images-<project>-<sha7>`. Because this runs before `pin` is queued, this run cannot yet see itself; the overlap case is handled by the marker write being idempotent for one commit, not by the status filter.
 3. **Validate the images.** Log in to GHCR with `GITHUB_TOKEN`, then dry-run the helper with one commit link per role. This is the one full validation: tag lookup by commit, `linux/amd64` and `linux/arm64`, rootfs and entrypoint, exposed ports, source and revision labels. **Toolchain:** every one of those checks shells out to `skopeo`, which the helper calls directly (no fallback); it is preinstalled on `ubuntu-latest` (1.13.3 on 24.04), but pinning it explicitly is safer than relying on the runner image. The job also needs PyYAML (`scripts/requirements-preflight.txt`) and the helper at `.agents/skills/update-project-images/scripts/update_project_images.py`, whose path the spec must state because §7.2 step 4 edits its `argparse`.
 4. **Stop if nothing changes.** If every role's image summary has `noop: true`, end quietly. The helper has no per-role `changed` field; `changed` is a whole-run boolean and `noop` is the per-role one.
 5. **Record the result.** Job outputs carry each role's exact `repo@sha256:<64-hex>` and old digest.
@@ -111,9 +117,9 @@ Permissions: `contents: read`, `actions: read`, `packages: read`, `pull-requests
 `environment: image-pin`. Permissions: `contents: write`, `pull-requests: write`, `actions: read`, `packages: read`. It holds no secret of its own, and because it runs only after approval, it can't write anything before then.
 
 1. **Check out current `main`**, not the commit from when the request was made.
-2. **Stop if replaced.** If a newer waiting run for this project covers all these roles, set outcome `replaced` and stop without opening a PR.
+2. **Stop if replaced.** If a newer request for this project covers all these roles and is still live, set outcome `replaced` and stop without opening a PR. "Live" is `queued`, `waiting`, **or `in_progress`** — the last one matters because an approved newer run has already left `waiting`. Compare by commit timestamp, not run ID.
 3. **Reuse an existing PR.** If an open PR already exists from this branch, set outcome `pr_exists`.
-4. **Apply the approved digests.** Run the helper with `--image <role>=<repo>@sha256:<digest>` and a new `--skip-validation` flag. The digest path still confirms the digest exists in GHCR, so an image deleted while the request waited stops the run. **(my call: this existence check isn't a second validation)**
+4. **Apply the approved digests.** Run the helper with `--image <role>=<repo>@sha256:<digest>` and a new `--skip-validation` flag. The digest path still confirms the digest exists in GHCR, so an image deleted while the request waited stops the run. **(my call: this existence check isn't a second validation)** Two caveats the implementer must handle: the `<repo>@sha256:` form is not free-text — it is repo-equality checked against the container's current repo and rejected on mismatch, so it can only ever re-pin the same repository and intentionally cannot express a repo move (§9 catches that as a violation rather than performing it). And a bare `sha256:<hex>` would be silently reinterpreted as the *current* repo, so pass the full `<repo>@<digest>` form and assert the applied `old_repo` matches what `validate` recorded.
 5. **Stop if already pinned.** If `main` already has these digests, set outcome `already_pinned`.
 6. **Run the short checks:** the diff check (§9), then `check-arch-doc-sync.py --worktree`. Optionally also `platform-preflight`, if we accept the extra runtime: Principle I says a revision reaches a cluster "only after a revision has passed that environment's required checks, including `platform-preflight`", and a pin PR becomes the deployment source on merge. A digest-only change cannot move a budget, so the check would pass, and its absence is disclosed rather than silently assumed. **(operator decision still open)**
 7. **Commit, push and open the PR** with `GITHUB_TOKEN`, as `github-actions[bot]`, on `chore/images-<project>-<sha7>`. The commit message is `chore(proj-<project>): update <roles> image pin(s)`.
@@ -169,6 +175,8 @@ This is what makes skipping CI safe. Any failure stops the run and no PR opens. 
 - **Project scope:** every YAML path must be under `deploy/projects/<project>/workloads/`.
 - **YAML:** each file has exactly one removed and one added line. Both must match `image: <repo>@sha256:<64-hex>`, with the same repository and indentation, and the new digest must be the one approved, on the same container the role resolved to at validation time.
 - **Handbook:** compare `main` with the new version token by token over `sha256:<hex>` values. Every difference must map an old digest to its approved new digest, in full or short form, and nothing else may differ.
+- **Known limitation — the handbook's own prose.** `docs/platform-architecture.html:942` still attributes the pins-table regeneration to the `update-project-images` skill. Once §7.2 does that work, the sentence is wrong, and this rule forbids a pin PR from fixing it (a prose edit would differ from a digest mapping). It must be corrected by hand, in step 4, outside this flow. Until then the handbook carries a stale attribution — accepted, because letting the workflow rewrite prose would let it change anything.
+- **Known limitation — short-form tokens.** The helper rewrites short `Pinned @sha256:<8-hex>` tokens, not only full digests. If such a token was hand-edited away from the YAML's full digest, the helper's rewrite will not correspond to an old→new mapping of the token it replaced, and this check fails on the helper's own edit. Only two such tokens exist today, so this is latent; the failure is loud, and the fix is to correct the token by hand.
 - **Cross-project rows:** the helper rebuilds the whole pins table from every `deploy/projects/*` directory, so a pin PR can rewrite rows for projects other than the requested one. When those rows were already current nothing changes and the check passes. If a second project's pin landed between validation and approval, this run rewrites that row back and the check fails loudly. That is intentional, and the fix is to rebase and re-request. **(my call)**
 
 If the handbook's pin table is already stale, regenerating it fails this check. That is intentional: the run fails loudly and the handbook gets fixed by hand. **(my call)**
@@ -180,11 +188,11 @@ Most of this exists already in the helper, so no per-file registration is needed
 | Filter | Decides | Stops when |
 |---|---|---|
 | Allowlist | Which project and source repo | Project, repo or role isn't allowed |
-| `discover_target` | Reads only `deploy/projects/<project>/workloads/` and matches the role to a container | No match, or more than one |
+| `discover_target` | Reads only `deploy/projects/<project>/workloads/` and scores each container: exact container name, then deployment name, then a `-<role>` suffix on the deployment or repository | No match, or a tie at the top score |
 | `replace_image` | The `image:` line holding the current digest | Not found exactly once |
 | Diff check (§9, new) | Nothing else changed | Anything else differs |
 
-Adding a project needs its `deploy/projects/<slug>/workloads/` folder, a line in `config/image-pin-sources.json`, a sender job, and container names that match its role names.
+Adding a project needs its `deploy/projects/<slug>/workloads/` folder, a line in `config/image-pin-sources.json`, a sender job, and a container or deployment name that contains its role. It does **not** need the container renamed to the role: `blog` has role `web` and container `blog-web`, and it resolves at score 80 through the deployment-suffix rule. All five allowlisted roles resolve today.
 
 ## 11. Secrets and settings
 
@@ -210,7 +218,7 @@ Adding a project needs its `deploy/projects/<slug>/workloads/` folder, a line in
 - **Who can approve:** only the required reviewer, verified by GitHub. A fake Discord message can't approve anything, and its link can only lead to a GitHub page.
 - **What a token holder can request:** the sender's identity isn't proven, because `workflow_dispatch` inputs are self-declared. Any holder of `PIPELINE_RUN_TOKEN` can name any allowlisted project. They can still only name a commit whose image exists under that project's repository, with matching source and revision labels. Within *this* flow the worst outcome is a request for an older real image, which still needs approval and a merge.
 - **What a token holder can do outside this flow:** more than the sentence above suggests. `Actions: write` dispatches any workflow with `workflow_dispatch` on any existing branch, so it also reaches `build-images.yaml` and can republish `:latest` tags (§11). Treat the token as "can disturb CI and `:latest` images in this repository", not "can only ask for older images".
-- **Requests can't be hidden, but can be crowded out:** duplicate and newer-request checks (§7.1 step 2, §7.2 step 2) read other runs' names, and those names come from dispatch inputs. A failed run still sits in the list for 30 days carrying its name. So a token holder can make a legitimate request stop quietly at §7.1 step 2, or make a waiting one report `replaced`. They gain no write access — nothing merges — but a missed message looks the same as "nothing to do". Mitigation: key these checks on the run's *actor and validated inputs* rather than only its `run-name`, and have the manual `update-project-images` skill as the fallback.
+- **Requests can be crowded out, not silently forged:** duplicate and newer-request checks (§7.1 step 2, §7.2 step 2) compare against a marker each `validate` run writes about itself, and only when that run concluded `success` — never against requester-authored `run-name` text. A failed or decoy run therefore cannot suppress a legitimate request. Residual gap: if two requests for the same commit are dispatched within seconds, neither has reached `waiting` yet, so both can pass §7.1 step 2 (see §13). They still gain no write access — nothing merges without the operator — and the manual `update-project-images` skill remains the fallback.
 - **What a pin PR can change:** only image digests and their handbook entries (§9).
 - **Final check:** the operator merges, and normal CI doesn't run first. The PR shows the old and new digests, and `gitops`, `lint` and `secret-scan` run on `main` after merge without blocking Flux.
 
@@ -218,11 +226,11 @@ Adding a project needs its `deploy/projects/<slug>/workloads/` folder, a line in
 
 | Case | Behaviour |
 |---|---|
-| Newer build while waiting | Two messages exist. Approving the older one stops at §7.2 step 2 if the newer one covers its roles |
+| Newer build while waiting | Two messages exist. Approving the older one stops at §7.2 step 2 if the newer one covers its roles — and this holds even after the newer one is approved, because `in_progress` counts as live |
 | Frontend-only build while a backend request waits | Both stay valid, and each opens its own PR. A later one must apply cleanly to current `main` |
-| Same commit dispatched twice | The second stops at §7.1 step 2 |
+| Same commit dispatched twice within seconds | Both may pass §7.1 step 2, because neither has reached `waiting` yet. Dedupe relies on the per-commit marker being idempotent; if two PRs do open, the second is closed by hand |
 | Re-run of an old build | Treated as a new request. The PR shows the older digest, and the operator decides |
-| Two approvals landing together | Each uses its own branch. The second may hit a merge conflict, and then the operator closes it and re-requests |
+| Two approvals landing together | Each uses its own branch, and both regenerate the pins table for every project, so the second usually conflicts on `docs/platform-architecture.html`. The operator closes it and re-requests |
 | Image deleted while waiting | §7.2 step 4 fails, and the message says Failed |
 | Discord down at request time | Warning only. The run still waits on the Actions page |
 | Token expired | The sender warns and the build still succeeds. No request appears until rotation |
@@ -244,7 +252,7 @@ No required checks, no `ci.yaml`, and no `ci-required`. **(operator)** `gitops`,
 | Nightly 03:00 UTC schedule | Remove | This is the one real loss: no re-run when no PR is open |
 
 - That job's checkout needs `fetch-depth: 0`, as `review-gate.yaml` used. `gitops.yaml`'s `preflight-tests` checkout has no `with:` block today, so it is depth 1.
-- `tests/review_cycle/test_ci_and_evals.py` currently requires `review-gate.yaml` and its schedule, and asserts `check-arch-doc-sync.py --worktree` in it (L31-46). It must assert the moved steps in `gitops.yaml` instead, and assert the *new* mode, so the no-op can't come back.
+- `tests/review_cycle/test_ci_and_evals.py` currently requires `review-gate.yaml` and its schedule, and asserts `check-arch-doc-sync.py --worktree` in it (L31-46). It must assert the moved steps in `gitops.yaml` instead, and assert the *new* mode, so the no-op can't come back. Deleting the workflow is not enough on its own: the `merge_group` loop at L31-33 iterates `("lint.yaml", "gitops.yaml", "review-gate.yaml")` and `read_text` raises `FileNotFoundError` on the deleted file, and L37 reads it by name again. Drop `review-gate.yaml` from that loop and remove the L36-44 schedule/steps assertions, or `python3 -m unittest discover tests/review_cycle` stays red on every PR, inside the same job.
 - `lint.yaml` and `gitops.yaml` keep their `merge_group` triggers.
 
 ## 15. Review rule
@@ -275,7 +283,7 @@ Removed entirely, in step 4. **(operator)** None of this has ever run: no `image
 
 **Unit tests**, in `tests/skills/test_image_pin.py`, run by `gitops.yaml`:
 - Request checks: wrong repo, bad SHA, unknown role, bad `run_url`, and an **absent** `run_url` (a hand-run must pass).
-- Duplicate and newer checks, from fixture run lists, including partial role coverage, a rejected run that must not suppress a new request, and a newer run already approved and so no longer `waiting`.
+- Duplicate and newer checks, from fixture run lists, including partial role coverage, a rejected run that must not suppress a new request, a newer run already approved (`in_progress`) that must still report `replaced`, and two dispatches seconds apart that are both `queued`.
 - Diff check accepts a real pin diff, and rejects: a tag instead of a digest, a changed repository, an extra YAML line, an extra file, a path in another project, an unapproved digest, and an unrelated handbook change.
 - Diff check accepts a **partial** change: a two-role request where one role is already pinned writes one YAML path; and accepts an unchanged handbook.
 - Message rendering: `allowed_mentions` is empty, each outcome in §7.3 maps to the right text, and the review button URL is the `nacfson_pipeline` run URL.
@@ -323,7 +331,7 @@ Documented behaviour, not yet run on this repository:
 - The link button rendering through a plain webhook.
 - `GITHUB_TOKEN` opening a PR, and that PR starting no workflows.
 - `GITHUB_TOKEN` reading PN's private packages after the access grant.
-- Listing waiting runs and reading their `run-name` from inside a run. The runs API does expose `status=waiting` for runs held at an environment gate, and `GET /actions/runs/{id}/approvals` returns `pending`/`approved`/`rejected`, so §7.3's reject-vs-fail distinction is possible.
+- Reading another run's marker and status from inside a run. The runs API exposes `status=waiting` for runs held at an environment gate and `in_progress` once approved, and `GET /actions/runs/{id}/approvals` returns `pending`/`approved`/`rejected`, so both §7.3's reject-vs-fail distinction and §7.2 step 2's "still live" test are possible. `run-name` is deliberately not used for these decisions, because it is requester-authored.
 - The `report` job running after a rejection and after the 30-day cancellation. If it doesn't run after cancellation, that message stays unchanged. **(accepted risk)**
 
 ## 20. Rejected
