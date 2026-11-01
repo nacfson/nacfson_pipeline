@@ -102,10 +102,15 @@ if os.path.isdir(proj_dir):
 # Schema validation with kubeconform if present
 if command -v kubeconform >/dev/null 2>&1; then
   echo "=== Running kubeconform schema validation ===" >&2
+  # Pinned: the catalog's main branch changes without notice. Its Cilium 1.20.2
+  # update (8f08f38d) made kubeconform v0.6.7 report CiliumNetworkPolicy as having
+  # no schema, which failed this check for every change. This ref is that commit's
+  # parent, so its CiliumNetworkPolicy schema is still Cilium 1.18.2.
+  CRD_CATALOG_REF="6ec4c804fcb9b0a90fec9dd468aa57b984be150a"
   kubeconform -strict -kubernetes-version 1.35.0 \
     -skip CustomResourceDefinition \
     -schema-location default \
-    -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{ .Group }}/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json' \
+    -schema-location "https://raw.githubusercontent.com/datreeio/CRDs-catalog/${CRD_CATALOG_REF}/{{ .Group }}/{{ .ResourceKind }}_{{ .ResourceAPIVersion }}.json" \
     "${RENDER_FILE}" >&2
 else
   echo "Notice: kubeconform not installed locally, skipping kubeconform step." >&2

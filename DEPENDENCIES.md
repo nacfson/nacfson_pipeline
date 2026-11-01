@@ -47,7 +47,7 @@ Per [Constitution Principle I](.specify/memory/constitution.md#L6-L7), third-par
 | **VM Bootstrap** | `ansible-core` | `==2.21.4` | [`bootstrap/requirements.txt`](bootstrap/requirements.txt) |
 | **Preflight & Invariant Scripts** | `Python` + `PyYAML` | Python `3.12` + `PyYAML==6.0.3` | [`scripts/requirements-preflight.txt`](scripts/requirements-preflight.txt), [`.github/workflows/gitops.yaml`](.github/workflows/gitops.yaml) |
 | **K8s Schema Validation** | `kubeconform` | `v0.6.7` | [`.github/workflows/gitops.yaml`](.github/workflows/gitops.yaml), [`scripts/render-validate.sh`](scripts/render-validate.sh) |
-| **CRD Schema Catalog** | Datree CRDs Catalog | `main` (Traefik, cert-manager, Flux CRDs) | [`.github/workflows/gitops.yaml`](.github/workflows/gitops.yaml), [`scripts/render-validate.sh`](scripts/render-validate.sh) |
+| **CRD Schema Catalog** | Datree CRDs Catalog | `6ec4c804fcb9b0a90fec9dd468aa57b984be150a` (Traefik, cert-manager, Flux, Cilium CRDs; Cilium schema is 1.18.2) | [`scripts/render-validate.sh`](scripts/render-validate.sh) |
 | **Shell Linting** | `shellcheck` | `v0.11.0` | [`.github/workflows/lint.yaml`](.github/workflows/lint.yaml) (`./scripts`) |
 | **YAML Linting** | `yamllint` | `ibiqlik/action-yamllint@v3` | [`.github/workflows/lint.yaml`](.github/workflows/lint.yaml) (`deploy/`, `clusters/`) |
 | **Secret Scanning** | `gitleaks` | `gitleaks/gitleaks-action@v2` | [`.github/workflows/secret-scan.yaml`](.github/workflows/secret-scan.yaml), [`.gitleaksignore`](.gitleaksignore) |
