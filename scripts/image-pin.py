@@ -385,6 +385,14 @@ def _md_line(value: object, limit: int = 300) -> str:
 def _evidence_rows(image: dict, include_evidence: bool) -> list[str]:
     """Per-platform lines. Image configuration only when the image is public."""
     rows = []
+    if image.get("validation_skipped"):
+        # Say so plainly. Empty platforms/checks would otherwise read as a clean
+        # pass, and a reader approving the PR deserves to know the image was
+        # never inspected in this job.
+        rows.append(
+            "- **not inspected in this job** — validation ran in the earlier "
+            "`validate` run that the operator approved"
+        )
     platforms = image.get("platforms") or []
     if platforms:
         rows.append(f"- platforms: {', '.join(platforms)}")
