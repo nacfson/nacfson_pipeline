@@ -2356,6 +2356,15 @@
         details: 'Computes 1/n resource slices from capacity.yaml, enforces Peak Memory Envelope Freeze, and verifies rendered Kustomize invariants.'
       },
       {
+        cat: 'ci',
+        name: 'kubeconform + Datree CRDs Catalog',
+        ver: 'v0.6.7 + catalog 6ec4c804',
+        license: 'Apache-2.0 / MIT',
+        role: 'Rendered Manifest Schema Validation',
+        where: 'scripts/render-validate.sh',
+        details: 'Validates rendered manifests in strict mode against CRD schemas from a pinned catalog commit. The pinned CiliumNetworkPolicy schema is Cilium 1.18.2, because the catalog update to 1.20.2 fails under kubeconform v0.6.7.'
+      },
+      {
         cat: 'oss',
         name: 'Cilium eBPF CNI',
         ver: 'v1.20.3',
