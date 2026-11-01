@@ -34,7 +34,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: frontend
-          image: ghcr.io/nacfson/health-frontend@sha256:35869fe00aa085e9487aadbb27a052157754a6764d82fe0e78c0764aa206c712
+          image: ghcr.io/nacfson/health-frontend@sha256:bfc859a2fa9856a9ece66e8777f09414e12bab14dadb8ff866dc796023c3f2a3
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
