@@ -2,10 +2,10 @@
 """
 Config-as-code checks for platform session lifetimes (GitHub issue #93).
 
-The realm import used to set no lifespans, so the live realm ran on Keycloak 24
-defaults (SSO Session Idle 30 min). The gateway refreshes only when a protected
-API call arrives after the 5-minute access token expires, so a visitor who made
-no such call for 30 minutes was signed out and sent back to Google.
+The realm import used to set no lifespans, so the live realm ran on undeclared
+Keycloak 24 defaults. The values are now declared and contracted. The SSO idle
+timeout is 30 minutes by design (2026-11-02, matching the live realm): a visitor
+who makes no protected API call for 30 minutes is signed out.
 
 This test locks the realm JSON to the values in
 contracts/CONTRACT_AUTH_DOOR.md §5. Startup import skips an existing realm, so
@@ -29,7 +29,7 @@ AUTH_CONTRACT = os.path.join(BASE_DIR, "contracts", "CONTRACT_AUTH_DOOR.md")
 
 EXPECTED = {
     "accessTokenLifespan": 300,
-    "ssoSessionIdleTimeout": 3600,
+    "ssoSessionIdleTimeout": 1800,
     "ssoSessionMaxLifespan": 36000,
     "revokeRefreshToken": False,
 }

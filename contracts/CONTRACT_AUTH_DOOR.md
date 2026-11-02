@@ -82,7 +82,7 @@ How long a sign-in lasts. These are the only contracted values. The realm import
 | Setting | Value | Resets? | Meaning |
 | :--- | :--- | :--- | :--- |
 | `accessTokenLifespan` | `300` | New token on each refresh | Project access token, 5 minutes. The gateway refreshes it once it has less than 30 seconds left. |
-| `ssoSessionIdleTimeout` | `3600` | Yes, on every refresh | Keycloak session and refresh token, 1 hour without a refresh. |
+| `ssoSessionIdleTimeout` | `1800` | Yes, on every refresh | Keycloak session and refresh token, 30 minutes without a refresh. Matches the live realm (Keycloak 24 default). |
 | `ssoSessionMaxLifespan` | `36000` | No | Keycloak absolute cap, 10 hours from sign-in. |
 | `revokeRefreshToken` | `false` | — | No refresh-token rotation. An older handle stays usable until its refresh token expires. |
 | Gateway `SessionTimeout` | `8h` | No | Gateway absolute cap from sign-in (`gateway/internal/config/config.go`). It ends a session before Keycloak's 10 hours. |
@@ -91,7 +91,7 @@ How long a sign-in lasts. These are the only contracted values. The realm import
 1. **What renews a session**: only a request to a protected project API (wrapped in `projectauth.RequireAuth`) that reaches `GET /auth` when the access token has expired or has less than 30 seconds left (`keycloak.AccessTokenRefreshLeeway`). The gateway then refreshes with Keycloak and returns `X-Refreshed-Session-Handle`. A check while the access token has more life left does not renew the Keycloak session.
    - **Refresh leeway**: the gateway refreshes a token with less than 30 seconds left before confirming it. Keycloak reports a token active while `now <= exp`, and a project may reject it at `now >= exp` or a moment after confirmation. Handing out a token in its last second signed visitors out mid-use (2026-11-02, pn.nacfson.cloud). If the early refresh fails, the gateway checks the current token with Keycloak once, confirms it as-is if still active, and makes no second refresh attempt. Only in that fallback can a project still receive a token close to expiry.
 2. **What does not renew a session**: static page loads, `/api/auth/*`, unprotected endpoints, and frontend-only actions (navigation over cached data, scrolling, typing before save).
-3. **Resulting behavior**: a visitor who makes a protected API call at least once in each window between 5 and 60 minutes after the last refresh stays signed in up to 8 hours. With no such call for 60 minutes, the next call gets `REFRESH_TOKEN_ERROR` `Token is not active` in Keycloak, a `401` from the gateway, and a new Google sign-in.
+3. **Resulting behavior**: a visitor who makes a protected API call at least once in each window between 5 and 30 minutes after the last refresh stays signed in up to 8 hours. With no such call for 30 minutes, the next call gets `REFRESH_TOKEN_ERROR` `Token is not active` in Keycloak, a `401` from the gateway, and a new Google sign-in.
 4. **Applying a change**: `kc.sh start --import-realm` skips a realm that already exists, so editing the realm import does not change a running cluster. After merging, apply the values to the live realm with the procedure in [`docs/operations-runbook.md`](../docs/operations-runbook.md) §7, then confirm them with the read-only query there.
 5. Client-level overrides (`client.session.idle.timeout`, `client.session.max.lifespan`, realm `clientSessionIdleTimeout`) MUST NOT be set. They would silently shorten this table.
 
