@@ -140,9 +140,31 @@ func (c *Client) ValidateSession(tokenOrSessionID string) (bool, error) {
 	return res.Active, nil
 }
 
+// AccessTokenRefreshLeeway is how close to its exp claim an access token may be before the gateway
+// refreshes it instead of handing it to a project.
+//
+// Keycloak introspection reports a token active while now <= exp. A project that checks now >= exp,
+// or that reads the token a moment after the gateway confirmed it, rejects a token the gateway just
+// confirmed. That race signed visitors out mid-use once per access-token lifetime.
+const AccessTokenRefreshLeeway = 30 * time.Second
+
 // ValidateAndRefresh verifies the OAuth access token against Keycloak introspection and, if expired,
 // attempts to transparently refresh it using the session's refresh token while the Keycloak session remains active.
+// A token within AccessTokenRefreshLeeway of expiry is refreshed first, so a refreshed token has at least
+// that much life left when the project receives it. If that early refresh fails (for example Keycloak
+// is briefly unreachable), the current token is introspected once and, if still active, confirmed as-is;
+// that fallback keeps the pre-leeway behavior rather than signing the visitor out on a transient error.
 func (c *Client) ValidateAndRefresh(sessionID, accessToken, refreshToken, targetAudience string) (bool, *TokenResponse, error) {
+	triedRefresh := false
+	if refreshToken != "" && accessTokenExpiresWithin(accessToken, AccessTokenRefreshLeeway, time.Now()) {
+		triedRefresh = true
+		refreshed, refreshErr := c.ExchangeTokenForProject(refreshToken, targetAudience)
+		if refreshErr == nil && refreshed != nil && refreshed.AccessToken != "" {
+			return true, refreshed, nil
+		}
+		// Fall through: a still-valid token stays usable when the early refresh fails.
+	}
+
 	tokenToCheck := accessToken
 	if tokenToCheck == "" {
 		tokenToCheck = sessionID
@@ -154,7 +176,7 @@ func (c *Client) ValidateAndRefresh(sessionID, accessToken, refreshToken, target
 	if active {
 		return true, nil, nil
 	}
-	if refreshToken == "" {
+	if refreshToken == "" || triedRefresh {
 		return false, nil, nil
 	}
 	refreshed, refreshErr := c.ExchangeTokenForProject(refreshToken, targetAudience)
@@ -162,6 +184,28 @@ func (c *Client) ValidateAndRefresh(sessionID, accessToken, refreshToken, target
 		return false, nil, nil
 	}
 	return true, refreshed, nil
+}
+
+// accessTokenExpiresWithin reports whether the JWT's exp claim falls within leeway of now.
+// The token comes from the gateway's own sealed session handle, so its payload is read without
+// verifying the signature. A token without a readable exp claim returns false and keeps the
+// introspection-first path.
+func accessTokenExpiresWithin(token string, leeway time.Duration, now time.Time) bool {
+	parts := strings.Split(token, ".")
+	if len(parts) != 3 {
+		return false
+	}
+	payload, err := base64.RawURLEncoding.DecodeString(strings.TrimRight(parts[1], "="))
+	if err != nil {
+		return false
+	}
+	var claims struct {
+		Exp int64 `json:"exp"`
+	}
+	if err := json.Unmarshal(payload, &claims); err != nil || claims.Exp <= 0 {
+		return false
+	}
+	return time.Unix(claims.Exp, 0).Sub(now) < leeway
 }
 
 // ExchangeTokenForProject requests an audience-scoped project access token using refresh flow.

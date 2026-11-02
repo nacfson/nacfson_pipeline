@@ -13,7 +13,7 @@ A signed-in visitor is signed out after what feels like about 5 minutes, and sig
 The refresh token is already expired when the gateway first uses it.
 
 1. The realm import set no lifespans, so the live realm ran on Keycloak 24 defaults: access token 300 s, SSO idle 1800 s, SSO max 36000 s, rotation off.
-2. The gateway refreshes only when a protected project API call reaches `GET /auth` after the 5-minute access token has expired (`gateway/internal/keycloak/oidc.go` `ValidateAndRefresh`). A check while the token is still valid does not renew the Keycloak session. Frontend-only activity sends no request at all.
+2. The gateway refreshes only when a protected project API call reaches `GET /auth` after the 5-minute access token has expired (`gateway/internal/keycloak/oidc.go` `ValidateAndRefresh`). A check while the token is still valid does not renew the Keycloak session. Frontend-only activity sends no request at all. (Since 2026-11-02 the gateway also refreshes a token with less than 30 seconds left, to close a sign-out race in the token's last second; see [`CONTRACT_AUTH_DOOR.md`](../../contracts/CONTRACT_AUTH_DOOR.md) §5 `AccessTokenRefreshLeeway`. The idle-timeout cause described here is unchanged.)
 3. A visitor who signs in, uses the app for a few minutes, and makes no protected API call for 30 minutes loses the session. The next call refreshes with an expired token, Keycloak logs `REFRESH_TOKEN_ERROR` `invalid_token` `Token is not active`, the gateway returns `401`, and the Keycloak session is gone too, so sign-in goes through Google again.
 
 Closed issue #4 asked for longer lifetimes, but those numbers never reached the realm or a contract ([`FIX_GithubIssue4.md`](FIX_GithubIssue4.md)).

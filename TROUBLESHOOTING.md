@@ -169,7 +169,7 @@ Run the automated zero-data-loss recovery script:
 
 ### Root Cause
 - `Token is not active` means the refresh token sealed in the session handle had passed its expiry. Keycloak and the client secret are working.
-- The gateway refreshes only when a protected project API call arrives after the 5-minute access token expires. With no such call for one SSO idle period, the Keycloak session expires. Frontend-only activity does not count. See [`contracts/CONTRACT_AUTH_DOOR.md`](contracts/CONTRACT_AUTH_DOOR.md) §5.
+- The gateway refreshes only when a protected project API call arrives after the 5-minute access token has expired or has less than 30 seconds left. With no such call for one SSO idle period, the Keycloak session expires. Frontend-only activity does not count. See [`contracts/CONTRACT_AUTH_DOOR.md`](contracts/CONTRACT_AUTH_DOOR.md) §5.
 - Until issue #93, the realm import set no lifespans and the live realm ran on the Keycloak 24 default idle of 30 minutes.
 
 ### Diagnosis

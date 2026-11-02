@@ -73,6 +73,17 @@ class TestKeycloakSessionLifetimes(unittest.TestCase):
                 expected = str(value).lower()
                 self.assertRegex(body, rf"`{key}`\s*\|\s*`{re.escape(expected)}`")
 
+    def test_contract_names_gateway_refresh_leeway(self):
+        """The §5 table row must match the gateway constant (2026-11-02 token-expiry race)."""
+        with open(AUTH_CONTRACT, "r", encoding="utf-8") as f:
+            body = f.read().split("## 5. Session Lifetimes", 1)[1]
+        oidc = os.path.join(BASE_DIR, "gateway", "internal", "keycloak", "oidc.go")
+        with open(oidc, "r", encoding="utf-8") as f:
+            code = f.read()
+        match = re.search(r"const AccessTokenRefreshLeeway = (\d+) \* time\.Second", code)
+        self.assertIsNotNone(match, "oidc.go must declare AccessTokenRefreshLeeway in seconds")
+        self.assertRegex(body, rf"`AccessTokenRefreshLeeway`\s*\|\s*`{match.group(1)}s`")
+
 
 if __name__ == "__main__":
     unittest.main()
