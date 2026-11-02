@@ -6,7 +6,7 @@
 
 ## Update (issue #93, 2026-10-26)
 
-The live realm was read: access token 300 s, SSO idle 1800 s, SSO max 36000 s, all Keycloak 24 defaults. The 7-day idle and 30-day max asked for here were never applied. The chosen values are now access token 5 minutes, SSO idle 1 hour, SSO max 10 hours, gateway cap 8 hours, recorded in the contract above and declared in the realm import. See [`FIX_GithubIssue93.md`](FIX_GithubIssue93.md). The sections below are the original note.
+The live realm was read: access token 300 s, SSO idle 1800 s, SSO max 36000 s, all Keycloak 24 defaults. The 7-day idle and 30-day max asked for here were never applied. The chosen values are now access token 5 minutes, SSO idle 30 minutes (1 hour until 2026-11-02, when it was set to match the live realm), SSO max 10 hours, gateway cap 8 hours, recorded in the contract above and declared in the realm import. See [`FIX_GithubIssue93.md`](FIX_GithubIssue93.md). The sections below are the original note.
 
 ## What is wrong
 

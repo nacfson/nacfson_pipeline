@@ -177,7 +177,7 @@ Run the automated zero-data-loss recovery script:
 - Read the live values with step 1 of [`docs/operations-runbook.md`](docs/operations-runbook.md) §7 (**Applying realm session lifetimes**).
 
 ### Permanent Fix
-- The realm import declares `ssoSessionIdleTimeout=3600` (1 hour). Because startup import skips an existing realm, apply it to the live realm with the runbook procedure, which restarts Keycloak and signs everyone out once. Details: [`docs/issues/FIX_GithubIssue93.md`](docs/issues/FIX_GithubIssue93.md).
+- The idle timeout is 30 minutes by design: the realm import declares `ssoSessionIdleTimeout=1800`, the same value the live realm runs. A sign-out after 30 minutes with no protected API call is expected. To change it, edit the realm import and contract, then apply it to the live realm with the runbook procedure, because startup import skips an existing realm (automatic sync: issue #119). Details: [`docs/issues/FIX_GithubIssue93.md`](docs/issues/FIX_GithubIssue93.md).
 
 ---
 
