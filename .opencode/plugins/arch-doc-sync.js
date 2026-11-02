@@ -48,7 +48,7 @@ const plugin = {
           } catch (err) {
             const stderr = err?.stderr ? String(err.stderr).trim() : String(err);
             throw new Error(
-              `[REVIEW-CYCLE BLOCKED] Run the code-review skill (.agents/skills/code-review/SKILL.md) before committing. Do not self-record a receipt:\n${stderr}`
+              `[REVIEW-CYCLE BLOCKED] Ask the user whether to run the code-review skill (.agents/skills/code-review/SKILL.md) or skip it for this commit (skip = SKIP_REVIEW_GATE=1, only with their explicit answer). Do not self-record a receipt:\n${stderr}`
             );
           }
         }

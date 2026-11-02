@@ -9,6 +9,9 @@ compatibility: Works in Antigravity (agy) and compatible multi-agent harnesses.
 $ARGUMENTS
 ```
 
+## When to Run
+The review is optional per commit, and the user decides. Before any `git commit`, ask the user whether to run this skill or skip it. Run it only when they choose review. If they choose to skip, do not run it and do not record a receipt: commit with `SKIP_REVIEW_GATE=1` and add `Review: skipped at the user's request.` to the commit message. One answer covers one commit.
+
 ## Purpose
 Execute the full `nacfson_pipeline` multi-agent code review cycle on `staged`, `worktree`, or `branch` changes using fresh-context subagents (`invoke_subagent`) and record a cryptographically bound receipt in `.git/review-cycle/receipt.json`.
 

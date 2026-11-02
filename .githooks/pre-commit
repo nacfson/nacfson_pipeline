@@ -96,12 +96,12 @@ if [ "${SKIP_REVIEW_GATE:-0}" != "1" ]; then
     echo "" >&2
     echo -e "${RED}================================================================================${NC}" >&2
     echo -e "${RED}COMMIT REJECTED: Staged changes do not have a code-review receipt!${NC}" >&2
-    echo -e "${YELLOW}Run the code-review skill (.agents/skills/code-review/SKILL.md) before committing, or set SKIP_REVIEW_GATE=1 for emergency break-glass.${NC}" >&2
+    echo -e "${YELLOW}Agents: ask the user whether to run the code-review skill (.agents/skills/code-review/SKILL.md) or skip it. Skip only with the user's explicit answer: set SKIP_REVIEW_GATE=1 for this one commit.${NC}" >&2
     echo -e "${RED}================================================================================${NC}" >&2
     exit 1
   fi
   echo -e "${GREEN}✓ Review-cycle gate check passed.${NC}"
 else
-  echo -e "${YELLOW}[BREAK-GLASS] SKIP_REVIEW_GATE=1 set: bypassing staged review-cycle gate.${NC}"
+  echo -e "${YELLOW}[REVIEW SKIPPED] SKIP_REVIEW_GATE=1 set: bypassing staged review-cycle gate (user-approved skip for this commit).${NC}"
 fi
 exit 0
