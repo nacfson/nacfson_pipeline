@@ -169,7 +169,7 @@ Run the automated zero-data-loss recovery script:
 
 ### Root Cause
 - `Token is not active` means the refresh token sealed in the session handle had passed its expiry. Keycloak and the client secret are working.
-- The gateway refreshes only when a protected project API call arrives after the 5-minute access token expires. With no such call for one SSO idle period, the Keycloak session expires. Frontend-only activity does not count. See [`contracts/CONTRACT_AUTH_DOOR.md`](contracts/CONTRACT_AUTH_DOOR.md) §5.
+- The gateway refreshes only when a protected project API call arrives after the 5-minute access token has expired or has less than 30 seconds left. With no such call for one SSO idle period, the Keycloak session expires. Frontend-only activity does not count. See [`contracts/CONTRACT_AUTH_DOOR.md`](contracts/CONTRACT_AUTH_DOOR.md) §5.
 - Until issue #93, the realm import set no lifespans and the live realm ran on the Keycloak 24 default idle of 30 minutes.
 
 ### Diagnosis
@@ -177,7 +177,7 @@ Run the automated zero-data-loss recovery script:
 - Read the live values with step 1 of [`docs/operations-runbook.md`](docs/operations-runbook.md) §7 (**Applying realm session lifetimes**).
 
 ### Permanent Fix
-- The realm import declares `ssoSessionIdleTimeout=3600` (1 hour). Because startup import skips an existing realm, apply it to the live realm with the runbook procedure, which restarts Keycloak and signs everyone out once. Details: [`docs/issues/FIX_GithubIssue93.md`](docs/issues/FIX_GithubIssue93.md).
+- The idle timeout is 30 minutes by design: the realm import declares `ssoSessionIdleTimeout=1800`, the same value the live realm runs. A sign-out after 30 minutes with no protected API call is expected. To change it, edit the realm import and contract, then apply it to the live realm with the runbook procedure, because startup import skips an existing realm (automatic sync: issue #119). Details: [`docs/issues/FIX_GithubIssue93.md`](docs/issues/FIX_GithubIssue93.md).
 
 ---
 

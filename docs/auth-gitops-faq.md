@@ -187,7 +187,7 @@ So on a running cluster, a realm change in Git must also be applied to the live 
 
 **Q: How long does a sign-in last?**
 
-See [`contracts/CONTRACT_AUTH_DOOR.md`](../contracts/CONTRACT_AUTH_DOOR.md) §5. In short: the access token lasts 5 minutes, and the session lasts 1 hour without a refresh, up to 8 hours in total. Only a protected project API call after the access token expires renews the session. Frontend-only activity does not.
+See [`contracts/CONTRACT_AUTH_DOOR.md`](../contracts/CONTRACT_AUTH_DOOR.md) §5. In short: the access token lasts 5 minutes, and the session lasts 30 minutes without a refresh, up to 8 hours in total. Only a protected project API call made when the access token has expired or has less than 30 seconds left renews the session. Frontend-only activity does not.
 
 ## 7. How a change reaches the cluster
 

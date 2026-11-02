@@ -13,7 +13,7 @@ A signed-in visitor is signed out after what feels like about 5 minutes, and sig
 The refresh token is already expired when the gateway first uses it.
 
 1. The realm import set no lifespans, so the live realm ran on Keycloak 24 defaults: access token 300 s, SSO idle 1800 s, SSO max 36000 s, rotation off.
-2. The gateway refreshes only when a protected project API call reaches `GET /auth` after the 5-minute access token has expired (`gateway/internal/keycloak/oidc.go` `ValidateAndRefresh`). A check while the token is still valid does not renew the Keycloak session. Frontend-only activity sends no request at all.
+2. The gateway refreshes only when a protected project API call reaches `GET /auth` after the 5-minute access token has expired (`gateway/internal/keycloak/oidc.go` `ValidateAndRefresh`). A check while the token is still valid does not renew the Keycloak session. Frontend-only activity sends no request at all. (Since 2026-11-02 the gateway also refreshes a token with less than 30 seconds left, to close a sign-out race in the token's last second; see [`CONTRACT_AUTH_DOOR.md`](../../contracts/CONTRACT_AUTH_DOOR.md) §5 `AccessTokenRefreshLeeway`. The idle-timeout cause described here is unchanged.)
 3. A visitor who signs in, uses the app for a few minutes, and makes no protected API call for 30 minutes loses the session. The next call refreshes with an expired token, Keycloak logs `REFRESH_TOKEN_ERROR` `invalid_token` `Token is not active`, the gateway returns `401`, and the Keycloak session is gone too, so sign-in goes through Google again.
 
 Closed issue #4 asked for longer lifetimes, but those numbers never reached the realm or a contract ([`FIX_GithubIssue4.md`](FIX_GithubIssue4.md)).
@@ -39,14 +39,14 @@ Closed issue #4 asked for longer lifetimes, but those numbers never reached the 
 
 ## Fix in this change
 
-- Realm import declares `accessTokenLifespan=300`, `ssoSessionIdleTimeout=3600` (1 hour), `ssoSessionMaxLifespan=36000`, `revokeRefreshToken=false`.
+- Realm import declares `accessTokenLifespan=300`, `ssoSessionIdleTimeout=3600` (1 hour; changed to `1800` on 2026-11-02, see Update below), `ssoSessionMaxLifespan=36000`, `revokeRefreshToken=false`.
 - [`CONTRACT_AUTH_DOOR.md`](../../contracts/CONTRACT_AUTH_DOOR.md) §5 names every clock, what renews a session, and what does not.
 - [`tests/preflight/test_keycloak_session_lifetimes.py`](../../tests/preflight/test_keycloak_session_lifetimes.py) locks the realm JSON to the contract and forbids client-level overrides.
 - [`docs/operations-runbook.md`](../operations-runbook.md) §7 has the procedure to apply the values to the live realm, because startup import skips an existing realm. The docs no longer claim `OVERWRITE_EXISTING` re-imports it.
 
 ## Not fixed here
 
-- The live realm still has `sso_idle_timeout=1800` until an operator runs the runbook procedure. That restart signs every user out once.
+- The live realm still has `sso_idle_timeout=1800`. As of 2026-11-02 that is the contracted value, so no live change is needed.
 - Client-level overrides on the live realm were not read.
 - The gateway still treats any refresh error (timeout, 5xx) as revoked and does not log why (`oidc.go` `ValidateAndRefresh`, `ValidateSession` non-200). The backend middleware replaces every gateway rejection with `session rejected by gateway`.
 - `/auth/exchange` still reports `expires_in` as the 8-hour gateway timeout.
@@ -55,4 +55,8 @@ Closed issue #4 asked for longer lifetimes, but those numbers never reached the 
 
 ## Fixed when
 
-The live realm reads `300 | 3600 | 36000 | f` with no client-level rows, and a visitor who makes no protected API call for 40 minutes is still signed in on the next call.
+The live realm reads `300 | 1800 | 36000 | f` with no client-level rows.
+
+## Update 2026-11-02
+
+The 1-hour idle value never reached the live realm (startup import skips an existing realm; see issue #118). The owner chose to keep 30 minutes, so the realm import, contract, and docs now declare `ssoSessionIdleTimeout=1800`, matching the live realm. Automatic sync of realm settings from Git is tracked in issue #119. The mid-use sign-out seen the same day was a different bug, the access-token expiry race fixed in PR #117.

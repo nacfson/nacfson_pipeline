@@ -197,12 +197,12 @@ The contracted values live in [`contracts/CONTRACT_AUTH_DOOR.md`](../contracts/C
 2. Write the contracted values:
    ```bash
    sudo k3s kubectl exec -n identity postgres-0 -- psql -U postgres -d keycloak -v ON_ERROR_STOP=1 -c "
-   update realm set access_token_lifespan=300, sso_idle_timeout=3600, sso_max_lifespan=36000, revoke_refresh_token=false
+   update realm set access_token_lifespan=300, sso_idle_timeout=1800, sso_max_lifespan=36000, revoke_refresh_token=false
    where name='platform';"
    ```
    If step 1 listed a non-zero client-level `clientSession*` or `client.session.*` value, remove it too. The contract forbids those overrides.
 3. Restart Keycloak so it reloads the realm from the database: `sudo k3s kubectl rollout restart deployment/keycloak -n identity`. Keycloak 24 keeps user sessions in memory, so **every signed-in user is signed out once** and signs in again through Google.
-4. Rerun step 1 and confirm `300 | 3600 | 36000 | f` and no client-level rows.
+4. Rerun step 1 and confirm `300 | 1800 | 36000 | f` and no client-level rows.
 
 ---
 

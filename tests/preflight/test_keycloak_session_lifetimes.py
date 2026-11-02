@@ -2,10 +2,10 @@
 """
 Config-as-code checks for platform session lifetimes (GitHub issue #93).
 
-The realm import used to set no lifespans, so the live realm ran on Keycloak 24
-defaults (SSO Session Idle 30 min). The gateway refreshes only when a protected
-API call arrives after the 5-minute access token expires, so a visitor who made
-no such call for 30 minutes was signed out and sent back to Google.
+The realm import used to set no lifespans, so the live realm ran on undeclared
+Keycloak 24 defaults. The values are now declared and contracted. The SSO idle
+timeout is 30 minutes by design (2026-11-02, matching the live realm): a visitor
+who makes no protected API call for 30 minutes is signed out.
 
 This test locks the realm JSON to the values in
 contracts/CONTRACT_AUTH_DOOR.md §5. Startup import skips an existing realm, so
@@ -29,7 +29,7 @@ AUTH_CONTRACT = os.path.join(BASE_DIR, "contracts", "CONTRACT_AUTH_DOOR.md")
 
 EXPECTED = {
     "accessTokenLifespan": 300,
-    "ssoSessionIdleTimeout": 3600,
+    "ssoSessionIdleTimeout": 1800,
     "ssoSessionMaxLifespan": 36000,
     "revokeRefreshToken": False,
 }
@@ -72,6 +72,17 @@ class TestKeycloakSessionLifetimes(unittest.TestCase):
             with self.subTest(setting=key):
                 expected = str(value).lower()
                 self.assertRegex(body, rf"`{key}`\s*\|\s*`{re.escape(expected)}`")
+
+    def test_contract_names_gateway_refresh_leeway(self):
+        """The §5 table row must match the gateway constant (2026-11-02 token-expiry race)."""
+        with open(AUTH_CONTRACT, "r", encoding="utf-8") as f:
+            body = f.read().split("## 5. Session Lifetimes", 1)[1]
+        oidc = os.path.join(BASE_DIR, "gateway", "internal", "keycloak", "oidc.go")
+        with open(oidc, "r", encoding="utf-8") as f:
+            code = f.read()
+        match = re.search(r"const AccessTokenRefreshLeeway = (\d+) \* time\.Second", code)
+        self.assertIsNotNone(match, "oidc.go must declare AccessTokenRefreshLeeway in seconds")
+        self.assertRegex(body, rf"`AccessTokenRefreshLeeway`\s*\|\s*`{match.group(1)}s`")
 
 
 if __name__ == "__main__":
