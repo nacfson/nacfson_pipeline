@@ -30,6 +30,7 @@ This file is the master navigation index for **`nacfson_pipeline`**. For AI agen
 | [`docs/tls-certificates.md`](docs/tls-certificates.md) | Platform-owned edge TLS architecture (cert-manager + Let's Encrypt HTTP-01 solver + Traefik default `TLSStore` in `platform` namespace). |
 | [`docs/operations-runbook.md`](docs/operations-runbook.md) | Day-2 GitOps runbook: Flux layer inspection, suspend/resume break-glass procedures, drift recovery, incident triage, and project log history (section 15). |
 | [`docs/spec002-vault-guide.md`](docs/spec002-vault-guide.md) | Practical guide to the OpenBao zero-plaintext cluster Vault, `db-proxy`, `registry-proxy`, Transit signing, and credential rotation lifecycle. |
+| [`docs/ghcr-token-rotation-runbook.md`](docs/ghcr-token-rotation-runbook.md) | Step-by-step runbook to rotate `kv/platform/ghcr-pull-token` in OpenBao, including root-token regeneration from the unseal key, verification, and cleanup. |
 | [`docs/bootstrap-scope.md`](docs/bootstrap-scope.md) | Scope and input contract for single-VM Ansible host preparation and K3s installation (`bootstrap/`). |
 
 ### Interactive Visual Artifacts (`docs/*.html` & `agy_plan/html/`)
