@@ -60,3 +60,7 @@ The live realm reads `300 | 1800 | 36000 | f` with no client-level rows.
 ## Update 2026-11-02
 
 The 1-hour idle value never reached the live realm (startup import skips an existing realm; see issue #118). The owner chose to keep 30 minutes, so the realm import, contract, and docs now declare `ssoSessionIdleTimeout=1800`, matching the live realm. Automatic sync of realm settings from Git is tracked in issue #119. The mid-use sign-out seen the same day was a different bug, the access-token expiry race fixed in PR #117.
+
+## Update 2026-11-03
+
+PR #117 merged the gateway refresh-leeway fix and CI built its image (`sha256:0258c395…`, tag `sha-faa1536`), but `deploy/platform/identity/gateway-deployment.yaml` stayed pinned to the 2026-10-15 build (`sha256:55ae4634…`, tag `sha-6acad29`). The cluster therefore kept running the pre-leeway gateway, and pn.nacfson.cloud still signed visitors out mid-use; signing in again skipped Google because the Keycloak session was alive. The gateway logout changes from #77 were also never deployed for the same reason. The follow-up PR pins `sha256:0258c395dc81bbf7cbff2d17e6e8d0b88a0372295fa85f2ee0a74efb29fb32c8`.

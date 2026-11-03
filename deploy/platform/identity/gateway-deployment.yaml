@@ -78,7 +78,7 @@ spec:
               mountPath: /var/run/secrets/gateway
       containers:
         - name: gateway
-          image: ghcr.io/nacfson/platform-auth-gateway@sha256:55ae4634c4911f322cb9e1eac42d1c8c91b9690b46089531c9659d76fe460dae
+          image: ghcr.io/nacfson/platform-auth-gateway@sha256:0258c395dc81bbf7cbff2d17e6e8d0b88a0372295fa85f2ee0a74efb29fb32c8
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
