@@ -19,7 +19,7 @@ To maintain consistency across human engineers and AI coding agents, this reposi
 nacfson_pipeline/
 ├── README.md                                    # Tier 2: Master System Portal & Index
 ├── SPEC.md                                      # Tier 2: Initial Platform Specification Baseline
-├── TROUBLE_SHOOTING.md                          # Tier 4: OAuth Callback & Domain-Based Naming Troubleshooting
+├── TROUBLESHOOTING.md                           # Tier 4: Incident Runbook (CPU budget, OpenBao, GHCR pulls, OAuth callback)
 ├── .specify/memory/constitution.md              # Tier 1: Authoritative Invariants & Governance Rules
 │
 ├── specs/                                       # Tier 3: Feature Specifications (SpecKit Packages)
@@ -122,7 +122,7 @@ All hosted projects and authentication handoffs MUST derive project names, retur
 | **Gateway Host Header (`X-Forwarded-Host`)** | Must equal the hostname of `PUBLIC_APP_URL` (`<project-slug>.<main-domain>`) | `pn.nacfson.cloud` | `pn.example.com` |
 | **Project Audience (`aud` / `X-Project-Audience`)** | `project-<project-slug>` (first label of `<project-slug>.<main-domain>`) | `project-pn` | `project-pn` |
 
-> **Non-Negotiable Rule**: Project backends calling `http://gateway.identity.svc:8080/auth/exchange` or `http://gateway.identity.svc:8080/auth` MUST resolve their effective host from their configured `PUBLIC_APP_URL` (`<project-slug>.<main-domain>`) rather than raw `r.Host` headers. Using an internal service name (such as `pn-backend`) produces `project-pn-backend` instead of `project-pn` and causes session confirmation to fail. See [`TROUBLE_SHOOTING.md`](TROUBLE_SHOOTING.md) for full details.
+> **Non-Negotiable Rule**: Project backends calling `http://gateway.identity.svc:8080/auth/exchange` or `http://gateway.identity.svc:8080/auth` MUST resolve their effective host from their configured `PUBLIC_APP_URL` (`<project-slug>.<main-domain>`) rather than raw `r.Host` headers. Using an internal service name (such as `pn-backend`) produces `project-pn-backend` instead of `project-pn` and causes session confirmation to fail. See [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) §10 for full details.
 
 ---
 
