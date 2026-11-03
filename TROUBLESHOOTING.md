@@ -209,3 +209,78 @@ ssh oracleCloud "sudo k3s kubectl describe node | grep -A8 'Allocated resources'
 - [`deploy/projects/blog/workloads/deployment.yaml`](deploy/projects/blog/workloads/deployment.yaml) now uses `maxSurge: 0, maxUnavailable: 1`: stop the old pod, then start the new one on the CPU it freed. Each rollout has a few seconds of downtime because `blog-web` runs a single replica.
 - Every single-replica tenant on `vps-k3s` must use `maxSurge: 0` unless the node keeps spare CPU for the surge pod.
 - Follow-up: correct `capacity.yaml` to the node's real allocatable CPU and memory so preflight rejects surge that does not fit.
+
+---
+
+## 8. Every Private Image Stuck in `ImagePullBackOff` (`403 Forbidden`) After Rotating the GHCR Token in OpenBao
+
+### Symptoms
+- Pods that use any private `ghcr.io/nacfson/*` image stay in `ImagePullBackOff`. On 2026-11-03 this hit `proj-health` (`health-backend`, `health-frontend`) and `identity/gateway` for about 22 hours.
+- `kubectl describe pod` shows only `Back-off pulling image ...` and hides the real error.
+- Writing a new PAT to OpenBao (`kv/platform/ghcr-pull-token`) changes nothing. Kubelet retries about every 5 minutes, and every retry fails.
+- The k3s journal shows containerd requesting a token from `ghcr.io` directly and being refused:
+  ```text
+  failed to authorize: failed to fetch oauth token: unexpected status from GET request to
+  https://ghcr.io/token?scope=repository%3Anacfson%2Fhealth-backend%3Apull&service=ghcr.io: 403 Forbidden
+  ```
+
+### Root Cause
+- On `vps-k3s` (`oracle-free`), containerd authenticates to GHCR with a **static PAT in `/etc/rancher/k3s/registries.yaml`** (`configs: "ghcr.io": auth: {username, password}`). That file has no `mirrors:` section, so `vault-registry-proxy` is not in the pull path.
+- The PAT in that file had been revoked on GitHub, so every token request returned `403`.
+- k3s reads `registries.yaml` only at startup. After editing the file, you must restart k3s for the change to apply.
+- Rotating the token in OpenBao cannot help, for two reasons:
+  1. The node never reads OpenBao.
+  2. `vault-registry-proxy` never reads OpenBao either. [`services/vault-proxies/cmd/registry-proxy/main.go`](services/vault-proxies/cmd/registry-proxy/main.go) loads `VAULT_ADDR` but never uses it. Its upstream token comes only from the `GHCR_PULL_TOKEN` env var, which [`deploy/platform/vault-proxies/registry-proxy.yaml`](deploy/platform/vault-proxies/registry-proxy.yaml) does not set, or from an in-memory `/admin/adoption-check` promotion.
+- [`deploy/platform/vault/registries.yaml.template`](deploy/platform/vault/registries.yaml.template), spec 002 and [`docs/ghcr-token-rotation-runbook.md`](docs/ghcr-token-rotation-runbook.md) all describe an OpenBao → proxy → containerd mirror path. That path is not deployed on this node.
+
+### Diagnostic Commands
+Run these on the VPS host. They are read-only and redact secrets:
+```bash
+# 1. The real pull error (BackOff events hide it)
+sudo journalctl -u k3s --since "30 min ago" | grep -iE "ghcr|ErrImagePull" | tail -5
+
+# 2. Which credential path containerd uses: a `configs:` auth block, a `mirrors:` entry, or both
+sudo sed -E 's/((password|token|auth|identitytoken)[^:]*:).*/\1 <redacted>/I' /etc/rancher/k3s/registries.yaml
+
+# 3. Was the file edited after k3s started? If so, the edit has not been loaded yet
+sudo ls -l --time-style=full-iso /etc/rancher/k3s/registries.yaml
+systemctl show k3s -p ActiveEnterTimestamp
+```
+Reading the error:
+- `403` from `https://ghcr.io/token`: GHCR rejected the credential (revoked or under-scoped PAT), or the request was anonymous for a private package.
+- `404`: the digest does not exist in GHCR. This is a different problem; re-pin the image instead.
+
+### Fix (applied 2026-11-03)
+The edit and restart change the node, so the operator runs them on the VPS host:
+```bash
+# 1. Check the new PAT against GHCR first (hidden input). Expect 200.
+#    GHCR needs a classic PAT with read:packages; fine-grained PATs do not work with the registry.
+read -rs NEW_PAT
+curl -s -o /dev/null -w '%{http_code}\n' -u "nacfson:$NEW_PAT" \
+  "https://ghcr.io/token?scope=repository:nacfson/health-backend:pull&service=ghcr.io"
+unset NEW_PAT
+
+# 2. Back up the file, then replace only the `password:` value
+sudo cp -p /etc/rancher/k3s/registries.yaml /etc/rancher/k3s/registries.yaml.bak-$(date +%Y%m%d)
+sudoedit /etc/rancher/k3s/registries.yaml
+
+# 3. Reload. The API server is briefly unavailable; running containers keep running.
+sudo systemctl restart k3s
+
+# 4. Verify with the exact pull containerd performs
+sudo k3s crictl pull ghcr.io/nacfson/health-backend@sha256:<pinned-digest>
+
+# 5. Retry stuck pods now instead of waiting for the 5-minute backoff
+kubectl delete pod -n proj-health -l app.kubernetes.io/part-of=project-health
+kubectl delete pod -n identity -l app.kubernetes.io/name=gateway
+kubectl get pods -A | grep -vE "Running|Completed"   # expect only the header
+
+# 6. The backup still contains the revoked PAT; delete it
+sudo rm /etc/rancher/k3s/registries.yaml.bak-*
+```
+
+### Open Follow-up
+Until the repo and the node agree, rotating the GHCR pull token on `vps-k3s` means editing `registries.yaml` and restarting k3s, as above. Writing to OpenBao alone does not rotate it. To make OpenBao the source of truth, three changes are needed, and together they meet Constitution Principle V (no secrets on the node):
+1. `vault-registry-proxy` reads `kv/platform/ghcr-pull-token` from OpenBao.
+2. The proxy is reachable from the host on `127.0.0.1:5000`.
+3. The node's `registries.yaml` switches to the mirror template with no `configs:` block.
