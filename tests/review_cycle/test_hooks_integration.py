@@ -23,6 +23,19 @@ class TestHooksIntegration(unittest.TestCase):
         data = json.loads(proc.stdout.strip())
         self.assertEqual(data["decision"], "allow")
 
+    def test_claude_allow_output_matches_claude_schema(self):
+        for event in ("Stop", "PreToolUse"):
+            proc = subprocess.run(
+                ["python3", str(HOOK_SCRIPT), "--agent", "claude", "--event", event],
+                input=json.dumps({"tool_input": {"command": "git status"}, "stop_hook_active": True}),
+                text=True,
+                capture_output=True,
+                cwd=ROOT,
+                check=False,
+            )
+            self.assertEqual(proc.returncode, 0)
+            self.assertNotIn("decision", json.loads(proc.stdout.strip()))
+
     def test_hook_blocks_git_commit_when_staged_receipt_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
             env = dict(os.environ, REVIEW_RECEIPT_PATH=str(Path(tmp) / "missing.json"), REVIEW_FORCE_CHANGED="scripts/review-cycle.py", REVIEW_FORCE_DIFF="+x\n")
