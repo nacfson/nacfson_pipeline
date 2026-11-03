@@ -131,5 +131,5 @@ python3 scripts/review-cycle.py eval
 ./scripts/rollback-change.sh --dry-run HEAD
 ```
 
-Before `git commit`, run the [`code-review`](.agents/skills/code-review/SKILL.md) skill on the staged diff and let that skill set `"pipeline": "code-review"`. The agent hooks deny the commit until that field is present and name the skill. They check the field; they do not detect a forged field. `SKIP_REVIEW_GATE=1` is break-glass only.
+Before `git commit`, ask the user whether to run the [`code-review`](.agents/skills/code-review/SKILL.md) skill on the staged diff or skip it. If they choose review, run the skill and let it set `"pipeline": "code-review"`. The agent hooks deny the commit until that field is present and name the skill. They check the field; they do not detect a forged field. If they choose to skip, commit with `SKIP_REVIEW_GATE=1` and add `Review: skipped at the user's request.` to the commit message. Never skip without that explicit answer. An answer covers one commit only; ask again for the next commit.
 

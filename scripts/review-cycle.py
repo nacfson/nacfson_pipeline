@@ -38,7 +38,8 @@ CODE_REVIEW_SKILL = ".agents/skills/code-review/SKILL.md"
 
 def code_review_required(detail: str) -> str:
     return (
-        f"{detail} Run the code-review skill ({CODE_REVIEW_SKILL}) before git commit. "
+        f"{detail} Ask the user whether to run the code-review skill ({CODE_REVIEW_SKILL}) "
+        "or skip it for this commit; skip (SKIP_REVIEW_GATE=1) only with their explicit answer. "
         "Do not self-record a receipt."
     )
 
