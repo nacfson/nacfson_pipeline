@@ -78,6 +78,11 @@ def is_git_commit_command(cmd: str) -> bool:
     return "git commit" in cmd or "git-commit" in cmd
 
 
+def print_allow(agent: str) -> None:
+    """Claude Code rejects top-level decision "allow" (only approve|block); `{}` means no objection."""
+    print(json.dumps({} if agent == "claude" else {"decision": "allow"}))
+
+
 def run_session_start(agent: str) -> int:
     """Refresh remote-tracking refs without blocking or mutating the work tree."""
     result = agent_start_fetch.fetch()
@@ -151,7 +156,7 @@ def main() -> int:
     if event == "Stop" and (
         payload.get("stopHookActive") is True or payload.get("stop_hook_active") is True
     ):
-        print(json.dumps({"decision": "allow"}))
+        print_allow(agent)
         return 0
 
     if event == "SessionStart":
@@ -164,7 +169,7 @@ def main() -> int:
     if event == "PreToolUse":
         cmd = extract_command(payload)
         if not is_git_commit_command(cmd):
-            print(json.dumps({"decision": "allow"}))
+            print_allow(agent)
             return 0
         arch_errors = sync_checker.check_static_invariants()
         staged_errs = sync_checker.check_git_co_update("staged")
@@ -197,7 +202,7 @@ def main() -> int:
         arch_errors.extend(sync_checker.check_git_co_update("worktree"))
 
     if not arch_errors and not review_errors:
-        print(json.dumps({"decision": "allow"}))
+        print_allow(agent)
         return 0
 
     reason_parts: list[str] = []
