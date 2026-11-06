@@ -1,25 +1,27 @@
-# Workstream 0: Project Log Migration to Contract v2 — Implementation Plan
+# Workstream 0: Project Log Migration to Contract v3 — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make every hosted project print log lines that follow `contracts/CONTRACT_LOG_SCHEMA.md` v2, so the error detector can find errors from structure instead of guesses.
+**Goal:** Make every hosted project print log lines that follow `contracts/CONTRACT_LOG_SCHEMA.md` v3, so the error detector can find errors from structure instead of guesses, and images pass the `logcheck` gate.
 
-**Architecture:** Each Go backend gets one JSON `slog` logger as the process default and an `exception.*` helper for errors. PN's `analytics` and `admin` records gain `time`/`level`/`msg` and rename `kind` → `event.name`. Each nginx frontend prints a JSON access log with `level` mapped from the HTTP status and keeps its native error log (contract §4). Each project lands in its own repository first, then this repository pins the new images and marks the contract §6 row `done`.
+**Architecture:** Each Go backend gets one JSON `slog` logger as the process default and an `exception.*` helper for errors. Every record carries `service.name` and `service.version`. `exception.type` is extracted from the innermost unwrapped error. HTTP middleware extracts or generates W3C `traceparent` and injects `trace_id` (32 hex). Each nginx frontend prints a JSON access log with `time`, `level`, `msg`, `service.name`, `service.version`, and `trace_id` (`$request_id`), while keeping its native error log (contract §4). Projects never print reserved `k8s.*` fields. Each project release workflow sets OCI labels and runs the `log-contract` CI job (`cmd/logcheck`). Each project lands in its own repository first, then this repository pins the new images via `update-project-images` and marks the contract §6 row `done`.
 
-**Tech Stack:** Go `log/slog` (`project-pn`: go 1.26; `nacfson_health` api: go 1.22), nginx 1.27 `log_format ... escape=json`, `map`.
+**Tech Stack:** Go `log/slog` (`project-pn`: go 1.26; `nacfson_health` api: go 1.22; `nacfson_blog` web: go 1.22), nginx 1.27 `log_format ... escape=json`, `map`, `cmd/logcheck` in CI.
 
-**Spec:** `docs/superpowers/specs/2026-10-29-error-pipeline-design.md` (§6, §7) and `contracts/CONTRACT_LOG_SCHEMA.md` v2.
+**Spec:** `docs/superpowers/specs/2026-10-29-error-pipeline-design.md` (§6, §7), `contracts/CONTRACT_LOG_SCHEMA.md` v3, and research R14.
 
 ## Global Constraints
 
-- Line format: one JSON object per line; required `time` (RFC 3339, timezone, ≥ millisecond precision), `level` (`debug`/`info`/`warn`/`error`/`fatal`, case-insensitive), `msg`.
-- Error lines (`level` `error`/`fatal`) carry `exception.message` and/or `exception.type`; `exception.stacktrace` is recommended.
-- Keys are flat dotted names (`exception.message`, `event.name`), not nested objects.
-- `event.name` replaces `kind`. Values stay `analytics` and `admin`.
+- Line format: one JSON object per line; required `time` (RFC 3339 UTC, ≥ millisecond precision), `level` (`debug`/`info`/`warn`/`error`/`fatal`, case-insensitive), `msg`, `service.name`, and `service.version`.
+- Error lines (`level` `error`/`fatal`): carry `exception.message` and/or `exception.type`. `exception.type` comes from the innermost unwrapped error, never `%T` of wrapper. `exception.stacktrace` is capped at 8 KiB (top kept, bottom cut with `…[truncated N bytes]`).
+- Tracing: `trace_id` is exactly 32 lowercase hex characters. `traceparent` header is propagated.
+- No `k8s.*` or platform fields (`_time`, `log.iostream`, `observed_time`) printed by project workloads.
+- Keys are flat dotted names (`exception.message`, `service.name`), not nested objects.
+- `event.name` replaces legacy `kind`.
 - No tokens, passwords, or secrets in any line, including `exception.message`.
 - stdout/stderr only; never open a file or point a file logger at `/dev/stdout`.
-- Project repositories: a PR in the project repo first; schema docs (`Project_PN/docs/analytics-contract.md`, the admin logging design) change in the same PN PR.
-- This repo: never push to `main`; image pins go through the `update-project-images` skill.
+- Project repositories: image build workflows declare `org.opencontainers.image.version` and `org.opencontainers.image.revision`, and run the `log-contract` CI job on every build (R9, D1).
+- This repo: image pins go through the `update-project-images` skill (verified by Gate 1a, Gate 1b, and Gate 2).
 
 ## Review Focus
 

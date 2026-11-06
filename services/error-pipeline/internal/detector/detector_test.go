@@ -76,13 +76,14 @@ type fakeLogs struct {
 	t        *testing.T
 	srv      *httptest.Server
 	lines    chan string
+	qLines   chan string
 	unready  atomic.Bool
 	catchUps atomic.Int32
 	lastFrom atomic.Value // string: the catch-up window start
 }
 
 func newFakeLogs(t *testing.T) *fakeLogs {
-	f := &fakeLogs{t: t, lines: make(chan string, 128)}
+	f := &fakeLogs{t: t, lines: make(chan string, 128), qLines: make(chan string, 128)}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.handle))
 	t.Cleanup(f.srv.Close)
 	return f
@@ -97,7 +98,11 @@ func (f *fakeLogs) handle(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(http.StatusOK)
 	case "/select/logsql/tail":
-		f.tail(w, r)
+		if r.Header.Get("ProjectID") == "1" {
+			f.tailQuarantine(w, r)
+		} else {
+			f.tail(w, r)
+		}
 	case "/select/logsql/query":
 		f.catchUps.Add(1)
 		if err := r.ParseForm(); err == nil {
@@ -130,6 +135,27 @@ func (f *fakeLogs) tail(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (f *fakeLogs) tailQuarantine(w http.ResponseWriter, r *http.Request) {
+	fl, ok := w.(http.Flusher)
+	if !ok {
+		f.t.Error("response writer is not a flusher")
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	fl.Flush()
+	for {
+		select {
+		case <-r.Context().Done():
+			return
+		case line := <-f.qLines:
+			if _, err := fmt.Fprintln(w, line); err != nil {
+				return
+			}
+			fl.Flush()
+		}
+	}
+}
+
 // send queues one line for the connected tail. The channel is buffered, so a
 // send never blocks on a detector that has not dialled yet.
 func (f *fakeLogs) send(line string) {
@@ -138,6 +164,15 @@ func (f *fakeLogs) send(line string) {
 	case f.lines <- line:
 	case <-time.After(5 * time.Second):
 		f.t.Fatal("the tail did not accept a line within 5s")
+	}
+}
+
+func (f *fakeLogs) sendQuarantine(line string) {
+	f.t.Helper()
+	select {
+	case f.qLines <- line:
+	case <-time.After(5 * time.Second):
+		f.t.Fatal("the quarantine tail did not accept a line within 5s")
 	}
 }
 
@@ -1859,5 +1894,295 @@ func TestNewRejectsIncompleteConfig(t *testing.T) {
 	noState.StatePath = " "
 	if _, err := New(noState); err == nil {
 		t.Error("New accepted an empty StatePath")
+	}
+}
+
+func TestQuarantineImmediateAlertAndRateLimiting(t *testing.T) {
+	rec := &recorder{}
+	notifySrv := httptest.NewServer(http.HandlerFunc(rec.handle))
+	defer notifySrv.Close()
+
+	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+	clk := newFakeClock(now)
+
+	d, err := New(Config{
+		VLogs:     &vlogs.Client{BaseURL: "http://localhost:9428"},
+		Notify:    &notify.Client{BaseURL: notifySrv.URL},
+		StatePath: filepath.Join(t.TempDir(), "detector.json"),
+		Now:       clk.Now,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// First quarantined line -> immediate alert (Q1)
+	q1 := vlogs.QuarantineRecord{
+		Time:      now,
+		Project:   "proj-pn",
+		Container: "backend",
+		Message:   "raw broken text line 1",
+	}
+	if err := d.IngestQuarantine(q1); err != nil {
+		t.Fatalf("IngestQuarantine: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	d.queue.Drain(ctx)
+
+	got := rec.snapshot()
+	if len(got) != 1 {
+		t.Fatalf("expected 1 immediate quarantine alert, got %d", len(got))
+	}
+	if got[0].n.Title != "Quarantined log in proj-pn/backend" {
+		t.Errorf("title = %q, want 'Quarantined log in proj-pn/backend'", got[0].n.Title)
+	}
+	if !strings.Contains(got[0].n.Body, "raw broken text line 1") {
+		t.Errorf("body missing first line: %q", got[0].n.Body)
+	}
+
+	// Second quarantined line within 1 hour -> throttled (no immediate alert)
+	clk.Set(now.Add(10 * time.Minute))
+	q2 := vlogs.QuarantineRecord{
+		Time:      now.Add(10 * time.Minute),
+		Project:   "proj-pn",
+		Container: "backend",
+		Message:   "raw broken text line 2",
+	}
+	if err := d.IngestQuarantine(q2); err != nil {
+		t.Fatalf("IngestQuarantine: %v", err)
+	}
+	d.queue.Drain(ctx)
+	if len(rec.snapshot()) != 1 {
+		t.Fatalf("quarantine alert was not throttled, got %d alerts", len(rec.snapshot()))
+	}
+
+	// After 1 hour has passed, tick flushes the throttled alert with count
+	clk.Set(now.Add(65 * time.Minute))
+	d.tick()
+	d.queue.Drain(ctx)
+
+	got = rec.snapshot()
+	if len(got) != 2 {
+		t.Fatalf("expected 2 quarantine alerts after 1h tick, got %d", len(got))
+	}
+	if got[1].n.Title != "Quarantined logs in proj-pn/backend (+0 occurrences)" && !strings.Contains(got[1].n.Title, "Quarantined") {
+		t.Errorf("throttled alert title = %q", got[1].n.Title)
+	}
+}
+
+func TestRedactionMarkerImmediateAlert(t *testing.T) {
+	rec := &recorder{}
+	notifySrv := httptest.NewServer(http.HandlerFunc(rec.handle))
+	defer notifySrv.Close()
+
+	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+	clk := newFakeClock(now)
+
+	d, err := New(Config{
+		VLogs:     &vlogs.Client{BaseURL: "http://localhost:9428"},
+		Notify:    &notify.Client{BaseURL: notifySrv.URL},
+		StatePath: filepath.Join(t.TempDir(), "detector.json"),
+		Now:       clk.Now,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	r := classify.Record{
+		Time:           now,
+		Project:        "proj-pn",
+		Container:      "backend",
+		ServiceVersion: "v1.4.2",
+		Message:        `{"level":"info","msg":"connecting with Bearer [REDACTED:bearer]"}`,
+	}
+	if err := d.Ingest(r); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	d.queue.Drain(ctx)
+
+	got := rec.snapshot()
+	if len(got) != 1 {
+		t.Fatalf("expected 1 redaction marker alert, got %d", len(got))
+	}
+	if got[0].n.Title != "Secret redacted in proj-pn/backend@v1.4.2" {
+		t.Errorf("title = %q", got[0].n.Title)
+	}
+	if fieldValue(got[0].n, "Marker Kind") != "bearer" {
+		t.Errorf("marker kind = %q, want 'bearer'", fieldValue(got[0].n, "Marker Kind"))
+	}
+}
+
+func TestDailyViolationDigest(t *testing.T) {
+	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+	clk := newFakeClock(now)
+
+	d, err := New(Config{
+		VLogs:     &vlogs.Client{BaseURL: "http://localhost:9428"},
+		Notify:    &notify.Client{BaseURL: "http://localhost:8080"},
+		StatePath: filepath.Join(t.TempDir(), "detector.json"),
+		Now:       clk.Now,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	// Ingest a record with TimeRejected
+	r1 := classify.Record{
+		Time:         now,
+		Project:      "proj-pn",
+		Container:    "backend",
+		TimeRejected: true,
+		Message:      `{"level":"info","msg":"hello"}`,
+	}
+	_ = d.Ingest(r1)
+
+	// Ingest a record with dynamic key (run of 4 digits)
+	r2 := classify.Record{
+		Time:      now,
+		Project:   "proj-pn",
+		Container: "backend",
+		Message:   `{"level":"info","msg":"hello","user_1234_id":"val"}`,
+	}
+	_ = d.Ingest(r2)
+
+	// Ingest a record with dynamic key via r.DynamicKey flag
+	r3 := classify.Record{
+		Time:       now,
+		Project:    "proj-pn",
+		Container:  "backend",
+		DynamicKey: true,
+		Message:    `{"level":"info","msg":"dynamic"}`,
+	}
+	_ = d.Ingest(r3)
+
+	// Ingest quarantine record
+	q := vlogs.QuarantineRecord{
+		Time:      now,
+		Project:   "proj-pn",
+		Container: "backend",
+		Message:   "raw unparsed line",
+	}
+	_ = d.IngestQuarantine(q)
+
+	violations := d.Violations()
+	pnV := violations["proj-pn/backend"]
+	if pnV["time-rejected"] != 1 {
+		t.Errorf("time-rejected = %d, want 1", pnV["time-rejected"])
+	}
+	if pnV["dynamic-key"] != 2 {
+		t.Errorf("dynamic-key = %d, want 2", pnV["dynamic-key"])
+	}
+	if pnV["quarantined-line"] != 1 {
+		t.Errorf("quarantined-line = %d, want 1", pnV["quarantined-line"])
+	}
+
+	digest, ok := d.FlushViolationsDigest(now.Add(24 * time.Hour))
+	if !ok {
+		t.Fatalf("FlushViolationsDigest returned false, want true")
+	}
+	if digest.Title != "Daily log contract violation digest" {
+		t.Errorf("digest title = %q", digest.Title)
+	}
+	if !strings.Contains(digest.Body, "time-rejected = 1") || !strings.Contains(digest.Body, "dynamic-key = 2") {
+		t.Errorf("digest body = %q", digest.Body)
+	}
+}
+
+func TestRedactionMarkerInExceptionFields(t *testing.T) {
+	rec := &recorder{}
+	notifySrv := httptest.NewServer(http.HandlerFunc(rec.handle))
+	defer notifySrv.Close()
+
+	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+	clk := newFakeClock(now)
+
+	d, err := New(Config{
+		VLogs:     &vlogs.Client{BaseURL: "http://localhost:9428"},
+		Notify:    &notify.Client{BaseURL: notifySrv.URL},
+		StatePath: filepath.Join(t.TempDir(), "detector.json"),
+		Now:       clk.Now,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	r := classify.Record{
+		Time:             now,
+		Project:          "proj-pn",
+		Container:        "backend",
+		ServiceVersion:   "v1.4.2",
+		ExceptionMessage: "failed connecting with password [REDACTED:password]",
+		Stacktrace:       "trace at line 42 with token [REDACTED:token]",
+		ExceptionType:    "Err[REDACTED:secret]",
+		Message:          `{"level":"error","msg":"error occurred"}`,
+	}
+	if err := d.Ingest(r); err != nil {
+		t.Fatalf("Ingest: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	d.queue.Drain(ctx)
+
+	got := rec.snapshot()
+	if len(got) < 3 {
+		t.Fatalf("expected at least 3 redaction marker alerts, got %d", len(got))
+	}
+	kinds := make(map[string]bool)
+	for _, n := range got {
+		kinds[fieldValue(n.n, "Marker Kind")] = true
+	}
+	for _, expected := range []string{"password", "token", "secret"} {
+		if !kinds[expected] {
+			t.Errorf("missing expected marker kind %q in alerts: %v", expected, got)
+		}
+	}
+}
+
+func TestQuarantineAlertRedactsSecrets(t *testing.T) {
+	rec := &recorder{}
+	notifySrv := httptest.NewServer(http.HandlerFunc(rec.handle))
+	defer notifySrv.Close()
+
+	now := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+	clk := newFakeClock(now)
+
+	d, err := New(Config{
+		VLogs:     &vlogs.Client{BaseURL: "http://localhost:9428"},
+		Notify:    &notify.Client{BaseURL: notifySrv.URL},
+		StatePath: filepath.Join(t.TempDir(), "detector.json"),
+		Now:       clk.Now,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	q := vlogs.QuarantineRecord{
+		Time:      now,
+		Project:   "proj-pn",
+		Container: "backend",
+		Message:   "raw bad line with Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.e30.t-IDcSemACt8x4iTMCda8Yhe3iZaWbvV5XKSTbuAn0M",
+	}
+	if err := d.IngestQuarantine(q); err != nil {
+		t.Fatalf("IngestQuarantine: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	d.queue.Drain(ctx)
+
+	got := rec.snapshot()
+	if len(got) != 1 {
+		t.Fatalf("expected 1 quarantine alert, got %d", len(got))
+	}
+	if strings.Contains(got[0].n.Body, "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9") {
+		t.Errorf("raw secret was leaked in quarantine alert body: %q", got[0].n.Body)
+	}
+	if !strings.Contains(got[0].n.Body, "[REDACTED]") {
+		t.Errorf("expected redaction marker in quarantine alert body: %q", got[0].n.Body)
 	}
 }

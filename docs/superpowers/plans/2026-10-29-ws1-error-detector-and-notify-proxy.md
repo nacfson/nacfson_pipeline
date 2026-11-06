@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Every new error in a `proj-*` log reaches Discord `#errors` within seconds, grouped by fingerprint, with a 3-minute collection window and a 6-hour cooldown, and with no secret outside the `vault` namespace.
+**Goal:** Every new error in a `proj-*` log reaches Discord `#errors` within seconds, grouped by fingerprint, with a 3-minute collection window and a 6-hour cooldown, and with no secret outside the `vault` namespace. Unrefined lines sent to quarantine (tenant `0:1`) trigger immediate quarantine alerts, secret redactions trigger marker alerts, and violations are digested daily.
 
-**Architecture:** A new Go stdlib module `services/error-pipeline` holds the `error-detector` binary. It tails VictoriaLogs, classifies lines against log contract v2, redacts, fingerprints, tracks groups, persists state on a PVC, and posts destination-neutral notifications. A new `vault-notify-proxy` in `services/vault-proxies` holds the Discord webhook URLs (OpenBao), authenticates callers by pod IP the same way `vault-ai-proxy` does, and renders Discord messages. The detector-to-investigator handoff ships disabled (`INVESTIGATOR_URL` empty) until workstream 3.
+**Architecture:** A Go stdlib module `services/error-pipeline` holds the `error-detector` binary. It tails VictoriaLogs, classifies lines against log contract v3 via `internal/conform`, redacts, fingerprints, tracks groups, persists state on a PVC, and posts destination-neutral notifications. Queries use `k8s.*` platform fields with dual matching. It tails tenant `0:1` for quarantined lines and reports immediate quarantine alerts (with a 1-hour throttle), immediate redaction marker alerts (`[REDACTED:<kind>]`), and daily violation digests. No Kubernetes access or runtime version-mismatch check is used (D19; version labels are verified in CI via Gate 1b). A `vault-notify-proxy` in `services/vault-proxies` holds the Discord webhook URLs (OpenBao), authenticates callers by pod IP the same way `vault-ai-proxy` does, and renders Discord messages. The detector-to-investigator handoff ships disabled (`INVESTIGATOR_URL` empty) until workstream 3.
 
 **Tech Stack:** Go 1.22 standard library only; VictoriaLogs v1.53.0 `/select/logsql/tail` and `/select/logsql/query`; Discord webhooks (JSON and `multipart/form-data`); OpenBao KV v2 with Kubernetes auth; Kustomize/Flux; Cilium `toFQDNs`; Python `unittest` for preflight and manifests.
 
@@ -291,7 +291,7 @@ git add services/error-pipeline/internal/state
 git commit -m "feat(error-pipeline): atomic detector state on disk"
 ```
 
-### Task 9: VictoriaLogs client (tail and catch-up)
+### Task 9: VictoriaLogs client (tail, catch-up, and quarantine)
 
 **Files:**
 - Create: `services/error-pipeline/internal/vlogs/vlogs.go`, `vlogs_test.go`
@@ -300,20 +300,23 @@ git commit -m "feat(error-pipeline): atomic detector state on disk"
 - Consumes: `classify.Record`.
 - Produces:
   - `Client{BaseURL string; HTTP *http.Client}`
-  - `const Query = "{project=~\"proj-.*\"} | fields _time, _stream_id, project, pod, container, node, message"`
+  - `const Query = "{project=~\"proj-.*\"} OR {k8s.namespace.name=~\"proj-.*\"}"`
+  - `QuarantineRecord{Time time.Time; StreamID, Project, Pod, Container, Node, Message, IOStream, ObservedTime string}`
   - `(*Client).CatchUp(ctx context.Context, from, to time.Time, fn func(classify.Record) error) error` — `POST /select/logsql/query` form `query`, `start`, `end` (RFC 3339), with ` | sort by (_time)` appended
   - `(*Client).Tail(ctx context.Context, fn func(classify.Record) error) error` — `GET /select/logsql/tail?query=…&offset=5s`; reads JSON lines until EOF or `ctx` is cancelled
+  - `(*Client).QueryQuarantine(ctx context.Context, from, to time.Time, fn func(QuarantineRecord) error) error` — queries tenant `0:1` (`AccountID: 0, ProjectID: 1`)
+  - `(*Client).TailQuarantine(ctx context.Context, fn func(QuarantineRecord) error) error` — streams from tenant `0:1` (`AccountID: 0, ProjectID: 1`)
   - `(*Client).Ready(ctx) error` — `GET /health`
 
-- [x] **Step 1: Write the failing tests** — an `httptest` server returns JSON lines `{"_time":"2026-10-29T09:00:00.123Z","_stream_id":"s1","project":"proj-pn","pod":"p","container":"c","node":"n","message":"{…}"}`; `TestTailDecodesRecords`; `TestCatchUpSendsRangeAndSort` (asserts form values); `TestTailStopsOnContextCancel`; `TestMalformedLineSkippedNotFatal`.
+- [x] **Step 1: Write the failing tests** — an `httptest` server returns JSON lines `{"_time":"2026-10-29T09:00:00.123Z","_stream_id":"s1","project":"proj-pn","pod":"p","container":"c","node":"n","message":"{…}"}`; `TestTailDecodesRecords`; `TestCatchUpSendsRangeAndSort` (asserts form values); `TestTailStopsOnContextCancel`; `TestMalformedLineSkippedNotFatal`; `TestDualReadV2AndV3`; `TestQueryQuarantineSendsTenantHeadersAndDecodes`; `TestTailQuarantineSendsTenantHeaders`.
 - [x] **Step 2: Run them to verify they fail.**
-- [x] **Step 3: Implement** with `bufio.Scanner`, buffer max 1 MiB; a line over that is skipped and counted.
+- [x] **Step 3: Implement** with `bufio.Scanner`/`bufio.Reader`, buffer max 1 MiB; a line over that is skipped and counted. Supports both v2 envelope and v3 pre-parsed fields, plus tenant `0:1` quarantine streaming.
 - [x] **Step 4: Run** → PASS.
 - [x] **Step 5: Commit**
 
 ```bash
 git add services/error-pipeline/internal/vlogs
-git commit -m "feat(error-pipeline): VictoriaLogs tail and catch-up client"
+git commit -m "feat(error-pipeline): VictoriaLogs tail, catch-up, and quarantine client"
 ```
 
 ### Task 10: Notify client, burst limiter, pending queue, message rendering
@@ -331,8 +334,11 @@ git commit -m "feat(error-pipeline): VictoriaLogs tail and catch-up client"
   - `RenderNew(g group.Group) Notification` — title `New error in <project>/<container>` (or `Recurring error in …` with "N occurrences since last alert"); fields `Project`, `Container`, `Pods`, `First seen` (RFC 3339), `Level`, `Fingerprint`; body = redacted `exception.type: exception.message`, then the samples and the stack trace in a fenced block
   - `RenderOverflow(n int, since time.Time) Notification`
   - `RenderInvestigatorUnavailable(g group.Group) Notification` (`AI debug skipped: investigator unavailable`)
+  - `RenderQuarantineAlert(project, container string, count int, firstLine string, observed time.Time) Notification` (Q1, FR-025)
+  - `RenderRedactionMarkerAlert(project, container, release, kind string, observed time.Time) Notification` (FR-025)
+  - `RenderViolationDigest(violations map[string]map[string]int, since, until time.Time) Notification` (FR-025)
 
-- [x] **Step 1: Write the failing tests** — `TestGoldenMatchesStruct` (round-trip the golden file through `Notification` with no field loss); `TestRenderNewRedacts` (a sample containing `Bearer abc` → body contains `[REDACTED]`, not `abc`); `TestRenderRecurring`; `TestLimiterTenPerMinute` (11 calls at `t0` → 10 true, `TakeOverflow()` 1; at `t0+61s` → true); `TestQueueDropsOldestAndLogs` (max 100, push 101 → `Len` 100, one log line naming the dropped title); `TestDrainStopsAtFirstFailure`.
+- [x] **Step 1: Write the failing tests** — `TestGoldenMatchesStruct`; `TestRenderNewRedacts`; `TestRenderRecurring`; `TestLimiterTenPerMinute`; `TestQueueDropsOldestAndLogs`; `TestDrainStopsAtFirstFailure`; `TestRenderQuarantineAlert`; `TestRenderRedactionMarkerAlert`; `TestRenderViolationDigest`.
 - [x] **Step 2: Run them to verify they fail.**
 - [x] **Step 3: Implement.**
 - [x] **Step 4: Run** → PASS.
@@ -340,7 +346,7 @@ git commit -m "feat(error-pipeline): VictoriaLogs tail and catch-up client"
 
 ```bash
 git add services/error-pipeline/internal/notify
-git commit -m "feat(error-pipeline): notify client, burst cap, bounded retry queue"
+git commit -m "feat(error-pipeline): notify client, burst cap, bounded retry queue, and contract alerts"
 ```
 
 ### Task 11: Detector wiring, probes, main, image
@@ -359,6 +365,10 @@ git commit -m "feat(error-pipeline): notify client, burst cap, bounded retry que
   - `New(cfg Config) (*Detector, error)`; `(*Detector).Run(ctx context.Context) error`
   - `(*Detector).Mux() http.Handler` — `/startupz` (state loaded), `/readyz` (VictoriaLogs `Ready` OK and tail connected within the last 30 s), `/healthz` (process-local)
   - env: `LISTEN_ADDR=:8080`, `VLOGS_URL=http://victorialogs.observability.svc:9428`, `NOTIFY_URL=http://notify-gateway.vault.svc:8080`, `INVESTIGATOR_URL=` (empty disables the handoff), `STATE_PATH=/state/detector.json`
+  - Quarantine alerting: immediate first quarantined line from a `v3/*` container, throttled to 1/hour with count.
+  - Redaction marker alert: immediate unthrottled alert on `[REDACTED:<kind>]`.
+  - Daily violation digest: 24h summary grouped by project, container, and violation kind.
+  - No RBAC or Kubernetes version-mismatch checks (D19).
 
 - [x] **Step 1: Write the failing end-to-end test** — a fake VictoriaLogs tail streams: one PN JSON error, the same error with a different UUID 30 s later, a Go panic with 3 stack lines from `proj-health`, and 12 distinct new errors in the same second. A fake notify server records posts. A fake clock is advanced to `+3m`. Assert:
   - `#errors` got the PN error once, the panic once (with its stack), 10 of the burst, and one "+2 more new errors"

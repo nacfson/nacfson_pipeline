@@ -510,6 +510,57 @@ func TestRenderInvestigatorUnavailableBatchStaysWithinProxyLimits(t *testing.T) 
 	}
 }
 
+func TestRenderQuarantineAlert(t *testing.T) {
+	obs := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+	n := RenderQuarantineAlert("proj-pn", "backend", 1, "raw unparsed line", obs)
+	if n.Title != "Quarantined log in proj-pn/backend" {
+		t.Errorf("title = %q", n.Title)
+	}
+	if n.Severity != SeverityError {
+		t.Errorf("severity = %q", n.Severity)
+	}
+	if !strings.Contains(n.Body, "raw unparsed line") {
+		t.Errorf("body missing first line: %q", n.Body)
+	}
+
+	nThrottled := RenderQuarantineAlert("proj-pn", "backend", 5, "raw unparsed line", obs)
+	if nThrottled.Title != "Quarantined logs in proj-pn/backend (+4 occurrences)" {
+		t.Errorf("throttled title = %q", nThrottled.Title)
+	}
+}
+
+func TestRenderRedactionMarkerAlert(t *testing.T) {
+	obs := time.Date(2026, 11, 5, 12, 0, 0, 0, time.UTC)
+	n := RenderRedactionMarkerAlert("proj-pn", "backend", "v1.4.2", "bearer", obs)
+	if n.Title != "Secret redacted in proj-pn/backend@v1.4.2" {
+		t.Errorf("title = %q", n.Title)
+	}
+	if n.Severity != SeverityError {
+		t.Errorf("severity = %q", n.Severity)
+	}
+	if !strings.Contains(n.Body, `"bearer"`) {
+		t.Errorf("body missing kind: %q", n.Body)
+	}
+}
+
+func TestRenderViolationDigest(t *testing.T) {
+	since := time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC)
+	until := time.Date(2026, 11, 5, 0, 0, 0, 0, time.UTC)
+	v := map[string]map[string]int{
+		"proj-pn/backend": {
+			"time-rejected": 2,
+			"dynamic-key":   1,
+		},
+	}
+	n := RenderViolationDigest(v, since, until)
+	if n.Title != "Daily log contract violation digest" {
+		t.Errorf("title = %q", n.Title)
+	}
+	if !strings.Contains(n.Body, "time-rejected = 2") || !strings.Contains(n.Body, "dynamic-key = 1") {
+		t.Errorf("body missing violation: %q", n.Body)
+	}
+}
+
 func TestLimiterTenPerMinute(t *testing.T) {
 	t0 := time.Date(2026, 10, 29, 9, 0, 0, 0, time.UTC)
 	l := NewLimiter(10)

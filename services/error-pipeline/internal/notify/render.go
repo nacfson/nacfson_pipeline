@@ -2,6 +2,7 @@ package notify
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -143,6 +144,91 @@ func RenderInvestigatorUnavailableBatch(batch []group.Group) Notification {
 	out.Body = fmt.Sprintf("%d groups closed without reaching the error investigator: the "+
 		"investigator was unavailable, or the shutdown budget ran out first. They are saved "+
 		"as not investigated, so the next start retries them.", len(batch))
+	return finalize(out)
+}
+
+// RenderQuarantineAlert renders an immediate alert for non-conforming lines
+// sent to the quarantine area (tenant 0:1) from a v3 container (FR-025, Q1).
+func RenderQuarantineAlert(project, container string, count int, firstLine string, observed time.Time) Notification {
+	title := fmt.Sprintf("Quarantined log in %s/%s", project, container)
+	if count > 1 {
+		title = fmt.Sprintf("Quarantined logs in %s/%s (+%d occurrences)", project, container, count-1)
+	}
+
+	var out Notification
+	out.Title = title
+	out.Severity = SeverityError
+	out.Fields = []Field{
+		{Name: "Project", Value: project},
+		{Name: "Container", Value: container},
+		{Name: "Count", Value: fmt.Sprint(count)},
+		{Name: "Observed", Value: observed.UTC().Format(time.RFC3339)},
+	}
+	out.Body = "Log lines from this container were non-conforming and routed to quarantine (tenant 0:1), " +
+		"where normal error alerting cannot see them.\n\n" + fenced([]string{redact.String(firstLine)})
+	return finalize(out)
+}
+
+// RenderRedactionMarkerAlert renders an immediate, unthrottled alert when a
+// stored line carries a redaction marker, showing a secret was printed (FR-025).
+// It names the project, container, release, and marker kind, never leaking the secret value.
+func RenderRedactionMarkerAlert(project, container, release, kind string, observed time.Time) Notification {
+	title := fmt.Sprintf("Secret redacted in %s/%s", project, container)
+	if release != "" {
+		title = fmt.Sprintf("Secret redacted in %s/%s@%s", project, container, release)
+	}
+
+	var out Notification
+	out.Title = title
+	out.Severity = SeverityError
+	out.Fields = []Field{
+		{Name: "Project", Value: project},
+		{Name: "Container", Value: container},
+		{Name: "Release", Value: release},
+		{Name: "Marker Kind", Value: kind},
+		{Name: "Observed", Value: observed.UTC().Format(time.RFC3339)},
+	}
+	out.Body = fmt.Sprintf("A log line printed by this container contained a secret matching pattern %q. "+
+		"The platform redacted the value before storage. Fix the workload so secrets are not printed.", kind)
+	return finalize(out)
+}
+
+// RenderViolationDigest renders the daily summary of contract violations
+// grouped by project, container, and violation kind (FR-025).
+func RenderViolationDigest(violations map[string]map[string]int, since, until time.Time) Notification {
+	var out Notification
+	out.Title = "Daily log contract violation digest"
+	out.Severity = SeverityInfo
+	out.Fields = []Field{
+		{Name: "Since", Value: since.UTC().Format(time.RFC3339)},
+		{Name: "Until", Value: until.UTC().Format(time.RFC3339)},
+	}
+
+	var sb strings.Builder
+	sb.WriteString("Log contract violations recorded in the last 24h:\n\n")
+	total := 0
+
+	pcs := make([]string, 0, len(violations))
+	for pc := range violations {
+		pcs = append(pcs, pc)
+	}
+	sort.Strings(pcs)
+
+	for _, pc := range pcs {
+		kinds := violations[pc]
+		ks := make([]string, 0, len(kinds))
+		for k := range kinds {
+			ks = append(ks, k)
+		}
+		sort.Strings(ks)
+		for _, kind := range ks {
+			count := kinds[kind]
+			total += count
+			sb.WriteString(fmt.Sprintf("- **%s**: %s = %d\n", pc, kind, count))
+		}
+	}
+	out.Fields = append(out.Fields, Field{Name: "Total Violations", Value: fmt.Sprint(total)})
+	out.Body = sb.String()
 	return finalize(out)
 }
 
