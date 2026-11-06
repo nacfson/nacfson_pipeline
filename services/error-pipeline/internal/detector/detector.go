@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -217,7 +218,26 @@ type Detector struct {
 	cursor     time.Time
 	burstSince time.Time
 	lastSave   time.Time
+
+	quarantineMu sync.Mutex
+	quarantine   map[string]*quarantineState
+
+	violationsMu sync.Mutex
+	violations   map[string]map[string]int
+	lastDigest   time.Time
 }
+
+type quarantineState struct {
+	firstAlertSent bool
+	lastAlert      time.Time
+	pendingCount   int
+	firstLine      string
+}
+
+var (
+	redactionMarkerRe = regexp.MustCompile(`\[REDACTED:([a-z0-9_-]+)\]`)
+	dynamicKeyRe      = regexp.MustCompile(`\d{4,}|[0-9a-fA-F]{32}`)
+)
 
 // settleKey identifies one closed cycle of a group: its fingerprint and the
 // window that closed. Two cycles of one fingerprint differ in WindowEnd, so an
@@ -261,6 +281,9 @@ func New(cfg Config) (*Detector, error) {
 		handoffDone: make(chan struct{}),
 		unresolved:  map[string]struct{}{},
 		http:        &http.Client{Timeout: handoffTimeout},
+		quarantine:  make(map[string]*quarantineState),
+		violations:  make(map[string]map[string]int),
+		lastDigest:  cfg.Now(),
 	}
 	d.queue = notify.NewQueue(queueSize, func(ctx context.Context, n notify.Notification) error {
 		ctx, cancel := context.WithTimeout(ctx, sendTimeout)
@@ -367,6 +390,11 @@ func (d *Detector) Run(ctx context.Context) error {
 		defer close(collected)
 		d.collect(ctx)
 	}()
+	quarantineDone := make(chan struct{})
+	go func() {
+		defer close(quarantineDone)
+		d.collectQuarantine(ctx)
+	}()
 	go d.sender(ctx)
 	go d.handoffWorker(ctx)
 
@@ -378,6 +406,7 @@ func (d *Detector) Run(ctx context.Context) error {
 			// Let the collector finish its current read so no cursor
 			// position is lost, then flush what is left.
 			<-collected
+			<-quarantineDone
 			// The sender and the worker stop on their own ctx; the final
 			// drain below owns the queue and every remaining handoff from
 			// here.
@@ -485,6 +514,77 @@ func (d *Detector) collect(ctx context.Context) {
 	}
 }
 
+// collectQuarantine streams records from the quarantine tenant (0:1) and alerts
+// on non-conforming lines from v3 containers (FR-025, Q1).
+func (d *Detector) collectQuarantine(ctx context.Context) {
+	backoff := backoffMin
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		err := d.cfg.VLogs.TailQuarantine(ctx, d.ingestQuarantine)
+		if ctx.Err() != nil {
+			return
+		}
+		d.log.Warn("quarantine tail ended, reconnecting", "error", errorString(err), "in", backoff.String())
+		if !sleep(ctx, backoff) {
+			return
+		}
+		if backoff *= 2; backoff > backoffMax {
+			backoff = backoffMax
+		}
+	}
+}
+
+// IngestQuarantine feeds one quarantined record into the quarantine alerting and
+// violation tracking pipeline.
+func (d *Detector) IngestQuarantine(q vlogs.QuarantineRecord) error {
+	return d.ingestQuarantine(q)
+}
+
+func (d *Detector) ingestQuarantine(q vlogs.QuarantineRecord) error {
+	now := d.now()
+	key := q.Project + "/" + q.Container
+
+	d.recordViolation(q.Project, q.Container, "quarantined-line")
+
+	d.quarantineMu.Lock()
+	st := d.quarantine[key]
+	if st == nil {
+		st = &quarantineState{}
+		d.quarantine[key] = st
+	}
+
+	var toAlert bool
+	var count int
+	var line string
+
+	if !st.firstAlertSent || now.Sub(st.lastAlert) >= time.Hour {
+		toAlert = true
+		count = st.pendingCount + 1
+		line = q.Message
+		if st.firstLine != "" {
+			line = st.firstLine
+		}
+		st.firstAlertSent = true
+		st.lastAlert = now
+		st.pendingCount = 0
+		st.firstLine = ""
+	} else {
+		st.pendingCount++
+		if st.firstLine == "" {
+			st.firstLine = q.Message
+		}
+	}
+	d.quarantineMu.Unlock()
+
+	if toAlert {
+		n := notify.RenderQuarantineAlert(q.Project, q.Container, count, line, q.Time)
+		d.dispatch(outbox{notifications: []notify.Notification{n}})
+	}
+	return nil
+}
+
 // catchUp replays [max(cursor, now-15m), now) so a restart neither drops what
 // was logged while the detector was down nor floods Discord with old errors.
 // A first start has no cursor and tails from now.
@@ -511,11 +611,47 @@ func (d *Detector) catchUp(ctx context.Context) {
 	d.log.Info("catch-up complete", "from", from.UTC().Format(time.RFC3339Nano))
 }
 
+// Ingest feeds one record through the detector pipeline.
+func (d *Detector) Ingest(r classify.Record) error {
+	return d.ingest(r)
+}
+
 // ingest feeds one record through the assembler and the tracker. It is the
 // only writer of the cursor and the assembler.
 func (d *Detector) ingest(r classify.Record) error {
 	now := d.now()
 	var out outbox
+
+	// Check for redaction markers (FR-025: immediate alert, not rate-limited)
+	markers := findRedactionMarkers(r.Message)
+	if r.Msg != "" && r.Msg != r.Message {
+		markers = append(markers, findRedactionMarkers(r.Msg)...)
+	}
+	if r.ExceptionMessage != "" {
+		markers = append(markers, findRedactionMarkers(r.ExceptionMessage)...)
+	}
+	if r.Stacktrace != "" {
+		markers = append(markers, findRedactionMarkers(r.Stacktrace)...)
+	}
+	if r.ExceptionType != "" {
+		markers = append(markers, findRedactionMarkers(r.ExceptionType)...)
+	}
+	seenMarker := make(map[string]bool)
+	for _, kind := range markers {
+		if !seenMarker[kind] {
+			seenMarker[kind] = true
+			n := notify.RenderRedactionMarkerAlert(r.Project, r.Container, r.ServiceVersion, kind, r.Time)
+			out.notifications = append(out.notifications, n)
+		}
+	}
+
+	// Check contract violations for daily digest (FR-025)
+	if r.TimeRejected {
+		d.recordViolation(r.Project, r.Container, "time-rejected")
+	}
+	if r.DynamicKey || hasDynamicKey(r.Message) {
+		d.recordViolation(r.Project, r.Container, "dynamic-key")
+	}
 
 	d.mu.Lock()
 	if r.Time.After(d.cursor) {
@@ -637,6 +773,53 @@ func (d *Detector) tick() {
 	}
 	d.mu.Unlock()
 
+	// Flush throttled quarantine alerts older than 1 hour (Q1, FR-025)
+	d.quarantineMu.Lock()
+	for key, st := range d.quarantine {
+		if st.pendingCount > 0 && now.Sub(st.lastAlert) >= time.Hour {
+			parts := strings.SplitN(key, "/", 2)
+			proj, cont := parts[0], ""
+			if len(parts) > 1 {
+				cont = parts[1]
+			}
+			line := st.firstLine
+			if line == "" {
+				line = "(multiple quarantined lines)"
+			}
+			n := notify.RenderQuarantineAlert(proj, cont, st.pendingCount, line, now)
+			out.notifications = append(out.notifications, n)
+			st.lastAlert = now
+			st.pendingCount = 0
+			st.firstLine = ""
+		}
+	}
+	d.quarantineMu.Unlock()
+
+	// Flush daily violation digest if 24h passed (FR-025)
+	d.violationsMu.Lock()
+	if now.Sub(d.lastDigest) >= 24*time.Hour {
+		since := d.lastDigest
+		d.lastDigest = now
+		if len(d.violations) > 0 {
+			snapshot := make(map[string]map[string]int)
+			for pc, kinds := range d.violations {
+				snapshot[pc] = make(map[string]int)
+				for k, v := range kinds {
+					snapshot[pc][k] = v
+				}
+			}
+			d.violations = make(map[string]map[string]int)
+			d.violationsMu.Unlock()
+
+			n := notify.RenderViolationDigest(snapshot, since, now)
+			out.notifications = append(out.notifications, n)
+		} else {
+			d.violationsMu.Unlock()
+		}
+	} else {
+		d.violationsMu.Unlock()
+	}
+
 	if d.tailing.Load() {
 		d.tailSeen.Store(time.Now().UnixNano())
 	}
@@ -644,6 +827,82 @@ func (d *Detector) tick() {
 	if save {
 		d.saveState(snap)
 	}
+}
+
+func (d *Detector) recordViolation(project, container, kind string) {
+	d.violationsMu.Lock()
+	defer d.violationsMu.Unlock()
+	key := project + "/" + container
+	if d.violations[key] == nil {
+		d.violations[key] = make(map[string]int)
+	}
+	d.violations[key][kind]++
+}
+
+// Violations returns a copy of current recorded violations.
+func (d *Detector) Violations() map[string]map[string]int {
+	d.violationsMu.Lock()
+	defer d.violationsMu.Unlock()
+	out := make(map[string]map[string]int)
+	for k, v := range d.violations {
+		out[k] = make(map[string]int)
+		for kind, count := range v {
+			out[k][kind] = count
+		}
+	}
+	return out
+}
+
+// FlushViolationsDigest forces flushing of the daily violation digest if any violations exist.
+func (d *Detector) FlushViolationsDigest(now time.Time) (notify.Notification, bool) {
+	d.violationsMu.Lock()
+	defer d.violationsMu.Unlock()
+	if len(d.violations) == 0 {
+		return notify.Notification{}, false
+	}
+	snapshot := make(map[string]map[string]int)
+	for pc, kinds := range d.violations {
+		snapshot[pc] = make(map[string]int)
+		for k, v := range kinds {
+			snapshot[pc][k] = v
+		}
+	}
+	d.violations = make(map[string]map[string]int)
+	since := d.lastDigest
+	d.lastDigest = now
+	return notify.RenderViolationDigest(snapshot, since, now), true
+}
+
+func findRedactionMarkers(text string) []string {
+	matches := redactionMarkerRe.FindAllStringSubmatch(text, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool)
+	var kinds []string
+	for _, m := range matches {
+		if len(m) > 1 && !seen[m[1]] {
+			seen[m[1]] = true
+			kinds = append(kinds, m[1])
+		}
+	}
+	return kinds
+}
+
+func hasDynamicKey(jsonStr string) bool {
+	if !strings.HasPrefix(strings.TrimSpace(jsonStr), "{") {
+		return false
+	}
+	var m map[string]any
+	if err := json.Unmarshal([]byte(jsonStr), &m); err != nil {
+		return false
+	}
+	for k := range m {
+		if dynamicKeyRe.MatchString(k) {
+			return true
+		}
+	}
+	return false
 }
 
 // dispatch pushes the notifications, queues the handoffs and starts a delivery
