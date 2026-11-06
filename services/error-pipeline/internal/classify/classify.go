@@ -27,7 +27,8 @@ const (
 )
 
 // Record is one stored log line as the error detector reads it from
-// VictoriaLogs: the platform envelope of contract section 1.
+// VictoriaLogs: either the v2 platform envelope of contract section 1,
+// or the v3 dual-read envelope with pre-parsed project fields.
 type Record struct {
 	Time      time.Time
 	StreamID  string
@@ -36,6 +37,20 @@ type Record struct {
 	Container string
 	Node      string
 	Message   string
+
+	// v3 pre-parsed fields (populated when reading v3 parsed records)
+	Parsed           bool
+	Level            string
+	Msg              string
+	EventName        string
+	ServiceVersion   string
+	TraceID          string
+	ExceptionType    string
+	ExceptionMessage string
+	Stacktrace       string
+	Fingerprint      string
+	TimeRejected     bool
+	DynamicKey       bool
 }
 
 // Event is the contract view of an error line. The JSON tags are the
@@ -153,6 +168,33 @@ func Line(message string) (Event, LineKind) {
 		return Event{Level: level, Msg: message[len(m[0]):], Source: SourceNginx}, Error
 	}
 	return Event{}, Plain
+}
+
+// EventFromRecord maps a pre-parsed v3 record directly into an Event and LineKind
+// without re-parsing raw JSON messages (R-5 / PR 2 dual-read).
+func EventFromRecord(r Record) (Event, LineKind) {
+	level := strings.ToLower(r.Level)
+	if alias, ok := levelAliases[level]; ok {
+		level = alias
+	}
+	if !knownLevels[level] {
+		return Event{}, NotError
+	}
+	ev := Event{
+		Level:            level,
+		Msg:              truncate(r.Msg, maxFieldBytes),
+		EventName:        truncate(r.EventName, maxFieldBytes),
+		TraceID:          truncate(r.TraceID, maxFieldBytes),
+		ExceptionType:    truncate(r.ExceptionType, maxFieldBytes),
+		ExceptionMessage: truncate(r.ExceptionMessage, maxFieldBytes),
+		Stacktrace:       truncate(r.Stacktrace, maxFieldBytes),
+		Fingerprint:      truncate(r.Fingerprint, maxFieldBytes),
+		Source:           SourceJSON,
+	}
+	if level == "error" || level == "fatal" {
+		return ev, Error
+	}
+	return ev, NotError
 }
 
 func jsonLine(message string) (Event, LineKind, bool) {

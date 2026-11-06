@@ -2333,7 +2333,7 @@
         license: 'First-Party (Pure Go Stdlib)',
         role: 'Log Tailing, Classification & Alerting',
         where: 'services/error-pipeline/cmd/error-detector/main.go',
-        details: 'Tails proj-* logs from VictoriaLogs, classifies against contract v2 (JSON lines, exception.*, event.name), fingerprints and groups them per 3-minute window, and alerts #errors through vault-notify-proxy under a 10/minute burst cap with one "+N more new errors" overflow message. Holds the cursor and group table on PVC error-detector-state, saves atomically every 30 s and on SIGTERM, and retries notifications from a bounded queue. Keeps no secret: the webhook URL never leaves the notify proxy.'
+        details: 'Tails proj-* logs from VictoriaLogs, dual-reads v2 and v3 schemas ({project=~"proj-.*"} OR {k8s.namespace.name=~"proj-.*"}), fingerprints and groups them per 3-minute window, and alerts #errors through vault-notify-proxy under a 10/minute burst cap with one "+N more new errors" overflow message. Holds the cursor and group table on PVC error-detector-state, saves atomically every 30 s and on SIGTERM, and retries notifications from a bounded queue. Keeps no secret: the webhook URL never leaves the notify proxy.'
       },
       {
         cat: 'oss',
