@@ -290,7 +290,14 @@ class TestImageValidation(unittest.TestCase):
             }
         )
 
-    def config(self, arch, env=None, ports=None):
+    def config(self, arch, env=None, ports=None, labels=None):
+        default_labels = {
+            "org.opencontainers.image.version": "v1.4.2",
+            "org.opencontainers.image.revision": "1234567890abcdef1234567890abcdef12345678",
+            "org.opencontainers.image.source": "https://github.com/nacfson/Project_PN",
+        }
+        if labels is not None:
+            default_labels = labels
         return json.dumps(
             {
                 "architecture": arch,
@@ -300,6 +307,7 @@ class TestImageValidation(unittest.TestCase):
                     "Entrypoint": ["/app"],
                     "Env": env or ["PORT=8080"],
                     "ExposedPorts": ports or {},
+                    "Labels": default_labels,
                 },
             }
         )
@@ -313,6 +321,24 @@ class TestImageValidation(unittest.TestCase):
         if "--config" in cmd:
             arch = "arm64" if "@sha256:bb" in joined else "amd64"
             return mock.Mock(returncode=0, stdout=self.config(arch), stderr="")
+        if cmd and cmd[0] == "gh" and "check-runs" in joined:
+            return mock.Mock(
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "total_count": 1,
+                        "check_runs": [
+                            {
+                                "name": "log-contract",
+                                "status": "completed",
+                                "conclusion": "success",
+                                "html_url": "https://github.com/nacfson/Project_PN/actions/runs/123",
+                            }
+                        ],
+                    }
+                ),
+                stderr="",
+            )
         raise AssertionError(f"unexpected command: {joined}")
 
     def test_accepts_multiarch(self):
@@ -331,7 +357,10 @@ class TestImageValidation(unittest.TestCase):
             report.evidence["linux/amd64"]["entrypoint"], ["/app"]
         )
         self.assertEqual(
-            report.evidence["linux/amd64"]["source"], "(missing)"
+            report.evidence["linux/amd64"]["source"], "https://github.com/nacfson/Project_PN"
+        )
+        self.assertEqual(
+            report.evidence["linux/amd64"]["version"], "v1.4.2"
         )
 
     def test_rejects_single_arch(self):
@@ -396,12 +425,34 @@ class TestImageValidation(unittest.TestCase):
                 return mock.Mock(
                     returncode=0, stdout=self.manifest(["amd64", "arm64"]), stderr=""
                 )
-            arch = "arm64" if "@sha256:bb" in " ".join(cmd) else "amd64"
-            config = json.loads(self.config(arch))
-            config["config"]["Labels"] = {
-                "org.opencontainers.image.source": "https://github.com/other/repo"
-            }
-            return mock.Mock(returncode=0, stdout=json.dumps(config), stderr="")
+            if "--config" in cmd:
+                arch = "arm64" if "@sha256:bb" in " ".join(cmd) else "amd64"
+                config = json.loads(self.config(arch))
+                config["config"]["Labels"] = {
+                    "org.opencontainers.image.version": "v1.4.2",
+                    "org.opencontainers.image.revision": "1234567890abcdef1234567890abcdef12345678",
+                    "org.opencontainers.image.source": "https://github.com/other/repo",
+                }
+                return mock.Mock(returncode=0, stdout=json.dumps(config), stderr="")
+            if cmd and cmd[0] == "gh" and "check-runs" in " ".join(cmd):
+                return mock.Mock(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "total_count": 1,
+                            "check_runs": [
+                                {
+                                    "name": "log-contract",
+                                    "status": "completed",
+                                    "conclusion": "success",
+                                    "html_url": "https://github.com/nacfson/Project_PN/actions/runs/123",
+                                }
+                            ],
+                        }
+                    ),
+                    stderr="",
+                )
+            raise AssertionError(f"unexpected command: {cmd}")
 
         with mock.patch.object(mod, "run_command", side_effect=mismatched_source):
             with self.assertRaises(mod.UpdateError):
@@ -421,12 +472,34 @@ class TestImageValidation(unittest.TestCase):
                 return mock.Mock(
                     returncode=0, stdout=self.manifest(["amd64", "arm64"]), stderr=""
                 )
-            arch = "arm64" if "@sha256:bb" in " ".join(cmd) else "amd64"
-            config = json.loads(self.config(arch))
-            config["config"]["Labels"] = {
-                "org.opencontainers.image.revision": "deadbeef"
-            }
-            return mock.Mock(returncode=0, stdout=json.dumps(config), stderr="")
+            if "--config" in cmd:
+                arch = "arm64" if "@sha256:bb" in " ".join(cmd) else "amd64"
+                config = json.loads(self.config(arch))
+                config["config"]["Labels"] = {
+                    "org.opencontainers.image.version": "v1.4.2",
+                    "org.opencontainers.image.revision": "deadbeef",
+                    "org.opencontainers.image.source": "https://github.com/nacfson/Project_PN",
+                }
+                return mock.Mock(returncode=0, stdout=json.dumps(config), stderr="")
+            if cmd and cmd[0] == "gh" and "check-runs" in " ".join(cmd):
+                return mock.Mock(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "total_count": 1,
+                            "check_runs": [
+                                {
+                                    "name": "log-contract",
+                                    "status": "completed",
+                                    "conclusion": "success",
+                                    "html_url": "https://github.com/nacfson/Project_PN/actions/runs/123",
+                                }
+                            ],
+                        }
+                    ),
+                    stderr="",
+                )
+            raise AssertionError(f"unexpected command: {cmd}")
 
         with mock.patch.object(mod, "run_command", side_effect=mismatched):
             with self.assertRaises(mod.UpdateError):
@@ -446,15 +519,35 @@ class TestImageValidation(unittest.TestCase):
                 return mock.Mock(
                     returncode=0, stdout=self.manifest(["amd64", "arm64"]), stderr=""
                 )
-            return mock.Mock(
-                returncode=0,
-                stdout=self.config(
-                    arch,
-                    env=["DB_PASSWORD=hunter2"],
-                    ports={"9090/tcp": {}},
-                ),
-                stderr="",
-            )
+            if "--config" in cmd:
+                return mock.Mock(
+                    returncode=0,
+                    stdout=self.config(
+                        arch,
+                        env=["DB_PASSWORD=hunter2"],
+                        ports={"9090/tcp": {}},
+                    ),
+                    stderr="",
+                )
+            if cmd and cmd[0] == "gh" and "check-runs" in " ".join(cmd):
+                return mock.Mock(
+                    returncode=0,
+                    stdout=json.dumps(
+                        {
+                            "total_count": 1,
+                            "check_runs": [
+                                {
+                                    "name": "log-contract",
+                                    "status": "completed",
+                                    "conclusion": "success",
+                                    "html_url": "https://github.com/nacfson/Project_PN/actions/runs/123",
+                                }
+                            ],
+                        }
+                    ),
+                    stderr="",
+                )
+            raise AssertionError(f"unexpected command: {cmd}")
 
         with mock.patch.object(mod, "run_command", side_effect=config_with_secret):
             report = mod.validate_image(
@@ -469,6 +562,291 @@ class TestImageValidation(unittest.TestCase):
         self.assertIn("DB_PASSWORD", joined)
         self.assertNotIn("hunter2", joined)
         self.assertIn("ExposedPorts", joined)
+
+    def test_rejects_missing_version_label(self):
+        def no_version(cmd, check=False):
+            if "--raw" in cmd:
+                return mock.Mock(
+                    returncode=0, stdout=self.manifest(["amd64", "arm64"]), stderr=""
+                )
+            arch = "arm64" if "@sha256:bb" in " ".join(cmd) else "amd64"
+            config = json.loads(self.config(arch, labels={
+                "org.opencontainers.image.revision": "1234567890abcdef",
+                "org.opencontainers.image.source": "https://github.com/nacfson/Project_PN",
+            }))
+            return mock.Mock(returncode=0, stdout=json.dumps(config), stderr="")
+
+        with mock.patch.object(mod, "run_command", side_effect=no_version):
+            with self.assertRaises(mod.UpdateError) as ctx:
+                mod.validate_image(
+                    "ghcr.io/nacfson/project-pn-frontend",
+                    NEW_DIGEST,
+                    container_port=80,
+                    expected_revision=None,
+                    strict=False,
+                    pull_check=False,
+                )
+        self.assertIn("has no org.opencontainers.image.version label", str(ctx.exception))
+
+    def test_rejects_malformed_version_label(self):
+        def bad_version(cmd, check=False):
+            if "--raw" in cmd:
+                return mock.Mock(
+                    returncode=0, stdout=self.manifest(["amd64", "arm64"]), stderr=""
+                )
+            arch = "arm64" if "@sha256:bb" in " ".join(cmd) else "amd64"
+            config = json.loads(self.config(arch, labels={
+                "org.opencontainers.image.version": "1.4.2",
+                "org.opencontainers.image.revision": "1234567890abcdef",
+                "org.opencontainers.image.source": "https://github.com/nacfson/Project_PN",
+            }))
+            return mock.Mock(returncode=0, stdout=json.dumps(config), stderr="")
+
+        with mock.patch.object(mod, "run_command", side_effect=bad_version):
+            with self.assertRaises(mod.UpdateError) as ctx:
+                mod.validate_image(
+                    "ghcr.io/nacfson/project-pn-frontend",
+                    NEW_DIGEST,
+                    container_port=80,
+                    expected_revision=None,
+                    strict=False,
+                    pull_check=False,
+                )
+        self.assertIn("does not match version format", str(ctx.exception))
+
+    def test_rejects_plain_v0_0_0(self):
+        def plain_v0(cmd, check=False):
+            if "--raw" in cmd:
+                return mock.Mock(
+                    returncode=0, stdout=self.manifest(["amd64", "arm64"]), stderr=""
+                )
+            arch = "arm64" if "@sha256:bb" in " ".join(cmd) else "amd64"
+            config = json.loads(self.config(arch, labels={
+                "org.opencontainers.image.version": "v0.0.0",
+                "org.opencontainers.image.revision": "1234567890abcdef",
+                "org.opencontainers.image.source": "https://github.com/nacfson/Project_PN",
+            }))
+            return mock.Mock(returncode=0, stdout=json.dumps(config), stderr="")
+
+        with mock.patch.object(mod, "run_command", side_effect=plain_v0):
+            with self.assertRaises(mod.UpdateError) as ctx:
+                mod.validate_image(
+                    "ghcr.io/nacfson/project-pn-frontend",
+                    NEW_DIGEST,
+                    container_port=80,
+                    expected_revision=None,
+                    strict=False,
+                    pull_check=False,
+                )
+        self.assertIn("plain v0.0.0", str(ctx.exception))
+
+    def test_rejects_untagged_commit_mismatch(self):
+        def untagged_mismatch(cmd, check=False):
+            if "--raw" in cmd:
+                return mock.Mock(
+                    returncode=0, stdout=self.manifest(["amd64", "arm64"]), stderr=""
+                )
+            arch = "arm64" if "@sha256:bb" in " ".join(cmd) else "amd64"
+            config = json.loads(self.config(arch, labels={
+                "org.opencontainers.image.version": "v0.0.0-3f2a9c1",
+                "org.opencontainers.image.revision": "9b1c473635e0fe45d67d2fbb0cfd887c96e9d308",
+                "org.opencontainers.image.source": "https://github.com/nacfson/Project_PN",
+            }))
+            return mock.Mock(returncode=0, stdout=json.dumps(config), stderr="")
+
+        with mock.patch.object(mod, "run_command", side_effect=untagged_mismatch):
+            with self.assertRaises(mod.UpdateError) as ctx:
+                mod.validate_image(
+                    "ghcr.io/nacfson/project-pn-frontend",
+                    NEW_DIGEST,
+                    container_port=80,
+                    expected_revision=None,
+                    strict=False,
+                    pull_check=False,
+                )
+        self.assertIn("is not a prefix of image revision", str(ctx.exception))
+
+    def test_accepts_untagged_commit_match(self):
+        def untagged_match(cmd, check=False):
+            if "--raw" in cmd:
+                return mock.Mock(
+                    returncode=0, stdout=self.manifest(["amd64", "arm64"]), stderr=""
+                )
+            if "--config" in cmd:
+                arch = "arm64" if "@sha256:bb" in " ".join(cmd) else "amd64"
+                config = json.loads(self.config(arch, labels={
+                    "org.opencontainers.image.version": "v0.0.0-3f2a9c1",
+                    "org.opencontainers.image.revision": "3f2a9c1490abcdef",
+                    "org.opencontainers.image.source": "https://github.com/nacfson/Project_PN",
+                }))
+                return mock.Mock(returncode=0, stdout=json.dumps(config), stderr="")
+            if cmd and cmd[0] == "gh" and "check-runs" in " ".join(cmd):
+                return mock.Mock(
+                    returncode=0,
+                    stdout=json.dumps({
+                        "total_count": 1,
+                        "check_runs": [
+                            {
+                                "name": "log-contract",
+                                "status": "completed",
+                                "conclusion": "success",
+                                "html_url": "https://github.com/nacfson/Project_PN/actions/runs/999",
+                            }
+                        ],
+                    }),
+                    stderr="",
+                )
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        with mock.patch.object(mod, "run_command", side_effect=untagged_match):
+            report = mod.validate_image(
+                "ghcr.io/nacfson/project-pn-frontend",
+                NEW_DIGEST,
+                container_port=80,
+                expected_revision=None,
+                strict=False,
+                pull_check=False,
+            )
+        self.assertEqual(report.version, "v0.0.0-3f2a9c1")
+        self.assertIn("actions/runs/999", report.log_contract_run_url)
+
+    def test_rejects_missing_log_contract_check_run(self):
+        def no_check_run(cmd, check=False):
+            if "--raw" in cmd:
+                return mock.Mock(
+                    returncode=0, stdout=self.manifest(["amd64", "arm64"]), stderr=""
+                )
+            if "--config" in cmd:
+                arch = "arm64" if "@sha256:bb" in " ".join(cmd) else "amd64"
+                return mock.Mock(returncode=0, stdout=self.config(arch), stderr="")
+            if cmd and cmd[0] == "gh" and "check-runs" in " ".join(cmd):
+                return mock.Mock(
+                    returncode=0,
+                    stdout=json.dumps({"total_count": 0, "check_runs": []}),
+                    stderr="",
+                )
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        with mock.patch.object(mod, "run_command", side_effect=no_check_run):
+            with self.assertRaises(mod.UpdateError) as ctx:
+                mod.validate_image(
+                    "ghcr.io/nacfson/project-pn-frontend",
+                    NEW_DIGEST,
+                    container_port=80,
+                    expected_revision=None,
+                    strict=False,
+                    pull_check=False,
+                )
+        self.assertIn("is missing 'log-contract' check run", str(ctx.exception))
+
+    def test_rejects_failed_log_contract_check_run(self):
+        def failed_check_run(cmd, check=False):
+            if "--raw" in cmd:
+                return mock.Mock(
+                    returncode=0, stdout=self.manifest(["amd64", "arm64"]), stderr=""
+                )
+            if "--config" in cmd:
+                arch = "arm64" if "@sha256:bb" in " ".join(cmd) else "amd64"
+                return mock.Mock(returncode=0, stdout=self.config(arch), stderr="")
+            if cmd and cmd[0] == "gh" and "check-runs" in " ".join(cmd):
+                return mock.Mock(
+                    returncode=0,
+                    stdout=json.dumps({
+                        "total_count": 1,
+                        "check_runs": [
+                            {
+                                "name": "log-contract",
+                                "status": "completed",
+                                "conclusion": "failure",
+                                "html_url": "https://github.com/nacfson/Project_PN/actions/runs/123",
+                            }
+                        ],
+                    }),
+                    stderr="",
+                )
+            raise AssertionError(f"unexpected command: {cmd}")
+
+        with mock.patch.object(mod, "run_command", side_effect=failed_check_run):
+            with self.assertRaises(mod.UpdateError) as ctx:
+                mod.validate_image(
+                    "ghcr.io/nacfson/project-pn-frontend",
+                    NEW_DIGEST,
+                    container_port=80,
+                    expected_revision=None,
+                    strict=False,
+                    pull_check=False,
+                )
+        self.assertIn("concluded with 'failure'", str(ctx.exception))
+
+    def test_replace_image_updates_version_label(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "deployment.yaml"
+            p.write_text(
+                """\\
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pn-backend
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pn-backend
+        app.kubernetes.io/version: "v1.4.2"
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/nacfson/project-pn-backend@sha256:old
+"""
+            )
+            mod.replace_image(
+                p,
+                "ghcr.io/nacfson/project-pn-backend@sha256:old",
+                "ghcr.io/nacfson/project-pn-backend@sha256:new",
+                new_version="v1.5.0",
+            )
+            content = p.read_text()
+            self.assertIn('app.kubernetes.io/version: "v1.5.0"', content)
+            self.assertIn("image: ghcr.io/nacfson/project-pn-backend@sha256:new", content)
+            self.assertNotIn("sha256:old", content)
+
+    def test_replace_image_inserts_version_label_in_template_not_top_level(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "deployment.yaml"
+            p.write_text(
+                """\\
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: pn-backend
+  labels:
+    app.kubernetes.io/name: pn-backend
+spec:
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: pn-backend
+    spec:
+      containers:
+        - name: backend
+          image: ghcr.io/nacfson/project-pn-backend@sha256:old
+"""
+            )
+            mod.replace_image(
+                p,
+                "ghcr.io/nacfson/project-pn-backend@sha256:old",
+                "ghcr.io/nacfson/project-pn-backend@sha256:new",
+                new_version="v1.5.0",
+            )
+            content = p.read_text()
+            lines = content.splitlines()
+            meta_idx = lines.index("metadata:")
+            spec_idx = lines.index("spec:")
+            top_level = lines[meta_idx:spec_idx]
+            self.assertFalse(any("app.kubernetes.io/version" in l for l in top_level))
+
+            template_level = lines[spec_idx:]
+            self.assertTrue(any('app.kubernetes.io/version: "v1.5.0"' in l for l in template_level))
 
 
 class TestActionsRunResolution(TempRepo):

@@ -505,6 +505,10 @@ HANDBOOK_PATH = "docs/platform-architecture.html"
 FULL_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}")
 SHORT_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{8}(?![0-9a-f])")
 IMAGE_LINE_RE = re.compile(r"^(\s*)image:\s*(\S+)\s*$")
+VERSION_LINE_RE = re.compile(
+    r"^(\s*)app\.kubernetes\.io/version:\s*(?:\"([^\"]+)\"|'([^']+)'|(\S+))\s*$"
+)
+VERSION_VAL_RE = re.compile(r"^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$")
 
 
 class _DiffError(Exception):
@@ -603,19 +607,53 @@ def _check_yaml_file(path: str, diff_text: str, project: str, approved: dict[str
 
     removed: list[str] = []
     added: list[str] = []
+    version_removed: list[str] = []
+    version_added: list[str] = []
     for change in _parse_diff(diff_text, path):
         stripped = change.body.strip()
         if not stripped:
             raise _DiffError(f"{path}: a changed line is blank")
-        if not stripped.startswith("image:"):
-            raise _DiffError(f"{path}: changed line is not an `image:` line: {stripped[:80]!r}")
-        (added if change.sign == "+" else removed).append(change.body)
+        if stripped.startswith("image:"):
+            (added if change.sign == "+" else removed).append(change.body)
+        elif stripped.startswith("app.kubernetes.io/version:"):
+            (version_added if change.sign == "+" else version_removed).append(change.body)
+        else:
+            raise _DiffError(
+                f"{path}: changed line is neither an `image:` line nor a version label line: {stripped[:80]!r}"
+            )
 
     if len(removed) != 1 or len(added) != 1:
         raise _DiffError(
-            f"{path}: expected exactly one removed and one added line, "
+            f"{path}: expected exactly one removed and one added image line, "
             f"found {len(removed)} removed and {len(added)} added"
         )
+
+    if len(version_removed) > 1 or len(version_added) > 1:
+        raise _DiffError(
+            f"{path}: expected at most one removed and one added version label line, "
+            f"found {len(version_removed)} removed and {len(version_added)} added"
+        )
+
+    if version_removed and not version_added:
+        raise _DiffError(f"{path}: version label removed without replacement")
+
+    if version_added:
+        new_v_line = version_added[0]
+        new_v_match = VERSION_LINE_RE.match(new_v_line)
+        if not new_v_match:
+            raise _DiffError(f"{path}: cannot parse the version label line: {new_v_line.strip()!r}")
+        indent = new_v_match.group(1)
+        new_v = new_v_match.group(2) or new_v_match.group(3) or new_v_match.group(4)
+        if not VERSION_VAL_RE.match(new_v) or new_v == "v0.0.0":
+            raise _DiffError(f"{path}: invalid version label {new_v!r}")
+        if version_removed:
+            old_v_line = version_removed[0]
+            old_v_match = VERSION_LINE_RE.match(old_v_line)
+            if old_v_match and old_v_match.group(1) != indent:
+                raise _DiffError(
+                    f"{path}: version label indentation changed "
+                    f"({len(old_v_match.group(1))} -> {len(indent)} spaces)"
+                )
 
     old_line, new_line = removed[0], added[0]
     old_match = IMAGE_LINE_RE.match(old_line)
@@ -753,7 +791,8 @@ def diff_check(changed: dict[str, str], summary: dict, approved: dict[str, str])
          image changed), plus the handbook when the helper rewrote it.
       2. Every workload path is under this project's workloads directory.
       3. Each workload file has exactly one removed and one added `image:` line,
-         same repository, same indentation, new digest approved.
+         same repository, same indentation, new digest approved, and optionally
+         at most one updated `app.kubernetes.io/version` line.
       4. Every handbook difference maps an old digest to an approved new one.
     """
     project = summary["project"]

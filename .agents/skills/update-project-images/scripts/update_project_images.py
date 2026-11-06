@@ -86,6 +86,8 @@ class ValidationReport:
     skipped: list[str] = field(default_factory=list)
     configs: dict[str, dict] = field(default_factory=dict)
     evidence: dict[str, dict] = field(default_factory=dict)
+    version: str = ""
+    log_contract_run_url: str = ""
 
 
 @dataclass
@@ -556,6 +558,7 @@ def validate_image(
                 f"{', '.join(platforms) or 'none'}"
             )
 
+    check_runs_cache: dict[tuple[str, str], list[dict]] = {}
     for item in entries:
         platform_digest = str(item.get("digest") or "")
         arch = str((item.get("platform") or {}).get("architecture"))
@@ -696,10 +699,93 @@ def validate_image(
                 strict,
             )
 
+        version = str(labels.get("org.opencontainers.image.version") or "")
+        if not version:
+            raise UpdateError(f"linux/{arch} image has no org.opencontainers.image.version label")
+        if not re.match(r"^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$", version):
+            raise UpdateError(
+                f"linux/{arch} image version {version!r} does not match version format ^v\\d+\\.\\d+\\.\\d+(-[0-9A-Za-z.-]+)?$"
+            )
+        if version == "v0.0.0":
+            raise UpdateError(
+                f"linux/{arch} image version {version!r} is a plain v0.0.0 with no commit; "
+                "untagged builds must use v0.0.0-<commit>"
+            )
+        if version.startswith("v0.0.0-"):
+            commit_part = version.removeprefix("v0.0.0-")
+            if not revision:
+                raise UpdateError(
+                    f"linux/{arch} image has untagged version {version} but no org.opencontainers.image.revision label"
+                )
+            if not revision.startswith(commit_part):
+                raise UpdateError(
+                    f"linux/{arch} image untagged commit {commit_part!r} is not a prefix of "
+                    f"image revision {revision!r}"
+                )
+
+        target_repo = ""
+        if expected_source_repo:
+            target_repo = expected_source_repo
+        elif source and "github.com" in source:
+            parts = urlparse(source).path.strip("/").split("/")
+            if len(parts) >= 2:
+                target_repo = f"{parts[0]}/{parts[1].removesuffix('.git')}"
+
+        if not target_repo:
+            raise UpdateError(
+                f"cannot verify log-contract check run: unable to determine GitHub source repository for {platform_ref}"
+            )
+        if not revision:
+            raise UpdateError(
+                f"cannot verify log-contract check run: image has no revision label"
+            )
+
+        cache_key = (target_repo, revision)
+        if cache_key in check_runs_cache:
+            log_runs = check_runs_cache[cache_key]
+        else:
+            gh_cmd = ["gh", "api", f"repos/{target_repo}/commits/{revision}/check-runs"]
+            gh_res = run_command(gh_cmd)
+            if gh_res.returncode != 0:
+                raise UpdateError(
+                    f"failed to query check runs for {target_repo}@{revision}: "
+                    f"{gh_res.stderr.strip() or 'gh error'}"
+                )
+            try:
+                check_runs_data = json.loads(gh_res.stdout)
+            except json.JSONDecodeError as exc:
+                raise UpdateError(f"cannot parse check runs JSON from gh: {exc}") from exc
+
+            log_runs = [
+                r
+                for r in check_runs_data.get("check_runs", [])
+                if r.get("name") == "log-contract"
+            ]
+            check_runs_cache[cache_key] = log_runs
+
+        if not log_runs:
+            raise UpdateError(
+                f"commit {revision[:7]} in {target_repo} is missing 'log-contract' check run"
+            )
+        successful_runs = [r for r in log_runs if r.get("conclusion") == "success"]
+        log_run = successful_runs[0] if successful_runs else log_runs[-1]
+        conclusion = log_run.get("conclusion")
+        if conclusion != "success":
+            raise UpdateError(
+                f"'log-contract' check run on {revision[:7]} in {target_repo} concluded with "
+                f"{conclusion!r} (expected 'success')"
+            )
+        log_contract_run_url = log_run.get("html_url") or log_run.get("details_url") or ""
+
+        report.version = version
+        report.log_contract_run_url = log_contract_run_url
+
         report.evidence[f"linux/{arch}"] = {
             "user": user or "(unset)",
             "source": source or "(missing)",
             "revision": revision or "(missing)",
+            "version": version,
+            "log_contract_run_url": log_contract_run_url,
             "entrypoint": container_config.get("Entrypoint") or [],
             "cmd": container_config.get("Cmd") or [],
             "exposed_ports": sorted(keys),
@@ -719,27 +805,61 @@ def validate_image(
     return report
 
 
-def replace_image(path: Path, old_image: str, new_image: str) -> None:
+def replace_image(
+    path: Path, old_image: str, new_image: str, new_version: str | None = None
+) -> None:
     text = path.read_text(encoding="utf-8")
     lines = text.splitlines(keepends=True)
     matches = 0
+    in_template = False
+    version_replaced = False
     for index, line in enumerate(lines):
         stripped = line.strip()
-        if not stripped.startswith("image:"):
-            continue
-        raw_value = stripped.split(":", 1)[1].strip()
-        quote = raw_value[0] if raw_value[:1] in ("'", '"') else ""
-        value = raw_value.strip("'\"")
-        if value != old_image:
-            continue
-        matches += 1
-        prefix = line[: len(line) - len(line.lstrip())]
-        suffix = "\n" if line.endswith("\n") else ""
-        lines[index] = f"{prefix}image: {quote}{new_image}{quote}{suffix}"
+        if stripped == "template:" or stripped.startswith("template:"):
+            in_template = True
+
+        if stripped.startswith("image:"):
+            raw_value = stripped.split(":", 1)[1].strip()
+            quote = raw_value[0] if raw_value[:1] in ("'", '"') else ""
+            value = raw_value.strip("'\"")
+            if value != old_image:
+                continue
+            matches += 1
+            prefix = line[: len(line) - len(line.lstrip())]
+            suffix = "\n" if line.endswith("\n") else ""
+            lines[index] = f"{prefix}image: {quote}{new_image}{quote}{suffix}"
+        elif new_version and in_template and stripped.startswith("app.kubernetes.io/version:"):
+            raw_value = stripped.split(":", 1)[1].strip()
+            quote = raw_value[0] if raw_value[:1] in ("'", '"') else '"'
+            prefix = line[: len(line) - len(line.lstrip())]
+            suffix = "\n" if line.endswith("\n") else ""
+            lines[index] = f"{prefix}app.kubernetes.io/version: {quote}{new_version}{quote}{suffix}"
+            version_replaced = True
+
     if matches != 1:
         raise UpdateError(
             f"expected exactly one image line {old_image!r} in {path}, found {matches}"
         )
+    if new_version and not version_replaced:
+        new_lines = []
+        inserted = False
+        in_template_ins = False
+        for line in lines:
+            stripped = line.strip()
+            if stripped == "template:" or stripped.startswith("template:"):
+                in_template_ins = True
+            new_lines.append(line)
+            if not inserted and in_template_ins and "app.kubernetes.io/name:" in line:
+                prefix = line[: len(line) - len(line.lstrip())]
+                suffix = "\n" if line.endswith("\n") else ""
+                new_lines.append(f'{prefix}app.kubernetes.io/version: "{new_version}"{suffix}')
+                inserted = True
+        if not inserted:
+            raise UpdateError(
+                f"unable to find app.kubernetes.io/name in pod template in {path} to insert version label"
+            )
+        lines = new_lines
+
     path.write_text("".join(lines), encoding="utf-8")
 
 
@@ -964,6 +1084,8 @@ def _summary_images(updates: list[ImageUpdate], root: Path) -> list[dict]:
                 "tag": update.tag,
                 "digest": update.digest,
                 "source": update.source,
+                "version": report.version if report else "",
+                "log_contract_run_url": report.log_contract_run_url if report else "",
                 "noop": update.new_image == target.old_image,
                 "platforms": report.platforms if report else [],
                 "checks": report.checks if report else {},
@@ -1071,8 +1193,16 @@ def run_update(
         )
         if not dry_run:
             for update in html_updates:
+                new_ver = (
+                    update.validation.version
+                    if (update.validation and update.validation.version)
+                    else None
+                )
                 replace_image(
-                    update.target.path, update.target.old_image, update.new_image
+                    update.target.path,
+                    update.target.old_image,
+                    update.new_image,
+                    new_version=new_ver,
                 )
             update_html(root, html_updates, write=True, warnings=[])
 
