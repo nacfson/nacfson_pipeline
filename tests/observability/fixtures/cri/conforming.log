@@ -1,0 +1,2 @@
+2026-11-04T09:00:10.125000000Z stdout F {"time":"2026-11-04T09:00:10.125Z","level":"info","msg":"request started","service.name":"api","service.version":"v1.4.2","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736"}
+2026-11-04T09:00:10.130000000Z stdout F {"time":"2026-11-04T09:00:10.130Z","level":"info","msg":"handled request","service.name":"web","service.version":"v1.4.2","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736"}

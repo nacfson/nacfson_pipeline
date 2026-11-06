@@ -281,16 +281,16 @@ class TestFluentBitCollector(unittest.TestCase):
     def test_path_regex_extracts_fields(self):
         docs = render()
         raw = _pod_path_regex(_configmap_text(docs, "parsers.conf"))
-        self.assertIn("(?<project>", raw)
+        self.assertIn("(?<ns>", raw)
         self.assertNotIn("(?P<", raw)
         compiled = re.compile(raw.replace("(?<", "(?P<"))
         match = compiled.match(
             "/var/log/pods/proj-pn_openbao-0.my-set_3f2c-aa-bb/backend/12.log"
         )
         self.assertIsNotNone(match)
-        self.assertEqual(match.group("project"), "proj-pn")
+        self.assertEqual(match.group("ns"), "proj-pn")
         self.assertEqual(match.group("pod"), "openbao-0.my-set")
-        self.assertEqual(match.group("pod_uid"), "3f2c-aa-bb")
+        self.assertEqual(match.group("uid"), "3f2c-aa-bb")
         self.assertEqual(match.group("container"), "backend")
 
     def test_output_to_victorialogs_and_bounded_memory(self):
@@ -298,17 +298,61 @@ class TestFluentBitCollector(unittest.TestCase):
         conf = _configmap_text(docs, "fluent-bit.conf")
         self.assertIn("Host victorialogs.observability.svc.cluster.local", conf)
         self.assertIn("Port 9428", conf)
-        self.assertIn(
-            "URI /insert/jsonline?_stream_fields=project,container,pod&_msg_field=message&_time_field=time",
-            conf,
-        )
+        expected_uri = "URI /insert/jsonline?_stream_fields=k8s.namespace.name,k8s.pod.name,k8s.container.name&_msg_field=msg&_time_field=_time"
+        self.assertIn(expected_uri, conf)
         self.assertIn("Format json_lines", conf)
         self.assertIn("json_date_format iso8601", conf)
-        self.assertIn("json_date_key time", conf)
-        self.assertIn("Mem_Buf_Limit", conf)
+        self.assertIn("json_date_key _time", conf)
+        self.assertIn("Mem_Buf_Limit 5MB", conf)
         self.assertIn("DB /state/tail.db", conf)
         self.assertRegex(conf, r"Retry_Limit\s+5\b")
         self.assertIn("Log_Level warn", conf)
+
+        # Output blocks check: exactly two http outputs for main (ProjectID 0) and quarantine (ProjectID 1)
+        output_blocks = re.findall(r"\[OUTPUT\][\s\S]*?(?=\n\s*\[|$)", conf)
+        self.assertEqual(len(output_blocks), 2, "expected exactly two http outputs (main and quarantine)")
+        main_out = [b for b in output_blocks if re.search(r"Match\s+proj\.\*", b) and "ProjectID 0" in b]
+        quarantine_out = [b for b in output_blocks if re.search(r"Match\s+quarantine\.\*", b) and "ProjectID 1" in b]
+        self.assertEqual(len(main_out), 1, "expected one main http output with Match proj.* and ProjectID 0")
+        self.assertEqual(len(quarantine_out), 1, "expected one quarantine http output with Match quarantine.* and ProjectID 1")
+        for b in (main_out[0], quarantine_out[0]):
+            self.assertIn("AccountID 0", b)
+            self.assertIn(expected_uri, b)
+
+        # Filter order invariants (T018, T051, collector-pipeline.md)
+        filter_blocks = re.findall(r"\[FILTER\][\s\S]*?(?=\n\s*\[|$)", conf)
+        # 1st filter: multiline
+        self.assertIn("Name multiline", filter_blocks[0])
+        self.assertIn("multiline.parser go, python, java", filter_blocks[0])
+        self.assertIn("buffer on", filter_blocks[0])
+
+        # Filters before rewrite_tag must match proj.*
+        for fb in filter_blocks[:-1]:
+            if "Name modify" in fb and "Remove _route" in fb:
+                continue
+            self.assertIn("Match proj.*", fb, f"filter must match proj.*: {fb}")
+
+        # Final modify filter matches * to strip _route from both main and quarantine
+        last_filter = filter_blocks[-1]
+        self.assertIn("Name modify", last_filter)
+        self.assertIn("Match *", last_filter)
+        self.assertIn("Remove _route", last_filter)
+
+        # rewrite_tag filter
+        rewrite_blocks = [b for b in filter_blocks if "Name rewrite_tag" in b]
+        self.assertEqual(len(rewrite_blocks), 1)
+        self.assertIn("Rule $_route ^quarantine$ quarantine.$TAG false", rewrite_blocks[0])
+
+        # Lua filter comes after JSON parser filter
+        json_idx = next(i for i, b in enumerate(filter_blocks) if "Parser json" in b)
+        lua_idx = next(i for i, b in enumerate(filter_blocks) if "Name lua" in b)
+        self.assertLess(json_idx, lua_idx, "Lua filter must come after JSON parser filter")
+        self.assertIn("Preserve_Key On", filter_blocks[json_idx])
+
+        # No grep or throttle filter
+        for fb in filter_blocks:
+            self.assertNotIn("Name grep", fb)
+            self.assertNotIn("Name throttle", fb)
 
         ds = _by_kind_name(docs, "DaemonSet", "fluent-bit")
         pod = ds["spec"]["template"]["spec"]
@@ -390,30 +434,51 @@ class TestFluentBitCollector(unittest.TestCase):
     def test_record_fields_match_log_schema_contract(self):
         docs = render()
         conf = _configmap_text(docs, "fluent-bit.conf")
-        parsers = _configmap_text(docs, "parsers.conf")
+        lua = _configmap_text(docs, "log_contract.lua")
         with open(CONTRACT_LOG_SCHEMA, encoding="utf-8") as fh:
             contract = fh.read()
         envelope = contract.split("## 1. Platform envelope", 1)[1].split("## 2.", 1)[0]
-        rows = re.findall(r"^\| `([a-z_]+)` \| .* \| ([^|]+) \|$", envelope, re.MULTILINE)
-        record_fields = {name for name, _role in rows}
-        stream_fields = {name for name, role in rows if role.strip() == "stream"}
-        regex = _pod_path_regex(parsers)
-        groups = set(re.findall(r"\(\?<([a-z_]+)>", regex))
-        record_line = _conf_value(conf, "Record")
-        rename = re.search(r"^\s*Rename\s+(\S+)\s+(\S+)\s*$", conf, re.MULTILINE)
-        rendered_fields = set(groups)
-        rendered_fields.add(record_line.split()[0])
-        rendered_fields.add(_conf_value(conf, "json_date_key"))
-        if rename:
-            rendered_fields.add(rename.group(2))
+        rows = re.findall(r"^\|\s*`([a-z0-9._]+)`\s*\|\s*([^|]+)\s*\|\s*([^|]+)\s*\|$", envelope, re.MULTILINE)
+        record_fields = {name for name, _src, _role in rows}
+        stream_fields = {name for name, _src, role in rows if role.strip() == "stream"}
+
+        # Platform fields must match contract §1 table
+        expected_platform_fields = {
+            "k8s.namespace.name",
+            "k8s.pod.name",
+            "k8s.container.name",
+            "k8s.node.name",
+            "k8s.pod.uid",
+            "log.iostream",
+            "observed_time",
+        }
+        self.assertEqual(record_fields, expected_platform_fields)
+
+        # Stream fields in output URI
         uri = _conf_value(conf, "URI")
-        stream = re.search(r"_stream_fields=([^&]+)", uri)
-        rendered_stream = set(stream.group(1).split(",")) if stream else set()
-        parses_message = "Key_Name message" in conf or "Parser message" in conf
-        self.assertEqual(
-            (record_fields, stream_fields, False),
-            (rendered_fields, rendered_stream, parses_message),
-            CONTRACT_LOG_SCHEMA,
+        stream_match = re.search(r"_stream_fields=([^&]+)", uri)
+        rendered_stream = set(stream_match.group(1).split(",")) if stream_match else set()
+        self.assertEqual(stream_fields, rendered_stream)
+
+        # Check that log_contract.lua sets every platform field
+        for field in record_fields:
+            self.assertIn(f'record["{field}"]', lua, f"log_contract.lua must set {field}")
+
+        # Message and time field flags in URI
+        self.assertIn("_msg_field=msg", uri)
+        self.assertIn("_time_field=_time", uri)
+
+    def test_reserved_keys_stripped_before_platform_fields(self):
+        docs = render()
+        lua = _configmap_text(docs, "log_contract.lua")
+        strip_pos = lua.find("for _, key in ipairs(RESERVED)")
+        assign_pos = lua.find('record["k8s.')
+        self.assertGreater(strip_pos, 0, "loop stripping RESERVED must exist in log_contract.lua")
+        self.assertGreater(assign_pos, 0, "platform assignment to record['k8s.*'] must exist")
+        self.assertLess(
+            strip_pos,
+            assign_pos,
+            "strip RESERVED must occur before assigning platform fields (FR-012)",
         )
 
 

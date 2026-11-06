@@ -43,3 +43,9 @@ class TestOpenObserve(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("kubectl is required", result.stdout + result.stderr)
+
+    def test_logsql_example_query(self):
+        with open(SCRIPT, encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertIn('{k8s.namespace.name="proj-pn"}', content)
+        self.assertNotIn('{project="proj-pn"}', content)

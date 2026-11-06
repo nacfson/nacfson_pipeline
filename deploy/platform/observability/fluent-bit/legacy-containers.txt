@@ -1,0 +1,5 @@
+proj-pn/backend
+proj-pn/frontend
+proj-health/backend
+proj-health/frontend
+proj-blog/blog-web

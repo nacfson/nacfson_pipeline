@@ -334,8 +334,27 @@ Stored history is `proj-*` stdout and stderr only. Platform namespaces stay live
    ```
    It runs `ssh oracleCloud` to `127.0.0.1:16443` (local k3s already owns `6443`), writes the 24-hour `operator-readonly` kubeconfig, and port-forwards Hubble to `http://127.0.0.1:12000` and VictoriaLogs to `http://127.0.0.1:9428/select/vmui/`. Ctrl+C closes all three. Do not also SSH-forward `12000` or `9428`.
 2. `local-k3s`, when that cluster's API is already on `127.0.0.1:6443`: `./scripts/open-hubble-ui.sh` and `./scripts/open-victorialogs-ui.sh`.
-3. Example LogsQL: `{project="proj-pn"}`. Narrow with a time range and `container` or `pod` filters.
+3. Example LogsQL (Contract v3):
+   - `{k8s.namespace.name="proj-pn"}`
+   - `{k8s.namespace.name="proj-pn"} level:=error`
+   - `trace_id:=4bf92f3577b34da6a3ce929d0e0e4736`
+   - `level:=error | stats by (service.version, exception.type) count()`
+   - `_msg:"[REDACTED:"`
+   Narrow with a time range and `k8s.container.name` or `k8s.pod.name` filters.
+   *Note*: records stored before the Contract v3 switch keep the v2 field names (`project`, `container`, `pod`, `time`, `message`) until they age out (30 days).
+
 4. Live check, after the API tunnel is up: `./scripts/open-victorialogs-ui.sh --verify` and `./scripts/open-hubble-ui.sh --verify`.
+
+### Quarantine Tenant (AccountID 0, ProjectID 1)
+
+vmui searches the main tenant (`AccountID 0, ProjectID 0`) by default. Unrefined records from v3 containers (plain text, broken JSON, missing required fields) are routed to the quarantine tenant (`0:1`). To inspect quarantined records:
+
+```bash
+curl -fsS -H 'ProjectID: 1' -X POST \
+  --data-urlencode 'query=*' \
+  --data-urlencode 'limit=50' \
+  http://127.0.0.1:9428/select/logsql/query
+```
 
 ### Limits
 

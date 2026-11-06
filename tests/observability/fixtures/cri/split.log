@@ -1,0 +1,3 @@
+2026-11-04T09:00:10.125000000Z stdout P {"time":"2026-11-04T09:00:10.125Z","level":"info","service.name":"api","service.version":"v1.4.2","msg":"chunk1-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+2026-11-04T09:00:10.125000001Z stdout P chunk2-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+2026-11-04T09:00:10.125000002Z stdout F chunk3-cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"}

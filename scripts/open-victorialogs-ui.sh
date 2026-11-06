@@ -143,9 +143,9 @@ EOF
     while IFS= read -r line || [ -n "${line}" ]; do
       [ -z "${line}" ] && continue
       case "${line}" in
-        *'"project":"proj-'*) ;;
+        *'"k8s.namespace.name":"proj-'*) ;;
         *)
-          echo "FAIL: query line missing \"project\":\"proj- : ${line}" >&2
+          echo "FAIL: query line missing \"k8s.namespace.name\":\"proj- : ${line}" >&2
           exit 1
           ;;
       esac
@@ -153,7 +153,7 @@ EOF
 ${QUERY_BODY}
 EOF
   fi
-  echo "  ✓ POST /select/logsql/query passed (empty or every line has \"project\":\"proj-)"
+  echo "  ✓ POST /select/logsql/query passed (empty or every line has \"k8s.namespace.name\":\"proj-)"
 
   echo "=== [5/5] Verifying Fluent Bit has no repeated [error] lines in the last 5 minutes ==="
   if ! FB_LOGS="$(kubectl -n "${NS}" logs daemonset/fluent-bit --since=5m 2>&1)"; then
@@ -182,8 +182,9 @@ kubectl -n "${NS}" rollout status statefulset/victorialogs --timeout=60s >/dev/n
 
 echo "=================================================================="
 echo "VictoriaLogs Private Loopback Tunnel"
-echo "  Local URL:  http://127.0.0.1:${PORT}/select/vmui/"
-echo "  Remote SSH: ssh -L ${PORT}:127.0.0.1:${PORT} <vps-host>"
+echo "  Local URL:      http://127.0.0.1:${PORT}/select/vmui/"
+echo "  Remote SSH:     ssh -L ${PORT}:127.0.0.1:${PORT} <vps-host>"
+echo '  Example LogsQL: {k8s.namespace.name="proj-pn"}'
 echo "Press Ctrl+C to close the tunnel."
 echo "=================================================================="
 
