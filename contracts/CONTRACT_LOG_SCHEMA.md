@@ -2,7 +2,7 @@
 
 Every hosted project (`proj-*`) uses this pattern. Project PN is the first example, not a special case. Git is the schema registry. Flux applies the collector ConfigMap. There is no schema-registry pod, and VictoriaLogs does not fetch a schema at runtime.
 
-Version 2 (2026-10-29) adds a required line structure (§2), error fields (§3), and runtime crash signatures (§4). Field names follow the CNCF OpenTelemetry Logs Data Model and semantic conventions. The platform error detector reads these sections. It does not guess. Design: [`docs/superpowers/specs/2026-10-29-error-pipeline-design.md`](../docs/superpowers/specs/2026-10-29-error-pipeline-design.md).
+Version 3 (2026-11) adds required service coordinates (`service.name`, `service.version`), HTTP semantic conventions (`http.*`, `url.path`), a strict 32-hex `trace_id`, an 8 KiB stack trace cap, quarantine routing for non-conforming lines, and manifest preflight enforcement. Field names follow the CNCF OpenTelemetry Logs Data Model and semantic conventions. The platform error detector reads these sections. It does not guess.
 
 ## Required project pattern
 
@@ -49,16 +49,23 @@ Keys are flat dotted names, as in OpenTelemetry attributes. A nested object that
 | `time` | yes | `Timestamp` | RFC 3339 with a timezone and at least millisecond precision, e.g. `2026-10-28T09:00:00.123Z` |
 | `level` | yes | `SeverityText`, mapped to `SeverityNumber` | `debug` (5), `info` (9), `warn` (13), `error` (17), `fatal` (21). Matched case-insensitively, so Go `slog` `ERROR` is valid. Aliases: `warning` = `warn`, `critical` = `fatal`. |
 | `msg` | yes | `Body` | Short human-readable summary. |
+| `service.name` | yes | `service.name` | Service identifier matching the project pod/container role, e.g. `pn-api`, `pn-web`. |
+| `service.version` | yes | `service.version` | Release version tag `v<semver>` (e.g. `v1.4.2`) or untagged build commit `v0.0.0-<commit>`. |
 | `event.name` | no | `EventName` | Event category. See §5. |
-| `trace_id` | no | trace context in non-OTLP logs | Lowercase hex. A UUID with hyphens is accepted, so a project without tracing may put its request id here. |
-| `span_id` | no | trace context in non-OTLP logs | Lowercase hex. |
+| `trace_id` | no | trace context in non-OTLP logs | Exactly 32 lowercase hex characters (W3C trace context, no hyphens). |
+| `http.request.method` | no | `http.request.method` | HTTP verb in uppercase, e.g. `GET`, `POST`. |
+| `url.path` | no | `url.path` | Request URI path, e.g. `/api/words/4812/enrich`. |
+| `http.response.status_code` | no | `http.response.status_code` | Integer HTTP status code, e.g. `200`, `502`. When status is 500 or above, `level` must be `error` or `fatal`. |
+| `http.server.request.duration` | no | `http.server.request.duration` | Duration in seconds as a floating-point number, e.g. `0.042`. |
+
+Key names must be fixed (no dynamic keys containing runs of 4+ digits or 32 hex characters). Never print platform-reserved keys (`k8s.*`, `log.iostream`, `observed_time`, or keys starting with `_`). The platform collector injects these and strips any printed attempts.
 
 The envelope `time` (containerd) stays the storage order. The program's own `time` is kept as a field so a reader can order events precisely and see clock skew.
 
 Example:
 
 ```json
-{"time":"2026-10-28T09:00:00.123Z","level":"error","msg":"enrich failed","exception.type":"TimeoutError","exception.message":"upstream timeout after 10s","trace_id":"4bf92f3577b34da6"}
+{"time":"2026-11-04T09:00:10.125Z","level":"error","msg":"enrich failed","service.name":"pn-api","service.version":"v1.4.2","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","exception.type":"*url.Error","exception.message":"enrich word 4812: context deadline exceeded","exception.stacktrace":"goroutine 41 [running]:\n…"}
 ```
 
 ## 3. Error fields (when `level` is `error` or `fatal`)
@@ -68,9 +75,9 @@ A line with `level` `error` or `fatal` is an error. The level is the only thing 
 | JSON key | Required | OpenTelemetry convention | Purpose |
 |---|---|---|---|
 | `exception.message` | yes, unless `exception.type` is set | exceptions in logs | Error text. |
-| `exception.type` | yes, unless `exception.message` is set | exceptions in logs | Error class, e.g. `TimeoutError`. |
-| `exception.stacktrace` | recommended | exceptions in logs | Stack trace as one string. |
-| `error.fingerprint` | no | platform extension, not OpenTelemetry | The project's own grouping key. If absent, the detector computes one from `project`, `container`, `exception.type`, and the normalized `msg`. |
+| `exception.type` | yes, unless `exception.message` is set | exceptions in logs | Error class / root-cause type, e.g. `*url.Error`. |
+| `exception.stacktrace` | required on `fatal`, optional on `error` | exceptions in logs | Stack trace as one string, capped at 8 KiB (8192 bytes). Collector truncates excess with `…[truncated N bytes]`. |
+| `error.fingerprint` | no | platform extension, not OpenTelemetry | Grouping key. If absent, the detector computes one from `project`, `container`, `exception.type`, and the normalized `msg`. |
 
 ## 4. Unstructured lines the detector still reads
 
@@ -82,7 +89,6 @@ A runtime that crashes prints its own text, not the project's logger. A line tha
 |---|---|
 | Go | `panic:` or `fatal error:` |
 | Python | `Traceback (most recent call last):` |
-| Node.js | `Unhandled rejection` or `Uncaught` |
 | JVM | `Exception in thread "` |
 
 ### Third-party server formats
@@ -91,7 +97,7 @@ A third-party server binary in a project image (for example `nginx` in a fronten
 
 | Server | Access log | Error log |
 |---|---|---|
-| nginx | JSON `log_format ... escape=json` with `time`, `level`, `msg`. `level` is `error` for a 5xx status and `info` otherwise. | Native format. `[error]` is `error`. `[crit]`, `[alert]`, and `[emerg]` are `fatal`. |
+| nginx | JSON `log_format ... escape=json` with `time`, `level`, `msg`, `service.name`, `service.version`. `level` is `error` for a 5xx status and `info` otherwise. | Native format. `[error]` is `error`. `[crit]`, `[alert]`, and `[emerg]` are `fatal`. |
 
 A new server needs a new row here. Until then its non-JSON lines are stored and searchable but never detected as errors.
 
@@ -107,12 +113,14 @@ The body schema stays in the owning repository. This table is the platform index
 
 The next project adds its own rows here. It does not invent a file path, and it does not get a private collector.
 
-## 6. Migration from version 1
+## 6. Migration from version 2
 
 | Change | Rule |
 |---|---|
 | `kind` → `event.name` | During the transition the detector reads a legacy `kind` as `event.name`. A pull request to this file removes the legacy read after every project in the table below is `done`. |
-| Text logs → JSON | slog text output and other non-JSON lines are not detected as errors, except §4. Each project switches to JSON in its own repository. |
+| Text logs → JSON | slog text output and other non-JSON lines are not detected as errors, except §4. Each project switches to JSON in its own repository. Lines from a `pending` container stay in the main area; after migration they are quarantined. |
+| `trace_id` may be a UUID → 32 hex | 32 lowercase hex characters (W3C trace context, no hyphens). |
+| Platform fields | Migrated to OpenTelemetry names in PR 3. |
 
 | Project | Current format | Status |
 |---|---|---|
@@ -120,13 +128,14 @@ The next project adds its own rows here. It does not invent a file path, and it 
 | `proj-pn` frontend | nginx default format | pending |
 | `proj-health` backend | Go `slog` default text output | pending |
 | `proj-health` frontend | nginx default format | pending |
-| `proj-blog` web | Go `log` package plain text (`log.Printf`) | pending |
+| `proj-blog` blog-web | Go `log` package plain text (`log.Printf`) | pending |
 
 ## Rejected
 
 - A schema-registry service, or a database of schemas outside Git.
 - Vendoring a project's event fields into this repository.
-- Parsing `message` in Fluent Bit. Consumers parse at query time.
+- Storing `message` opaque in VictoriaLogs; v3 parses fields into VictoriaLogs at collection time while keeping `msg` and quarantining unparseable lines.
+- A separate dead-letter file (quarantine tenant in VictoriaLogs `0:1` is used instead).
 - A per-project log file or log PVC as the collection path.
 - logfmt or free text as a project log format.
 - A platform-specific name where an OpenTelemetry name exists.

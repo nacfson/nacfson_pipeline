@@ -87,8 +87,6 @@ var CrashSignatures = []string{
 	"panic:",
 	"fatal error:",
 	"Traceback (most recent call last):",
-	"Unhandled rejection",
-	"Uncaught",
 	`Exception in thread "`,
 }
 

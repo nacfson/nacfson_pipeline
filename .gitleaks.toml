@@ -13,4 +13,7 @@ regexes = [
   # look like the secrets the patterns match. Both are non-functional.
   '''AIzaSyA1234567890abcdefghijklmnopqrstuv''',
   '''eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxIn0\.sig''',
+  '''eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxIn0\.invalidsig''',
+  '''sk-proj-abcdefghijklmnopqrstuvwxyz''',
+  '''sk-abcdefghijklmnopqrst''',
 ]

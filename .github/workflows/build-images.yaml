@@ -42,6 +42,10 @@ jobs:
             context: services/error-pipeline
             dockerfile: services/error-pipeline/Dockerfile.error-detector
             image_name: error-detector
+          - name: logcheck
+            context: services/error-pipeline
+            dockerfile: services/error-pipeline/Dockerfile.logcheck
+            image_name: logcheck
           - name: platform-auth-gateway
             context: gateway
             dockerfile: gateway/Dockerfile
