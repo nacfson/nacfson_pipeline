@@ -22,6 +22,9 @@ spec:
       labels:
         app.kubernetes.io/name: health-backend
         app.kubernetes.io/part-of: project-health
+        app.kubernetes.io/version: "v0.0.0-e831400"
+      annotations:
+        logs.nacfson.cloud/backend: "v2/legacy"
     spec:
       restartPolicy: Always
       serviceAccountName: health-workload-sa

@@ -9,6 +9,12 @@ spec:
   strategy:
     type: Recreate
   template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: web
+        app.kubernetes.io/version: "v1.0.0"
+      annotations:
+        logs.nacfson.cloud/web: "v3/json"
     spec:
       automountServiceAccountToken: false
       containers:

@@ -22,6 +22,9 @@ spec:
       labels:
         app.kubernetes.io/name: blog-web
         app.kubernetes.io/part-of: project-blog
+        app.kubernetes.io/version: "v0.0.0-fadda3a"
+      annotations:
+        logs.nacfson.cloud/blog-web: "v2/legacy"
     spec:
       restartPolicy: Always
       serviceAccountName: blog-workload-sa

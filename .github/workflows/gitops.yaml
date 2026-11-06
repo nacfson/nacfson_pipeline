@@ -73,6 +73,33 @@ jobs:
           go test -v -race ./...
           go vet ./...
 
+  version-label-check:
+    name: version-label-check (Gate 1b)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r scripts/requirements-preflight.txt
+          command -v skopeo || { sudo apt-get update && sudo apt-get install -y skopeo; }
+
+      - name: Run version-label check
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${GITHUB_TOKEN:-}" ]; then
+            echo "${GITHUB_TOKEN}" | skopeo login ghcr.io -u "${{ github.actor }}" --password-stdin || true
+          fi
+          python3 scripts/check-version-labels.py
+
   render-validate:
     name: render-validate (${{ matrix.env }})
     needs: [preflight-tests, vault-proxies-tests, error-pipeline-tests]
