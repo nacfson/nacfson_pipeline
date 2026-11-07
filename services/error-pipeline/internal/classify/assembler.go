@@ -56,7 +56,13 @@ func NewAssembler(maxLines int, maxAge time.Duration) *Assembler {
 //   - Any other line (a JSON line of any level, or a native nginx line)
 //     closes the open crash of its key. If it is an Error it is returned too.
 func (a *Assembler) Feed(r Record) []Classified {
-	ev, kind := Line(r.Message)
+	var ev Event
+	var kind LineKind
+	if r.Parsed && r.Level != "" {
+		ev, kind = EventFromRecord(r)
+	} else {
+		ev, kind = Line(r.Message)
+	}
 	key := r.Pod + "/" + r.Container
 	var out []Classified
 

@@ -255,3 +255,115 @@ func TestReady(t *testing.T) {
 		t.Fatalf("err = %v", err)
 	}
 }
+
+func TestDualReadV2AndV3(t *testing.T) {
+	c := &Client{}
+
+	v2JSON := `{"_time":"2026-11-04T09:00:10.125Z","_stream_id":"s-v2","project":"proj-pn","pod":"pn-backend-123","container":"backend","node":"vps-node","message":"{\"level\":\"error\",\"msg\":\"db down\"}"}`
+	rec2, ok := c.decode([]byte(v2JSON))
+	if !ok {
+		t.Fatalf("failed to decode v2 line")
+	}
+	if rec2.Project != "proj-pn" || rec2.Pod != "pn-backend-123" || rec2.Container != "backend" || rec2.Node != "vps-node" {
+		t.Errorf("v2 envelope fields wrong: %+v", rec2)
+	}
+	if rec2.Parsed {
+		t.Errorf("v2 line should not have Parsed=true")
+	}
+	if rec2.Message != `{"level":"error","msg":"db down"}` {
+		t.Errorf("v2 message wrong: %q", rec2.Message)
+	}
+
+	v3JSON := `{"_time":"2026-11-04T09:00:10.125Z","_stream_id":"s-v3","k8s.namespace.name":"proj-pn","k8s.pod.name":"pn-backend-123","k8s.container.name":"backend","k8s.node.name":"vps-node","_msg":"db down","level":"error","msg":"db down","exception.type":"*net.OpError","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736"}`
+	rec3, ok := c.decode([]byte(v3JSON))
+	if !ok {
+		t.Fatalf("failed to decode v3 line")
+	}
+	if rec3.Project != "proj-pn" || rec3.Pod != "pn-backend-123" || rec3.Container != "backend" || rec3.Node != "vps-node" {
+		t.Errorf("v3 envelope fields wrong: %+v", rec3)
+	}
+	if !rec3.Parsed {
+		t.Errorf("v3 line should have Parsed=true")
+	}
+	if rec3.Level != "error" || rec3.Msg != "db down" || rec3.ExceptionType != "*net.OpError" || rec3.TraceID != "4bf92f3577b34da6a3ce929d0e0e4736" {
+		t.Errorf("v3 parsed fields wrong: %+v", rec3)
+	}
+	if rec3.Message != "db down" {
+		t.Errorf("v3 fallback message wrong: %q", rec3.Message)
+	}
+}
+
+func TestQueryQuarantineSendsTenantHeadersAndDecodes(t *testing.T) {
+	const qLine = `{"_time":"2026-11-05T10:00:00.500Z","_stream_id":"sq1","k8s.namespace.name":"proj-pn","k8s.pod.name":"pn-backend-xyz","k8s.container.name":"backend","k8s.node.name":"vps-node","msg":"panic: unhandled error","log.iostream":"stderr","observed_time":"2026-11-05T10:00:00.501Z"}`
+
+	var gotMethod, gotPath, gotAccount, gotProject string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath = r.Method, r.URL.Path
+		gotAccount = r.Header.Get("AccountID")
+		gotProject = r.Header.Get("ProjectID")
+		fmt.Fprintln(w, qLine)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL}
+	var got []QuarantineRecord
+	from := time.Date(2026, 11, 5, 10, 0, 0, 0, time.UTC)
+	to := time.Date(2026, 11, 5, 11, 0, 0, 0, time.UTC)
+	err := c.QueryQuarantine(context.Background(), from, to, func(r QuarantineRecord) error {
+		got = append(got, r)
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("QueryQuarantine: %v", err)
+	}
+	if gotMethod != http.MethodPost || gotPath != "/select/logsql/query" {
+		t.Errorf("request = %s %s, want POST /select/logsql/query", gotMethod, gotPath)
+	}
+	if gotAccount != "0" || gotProject != "1" {
+		t.Errorf("headers AccountID=%q ProjectID=%q, want 0 and 1", gotAccount, gotProject)
+	}
+	if len(got) != 1 {
+		t.Fatalf("got %d records, want 1", len(got))
+	}
+	want := QuarantineRecord{
+		Time:         time.Date(2026, 11, 5, 10, 0, 0, 500000000, time.UTC),
+		StreamID:     "sq1",
+		Project:      "proj-pn",
+		Pod:          "pn-backend-xyz",
+		Container:    "backend",
+		Node:         "vps-node",
+		Message:      "panic: unhandled error",
+		IOStream:     "stderr",
+		ObservedTime: "2026-11-05T10:00:00.501Z",
+	}
+	if got[0] != want {
+		t.Errorf("QuarantineRecord = %+v, want %+v", got[0], want)
+	}
+}
+
+func TestTailQuarantineSendsTenantHeaders(t *testing.T) {
+	var gotMethod, gotPath, gotAccount, gotProject string
+	done := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod, gotPath = r.Method, r.URL.Path
+		gotAccount = r.Header.Get("AccountID")
+		gotProject = r.Header.Get("ProjectID")
+		close(done)
+	}))
+	defer srv.Close()
+
+	c := &Client{BaseURL: srv.URL}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		<-done
+		cancel()
+	}()
+	_ = c.TailQuarantine(ctx, func(r QuarantineRecord) error { return nil })
+	if gotMethod != http.MethodGet || gotPath != "/select/logsql/tail" {
+		t.Errorf("request = %s %s, want GET /select/logsql/tail", gotMethod, gotPath)
+	}
+	if gotAccount != "0" || gotProject != "1" {
+		t.Errorf("headers AccountID=%q ProjectID=%q, want 0 and 1", gotAccount, gotProject)
+	}
+}
