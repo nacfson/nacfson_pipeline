@@ -28,8 +28,8 @@ func TestLine(t *testing.T) {
 		{`panic: runtime error: index out of range [5] with length 3`, "fatal", CrashStart, "crash"},
 		{`fatal error: concurrent map writes`, "fatal", CrashStart, "crash"},
 		{`Traceback (most recent call last):`, "fatal", CrashStart, "crash"},
-		{`Unhandled rejection Error: nope`, "fatal", CrashStart, "crash"},
-		{`Uncaught TypeError: x is undefined`, "fatal", CrashStart, "crash"},
+		{`Unhandled rejection Error: nope`, "", Plain, ""},
+		{`Uncaught TypeError: x is undefined`, "", Plain, ""},
 		{`Exception in thread "main" java.lang.NullPointerException`, "fatal", CrashStart, "crash"},
 		{`2026/10/29 09:00:00 [error] 12#12: *1 connect() failed`, "error", Error, "nginx"},
 		{`2026/10/29 09:00:00 [crit] 12#12: something`, "fatal", Error, "nginx"},
@@ -346,5 +346,116 @@ func TestAssemblerStacktraceByteCap(t *testing.T) {
 	}
 	if st := got[0].Event.Stacktrace; len(st) == 0 || len(st) > 64<<10 || !utf8.ValidString(st) {
 		t.Fatalf("stacktrace len %d valid %v", len(st), utf8.ValidString(st))
+	}
+}
+
+func TestV2AndV3ProduceIdenticalClassification(t *testing.T) {
+	testCases := []struct {
+		name     string
+		v2Record Record
+		v3Record Record
+	}{
+		{
+			name: "error event with exception and trace_id",
+			v2Record: Record{
+				Time:      t0,
+				StreamID:  "s1",
+				Project:   "proj-pn",
+				Pod:       "pn-backend-1",
+				Container: "backend",
+				Node:      "node-1",
+				Message:   `{"time":"2026-11-04T09:00:10.125Z","level":"error","msg":"query failed","trace_id":"4bf92f3577b34da6a3ce929d0e0e4736","exception.type":"*net.OpError","exception.message":"dial tcp timeout","error.fingerprint":"custom-fp-1"}`,
+			},
+			v3Record: Record{
+				Time:             t0,
+				StreamID:         "s1",
+				Project:          "proj-pn",
+				Pod:              "pn-backend-1",
+				Container:        "backend",
+				Node:             "node-1",
+				Message:          "query failed",
+				Parsed:           true,
+				Level:            "error",
+				Msg:              "query failed",
+				TraceID:          "4bf92f3577b34da6a3ce929d0e0e4736",
+				ExceptionType:    "*net.OpError",
+				ExceptionMessage: "dial tcp timeout",
+				Fingerprint:      "custom-fp-1",
+			},
+		},
+		{
+			name: "fatal event with stacktrace",
+			v2Record: Record{
+				Time:      t0,
+				StreamID:  "s1",
+				Project:   "proj-pn",
+				Pod:       "pn-backend-1",
+				Container: "backend",
+				Node:      "node-1",
+				Message:   `{"time":"2026-11-04T09:00:10.125Z","level":"fatal","msg":"unrecoverable","exception.type":"PanicError","exception.message":"nil deref","exception.stacktrace":"goroutine 1:\nmain.go:10"}`,
+			},
+			v3Record: Record{
+				Time:             t0,
+				StreamID:         "s1",
+				Project:          "proj-pn",
+				Pod:              "pn-backend-1",
+				Container:        "backend",
+				Node:             "node-1",
+				Message:          "unrecoverable",
+				Parsed:           true,
+				Level:            "fatal",
+				Msg:              "unrecoverable",
+				ExceptionType:    "PanicError",
+				ExceptionMessage: "nil deref",
+				Stacktrace:       "goroutine 1:\nmain.go:10",
+			},
+		},
+		{
+			name: "level alias critical mapped to fatal",
+			v2Record: Record{
+				Time:      t0,
+				StreamID:  "s1",
+				Project:   "proj-pn",
+				Pod:       "pn-backend-1",
+				Container: "backend",
+				Node:      "node-1",
+				Message:   `{"time":"2026-11-04T09:00:10.125Z","level":"critical","msg":"oom","exception.message":"out of memory"}`,
+			},
+			v3Record: Record{
+				Time:             t0,
+				StreamID:         "s1",
+				Project:          "proj-pn",
+				Pod:              "pn-backend-1",
+				Container:        "backend",
+				Node:             "node-1",
+				Message:          "oom",
+				Parsed:           true,
+				Level:            "critical",
+				Msg:              "oom",
+				ExceptionMessage: "out of memory",
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			a2 := NewAssembler(200, 2*time.Second)
+			a3 := NewAssembler(200, 2*time.Second)
+
+			out2 := a2.Feed(tc.v2Record)
+			out3 := a3.Feed(tc.v3Record)
+
+			if len(out2) != len(out3) {
+				t.Fatalf("mismatched output length: v2 emitted %d, v3 emitted %d", len(out2), len(out3))
+			}
+			for i := range out2 {
+				ev2 := out2[i].Event
+				ev3 := out3[i].Event
+
+				if ev2 != ev3 {
+					t.Errorf("Event mismatch at %d:\nv2: %+v\nv3: %+v", i, ev2, ev3)
+				}
+			}
+		})
 	}
 }

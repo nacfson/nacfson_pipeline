@@ -1,0 +1,78 @@
+[
+  {
+    "input": "Authorization: Bearer abc.def.ghi",
+    "output": "Authorization: [REDACTED:bearer]"
+  },
+  {
+    "input": "got Bearer abc123 failed",
+    "output": "got [REDACTED:bearer] failed"
+  },
+  {
+    "input": "bad eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.invalidsig here",
+    "output": "bad [REDACTED:jwt] here"
+  },
+  {
+    "input": "key AIzaSyA1234567890abcdefghijklmnopqrstuv",
+    "output": "key [REDACTED:google-key]"
+  },
+  {
+    "input": "sk-proj-abcdefghijklmnopqrstuvwxyz",
+    "output": "[REDACTED:sk-key]"
+  },
+  {
+    "input": "{\"password\":\"hunter2\",\"user\":\"a\"}",
+    "output": "{\"password\":\"[REDACTED:secret-field]\",\"user\":\"a\"}"
+  },
+  {
+    "input": "password=hunter2 user=a",
+    "output": "password=[REDACTED:secret-field] user=a"
+  },
+  {
+    "input": "X-Api-Key: secret123 def",
+    "output": "X-Api-Key: [REDACTED:secret-field]"
+  },
+  {
+    "input": "password=a1 secret=b2 ok=1",
+    "output": "password=[REDACTED:secret-field] secret=[REDACTED:secret-field] ok=1"
+  },
+  {
+    "input": "{\"token\":\"t1\"} and sk-abcdefghijklmnopqrst",
+    "output": "{\"token\":\"[REDACTED:secret-field]\"} and [REDACTED:sk-key]"
+  },
+  {
+    "input": "{\"authorization\":\"Bearer abc\",\"user\":\"a\"}",
+    "output": "{\"authorization\":\"[REDACTED:bearer]\",\"user\":\"a\"}"
+  },
+  {
+    "input": "authorization=Bearer abc.def",
+    "output": "authorization=[REDACTED:bearer]"
+  },
+  {
+    "input": "password=\\\"abc\\\" user=a",
+    "output": "password=[REDACTED:secret-field] user=a"
+  },
+  {
+    "input": "goroutine 1 [running]:\nmain.login(password=\"secret123\", count=1)",
+    "output": "goroutine 1 [running]:\nmain.login(password=[REDACTED:secret-field], count=1)"
+  },
+  {
+    "input": "{\"token_count\":42}",
+    "output": "{\"token_count\":\"[REDACTED:secret-field]\"}"
+  },
+  {
+    "input": "no secrets here",
+    "output": "no secrets here"
+  },
+  {
+    "input": "task-abcdefghijklmnopqrstuvwxyz",
+    "output": "task-abcdefghijklmnopqrstuvwxyz"
+  },
+  {
+    "input": "status=ok code=200",
+    "output": "status=ok code=200"
+  },
+  {
+    "input": "{\"password\":\"[REDACTED:secret-field]\"}",
+    "output": "{\"password\":\"[REDACTED:secret-field]\"}"
+  }
+]

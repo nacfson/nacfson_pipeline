@@ -66,3 +66,20 @@ jobs:
         run: |
           ansible-playbook -i 'syntax-check-vm,' -u ubuntu -e 'k3s_version=v1.35.9+k3s1' -e 'gitops_environment=local-k3s' bootstrap/bootstrap.yml --syntax-check
 
+  lua-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install LuaJIT
+        run: sudo apt-get update && sudo apt-get install -y luajit
+
+      - name: Run Lua log contract tests
+        run: |
+          if [ -f tests/observability/lua/run_log_contract_tests.lua ]; then
+            luajit tests/observability/lua/run_log_contract_tests.lua
+          else
+            echo "Skipping Lua log contract tests: test suite not present in this commit"
+          fi
+

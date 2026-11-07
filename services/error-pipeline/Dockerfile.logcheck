@@ -1,0 +1,33 @@
+# Multi-stage Dockerfile for logcheck CLI
+# Cross-compiles for linux/amd64 and linux/arm64
+# Base images are strictly pinned to exact patch tags and immutable digests (Constitution Principle I)
+
+# Builder: Go 1.22 pinned patch release on Alpine
+FROM --platform=$BUILDPLATFORM golang:1.22.12-alpine AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /src
+
+COPY go.mod ./
+COPY cmd/logcheck/ cmd/logcheck/
+COPY internal/conform/ internal/conform/
+COPY internal/classify/ internal/classify/
+COPY internal/redact/ internal/redact/
+
+# Build statically linked binary (Go stdlib only)
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
+    -ldflags="-w -s" \
+    -o /bin/logcheck \
+    ./cmd/logcheck
+
+# Final runtime image: gcr.io/distroless/static:nonroot pinned by sha256 digest
+FROM gcr.io/distroless/static@sha256:d62067879de890a1def9da0e7766b7d20810a5e5555cef8506b752437d7a3e88
+
+WORKDIR /
+COPY --from=builder /bin/logcheck /logcheck
+
+USER 65532:65532
+
+ENTRYPOINT ["/logcheck"]

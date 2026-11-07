@@ -1,6 +1,10 @@
 package redact
 
-import "testing"
+import (
+	"encoding/json"
+	"os"
+	"testing"
+)
 
 func TestRedact(t *testing.T) {
 	tests := []struct {
@@ -63,5 +67,33 @@ func TestRedact(t *testing.T) {
 				t.Errorf("String(%q) = %q, want %q", tt.in, got, tt.want)
 			}
 		})
+	}
+}
+
+type vector struct {
+	Input  string `json:"input"`
+	Output string `json:"output"`
+}
+
+func TestRedactVectors(t *testing.T) {
+	data, err := os.ReadFile("testdata/vectors.json")
+	if err != nil {
+		t.Fatalf("failed to read testdata/vectors.json: %v", err)
+	}
+
+	var vectors []vector
+	if err := json.Unmarshal(data, &vectors); err != nil {
+		t.Fatalf("failed to unmarshal testdata/vectors.json: %v", err)
+	}
+
+	if len(vectors) < 15 {
+		t.Fatalf("testdata/vectors.json has %d vectors, want at least 15", len(vectors))
+	}
+
+	for _, v := range vectors {
+		got, _ := Redact(v.Input)
+		if got != v.Output {
+			t.Errorf("Redact(%q) = %q, want %q", v.Input, got, v.Output)
+		}
 	}
 }

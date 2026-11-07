@@ -1,12 +1,35 @@
 // Package redact removes credentials from text before it leaves the cluster
-// (Discord notifications, AI provider requests). It is deliberately biased
-// toward over-redaction: losing a little context is cheaper than leaking a
-// secret.
+// (Discord notifications, AI provider requests) and before storage in VictoriaLogs.
+// It is deliberately biased toward over-redaction: losing a little context is cheaper
+// than leaking a secret.
 package redact
 
-import "regexp"
+import (
+	"regexp"
+	"slices"
+	"sort"
+	"strings"
+)
 
 const placeholder = "[REDACTED]"
+
+// Redaction kinds per spec FR-017 and data-model §8.
+const (
+	KindBearer      = "bearer"
+	KindJWT         = "jwt"
+	KindGoogleKey   = "google-key"
+	KindSKKey       = "sk-key"
+	KindSecretField = "secret-field"
+)
+
+// Kinds lists all valid redaction kinds in canonical sorted order.
+var Kinds = []string{
+	KindBearer,
+	KindGoogleKey,
+	KindJWT,
+	KindSecretField,
+	KindSKKey,
+}
 
 // sensitiveKey matches key names that contain a credential word, e.g.
 // db_password, X-Api-Key, refresh_token, client_secret, credentials,
@@ -59,4 +82,81 @@ func String(s string) string {
 	s = google.ReplaceAllString(s, placeholder)
 	s = skKey.ReplaceAllString(s, placeholder)
 	return s
+}
+
+// Redact returns s with credentials replaced by "[REDACTED:<kind>]" and a sorted,
+// deduplicated slice of all kind markers that were hit.
+func Redact(s string) (string, []string) {
+	var kinds []string
+	addKind := func(k string) {
+		if !slices.Contains(kinds, k) {
+			kinds = append(kinds, k)
+		}
+	}
+
+	if bearer.MatchString(s) {
+		s = bearer.ReplaceAllString(s, "[REDACTED:"+KindBearer+"]")
+		addKind(KindBearer)
+	}
+
+	// quotedKV: replace value unless already redacted with a kind or placeholder
+	s = quotedKV.ReplaceAllStringFunc(s, func(match string) string {
+		sub := quotedKV.FindStringSubmatch(match)
+		if len(sub) < 2 {
+			return match
+		}
+		prefix := sub[1]
+		val := match[len(prefix):]
+		if strings.HasPrefix(val, `"[REDACTED`) || strings.HasPrefix(val, `'[REDACTED`) {
+			return match
+		}
+		addKind(KindSecretField)
+		return prefix + `"[REDACTED:` + KindSecretField + `]"`
+	})
+
+	// headerKV: replace value unless already redacted
+	s = headerKV.ReplaceAllStringFunc(s, func(match string) string {
+		sub := headerKV.FindStringSubmatch(match)
+		if len(sub) < 2 {
+			return match
+		}
+		prefix := sub[1]
+		val := strings.TrimSpace(match[len(prefix):])
+		if strings.HasPrefix(val, `[REDACTED`) {
+			return match
+		}
+		addKind(KindSecretField)
+		return prefix + `[REDACTED:` + KindSecretField + `]`
+	})
+
+	// assignKV: replace value unless already redacted
+	s = assignKV.ReplaceAllStringFunc(s, func(match string) string {
+		sub := assignKV.FindStringSubmatch(match)
+		if len(sub) < 2 {
+			return match
+		}
+		prefix := sub[1]
+		val := match[len(prefix):]
+		if strings.HasPrefix(val, `[REDACTED`) || strings.HasPrefix(val, `"[REDACTED`) || strings.HasPrefix(val, `'[REDACTED`) {
+			return match
+		}
+		addKind(KindSecretField)
+		return prefix + `[REDACTED:` + KindSecretField + `]`
+	})
+
+	if jwt.MatchString(s) {
+		s = jwt.ReplaceAllString(s, "[REDACTED:"+KindJWT+"]")
+		addKind(KindJWT)
+	}
+	if google.MatchString(s) {
+		s = google.ReplaceAllString(s, "[REDACTED:"+KindGoogleKey+"]")
+		addKind(KindGoogleKey)
+	}
+	if skKey.MatchString(s) {
+		s = skKey.ReplaceAllString(s, "[REDACTED:"+KindSKKey+"]")
+		addKind(KindSKKey)
+	}
+
+	sort.Strings(kinds)
+	return s, kinds
 }
