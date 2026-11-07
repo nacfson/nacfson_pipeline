@@ -24,21 +24,21 @@ A local file that the project keeps for its own job, such as a daily learning fi
 
 ## 1. Platform envelope (this repo)
 
-Fluent Bit adds these fields to every stored `proj-*` line. Stream fields are only `project`, `container`, and `pod`.
+Fluent Bit adds these fields to every stored `proj-*` line. Stream fields are `k8s.namespace.name`, `k8s.pod.name`, and `k8s.container.name`.
 
 | Field | Source | Role |
 |---|---|---|
-| `project` | log directory namespace | stream |
-| `pod` | log directory pod name | stream |
-| `container` | log directory container name | stream |
-| `node` | downward API `spec.nodeName` | searchable field |
-| `pod_uid` | log directory pod uid | searchable field |
-| `time` | containerd timestamp | event time |
-| `message` | printed line, unparsed | body |
+| `k8s.namespace.name` | log directory namespace | stream |
+| `k8s.pod.name` | log directory pod name | stream |
+| `k8s.container.name` | log directory container name | stream |
+| `k8s.node.name` | downward API `spec.nodeName` (`NODE_NAME`) | searchable field |
+| `k8s.pod.uid` | log directory pod uid | searchable field |
+| `log.iostream` | containerd stream (`stdout` / `stderr`) | searchable field |
+| `observed_time` | containerd CRI ingestion timestamp (RFC 3339, nanoseconds) | event time |
 
-The Fluent Bit ConfigMap in `deploy/platform/observability/` is the applied copy. A manifest test must fail if those field names or the stream-field list drift from this table. A rename is a pull request to this file and that ConfigMap together. Do not hot-load a second copy from a cluster CRD.
+The Fluent Bit configuration in `deploy/platform/observability/fluent-bit/` is the applied copy. A manifest test must fail if those field names or the stream-field list drift from this table. A rename is a pull request to this file and the collector configuration together. Do not hot-load a second copy from a cluster CRD.
 
-`message` stays opaque to the collector. The collector does not parse it, does not drop a line because it breaks §2, and does not keep only one `event.name`. Consumers such as the error detector parse `message` at query time.
+In v3, platform fields use OpenTelemetry conventions, and valid JSON lines are parsed into fields at ingestion time with `msg` retained as the message body. Unparsed lines (crashes and nginx native error logs) set `msg` to the raw line. Non-conforming lines from v3 containers are routed to the quarantine tenant (`0:1`). During migration (FR-028), the detector continues to read legacy v2 envelope fields and maps legacy `kind` as `event.name` until every project container in Section 6 is migrated to v3 (`done`).
 
 ## 2. Line structure (project-owned, every line)
 

@@ -1,0 +1,8 @@
+2026-11-04T09:00:10.125000000Z stderr F panic: runtime error: invalid memory address or nil pointer dereference
+2026-11-04T09:00:10.125000001Z stderr F [signal SIGSEGV: segmentation violation code=0x1 addr=0x0 pc=0x49f123]
+2026-11-04T09:00:10.125000002Z stderr F 
+2026-11-04T09:00:10.125000003Z stderr F goroutine 1 [running]:
+2026-11-04T09:00:10.125000004Z stderr F main.processOrder(0x0)
+2026-11-04T09:00:10.125000005Z stderr F 	/app/order.go:42 +0x23
+2026-11-04T09:00:10.125000006Z stderr F main.main()
+2026-11-04T09:00:10.125000007Z stderr F 	/app/main.go:18 +0x3a

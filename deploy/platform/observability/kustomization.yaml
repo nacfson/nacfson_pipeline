@@ -8,8 +8,18 @@ resources:
   - network-policy.yaml
   - victorialogs-statefulset.yaml
   - victorialogs-service.yaml
-  - fluent-bit-configmap.yaml
   - fluent-bit-serviceaccount.yaml
   - fluent-bit-daemonset.yaml
   - fluent-bit-state-pvc.yaml
   - error-detector.yaml
+
+configMapGenerator:
+  - name: fluent-bit-config
+    files:
+      - fluent-bit/fluent-bit.conf
+      - fluent-bit/parsers.conf
+      - fluent-bit/log_contract.lua
+      - fluent-bit/legacy-containers.txt
+
+generatorOptions:
+  disableNameSuffixHash: true

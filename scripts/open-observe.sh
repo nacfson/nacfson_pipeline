@@ -196,7 +196,7 @@ echo "=================================================================="
 echo "Hubble UI:      http://127.0.0.1:${HUBBLE_PORT}"
 echo "VictoriaLogs:   http://127.0.0.1:${LOGS_PORT}/select/vmui/"
 echo "AI Gateway UI:  http://127.0.0.1:${AI_PORT}/"
-echo "LogsQL:         {project=\"proj-pn\"}"
+echo 'LogsQL:         {k8s.namespace.name="proj-pn"}'
 echo "Press Ctrl+C to close ssh ${SSH_HOST} and all UI forwards."
 echo "=================================================================="
 

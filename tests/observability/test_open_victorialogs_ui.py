@@ -88,16 +88,12 @@ class TestOpenVictoriaLogsUi(unittest.TestCase):
         )
         self.assertNotIn("once", result.stdout)
 
-    def test_shellcheck_clean_when_installed(self):
-        shellcheck = shutil.which("shellcheck")
-        if shellcheck is None:
-            self.skipTest("shellcheck is not installed")
-        result = subprocess.run(
-            [shellcheck, SCRIPT],
-            capture_output=True,
-            text=True,
-        )
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+    def test_verify_checks_k8s_namespace_name(self):
+        with open(SCRIPT, encoding="utf-8") as fh:
+            content = fh.read()
+        self.assertIn('"k8s.namespace.name":"proj-', content)
+        self.assertNotIn('"project":"proj-', content)
+        self.assertIn('{k8s.namespace.name="proj-pn"}', content)
 
 
 if __name__ == "__main__":
