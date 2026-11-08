@@ -22,6 +22,11 @@ spec:
       labels:
         app.kubernetes.io/name: health-frontend
         app.kubernetes.io/part-of: project-health
+        app.kubernetes.io/version: "v0.0.0-e831400"
+      annotations:
+        logs.nacfson.cloud/frontend: "v2/legacy"
+        logs.nacfson.cloud/frontend.data-paths: "/var/log/nginx"
+        logs.nacfson.cloud/frontend.data-reason: "nginx scratch directory in read-only rootfs"
     spec:
       restartPolicy: Always
       serviceAccountName: health-workload-sa

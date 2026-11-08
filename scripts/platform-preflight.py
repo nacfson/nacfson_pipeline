@@ -1104,6 +1104,204 @@ def check_edge_tls(project_docs, platform_docs):
     return violations
 
 
+def check_log_contract(project_docs, platform_docs, environment="test-env", repo_root=None):
+    """Enforce CONTRACT_LOG_SCHEMA.md Gate 1 rules on project workloads (SPEC 011)."""
+    if repo_root is None:
+        repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+    violations = []
+
+    # 1. Parse migration table from CONTRACT_LOG_SCHEMA.md §6
+    contract_path = os.path.join(repo_root, "contracts", "CONTRACT_LOG_SCHEMA.md")
+    migration_rows = {}  # (project, container) -> status
+    if os.path.exists(contract_path):
+        with open(contract_path, encoding="utf-8") as f:
+            content = f.read()
+        if "## 6. Migration from version 2" in content:
+            sec6 = content.split("## 6. Migration from version 2", 1)[1]
+            for line in sec6.splitlines():
+                if line.startswith("# "):
+                    break
+                if line.startswith("|") and not line.startswith("|-"):
+                    parts = [p.strip() for p in line.strip("|").split("|")]
+                    if len(parts) >= 3 and parts[0] != "Project" and not parts[0].startswith("-"):
+                        # Either: `proj-pn` backend | format | pending
+                        # Or: `proj-pn` | backend | format | pending
+                        status = parts[-1].strip()
+                        m = re.match(r"`?(proj-[a-zA-Z0-9_-]+)`?\s+([a-zA-Z0-9_-]+)", parts[0])
+                        if m:
+                            proj = m.group(1)
+                            cont = m.group(2)
+                            migration_rows[(proj, cont)] = status
+                        elif len(parts) >= 4:
+                            proj = parts[0].strip("`")
+                            cont = parts[1].strip("`")
+                            migration_rows[(proj, cont)] = status
+
+    # 2. Parse legacy-containers.txt from fluent-bit-config ConfigMap in platform_docs
+    fluent_bit_cm = None
+    for doc in platform_docs:
+        if isinstance(doc, dict) and doc.get("kind") == "ConfigMap":
+            name = (doc.get("metadata") or {}).get("name", "")
+            if name == "fluent-bit-config":
+                fluent_bit_cm = doc
+                break
+
+    expected_legacy_set = set()
+    if fluent_bit_cm:
+        data = fluent_bit_cm.get("data", {}) or {}
+        legacy_txt = data.get("legacy-containers.txt", "")
+        for line in legacy_txt.splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                expected_legacy_set.add(line)
+
+    actual_legacy_set = set()
+
+    # 3. Check project workloads
+    for doc in project_docs:
+        if not isinstance(doc, dict):
+            continue
+        kind = doc.get("kind", "")
+        if kind not in ("Deployment", "StatefulSet", "DaemonSet", "Job", "CronJob"):
+            continue
+
+        meta = doc.get("metadata") or {}
+        ns = meta.get("namespace", "")
+        if not ns:
+            ns = (meta.get("labels") or {}).get("kustomize.toolkit.fluxcd.io/namespace", "")
+        if not ns or not ns.startswith("proj-"):
+            continue
+
+        pod_spec, pod_meta = get_pod_spec_and_meta(doc)
+        if not pod_spec:
+            continue
+
+        obj_name = f"{ns}/{kind}/{meta.get('name', '')}"
+        annotations = (pod_meta or {}).get("annotations", {}) or {}
+        labels = (pod_meta or {}).get("labels", {}) or {}
+
+        # Rule: log-version-label
+        version_label = labels.get("app.kubernetes.io/version")
+        version_regex = r"^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$"
+        if not version_label or not re.match(version_regex, str(version_label)) or version_label == "v0.0.0":
+            violations.append({
+                "rule": "log-version-label",
+                "object": obj_name,
+                "detail": f"Workload {obj_name} missing valid app.kubernetes.io/version label (got {version_label!r})",
+            })
+
+        containers = pod_spec.get("containers", []) or []
+        for c in containers:
+            if not isinstance(c, dict):
+                continue
+            c_name = c.get("name", "")
+            c_obj = f"{obj_name}:{c_name}"
+
+            # Rule: log-declaration-missing
+            ann_key = f"logs.nacfson.cloud/{c_name}"
+            decl = annotations.get(ann_key)
+            if decl not in ("v3/json", "v3/nginx", "v2/legacy"):
+                violations.append({
+                    "rule": "log-declaration-missing",
+                    "object": c_obj,
+                    "detail": f"Container {c_obj} missing or invalid {ann_key} annotation (got {decl!r})",
+                })
+
+            if decl == "v2/legacy":
+                actual_legacy_set.add(f"{ns}/{c_name}")
+
+            # Rule: log-migration-row-missing & log-migration-regressed
+            migration_projects = {p for (p, _) in migration_rows.keys()}
+            if ns in migration_projects:
+                mig_status = migration_rows.get((ns, c_name))
+                if mig_status is None:
+                    violations.append({
+                        "rule": "log-migration-row-missing",
+                        "object": c_obj,
+                        "detail": f"Container {c_obj} has no migration row in CONTRACT_LOG_SCHEMA.md §6",
+                    })
+                elif mig_status == "done" and decl == "v2/legacy":
+                    violations.append({
+                        "rule": "log-migration-regressed",
+                        "object": c_obj,
+                        "detail": f"Container {c_obj} is marked 'done' in §6 but declared 'v2/legacy'",
+                    })
+
+            # Rule: log-file-output
+            for env_var in c.get("env", []) or []:
+                if not isinstance(env_var, dict):
+                    continue
+                e_name = str(env_var.get("name") or "").strip()
+                e_val = str(env_var.get("value") or "").strip()
+                if re.search(r"(?i)^LOG_(FILE|PATH|DIR)$", e_name):
+                    violations.append({
+                        "rule": "log-file-output",
+                        "object": c_obj,
+                        "detail": f"Container {c_obj} defines forbidden log file env var {e_name}",
+                    })
+                if e_name == "LOG_FORMAT" and e_val != "json":
+                    violations.append({
+                        "rule": "log-file-output",
+                        "object": c_obj,
+                        "detail": f"Container {c_obj} defines non-json LOG_FORMAT: {e_val!r}",
+                    })
+
+            for arg in c.get("args", []) or []:
+                arg_str = str(arg).strip()
+                if re.search(r"(?i)^--?log[-_]?(file|path|dir)($|=)", arg_str):
+                    violations.append({
+                        "rule": "log-file-output",
+                        "object": c_obj,
+                        "detail": f"Container {c_obj} defines forbidden log file argument: {arg_str}",
+                    })
+                if arg_str.startswith("--log-format=") and arg_str != "--log-format=json":
+                    violations.append({
+                        "rule": "log-file-output",
+                        "object": c_obj,
+                        "detail": f"Container {c_obj} defines non-json --log-format: {arg_str}",
+                    })
+
+            # Rule: log-volume-undeclared & log-data-reason-missing
+            data_paths_key = f"logs.nacfson.cloud/{c_name}.data-paths"
+            data_reason_key = f"logs.nacfson.cloud/{c_name}.data-reason"
+            data_paths_str = str(annotations.get(data_paths_key) or "").strip()
+            data_reason_str = str(annotations.get(data_reason_key) or "").strip()
+
+            if data_paths_str and not data_reason_str:
+                violations.append({
+                    "rule": "log-data-reason-missing",
+                    "object": c_obj,
+                    "detail": f"Container {c_obj} specifies {data_paths_key} without {data_reason_key}",
+                })
+
+            declared_data_paths = {p.strip() for p in data_paths_str.split(",") if p.strip()}
+
+            for vm in c.get("volumeMounts", []) or []:
+                if not isinstance(vm, dict):
+                    continue
+                m_path = str(vm.get("mountPath") or "").strip()
+                segments = [s.lower() for s in m_path.strip("/").split("/")]
+                if ("log" in segments or "logs" in segments) and m_path not in declared_data_paths:
+                    violations.append({
+                        "rule": "log-volume-undeclared",
+                        "object": c_obj,
+                        "detail": f"Container {c_obj} mounts undeclared log volume at {m_path}",
+                    })
+
+    # Rule: log-legacy-list-drift
+    if fluent_bit_cm is not None and project_docs:
+        if actual_legacy_set != expected_legacy_set:
+            diff = actual_legacy_set.symmetric_difference(expected_legacy_set)
+            violations.append({
+                "rule": "log-legacy-list-drift",
+                "object": "observability/ConfigMap/fluent-bit-config",
+                "detail": f"legacy-containers.txt drifts from declared v2/legacy workloads (difference: {sorted(diff)})",
+            })
+
+    return violations
+
+
 def get_pod_spec_and_meta(doc):
     kind = doc.get("kind", "")
     spec = doc.get("spec", {})
@@ -1397,6 +1595,14 @@ def main():
             status = STATUS_REJECTED_ISOLATION
             if not rejection_reason:
                 rejection_reason = placeholder_violations[0]["detail"]
+            exit_code = 1
+
+        log_contract_violations = check_log_contract(project_docs, platform_docs, environment=args.environment)
+        if log_contract_violations:
+            violations.extend(log_contract_violations)
+            status = STATUS_REJECTED_ISOLATION
+            if not rejection_reason:
+                rejection_reason = log_contract_violations[0]["detail"]
             exit_code = 1
 
     project_count = len(projects_dict)

@@ -22,6 +22,9 @@ spec:
       labels:
         app.kubernetes.io/name: pn-frontend
         app.kubernetes.io/part-of: project-pn
+        app.kubernetes.io/version: "v0.0.0-feb5afc"
+      annotations:
+        logs.nacfson.cloud/frontend: "v2/legacy"
     spec:
       restartPolicy: Always
       serviceAccountName: pn-workload-sa

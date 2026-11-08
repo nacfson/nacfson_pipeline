@@ -22,6 +22,11 @@ spec:
       labels:
         app.kubernetes.io/name: pn-backend
         app.kubernetes.io/part-of: project-pn
+        app.kubernetes.io/version: "v0.0.0-feb5afc"
+      annotations:
+        logs.nacfson.cloud/backend: "v2/legacy"
+        logs.nacfson.cloud/backend.data-paths: "/var/log/project-pn"
+        logs.nacfson.cloud/backend.data-reason: "PN learning log (LEARNING_LOG_DIR), project-owned data, not a log stream"
     spec:
       restartPolicy: Always
       serviceAccountName: pn-workload-sa
