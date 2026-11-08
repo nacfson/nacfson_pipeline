@@ -51,13 +51,16 @@ Detection only works if logs have a known structure, so the log contract becomes
 ## 5. Architecture
 
 ```
- proj-* pods ──stdout/stderr (contract v2)──► Fluent Bit ──► VictoriaLogs
-                                                                 │ /select/logsql/tail
+ proj-* pods ──stdout/stderr (contract v3)──► Fluent Bit ──► VictoriaLogs (tenant 0:0 main, 0:1 quarantine)
+                                                                 │ /select/logsql/tail & /select/logsql/tail (0:1)
                                          observability ns        ▼
                               ┌──────────────────────────────────────────┐
                               │ error-detector                           │
-                              │  classify (§2–§4) → redact → fingerprint │
+                              │  conform (§2–§6) → redact → fingerprint  │
                               │  ├─► notify #errors (immediately)        │
+                              │  ├─► quarantine alert (immediate + 1h)   │
+                              │  ├─► redaction marker alert (immediate)  │
+                              │  ├─► daily violation digest              │
                               │  └─► 3-min window → POST /v1/investigate │
                               │ error-investigator                       │
                               │  agent loop + read-only tools            │
@@ -112,15 +115,17 @@ Each project PR lands in its own repository first. The image-pin update in this 
 
 ### 8.1 Input
 
-- A streaming `GET /select/logsql/tail` against `victorialogs.observability.svc:9428`. The query is `{project=~"proj-.*"} | fields _time, _stream_id, project, pod, container, node, message`, with `offset=5s`.
+- A streaming `GET /select/logsql/tail` against `victorialogs.observability.svc:9428`. The query is `{project=~"proj-.*"} OR {k8s.namespace.name=~"proj-.*"}`, with `offset=5s`. Logs arrive pre-parsed into v3 fields (`k8s.namespace.name`, `k8s.pod.name`, `k8s.container.name`, `msg`, `level`, `service.name`, `service.version`) without needing `unpack_json` or manual JSON parsing.
+- A secondary quarantine stream reads tenant `0:1` (`AccountID: 0, ProjectID: 1`) for unrefined records from v3 containers.
 - **Restart without losing or replaying everything.** The last processed `_time` is the cursor. On reconnect, the detector first catches up with `/select/logsql/query` over `[cursor, now)`, capped at 15 minutes back, then tails. On a first start with no cursor it tails from now only (no backfill flood). **(my call)**
 
-### 8.2 Classification (pure function, table-tested)
+### 8.2 Classification (pure function, table-tested via `internal/conform`)
 
-1. **JSON line:** `level` is matched case-insensitively, with `warning` = `warn` and `critical` = `fatal`. A line is an error when its level is `error` or `fatal`. A legacy `kind` is read as `event.name`.
+1. **v3 pre-parsed fields / JSON line:** `level` is matched case-insensitively, with `warning` = `warn` and `critical` = `fatal`. A line is an error when its level is `error` or `fatal`. A legacy `kind` is read as `event.name`.
 2. **§4 crash signature:** the line is a `fatal` error. The following non-JSON lines from the same `(pod, container)` are its stack trace, until a JSON line arrives, 200 lines, or 2 s pass.
 3. **nginx native error line** (`YYYY/MM/DD HH:MM:SS [level] …`): `[error]` is `error`; `[crit]`, `[alert]`, and `[emerg]` are `fatal`.
-4. Anything else is not an error.
+4. **No Kubernetes access:** The detector has no Kubernetes API access and performs no runtime version-mismatch checks (operator decision D19; container version labels are verified in CI via Gate 1b).
+5. Anything else is not an error.
 
 ### 8.3 Fingerprint
 
@@ -138,6 +143,9 @@ Each project PR lands in its own repository first. The image-pin update in this 
 
 - **Burst cap:** at most 10 new-error notifications per minute. Overflow is merged into one "+N more new errors" message.
 - **Handoff:** the detector sends `POST http://error-investigator.observability.svc:8080/v1/investigate` with an `ErrorGroup`. If the investigator is unreachable after 3 tries, the detector posts "AI debug skipped: investigator unavailable" to `#errors`. Until workstream 3 lands, the handoff is disabled by config (`INVESTIGATOR_URL` empty).
+- **Quarantine alert (Q1, FR-025):** When a quarantined log line from a `v3/*` container is observed in tenant `0:1`, the first quarantined line from that container raises an immediate alert to `#errors` with the redacted line. Subsequent quarantined lines from that container are throttled to at most one alert per hour with the count since the last one.
+- **Redaction marker alert (FR-025):** Stored lines carrying a `[REDACTED:<kind>]` marker raise an immediate, unthrottled alert naming project, container, release, and marker kind (never leaking secret values).
+- **Daily violation digest (FR-025):** Contract violations (`time-rejected`, `dynamic-key`, missing fields, quarantined line count) are grouped by project, container, and kind, and posted as a daily digest.
 - **Skip notices are never evicted:** a group that cannot reach the investigator is staged in an unbounded skip outbox, not pushed straight into the bounded notification queue. Pushing would let a burst of skips evict the earlier notices, leaving those groups persisted as handed with nothing saying the investigation never happened. The outbox is rendered into the queue on the sender goroutine: one notice per group while the batch is small and the queue has room for all of it, one "AI debug skipped for N groups" aggregate above that, mirroring how the burst cap collapses overflow. The aggregate names up to 133 fingerprints and always states the count, so a clamped name list never reads as the whole truth.
 - **Handed is saved only against evidence:** the tracker marks a group handed as it closes the cycle, so a save between the close and the investigator's acceptance would record an investigation that never happened. Closed cycles with no outcome are tracked per cycle (fingerprint + window end) and written with `Handed: false`, so the next start retries them. At shutdown the notices are rendered into the queue before the snapshot and drained after it, on a budget of their own (`shutdownNotify`) that the handoff drain (`shutdownDrain`) cannot consume.
 
@@ -148,12 +156,13 @@ Each project PR lands in its own repository first. The image-pin update in this 
 
 ### 8.6 Redaction (shared package, also used by workstream 3)
 
-Before anything leaves the cluster, the detector replaces with `[REDACTED]`:
-- `Bearer …` tokens
-- JWTs (`eyJ…`)
-- `AIza…` keys
-- `sk-…` keys
-- the values of keys matching `(?i)(password|passwd|secret|token|api[_-]?key|authorization|cookie)`
+Before anything leaves the cluster, the detector replaces with `[REDACTED:<kind>]`:
+- `Bearer …` tokens (`[REDACTED:bearer]`)
+- JWTs (`eyJ…`, `[REDACTED:jwt]`)
+- `AIza…` keys (`[REDACTED:google-key]`)
+- `sk-…` keys (`[REDACTED:ai-key]`)
+- Private keys (`[REDACTED:private-key]`)
+- the values of keys matching `(?i)(password|passwd|secret|token|api[_-]?key|authorization|cookie)` (`[REDACTED:secret-field]`)
 
 ### 8.7 vault-notify-proxy
 
