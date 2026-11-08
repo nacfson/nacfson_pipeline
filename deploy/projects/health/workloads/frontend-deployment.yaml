@@ -22,9 +22,9 @@ spec:
       labels:
         app.kubernetes.io/name: health-frontend
         app.kubernetes.io/part-of: project-health
-        app.kubernetes.io/version: "v0.0.0-e831400"
+        app.kubernetes.io/version: "v0.0.0-56011ee"
       annotations:
-        logs.nacfson.cloud/frontend: "v2/legacy"
+        logs.nacfson.cloud/frontend: "v3/nginx"
         logs.nacfson.cloud/frontend.data-paths: "/var/log/nginx"
         logs.nacfson.cloud/frontend.data-reason: "nginx scratch directory in read-only rootfs"
     spec:
@@ -39,7 +39,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: frontend
-          image: ghcr.io/nacfson/health-frontend@sha256:8166fbcdccb5a32aeb9bb9196bd3274b96ec71486b45fb989244f8cbc9406b1e
+          image: ghcr.io/nacfson/health-frontend@sha256:4bc3ba892fa3d3af4500f767c7e0f69cc013de6ac49773fbfd6cfa1187b0ec1d
           imagePullPolicy: IfNotPresent
           ports:
             - name: http

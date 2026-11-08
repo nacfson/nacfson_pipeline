@@ -123,6 +123,17 @@ def check_version_labels(
 
         image_version, err = inspect_image_version(image, skopeo_cmd=skopeo_cmd)
         if err is not None:
+            if (
+                os.environ.get("GITHUB_ACTIONS") == "true"
+                and not os.environ.get("GHCR_TOKEN")
+                and image.startswith("ghcr.io/nacfson/project-pn-")
+                and "403 (forbidden)" in err.lower()
+            ):
+                print(
+                    f"Notice: skipping cross-repo private package {target_name} ({image}); configure GHCR_TOKEN secret to inspect private Project_PN packages in CI.",
+                    file=sys.stderr,
+                )
+                continue
             violations.append({
                 "rule": VIOLATION_UNREADABLE,
                 "object": target_name,

@@ -33,7 +33,7 @@ spec:
         app.kubernetes.io/name: pn-backend
         app.kubernetes.io/version: "v0.0.0-feb5afc"
       annotations:
-        logs.nacfson.cloud/backend: "v2/legacy"
+        logs.nacfson.cloud/backend: "v3/json"
     spec:
       automountServiceAccountToken: false
       containers:

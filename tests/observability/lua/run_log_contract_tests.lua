@@ -12,6 +12,16 @@ f:close()
 
 dofile(script_path)
 
+-- Verify that the live legacy-containers.txt file parses as empty after the v3
+-- cutover, then seed synthetic entries on the cached table for unit tests that
+-- exercise the legacy routing branch.
+local live_legacy = load_legacy_containers()
+if next(live_legacy) ~= nil then
+    error("expected live legacy-containers.txt to have no active entries after v3 cutover", 2)
+end
+live_legacy["proj-pn/backend"] = true
+live_legacy["proj-blog/blog-web"] = true
+
 local function assert_eq(actual, expected, msg)
     if actual ~= expected then
         error(string.format("%s: expected %q, got %q", msg or "assertion failed", tostring(expected), tostring(actual)), 2)
