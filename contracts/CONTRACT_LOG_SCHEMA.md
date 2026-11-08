@@ -124,11 +124,11 @@ The next project adds its own rows here. It does not invent a file path, and it 
 
 | Project | Current format | Status |
 |---|---|---|
-| `proj-pn` backend | Go `slog` text handler; JSON `kind` lines for `analytics` and `admin` | pending |
-| `proj-pn` frontend | nginx default format | pending |
-| `proj-health` backend | Go `slog` default text output | pending |
-| `proj-health` frontend | nginx default format | pending |
-| `proj-blog` blog-web | Go `log` package plain text (`log.Printf`) | pending |
+| `proj-pn` backend | Go `slog` JSON (`logx`); `event.name` lines for `analytics` and `admin` | done |
+| `proj-pn` frontend | nginx JSON `log_format contract escape=json` | done |
+| `proj-health` backend | Go `slog` JSON (`logx`) | done |
+| `proj-health` frontend | nginx JSON `log_format contract escape=json` | done |
+| `proj-blog` blog-web | Go `slog` JSON (`logx`) | done |
 
 ## Rejected
 

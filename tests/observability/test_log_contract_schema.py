@@ -135,7 +135,7 @@ class TestLogContractSchema(unittest.TestCase):
         projects = [r[proj_col] for r in rows[1:]]
         self.assertEqual(len(projects), 5)
         for r in rows[1:]:
-            self.assertEqual(r[status_col], "pending")
+            self.assertEqual(r[status_col], "done")
 
     def test_lua_contract_tables_if_present(self):
         if not os.path.exists(LUA_FILE):

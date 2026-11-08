@@ -127,7 +127,7 @@ class TestCheckVersionLabels(unittest.TestCase):
             returncode=0,
             stdout=json.dumps({
                 "Labels": {
-                    "org.opencontainers.image.version": "v0.0.0-feb5afc",
+                    "org.opencontainers.image.version": "v0.0.0-6da82e5",
                 }
             }),
             stderr="",
@@ -136,7 +136,7 @@ class TestCheckVersionLabels(unittest.TestCase):
         with patch.object(
             sys,
             "argv",
-            ["check-version-labels.py", "--include-legacy", "--workloads-dir", pn_dir],
+            ["check-version-labels.py", "--workloads-dir", pn_dir],
         ):
             code = cvl.main()
             self.assertEqual(code, 0)
@@ -156,7 +156,7 @@ class TestCheckVersionLabels(unittest.TestCase):
         with patch.object(
             sys,
             "argv",
-            ["check-version-labels.py", "--include-legacy", "--workloads-dir", pn_dir],
+            ["check-version-labels.py", "--workloads-dir", pn_dir],
         ):
             code = cvl.main()
             self.assertEqual(code, 1)
