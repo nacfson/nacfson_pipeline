@@ -939,7 +939,7 @@
       <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 space-y-3">
         <div>
           <h3 class="text-sm font-bold text-white">Tenant Project Image Pins</h3>
-          <p class="text-xs text-slate-400">Immutable multi-arch digests currently deployed by each hosted project. The <code class="text-cyan-300">update-project-images</code> skill regenerates this table in the same PR as every image change.</p>
+          <p class="text-xs text-slate-400">Immutable multi-arch digests currently deployed by each hosted project. The <code class="text-cyan-300">update-project-images</code> skill validates version labels, untagged commits, and CI log-contract check runs before pinning, regenerating this table in the same PR as every image change.</p>
         </div>
         <!-- PROJECT_IMAGE_PINS:START -->
         <div class="overflow-x-auto">

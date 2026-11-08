@@ -74,9 +74,14 @@ The helper validates without downloading layers:
 - `linux/amd64` and `linux/arm64` are both present and reachable;
 - each platform config has `os: linux`, a non-empty rootfs, and an `Entrypoint` or `Cmd`;
 - declared `ExposedPorts` match the Deployment's `containerPort`;
-- `evidence` records the image user, source URL, revision, entrypoint, and exposed ports;
+- `evidence` records the image user, source URL, revision, version, `log-contract` check run URL, entrypoint, and exposed ports;
 - secret-like env names are reported with values redacted;
-- source/revision labels are checked, and a revision mismatch blocks.
+- source/revision labels are checked, and a revision mismatch blocks;
+- `org.opencontainers.image.version` is verified against `^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$` (blocking); a plain `v0.0.0` is blocked;
+- for an untagged build (`v0.0.0-<commit>`), `<commit>` must be a prefix of `org.opencontainers.image.revision` (blocking);
+- for **every** image (tagged release or untagged build), the `log-contract` check run on the image's revision commit must conclude `success` (`gh api repos/<owner>/<repo>/commits/<sha>/check-runs`) (blocking);
+- the helper sets the pod-template `app.kubernetes.io/version` to the image version in the same edit as the digest, preserving file formatting;
+- untagged images (`v0.0.0-<commit>`) are pinned exactly like a release, in both `local-k3s` and `vps-k3s` (operator decision D1); no manual `local-k3s` path is needed.
 
 Blocking failures stop the update. Missing config blobs are recorded as skipped and manifest-level validation continues. `--strict` makes every warning block. `--pull-check` is optional, local, and non-blocking.
 
@@ -125,9 +130,9 @@ gh pr checks <pr-url> --watch
 
 The PR body must include:
 
-- a table of project, role, old digest, new digest, tag, and source link;
+- a table of project, role, old digest, new digest, tag, version, `log-contract` run URL, and source link;
 - the image validation results: passed, warned, skipped;
-- the positive `evidence` values (user, source, revision, entrypoint, exposed ports);
+- the positive `evidence` values (user, source, revision, version, `log_contract_run_url`, entrypoint, exposed ports);
 - the exact repository checks that actually ran.
 
 Mark a check as passed only after observing it pass. Report skipped checks as skipped.
@@ -151,6 +156,8 @@ One PR per project. Repeat the worktree, validation, and PR flow for each projec
 - Editing the main worktree because it is already open.
 - Writing a tag instead of `@sha256:`.
 - Pinning an image whose manifest or digest cannot be read.
+- Pinning a plain `v0.0.0` (untagged images must be `v0.0.0-<commit>`).
+- Pinning an image whose `log-contract` check didn't pass or was missing.
 - Claiming a config check passed when the blob was unavailable.
 - Using `--allow-unmatched-job` without confirming the run published the image.
 - Force-pushing, merging, or pushing to `main`.

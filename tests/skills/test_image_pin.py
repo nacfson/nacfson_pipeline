@@ -412,6 +412,21 @@ class DiffCheckTests(unittest.TestCase):
             "           imagePullPolicy: IfNotPresent\n"
         )
 
+    def yaml_diff_with_version(self, old_ver="v1.4.2", new_ver="v1.5.0"):
+        return (
+            f"--- a/{self.YAML_PATH}\n"
+            f"+++ b/{self.YAML_PATH}\n"
+            "@@ -25,4 +25,4 @@\n"
+            "       labels:\n"
+            "         app.kubernetes.io/name: blog-web\n"
+            f"-        app.kubernetes.io/version: \"{old_ver}\"\n"
+            f"+        app.kubernetes.io/version: \"{new_ver}\"\n"
+            "         - name: blog-web\n"
+            f"-          image: {self.REPO}@{self.OLD}\n"
+            f"+          image: {self.REPO}@{self.NEW}\n"
+            "           imagePullPolicy: IfNotPresent\n"
+        )
+
     def html_diff(self, old=None, new=None, row=None):
         old = old or self.OLD
         new = new or self.NEW
@@ -516,6 +531,26 @@ class DiffCheckTests(unittest.TestCase):
         self.assertTrue(violations, "a noop role must not produce a file change")
 
     # --- reject -------------------------------------------------------------
+
+    def test_accepts_pin_diff_with_version_label_change(self):
+        diff = self.yaml_diff_with_version("v1.4.2", "v1.5.0")
+        violations = self.check({self.YAML_PATH: diff, self.HTML_PATH: self.html_diff()})
+        self.assertEqual(violations, [])
+
+    def test_accepts_pin_diff_with_untagged_commit_version(self):
+        diff = self.yaml_diff_with_version("v0.0.0-1111111", "v0.0.0-2222222")
+        violations = self.check({self.YAML_PATH: diff, self.HTML_PATH: self.html_diff()})
+        self.assertEqual(violations, [])
+
+    def test_rejects_version_label_with_plain_v0_0_0(self):
+        diff = self.yaml_diff_with_version("v1.4.2", "v0.0.0")
+        violations = self.check({self.YAML_PATH: diff, self.HTML_PATH: self.html_diff()})
+        self.assertTrue(violations)
+
+    def test_rejects_version_label_with_invalid_syntax(self):
+        diff = self.yaml_diff_with_version("v1.4.2", "1.5.0")
+        violations = self.check({self.YAML_PATH: diff, self.HTML_PATH: self.html_diff()})
+        self.assertTrue(violations)
 
     def test_rejects_a_tag_instead_of_a_digest(self):
         bad = self.yaml_diff(new="").replace(
