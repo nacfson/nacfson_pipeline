@@ -112,6 +112,16 @@ class TestCheckVersionLabels(unittest.TestCase):
         self.assertIn("missing", v["detail"])
 
     @patch("subprocess.run")
+    def test_legacy_container_skipped_by_default(self, mock_run):
+        doc = json.loads(json.dumps(self.sample_doc))
+        doc["spec"]["template"]["metadata"]["annotations"] = {
+            "logs.nacfson.cloud/backend": "v2/legacy"
+        }
+        violations = cvl.check_version_labels([doc])
+        self.assertEqual(len(violations), 0)
+        mock_run.assert_not_called()
+
+    @patch("subprocess.run")
     def test_cli_main_success(self, mock_run):
         mock_run.return_value = MagicMock(
             returncode=0,
@@ -126,7 +136,7 @@ class TestCheckVersionLabels(unittest.TestCase):
         with patch.object(
             sys,
             "argv",
-            ["check-version-labels.py", "--workloads-dir", pn_dir],
+            ["check-version-labels.py", "--include-legacy", "--workloads-dir", pn_dir],
         ):
             code = cvl.main()
             self.assertEqual(code, 0)
@@ -146,7 +156,7 @@ class TestCheckVersionLabels(unittest.TestCase):
         with patch.object(
             sys,
             "argv",
-            ["check-version-labels.py", "--workloads-dir", pn_dir],
+            ["check-version-labels.py", "--include-legacy", "--workloads-dir", pn_dir],
         ):
             code = cvl.main()
             self.assertEqual(code, 1)

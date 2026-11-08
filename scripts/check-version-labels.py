@@ -78,6 +78,7 @@ def extract_workload_containers(docs: List[Dict[str, Any]]) -> List[Dict[str, An
 
         template_meta = template.get("metadata") or {}
         labels = template_meta.get("labels") or {}
+        annotations = template_meta.get("annotations") or {}
         pod_version = labels.get("app.kubernetes.io/version")
 
         spec = template.get("spec") or {}
@@ -85,12 +86,14 @@ def extract_workload_containers(docs: List[Dict[str, Any]]) -> List[Dict[str, An
         for c in pod_containers:
             c_name = c.get("name", "")
             image = c.get("image", "")
+            log_decl = annotations.get(f"logs.nacfson.cloud/{c_name}", "")
             containers.append({
                 "namespace": ns,
                 "workload": workload_name,
                 "container": c_name,
                 "image": image,
                 "pod_version": pod_version,
+                "log_declaration": log_decl,
             })
     return containers
 
@@ -98,6 +101,7 @@ def extract_workload_containers(docs: List[Dict[str, Any]]) -> List[Dict[str, An
 def check_version_labels(
     docs: List[Dict[str, Any]],
     skopeo_cmd: str = "skopeo",
+    include_legacy: bool = False,
 ) -> List[Dict[str, str]]:
     """Runs Gate 1b check against the given documents."""
     violations = []
@@ -108,9 +112,13 @@ def check_version_labels(
         c_name = item["container"]
         image = item["image"]
         pod_version = item["pod_version"]
+        log_decl = item.get("log_declaration", "")
         target_name = f"{ns}/{c_name}"
 
         if not image:
+            continue
+
+        if log_decl == "v2/legacy" and not include_legacy:
             continue
 
         image_version, err = inspect_image_version(image, skopeo_cmd=skopeo_cmd)
@@ -166,6 +174,11 @@ def main() -> int:
         default="skopeo",
         help="Path or name of skopeo binary (default: skopeo)",
     )
+    parser.add_argument(
+        "--include-legacy",
+        action="store_true",
+        help="Also check containers declared v2/legacy",
+    )
 
     args = parser.parse_args()
 
@@ -184,7 +197,11 @@ def main() -> int:
         print(f"Notice: No documents found to check in {paths_to_load}", file=sys.stderr)
         return 0
 
-    violations = check_version_labels(docs, skopeo_cmd=args.skopeo_cmd)
+    violations = check_version_labels(
+        docs,
+        skopeo_cmd=args.skopeo_cmd,
+        include_legacy=args.include_legacy,
+    )
     if violations:
         for v in violations:
             print(f"✗ {v['rule']}  {v['object']}")
