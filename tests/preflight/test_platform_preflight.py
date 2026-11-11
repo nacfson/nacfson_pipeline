@@ -374,8 +374,8 @@ spec:
         self.assertTrue(any("proj_pn" in d for d in details))
         self.assertTrue(any("readinessProbe.httpGet.path: /readyz" in d for d in details))
 
-    def test_24_cni_reservation_and_openbao_cnp_accepted(self):
-        """CNI kustomization (+225m CPU / +1248Mi memory), OpenBao CiliumNetworkPolicy, and Hubble ClusterIP invariants pass."""
+    def test_24_cni_reservation_and_openbao_netpol_accepted(self):
+        """CNI kustomization (+225m CPU / +1248Mi memory), portable OpenBao NetworkPolicy, and Hubble ClusterIP invariants pass."""
         import yaml
 
         cni_yaml = kustomize_build(os.path.join(BASE_DIR, "deploy", "platform", "cni"))
@@ -390,17 +390,21 @@ spec:
         self.assertEqual(data.get("platformReservations", {}).get("cpuMillicores"), 425)
         self.assertEqual(data.get("platformReservations", {}).get("memoryMib"), 1760)
 
-        # Verify OpenBao network policy invariants
+        # Verify OpenBao and Vault portable NetworkPolicy invariants (zero CiliumNetworkPolicy, zero registry-proxy-policy)
         vault_docs = [d for d in yaml.safe_load_all(vault_np_yaml) if d]
+        self.assertFalse(any(d.get("kind") == "CiliumNetworkPolicy" for d in vault_docs))
+        self.assertFalse(any((d.get("metadata") or {}).get("name") == "registry-proxy-policy" for d in vault_docs))
         openbao_ingress = next(d for d in vault_docs if d.get("metadata", {}).get("name") == "openbao-ingress-policy")
         self.assertNotIn("0.0.0.0/0", yaml.dump(openbao_ingress))
-        openbao_cnp = next(d for d in vault_docs if d.get("kind") == "CiliumNetworkPolicy" and d.get("metadata", {}).get("name") == "openbao-apiserver-egress")
-        self.assertEqual(openbao_cnp["spec"]["egress"][0]["toEntities"], ["kube-apiserver"])
         openbao_backup = next(d for d in vault_docs if d.get("metadata", {}).get("name") == "openbao-backup-policy")
         self.assertEqual(openbao_backup["spec"]["podSelector"]["matchLabels"]["app.kubernetes.io/name"], "openbao-backup")
 
-        # Verify Hubble services are strictly ClusterIP and have zero IngressRoutes
+        # Verify Cilium ConfigMap enables policy-cidr-match-mode=nodes for single-node K3s ipBlock apiserver matching
         cni_docs = [d for d in yaml.safe_load_all(cni_yaml) if d]
+        cilium_cm = next(d for d in cni_docs if d.get("kind") == "ConfigMap" and d.get("metadata", {}).get("name") == "cilium-config")
+        self.assertEqual((cilium_cm.get("data") or {}).get("policy-cidr-match-mode"), "nodes")
+
+        # Verify Hubble services are strictly ClusterIP and have zero IngressRoutes
         hubble_svcs = {
             d["metadata"]["name"]: d["spec"].get("type", "ClusterIP")
             for d in cni_docs
@@ -432,6 +436,11 @@ spec:
         - name: varlogpods
           hostPath:
             path: /var/log/pods
+            type: Directory
+        - name: state
+          hostPath:
+            path: /var/lib/fluent-bit-state
+            type: DirectoryOrCreate
       containers:
         - name: fluent-bit
           image: fluent/fluent-bit:1.9
@@ -441,6 +450,9 @@ spec:
             - name: varlogpods
               mountPath: /var/log/pods
               readOnly: true
+            - name: state
+              mountPath: /state
+              readOnly: false
           resources:
             requests:
               cpu: 10m
@@ -450,11 +462,17 @@ spec:
               memory: 32Mi
 """
         rc, data = self._run_yaml(text)
-        self.assertEqual(rc, 0)
+        self.assertEqual(rc, 0, data.get("rejectionReason"))
         self.assertEqual(data["validationStatus"], "PASSED")
 
+        # Mounting /var/lib/fluent-bit-state on Deployment/error-detector must be rejected
+        bad_detector = text.replace("kind: DaemonSet", "kind: Deployment").replace("name: fluent-bit", "name: error-detector")
+        rc_bad, data_bad = self._run_yaml(bad_detector)
+        self.assertEqual(rc_bad, 1)
+        self.assertEqual(data_bad["validationStatus"], "REJECTED_ISOLATION")
+
     def test_26_project_health_vps_and_local_render_accepted(self):
-        """Both local-k3s and vps-k3s render proj-pn + proj-health (projectCount == 2) without spec.images overrides."""
+        """local-k3s, vps-k3s, and gke render proj-pn + proj-health without spec.images overrides."""
         import yaml
 
         kustomize_dirs = [
@@ -470,6 +488,7 @@ spec:
         for env, expected_host, expected_pn_host in (
             ("local-k3s", "health.example.com", "pn.example.com"),
             ("vps-k3s", "health.nacfson.cloud", "pn.nacfson.cloud"),
+            ("gke", "health.nacfson.cloud", "pn.nacfson.cloud"),
         ):
             proj_kustom = os.path.join(BASE_DIR, "clusters", env, "projects", "kustomization.yaml")
             with open(proj_kustom, encoding="utf-8") as fh:
@@ -508,6 +527,9 @@ spec:
             env_map = {e["name"]: e["value"] for e in env_list}
             self.assertEqual(env_map.get("PUBLIC_APP_URL"), f"https://{expected_host}")
             self.assertIn(f"https://{expected_host}", env_map.get("ALLOWED_ORIGINS", "").split(","))
+
+            if env == "gke":
+                continue
 
             # Apply environment host patches onto base_yaml and validate via platform-preflight.py
             docs = [d for d in yaml.safe_load_all(base_yaml) if isinstance(d, dict)]
@@ -583,6 +605,330 @@ spec:
             self.assertIn(f'client_id="project-{slug}"', seed_script)
             self.assertIn(f"postgres-{slug}-db-password) echo \"kv/database/{slug}-user\"", rotate_script)
             self.assertIn(f"project-{slug}-client-secret) echo \"kv/projects/{slug}/client-secret\"", rotate_script)
+
+    def _run_with_custom_capacity(self, candidate_yaml: str, capacity_yaml: str, env: str = "gke"):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as c_tmp:
+            c_tmp.write(candidate_yaml)
+            c_path = c_tmp.name
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as cap_tmp:
+            cap_tmp.write(capacity_yaml)
+            cap_path = cap_tmp.name
+        try:
+            cmd = [
+                sys.executable, SCRIPT,
+                "--environment", env,
+                "--candidate", c_path,
+                "--capacity", cap_path,
+                "--json",
+            ]
+            res = subprocess.run(cmd, capture_output=True, text=True)
+            data = json.loads(res.stdout) if res.stdout.strip() else {}
+            return res.returncode, data
+        finally:
+            for p in (c_path, cap_path):
+                if os.path.exists(p):
+                    os.remove(p)
+
+    def test_28_gke_multinode_capacity_daemonset_multiplier_and_paused_deployment(self):
+        """Multi-node ClusterCapacityProfile validates pool sum, multiplies DaemonSet by tolerated nodes, and pre-reserves max(replicas,1) on platform Deployment."""
+        cap = """
+environment: gke
+nodeName: gke-zonal-standard
+observedAt: "2026-11-10T00:00:00Z"
+nodeCount: 2
+allocatable:
+  cpuMillicores: 1880
+  memoryMib: 4408
+systemReserved:
+  cpuMillicores: 350
+  memoryMib: 576
+pools:
+  - name: ondemand-core
+    machineType: e2-medium
+    nodeCount: 1
+    provisioning: standard
+    allocatable:
+      cpuMillicores: 940
+      memoryMib: 2972
+    systemReserved:
+      cpuMillicores: 200
+      memoryMib: 320
+    labels:
+      cloud.google.com/gke-provisioning: "standard"
+    taints: []
+  - name: spot-controllers
+    machineType: e2-small
+    nodeCount: 1
+    provisioning: spot
+    allocatable:
+      cpuMillicores: 940
+      memoryMib: 1436
+    systemReserved:
+      cpuMillicores: 150
+      memoryMib: 256
+    labels:
+      cloud.google.com/gke-spot: "true"
+      cloud.google.com/gke-provisioning: "spot"
+    taints:
+      - "cloud.google.com/gke-spot=true:NoSchedule"
+"""
+        manifests = """
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: fluent-bit
+  namespace: observability
+spec:
+  template:
+    spec:
+      tolerations:
+        - key: cloud.google.com/gke-spot
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      containers:
+        - name: fluent-bit
+          image: fluent/fluent-bit:4.2.8
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: error-detector
+  namespace: observability
+spec:
+  replicas: 0
+  template:
+    spec:
+      containers:
+        - name: error-detector
+          image: asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public/error-detector@sha256:1111111111111111111111111111111111111111111111111111111111111111
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 50m
+              memory: 64Mi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: source-controller
+  namespace: flux-system
+spec:
+  replicas: 1
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"
+      tolerations:
+        - key: cloud.google.com/gke-spot
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      containers:
+        - name: manager
+          image: ghcr.io/fluxcd/source-controller:v1.5.0
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+"""
+        rc, data = self._run_with_custom_capacity(manifests, cap)
+        self.assertEqual(rc, 0, data.get("rejectionReason"))
+        # 350m sys + 2*25m fluent-bit + 1*25m error-detector (max(0,1)) + 50m source-controller = 475m
+        # 576Mi sys + 2*64Mi fluent-bit + 1*64Mi error-detector + 128Mi source-controller = 896Mi
+        self.assertEqual(data["platformReservations"]["cpuMillicores"], 475)
+        self.assertEqual(data["platformReservations"]["memoryMib"], 896)
+
+        # Mismatched pool allocatable sum fails Rule 1
+        bad_cap = cap.replace("cpuMillicores: 1880", "cpuMillicores: 2000")
+        rc_bad, data_bad = self._run_with_custom_capacity(manifests, bad_cap)
+        self.assertEqual(rc_bad, 1)
+        self.assertEqual(data_bad.get("validationStatus"), "REJECTED_NO_MEASUREMENT")
+
+    def test_29_spot_pool_forbids_rwo_pvc_keycloak_and_tenant_pods(self):
+        """Scheduling keycloak, proj-* workloads, or PVC-mounting pods onto spot-controllers is rejected."""
+        with open(os.path.join(BASE_DIR, "clusters", "gke", "capacity.yaml"), encoding="utf-8") as fh:
+            gke_cap = fh.read()
+
+        bad_keycloak_on_spot = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+  namespace: identity
+spec:
+  replicas: 1
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"
+      tolerations:
+        - key: cloud.google.com/gke-spot
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:24.0.5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+"""
+        rc1, data1 = self._run_with_custom_capacity(bad_keycloak_on_spot, gke_cap)
+        self.assertEqual(rc1, 1)
+        self.assertIn("spot", data1.get("rejectionReason", "").lower())
+
+        bad_pvc_on_spot = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: cert-manager
+  namespace: cert-manager
+spec:
+  replicas: 1
+  template:
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-spot: "true"
+      tolerations:
+        - key: cloud.google.com/gke-spot
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+      volumes:
+        - name: state
+          persistentVolumeClaim:
+            claimName: rwo-pvc
+      containers:
+        - name: cert-manager
+          image: quay.io/jetstack/cert-manager-controller:v1.21.2
+          resources:
+            requests:
+              cpu: 25m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+"""
+        rc2, data2 = self._run_with_custom_capacity(bad_pvc_on_spot, gke_cap)
+        self.assertEqual(rc2, 1)
+        self.assertIn("spot", data2.get("rejectionReason", "").lower())
+
+    def test_30_ondemand_backup_headroom_and_loadbalancer_rejected_on_gke(self):
+        """ondemand-core must retain >= 50m CPU and >= 192 MiB memory headroom, and Service type LoadBalancer is rejected."""
+        with open(os.path.join(BASE_DIR, "clusters", "gke", "capacity.yaml"), encoding="utf-8") as fh:
+            gke_cap = fh.read()
+
+        # 200m sys + 710m steady-state = 910m -> only 30m CPU headroom (< 50m required)
+        exhausted_ondemand = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: gateway
+  namespace: identity
+spec:
+  replicas: 1
+  template:
+    spec:
+      containers:
+        - name: gateway
+          image: asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public/platform-auth-gateway@sha256:2222222222222222222222222222222222222222222222222222222222222222
+          resources:
+            requests:
+              cpu: 710m
+              memory: 64Mi
+            limits:
+              cpu: 710m
+              memory: 64Mi
+"""
+        rc, data = self._run_with_custom_capacity(exhausted_ondemand, gke_cap)
+        self.assertEqual(rc, 1)
+        self.assertIn("headroom", data.get("rejectionReason", "").lower())
+
+        lb_svc = """
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik
+  namespace: platform
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 443
+      targetPort: 8443
+"""
+        rc_lb, data_lb = self._run_with_custom_capacity(lb_svc, gke_cap)
+        self.assertEqual(rc_lb, 1)
+        self.assertIn("LoadBalancer", data_lb.get("rejectionReason", ""))
+
+    def test_31_gar_digest_accepted_and_mutable_project_tag_rejected(self):
+        """Project workloads accept public GAR @sha256 digests and reject mutable tags or foreign GAR projects."""
+        with open(os.path.join(BASE_DIR, "clusters", "gke", "capacity.yaml"), encoding="utf-8") as fh:
+            gke_cap = fh.read()
+
+        gar_proj = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: blog-web
+  namespace: proj-blog
+spec:
+  replicas: 1
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 0
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/version: v1.2.3
+      annotations:
+        logs.nacfson.cloud/blog-web: v3/nginx
+    spec:
+      automountServiceAccountToken: false
+      containers:
+        - name: blog-web
+          image: asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public/blog-web@sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              cpu: 50m
+              memory: 128Mi
+"""
+        rc_ok, data_ok = self._run_with_custom_capacity(gar_proj, gke_cap)
+        self.assertEqual(rc_ok, 0, data_ok.get("rejectionReason"))
+
+        bad_tag = gar_proj.replace(
+            "@sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+            ":v1.2.3",
+        )
+        rc_tag, data_tag = self._run_with_custom_capacity(bad_tag, gke_cap)
+        self.assertEqual(rc_tag, 1)
+        self.assertIn("digest", data_tag.get("rejectionReason", "").lower())
 
 
 if __name__ == "__main__":

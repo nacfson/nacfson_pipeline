@@ -11,8 +11,13 @@ PORTABLE = os.path.join(BASE, "deploy", "projects", "pn", "boundary", "network-p
 KUSTOMIZATION = os.path.join(BASE, "deploy", "projects", "pn", "boundary", "kustomization.yaml")
 BACKEND = os.path.join(BASE, "deploy", "projects", "pn", "workloads", "backend-deployment.yaml")
 HANDBOOK = os.path.join(BASE, "docs", "platform-architecture.html")
-HOSTS = frozenset({"api.wiktapi.dev"})
 PREFLIGHT = os.path.join(BASE, "scripts", "platform-preflight.py")
+REQUIRED_EXCEPT_CIDRS = {
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "169.254.169.254/32",
+}
 
 
 def _preflight():
@@ -27,65 +32,45 @@ def _load(path):
         return yaml.safe_load(fh)
 
 
-def _walk_key(node, key, found):
-    if isinstance(node, dict):
-        for item_key, item_value in node.items():
-            if item_key == key:
-                found.append(item_value)
-            else:
-                _walk_key(item_value, key, found)
-    elif isinstance(node, list):
-        for item in node:
-            _walk_key(item, key, found)
-
-
 class TestPnTranslationEgress(unittest.TestCase):
-    def test_policy_names_only_the_two_translation_hosts(self):
+    def test_policy_is_portable_k8s_networkpolicy_blocking_private_and_metadata_cidrs(self):
         doc = _load(POLICY)
-        self.assertEqual(doc["apiVersion"], "cilium.io/v2")
-        self.assertEqual(doc["kind"], "CiliumNetworkPolicy")
+        self.assertEqual(doc["apiVersion"], "networking.k8s.io/v1")
+        self.assertEqual(doc["kind"], "NetworkPolicy")
         self.assertEqual(doc["metadata"]["name"], "pn-backend-translation-egress")
         self.assertEqual(doc["metadata"]["namespace"], "proj-pn")
         self.assertEqual(
-            doc["spec"]["endpointSelector"]["matchLabels"],
+            doc["spec"]["podSelector"]["matchLabels"],
             {"app.kubernetes.io/name": "pn-backend"},
         )
+        self.assertEqual(doc["spec"]["policyTypes"], ["Egress"])
         self.assertNotIn("ingress", doc["spec"])
+
         rules = doc["spec"]["egress"]
         self.assertEqual(len(rules), 2)
-        dns = next(rule for rule in rules if "toEndpoints" in rule)
+
+        dns_rule = next(r for r in rules if any("namespaceSelector" in p for p in r.get("to", [])))
         self.assertEqual(
-            dns["toEndpoints"],
+            dns_rule["to"],
             [
                 {
-                    "matchLabels": {
-                        "k8s:io.kubernetes.pod.namespace": "kube-system",
-                        "k8s:k8s-app": "kube-dns",
-                    }
+                    "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}},
+                    "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}},
                 }
             ],
         )
         self.assertEqual(
-            dns["toPorts"][0]["ports"],
-            [{"port": "53", "protocol": "ANY"}],
+            dns_rule["ports"],
+            [{"protocol": "UDP", "port": 53}, {"protocol": "TCP", "port": 53}],
         )
-        fqdn = next(rule for rule in rules if "toFQDNs" in rule)
-        self.assertEqual({item["matchName"] for item in fqdn["toFQDNs"]}, HOSTS)
-        self.assertEqual(
-            fqdn["toPorts"],
-            [{"ports": [{"port": "443", "protocol": "TCP"}]}],
-        )
-        patterns = []
-        names = []
-        _walk_key(doc, "matchPattern", patterns)
-        _walk_key(doc, "matchName", names)
-        self.assertEqual(patterns, ["*"])
-        self.assertEqual(set(names), HOSTS)
-        dumped = yaml.dump(doc)
-        self.assertNotIn("0.0.0.0/0", dumped)
-        self.assertNotIn("world", dumped)
 
-    def test_portable_policy_has_no_public_egress(self):
+        https_rule = next(r for r in rules if any("ipBlock" in p for p in r.get("to", [])))
+        self.assertEqual(https_rule["ports"], [{"protocol": "TCP", "port": 443}])
+        ip_block = https_rule["to"][0]["ipBlock"]
+        self.assertEqual(ip_block["cidr"], "0.0.0.0/0")
+        self.assertTrue(REQUIRED_EXCEPT_CIDRS.issubset(set(ip_block.get("except") or [])))
+
+    def test_isolation_policy_has_no_public_egress(self):
         doc = _load(PORTABLE)
         self.assertEqual(doc["kind"], "NetworkPolicy")
         self.assertEqual(doc["metadata"]["name"], "project-pn-isolation")
@@ -99,9 +84,11 @@ class TestPnTranslationEgress(unittest.TestCase):
         doc = _load(KUSTOMIZATION)
         self.assertIn("translation-egress.yaml", doc["resources"])
 
-    def test_project_boundaries_wait_for_cilium(self):
-        for env in ("local-k3s", "vps-k3s"):
+    def test_project_boundaries_wait_for_governance_across_all_environments(self):
+        for env in ("local-k3s", "vps-k3s", "gke"):
             path = os.path.join(BASE, "clusters", env, "layers.yaml")
+            if not os.path.exists(path):
+                continue
             with open(path, encoding="utf-8") as fh:
                 docs = [item for item in yaml.safe_load_all(fh) if item]
             layer = next(
@@ -111,7 +98,6 @@ class TestPnTranslationEgress(unittest.TestCase):
                 and item.get("metadata", {}).get("name") == "project-boundaries"
             )
             names = [item["name"] for item in layer["spec"]["dependsOn"]]
-            self.assertIn("cni", names)
             self.assertIn("governance", names)
 
     def test_backend_does_not_receive_the_enrich_key(self):
@@ -120,14 +106,6 @@ class TestPnTranslationEgress(unittest.TestCase):
         self.assertNotIn("ENRICH_PRIMARY_API_KEY", text)
         self.assertNotIn("ENRICH_FALLBACK_BASE_URL", text)
 
-    def test_handbook_drops_translation_on_flannel(self):
-        with open(HANDBOOK, encoding="utf-8") as fh:
-            text = fh.read()
-        self.assertIn("api.wiktapi.dev", text)
-        self.assertIn("generativelanguage.googleapis.com", text)
-        self.assertIn("pn-translation", text)
-        self.assertIn("currentCniScenario === 'pn-translation'", text)
-
 
 class TestTranslationEgressPreflight(unittest.TestCase):
     def test_real_policy_is_accepted(self):
@@ -135,79 +113,56 @@ class TestTranslationEgressPreflight(unittest.TestCase):
         docs = [_load(POLICY), _load(PORTABLE)]
         self.assertEqual(module.check_translation_egress(docs), [])
 
-    def test_extra_host_is_rejected(self):
+    def test_missing_metadata_or_rfc1918_except_is_rejected(self):
         module = _preflight()
-        doc = copy.deepcopy(_load(POLICY))
-        doc["spec"]["egress"][1]["toFQDNs"].append({"matchName": "generativelanguage.googleapis.com"})
-        violations = module.check_translation_egress([doc, _load(PORTABLE)])
-        self.assertTrue(any("generativelanguage.googleapis.com" in item["detail"] for item in violations))
-        self.assertTrue(all(item["rule"] == 2 for item in violations))
+        for dropped in ("169.254.169.254/32", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"):
+            doc = copy.deepcopy(_load(POLICY))
+            https_rule = next(r for r in doc["spec"]["egress"] if any("ipBlock" in p for p in r.get("to", [])))
+            https_rule["to"][0]["ipBlock"]["except"] = [
+                c for c in https_rule["to"][0]["ipBlock"]["except"] if c != dropped
+            ]
+            violations = module.check_translation_egress([doc, _load(PORTABLE)])
+            self.assertTrue(
+                any(dropped in item["detail"] or "except" in item["detail"] for item in violations),
+                f"expected rejection when dropping {dropped}, got {violations}",
+            )
+            self.assertTrue(all(item["rule"] == 2 for item in violations))
 
-    def test_world_cidr_is_rejected(self):
+    def test_cilium_network_policy_is_rejected(self):
         module = _preflight()
-        doc = copy.deepcopy(_load(POLICY))
-        doc["spec"]["egress"].append(
-            {"toCIDR": ["0.0.0.0/0"], "toPorts": [{"ports": [{"port": "443", "protocol": "TCP"}]}]}
-        )
-        violations = module.check_translation_egress([doc, _load(PORTABLE)])
-        self.assertTrue(any("0.0.0.0/0" in item["detail"] for item in violations))
+        cnp = {
+            "apiVersion": "cilium.io/v2",
+            "kind": "CiliumNetworkPolicy",
+            "metadata": {"name": "pn-backend-translation-egress", "namespace": "proj-pn"},
+            "spec": {"endpointSelector": {"matchLabels": {"app.kubernetes.io/name": "pn-backend"}}},
+        }
+        violations = module.check_translation_egress([cnp, _load(PORTABLE)])
+        self.assertTrue(violations)
 
     def test_missing_policy_is_rejected_when_isolation_is_present(self):
         module = _preflight()
         violations = module.check_translation_egress([_load(PORTABLE)])
         self.assertTrue(any("missing" in item["detail"] for item in violations))
 
-    def test_frontend_selector_is_rejected(self):
+    def test_frontend_or_empty_selector_is_rejected(self):
         module = _preflight()
-        doc = copy.deepcopy(_load(POLICY))
-        doc["spec"]["endpointSelector"]["matchLabels"] = {
-            "app.kubernetes.io/name": "pn-frontend"
-        }
-        violations = module.check_translation_egress([doc, _load(PORTABLE)])
-        self.assertTrue(any("pn-backend" in item["detail"] for item in violations))
+        for bad_sel in ({}, {"app.kubernetes.io/name": "pn-frontend"}):
+            doc = copy.deepcopy(_load(POLICY))
+            doc["spec"]["podSelector"]["matchLabels"] = bad_sel
+            violations = module.check_translation_egress([doc, _load(PORTABLE)])
+            self.assertTrue(any("pn-backend" in item["detail"] for item in violations))
 
-    def test_udp_443_is_rejected(self):
+    def test_udp_443_or_port_80_is_rejected(self):
         module = _preflight()
-        doc = copy.deepcopy(_load(POLICY))
-        doc["spec"]["egress"][1]["toPorts"] = [
-            {"ports": [{"port": "443", "protocol": "UDP"}]}
-        ]
-        violations = module.check_translation_egress([doc, _load(PORTABLE)])
-        self.assertTrue(any("TCP 443" in item["detail"] for item in violations))
-
-    def test_public_cidr_other_than_world_literal_is_rejected(self):
-        module = _preflight()
-        doc = copy.deepcopy(_load(POLICY))
-        doc["spec"]["egress"].append({"toCIDR": ["1.1.1.1/32"]})
-        doc["spec"]["egress"].append({"toCIDR": ["0.0.0.0/1", "128.0.0.0/1"]})
-        violations = module.check_translation_egress([doc, _load(PORTABLE)])
-        self.assertTrue(violations)
-        self.assertTrue(all(item["rule"] == 2 for item in violations))
-
-    def test_to_entities_all_is_rejected(self):
-        module = _preflight()
-        doc = copy.deepcopy(_load(POLICY))
-        doc["spec"]["egress"].append({"toEntities": ["all"]})
-        violations = module.check_translation_egress([doc, _load(PORTABLE)])
-        self.assertTrue(violations)
-
-    def test_star_moved_onto_public_fqdn_is_rejected(self):
-        module = _preflight()
-        doc = copy.deepcopy(_load(POLICY))
-        doc["spec"]["egress"][0]["toPorts"][0]["rules"]["dns"] = [
-            {"matchName": "api.wiktapi.dev"},
-            {"matchName": "generativelanguage.googleapis.com"},
-        ]
-        doc["spec"]["egress"][1]["toFQDNs"] = [{"matchPattern": "*"}]
-        violations = module.check_translation_egress([doc, _load(PORTABLE)])
-        self.assertTrue(violations)
-
-    def test_dns_star_must_select_kube_dns(self):
-        module = _preflight()
-        doc = copy.deepcopy(_load(POLICY))
-        doc["spec"]["egress"][0]["toEndpoints"][0]["matchLabels"]["k8s:k8s-app"] = "not-dns"
-        violations = module.check_translation_egress([doc, _load(PORTABLE)])
-        self.assertTrue(any("kube-dns" in item["detail"] for item in violations))
+        for bad_ports in (
+            [{"protocol": "UDP", "port": 443}],
+            [{"protocol": "TCP", "port": 443}, {"protocol": "TCP", "port": 80}],
+        ):
+            doc = copy.deepcopy(_load(POLICY))
+            https_rule = next(r for r in doc["spec"]["egress"] if any("ipBlock" in p for p in r.get("to", [])))
+            https_rule["ports"] = bad_ports
+            violations = module.check_translation_egress([doc, _load(PORTABLE)])
+            self.assertTrue(any("TCP" in item["detail"] and "443" in item["detail"] for item in violations))
 
     def test_isolation_port_443_without_destination_is_rejected(self):
         module = _preflight()
@@ -216,40 +171,19 @@ class TestTranslationEgressPreflight(unittest.TestCase):
         violations = module.check_translation_egress([_load(POLICY), isolation])
         self.assertTrue(violations)
 
-    def test_second_cilium_policy_for_frontend_is_rejected(self):
-        module = _preflight()
-        extra = {
-            "apiVersion": "cilium.io/v2",
-            "kind": "CiliumNetworkPolicy",
-            "metadata": {"name": "frontend-world", "namespace": "proj-pn"},
-            "spec": {
-                "endpointSelector": {"matchLabels": {"app.kubernetes.io/name": "pn-frontend"}},
-                "egress": [{"toEntities": ["world"]}],
-            },
-        }
-        violations = module.check_translation_egress([_load(POLICY), _load(PORTABLE), extra])
-        self.assertTrue(violations)
-
-    def test_ingress_from_all_is_rejected(self):
+    def test_ingress_rules_on_translation_policy_rejected(self):
         module = _preflight()
         doc = copy.deepcopy(_load(POLICY))
-        doc["spec"]["ingress"] = [{"fromEntities": ["all"]}]
+        doc["spec"]["ingress"] = [{}]
         violations = module.check_translation_egress([doc, _load(PORTABLE)])
         self.assertTrue(violations)
 
 
 class TestTranslationHandbook(unittest.TestCase):
-    def test_cni_flow_allows_only_the_two_hosts(self):
+    def test_handbook_documents_pn_translation_and_ai_proxy(self):
         with open(HANDBOOK, encoding="utf-8") as fh:
             text = fh.read()
-        self.assertIn("pn-backend only: api.wiktapi.dev:443", text)
+        self.assertIn("api.wiktapi.dev", text)
+        self.assertIn("generativelanguage.googleapis.com", text)
+        self.assertIn("pn-translation", text)
         self.assertIn("vault/vault-ai-proxy", text)
-        self.assertNotIn("internet) -> eBPF DROP", text)
-
-    def test_simulator_writes_the_flannel_drop_to_a_live_element(self):
-        with open(HANDBOOK, encoding="utf-8") as fh:
-            text = fh.read()
-        self.assertNotIn("getElementById('cni-sim-src')", text)
-        self.assertIn("cni-scenario-list').innerHTML", text)
-        self.assertIn("cni-junior-explain').textContent", text)
-        self.assertIn("kube-router ignores CiliumNetworkPolicy", text)

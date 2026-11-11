@@ -37,6 +37,10 @@ jobs:
         run: |
           python3 -m unittest discover -s tests/skills
 
+      - name: Run observability manifest contract tests
+        run: |
+          python3 -m unittest discover tests/observability
+
   vault-proxies-tests:
     name: vault-proxies-tests (Kill Switch & /startupz Self-Audit)
     runs-on: ubuntu-latest
@@ -106,7 +110,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        env: [local-k3s, vps-k3s]
+        env: [local-k3s, vps-k3s, gke]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -137,7 +141,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        env: [local-k3s, vps-k3s]
+        env: [local-k3s, vps-k3s, gke]
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4

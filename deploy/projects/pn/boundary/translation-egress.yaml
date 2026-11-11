@@ -1,27 +1,42 @@
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
 metadata:
   name: pn-backend-translation-egress
   namespace: proj-pn
+  labels:
+    app.kubernetes.io/name: project-pn
+    app.kubernetes.io/part-of: project-pn
+    platform.nacfson.io/managed-by: platform
 spec:
-  endpointSelector:
+  podSelector:
     matchLabels:
       app.kubernetes.io/name: pn-backend
+  policyTypes:
+    - Egress
   egress:
-    - toEndpoints:
-        - matchLabels:
-            "k8s:io.kubernetes.pod.namespace": kube-system
-            "k8s:k8s-app": kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: ANY
-          rules:
-            dns:
-              - matchPattern: "*"
-    - toFQDNs:
-        - matchName: api.wiktapi.dev
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Portable public HTTPS egress (Wiktionary / api.wiktapi.dev) blocking all
+    # RFC1918 private networks, CGNAT, and cloud instance metadata / Workload Identity.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.169.254/32
+              - 100.64.0.0/10
+      ports:
+        - protocol: TCP
+          port: 443

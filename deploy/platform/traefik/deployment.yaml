@@ -1,0 +1,88 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traefik
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/part-of: platform
+spec:
+  replicas: 1
+  # Recreate prevents hostPort 80/443 scheduling deadlocks on the single ondemand-core node.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: traefik
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: traefik
+        app.kubernetes.io/part-of: platform
+    spec:
+      nodeSelector:
+        cloud.google.com/gke-provisioning: "standard"
+      serviceAccountName: traefik
+      automountServiceAccountToken: true
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: traefik
+          image: traefik:v3.3.4
+          imagePullPolicy: IfNotPresent
+          args:
+            - --providers.kubernetescrd
+            - --providers.kubernetescrd.allowcrossnamespace=true
+            - --providers.kubernetesingress
+            - --providers.kubernetesingress.ingressclass=traefik
+            - --entrypoints.web.address=:8000
+            - --entrypoints.websecure.address=:8443
+            - --ping=true
+            - --entrypoints.ping.address=:8082
+          ports:
+            - name: web
+              containerPort: 8000
+              hostPort: 80
+              protocol: TCP
+            - name: websecure
+              containerPort: 8443
+              hostPort: 443
+              protocol: TCP
+            - name: ping
+              containerPort: 8082
+              protocol: TCP
+          resources:
+            requests:
+              cpu: 30m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 96Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: 8082
+            initialDelaySeconds: 2
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /ping
+              port: 8082
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
