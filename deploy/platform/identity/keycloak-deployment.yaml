@@ -124,7 +124,7 @@ spec:
               export PROJECT_PN_CLIENT_SECRET=$(cat /opt/keycloak/conf/secrets/project_pn_client_secret)
               export PROJECT_HEALTH_CLIENT_SECRET=$(cat /opt/keycloak/conf/secrets/project_health_client_secret)
               export SESSION_REVOCATION_SECRET=$(cat /opt/keycloak/conf/secrets/session_revocation_secret)
-              exec /opt/keycloak/bin/kc.sh start --import-realm --vault=file --vault-dir=/opt/keycloak/conf/secrets
+              exec /opt/keycloak/bin/kc.sh start --import-realm --features=persistent-user-sessions --vault=file --vault-dir=/opt/keycloak/conf/secrets
           env:
             - name: KC_DB
               value: postgres

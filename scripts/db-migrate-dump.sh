@@ -17,6 +17,8 @@
 set -euo pipefail
 
 PROJECT_SLUG="pn"
+PROJECT_EXPLICIT="false"
+IS_KEYCLOAK="false"
 DUMP_PATH=""
 EXPORT_PATH=""
 MODE="full" # full | data
@@ -30,16 +32,19 @@ DRY_RUN="false"
 usage() {
   cat <<'EOF'
 Usage:
-  # Import a local dump (.dump, .dump.gz, .sql, .sql.gz, .tar.gz) into proj_<slug>:
+  # Import a local dump (.dump, .dump.gz, .sql, .sql.gz, .tar.gz) into proj_<slug> or keycloak:
   ./scripts/db-migrate-dump.sh --project <slug> --file <path> [--mode full|data] [--ssh <host>] [--yes]
+  ./scripts/db-migrate-dump.sh --keycloak --file <path> [--mode full|data] [--ssh <host>] [--yes]
 
-  # Export proj_<slug> from the cluster to a local custom dump (.dump.gz + .sha256):
+  # Export proj_<slug> or keycloak from the cluster to a local custom dump (.dump.gz + .sha256):
   ./scripts/db-migrate-dump.sh --project <slug> --export <output.dump.gz> [--ssh <host>]
+  ./scripts/db-migrate-dump.sh --keycloak --export <output.dump.gz> [--ssh <host>]
 
 Options:
   -p, --project <slug>     Project slug (default: pn -> db: proj_pn, role: user_pn)
+  -k, --keycloak           Target platform Keycloak identity DB (db: keycloak, role: keycloak_user)
   -f, --file <path>        Local dump file to import (.dump, .dump.gz, .sql, .sql.gz, .tar.gz)
-  -e, --export <path>      Export cluster database proj_<slug> to local file (.dump.gz)
+  -e, --export <path>      Export cluster database to local file (.dump.gz + .sha256)
   -m, --mode <full|data>   Import mode: 'full' (schema+data, --clean) or 'data' (--data-only) (default: full)
       --ssh <host>         Target remote K3s SSH host (e.g., oracleCloud); if omitted, tries local kubectl first then oracleCloud
       --skip-snapshot      Skip pre-migration safety backup inside postgres-0
@@ -53,7 +58,12 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     -p|--project)
       PROJECT_SLUG="${2:-}"
+      PROJECT_EXPLICIT="true"
       shift 2
+      ;;
+    -k|--keycloak)
+      IS_KEYCLOAK="true"
+      shift
       ;;
     -f|--file)
       DUMP_PATH="${2:-}"
@@ -95,15 +105,25 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Normalize and validate project slug
-PROJECT_SLUG="$(echo "${PROJECT_SLUG}" | tr '[:upper:]' '[:lower:]' | sed -E 's/^proj[-_]//; s/-/_/g')"
-if [[ ! "${PROJECT_SLUG}" =~ ^[a-z0-9_]+$ ]]; then
-  echo "Error: Invalid project slug '${PROJECT_SLUG}' (must be alphanumeric/underscore)." >&2
+if [[ "${IS_KEYCLOAK}" == "true" && "${PROJECT_EXPLICIT}" == "true" ]]; then
+  echo "Error: Specify either --keycloak or --project <slug>, not both." >&2
   exit 1
 fi
 
-TARGET_DB="proj_${PROJECT_SLUG}"
-TARGET_ROLE="user_${PROJECT_SLUG}"
+if [[ "${IS_KEYCLOAK}" == "true" ]]; then
+  PROJECT_SLUG="keycloak"
+  TARGET_DB="keycloak"
+  TARGET_ROLE="${KEYCLOAK_DB_ROLE:-keycloak_user}"
+else
+  # Normalize and validate project slug
+  PROJECT_SLUG="$(echo "${PROJECT_SLUG}" | tr '[:upper:]' '[:lower:]' | sed -E 's/^proj[-_]//; s/-/_/g')"
+  if [[ ! "${PROJECT_SLUG}" =~ ^[a-z0-9_]+$ ]]; then
+    echo "Error: Invalid project slug '${PROJECT_SLUG}' (must be alphanumeric/underscore)." >&2
+    exit 1
+  fi
+  TARGET_DB="proj_${PROJECT_SLUG}"
+  TARGET_ROLE="user_${PROJECT_SLUG}"
+fi
 
 if [[ "${MODE}" != "full" && "${MODE}" != "data" ]]; then
   echo "Error: --mode must be 'full' or 'data' (got '${MODE}')." >&2

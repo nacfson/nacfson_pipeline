@@ -576,23 +576,22 @@ class TestLayerWiring(unittest.TestCase):
             self.assertIn(("StatefulSet", "victorialogs", "observability"), checks)
 
         gke_path = os.path.join(BASE_DIR, "clusters", "gke", "layers.yaml")
-        if os.path.exists(gke_path):
-            with open(gke_path, encoding="utf-8") as handle:
-                gke_docs = [doc for doc in yaml.safe_load_all(handle) if doc]
-            gke_obs = next(
-                doc
-                for doc in gke_docs
-                if doc.get("kind") == "Kustomization"
-                and doc.get("metadata", {}).get("name") == "observability"
-            )
-            gke_spec = gke_obs["spec"]
-            self.assertEqual(gke_spec["path"], "./clusters/gke/observability")
-            self.assertEqual([item["name"] for item in gke_spec["dependsOn"]], ["governance"])
-            gke_checks = {
-                (item["kind"], item["name"], item["namespace"])
-                for item in gke_spec["healthChecks"]
-            }
-            self.assertEqual(gke_checks, {("DaemonSet", "fluent-bit", "observability")})
+        with open(gke_path, encoding="utf-8") as handle:
+            gke_docs = [doc for doc in yaml.safe_load_all(handle) if doc]
+        gke_obs = next(
+            doc
+            for doc in gke_docs
+            if doc.get("kind") == "Kustomization"
+            and doc.get("metadata", {}).get("name") == "observability"
+        )
+        gke_spec = gke_obs["spec"]
+        self.assertEqual(gke_spec["path"], "./clusters/gke/observability")
+        self.assertEqual([item["name"] for item in gke_spec["dependsOn"]], ["governance"])
+        gke_checks = {
+            (item["kind"], item["name"], item["namespace"])
+            for item in gke_spec["healthChecks"]
+        }
+        self.assertEqual(gke_checks, {("DaemonSet", "fluent-bit", "observability")})
 
     def test_manual_change_policy_lists_observability(self):
         path = os.path.join(
