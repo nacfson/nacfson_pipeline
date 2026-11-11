@@ -93,7 +93,7 @@ class TestAIGatewayPreflightContract(unittest.TestCase):
         violations = self.module.check_ai_gateway_contract(self.projects_dict, bad_platform)
         self.assertTrue(any("vault-ai-proxy" in item["detail"] for item in violations))
 
-    def test_unrestricted_ai_proxy_networkpolicy_or_wildcard_cilium_egress_rejected(self):
+    def test_unrestricted_ai_proxy_networkpolicy_or_missing_except_cidrs_rejected(self):
         bad_netpol = copy.deepcopy(self.platform_docs)
         for doc in bad_netpol:
             if doc.get("kind") == "NetworkPolicy" and doc.get("metadata", {}).get("name") == "ai-proxy-policy":
@@ -101,12 +101,24 @@ class TestAIGatewayPreflightContract(unittest.TestCase):
         v1 = self.module.check_ai_gateway_contract(self.projects_dict, bad_netpol)
         self.assertTrue(any("podSelector.matchLabels" in item["detail"] for item in v1))
 
-        bad_cnp = copy.deepcopy(self.platform_docs)
-        for doc in bad_cnp:
-            if doc.get("kind") == "CiliumNetworkPolicy" and doc.get("metadata", {}).get("name") == "ai-proxy-egress":
-                doc["spec"]["egress"][-1]["toFQDNs"] = [{"matchPattern": "*.googleapis.com"}]
-        v2 = self.module.check_ai_gateway_contract(self.projects_dict, bad_cnp)
-        self.assertTrue(any("exact matchName" in item["detail"] or "generativelanguage.googleapis.com" in item["detail"] for item in v2))
+        bad_egress = copy.deepcopy(self.platform_docs)
+        for doc in bad_egress:
+            if doc.get("kind") == "NetworkPolicy" and doc.get("metadata", {}).get("name") == "ai-proxy-policy":
+                for rule in doc["spec"]["egress"]:
+                    for peer in rule.get("to") or []:
+                        if (peer.get("ipBlock") or {}).get("cidr") == "0.0.0.0/0":
+                            peer["ipBlock"]["except"] = ["10.0.0.0/8"]
+        v2 = self.module.check_ai_gateway_contract(self.projects_dict, bad_egress)
+        self.assertTrue(any("169.254.169.254/32" in item["detail"] or "except" in item["detail"] for item in v2))
+
+        bad_openbao_world = copy.deepcopy(self.platform_docs)
+        for doc in bad_openbao_world:
+            if doc.get("kind") == "NetworkPolicy" and doc.get("metadata", {}).get("name") == "openbao-ingress-policy":
+                doc["spec"]["egress"].append(
+                    {"to": [{"ipBlock": {"cidr": "0.0.0.0/0"}}], "ports": [{"protocol": "TCP", "port": 443}]}
+                )
+        v3 = self.module.check_ai_gateway_contract(self.projects_dict, bad_openbao_world)
+        self.assertTrue(any("0.0.0.0/0" in item["detail"] for item in v3))
 
     def test_observability_hostpath_to_vault_pv_or_privileged_rejected(self):
         bad_obs = copy.deepcopy(self.platform_docs) + [

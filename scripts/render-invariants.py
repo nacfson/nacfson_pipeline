@@ -18,7 +18,8 @@ CLUSTER_SCOPED_KINDS = {
     "ValidatingAdmissionPolicyBinding",
     "ValidatingWebhookConfiguration",
     "MutatingWebhookConfiguration",
-    "ClusterIssuer"
+    "ClusterIssuer",
+    "IngressClass",
 }
 
 ALLOWED_PROJECT_KINDS = {"Deployment", "Service", "ConfigMap", "IngressRoute"}
@@ -261,6 +262,41 @@ def main():
         ref_name = crb.get("roleRef", {}).get("name")
         if ref_name != "view":
             errors.append(f"Invariant 8 violation: operator-readonly-view roleRef is '{ref_name}', expected 'view'")
+
+    # Invariant 10: GKE zero-LoadBalancer & Traefik hostPort 80/443 contract (contracts/gke-capacity-and-placement.md §3)
+    if args.environment == "gke":
+        found_traefik_svc = False
+        found_traefik_dep = False
+        for doc in rendered_docs:
+            kind = doc.get("kind", "")
+            meta = doc.get("metadata") or {}
+            name = meta.get("name", "")
+            ns = meta.get("namespace", "")
+            if kind == "Service":
+                svc_type = (doc.get("spec") or {}).get("type", "ClusterIP")
+                if svc_type == "LoadBalancer":
+                    errors.append(f"Invariant 10 violation: Service {ns}/{name} uses forbidden type: LoadBalancer on gke")
+                if ns == "platform" and name == "traefik":
+                    found_traefik_svc = True
+                    if svc_type != "ClusterIP":
+                        errors.append(f"Invariant 10 violation: Service platform/traefik must use type: ClusterIP, got '{svc_type}'")
+            elif kind == "Deployment" and ns == "platform" and name == "traefik":
+                found_traefik_dep = True
+                pod_spec = (((doc.get("spec") or {}).get("template") or {}).get("spec") or {})
+                host_ports = {
+                    p.get("hostPort")
+                    for c in (pod_spec.get("containers") or [])
+                    for p in (c.get("ports") or [])
+                    if isinstance(p, dict) and p.get("hostPort") is not None
+                }
+                if host_ports != {80, 443}:
+                    errors.append(
+                        f"Invariant 10 violation: Deployment platform/traefik must bind hostPort {{80, 443}}, got {sorted(host_ports)}"
+                    )
+        if not found_traefik_svc:
+            errors.append("Invariant 10 violation: Missing Service platform/traefik in gke render")
+        if not found_traefik_dep:
+            errors.append("Invariant 10 violation: Missing Deployment platform/traefik in gke render")
 
     if errors:
         sys.stderr.write("Render Invariants Violations:\n")

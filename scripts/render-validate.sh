@@ -43,12 +43,13 @@ mv "${RENDER_FILE}" "${RENDER_FILE}.yaml"
 RENDER_FILE="${RENDER_FILE}.yaml"
 : > "${RENDER_FILE}"
 
-echo "=== Rendering clusters/${ENV}/flux-system ===" >&2
-kubectl kustomize "clusters/${ENV}/flux-system" >> "${RENDER_FILE}"
-echo "---" >> "${RENDER_FILE}"
+if command -v kubectl >/dev/null 2>&1 && command -v flux >/dev/null 2>&1; then
+  echo "=== Rendering clusters/${ENV}/flux-system ===" >&2
+  kubectl kustomize "clusters/${ENV}/flux-system" >> "${RENDER_FILE}"
+  echo "---" >> "${RENDER_FILE}"
 
-echo "=== Rendering layers from clusters/${ENV}/layers.yaml ===" >&2
-python3 -c '
+  echo "=== Rendering layers from clusters/${ENV}/layers.yaml ===" >&2
+  python3 -c '
 import yaml, subprocess, sys
 
 env = sys.argv[1]
@@ -71,8 +72,8 @@ for doc in docs:
         rf.write("\n---\n")
 ' "${ENV}" "${RENDER_FILE}"
 
-echo "=== Rendering project layers from clusters/${ENV}/projects/ ===" >&2
-python3 -c '
+  echo "=== Rendering project layers from clusters/${ENV}/projects/ ===" >&2
+  python3 -c '
 import os, yaml, subprocess, sys
 
 env = sys.argv[1]
@@ -98,6 +99,10 @@ if os.path.isdir(proj_dir):
                     rf.write(res.stdout)
                     rf.write("\n---\n")
 ' "${ENV}" "${RENDER_FILE}"
+else
+  echo "=== Rendering clusters/${ENV} via scripts/kustomize_render.py (kubectl/flux CLI fallback) ===" >&2
+  python3 "${SCRIPT_DIR}/kustomize_render.py" env "${ENV}" --root "${ROOT_DIR}" > "${RENDER_FILE}"
+fi
 
 # Schema validation with kubeconform if present
 if command -v kubeconform >/dev/null 2>&1; then

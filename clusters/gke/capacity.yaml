@@ -1,0 +1,41 @@
+environment: gke
+nodeName: gke-zonal-standard
+observedAt: "2026-11-10T00:00:00Z"
+nodeCount: 2
+allocatable:
+  cpuMillicores: 1880
+  memoryMib: 4408
+systemReserved:
+  cpuMillicores: 350
+  memoryMib: 576
+pools:
+  - name: ondemand-core
+    machineType: e2-medium
+    nodeCount: 1
+    provisioning: standard
+    allocatable:
+      cpuMillicores: 940
+      memoryMib: 2972
+    systemReserved:
+      cpuMillicores: 200
+      memoryMib: 320
+    labels:
+      kubernetes.io/os: "linux"
+      cloud.google.com/gke-provisioning: "standard"
+    taints: []
+  - name: spot-controllers
+    machineType: e2-small
+    nodeCount: 1
+    provisioning: spot
+    allocatable:
+      cpuMillicores: 940
+      memoryMib: 1436
+    systemReserved:
+      cpuMillicores: 150
+      memoryMib: 256
+    labels:
+      kubernetes.io/os: "linux"
+      cloud.google.com/gke-spot: "true"
+      cloud.google.com/gke-provisioning: "spot"
+    taints:
+      - "cloud.google.com/gke-spot=true:NoSchedule"
