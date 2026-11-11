@@ -12,21 +12,21 @@ import re
 import subprocess
 import unittest
 
+import sys
 import yaml
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OBSERVABILITY_DIR = os.path.join(BASE_DIR, "deploy", "platform", "observability")
+GKE_OBSERVABILITY_DIR = os.path.join(BASE_DIR, "clusters", "gke", "observability")
+if os.path.join(BASE_DIR, "scripts") not in sys.path:
+    sys.path.insert(0, os.path.join(BASE_DIR, "scripts"))
+from kustomize_render import kustomize_build
 
 
-def render() -> list[dict]:
-    """Run `kubectl kustomize deploy/platform/observability` and return documents."""
-    result = subprocess.run(
-        ["kubectl", "kustomize", OBSERVABILITY_DIR],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    docs = [doc for doc in yaml.safe_load_all(result.stdout) if doc]
+def render(kdir: str = OBSERVABILITY_DIR) -> list[dict]:
+    """Render an observability kustomize directory and return documents."""
+    out = kustomize_build(kdir)
+    docs = [doc for doc in yaml.safe_load_all(out) if doc]
     return docs
 
 
@@ -209,19 +209,42 @@ class TestFluentBitCollector(unittest.TestCase):
         pod = ds["spec"]["template"]["spec"]
         volumes = pod["volumes"]
         mounts = pod["containers"][0]["volumeMounts"]
-        host_vols = [vol for vol in volumes if "hostPath" in vol]
-        self.assertEqual(len(host_vols), 1)
-        self.assertEqual(host_vols[0]["hostPath"]["path"], "/var/log/pods")
-        host_mounts = [mnt for mnt in mounts if mnt["name"] == host_vols[0]["name"]]
-        self.assertEqual(len(host_mounts), 1)
-        self.assertIs(host_mounts[0]["readOnly"], True)
+        host_vols = {vol["name"]: vol["hostPath"] for vol in volumes if "hostPath" in vol}
+        self.assertEqual(len(host_vols), 2)
+        self.assertEqual(host_vols["varlogpods"], {"path": "/var/log/pods", "type": "Directory"})
+        self.assertEqual(
+            host_vols["state"],
+            {"path": "/var/lib/fluent-bit-state", "type": "DirectoryOrCreate"},
+        )
+        mount_map = {mnt["name"]: mnt for mnt in mounts}
+        self.assertIs(mount_map["varlogpods"]["readOnly"], True)
+        self.assertEqual(mount_map["varlogpods"]["mountPath"], "/var/log/pods")
+        self.assertIs(mount_map["state"]["readOnly"], False)
+        self.assertEqual(mount_map["state"]["mountPath"], "/state")
 
         pvc_vols = [vol for vol in volumes if "persistentVolumeClaim" in vol]
-        self.assertEqual(len(pvc_vols), 1)
-        self.assertEqual(pvc_vols[0]["persistentVolumeClaim"]["claimName"], "fluent-bit-state")
+        self.assertEqual(len(pvc_vols), 0)
+        pvc_docs = [
+            doc
+            for doc in docs
+            if doc.get("kind") == "PersistentVolumeClaim"
+            and doc.get("metadata", {}).get("name") == "fluent-bit-state"
+        ]
+        self.assertEqual(len(pvc_docs), 0)
+
+        tolerations = pod.get("tolerations") or []
+        self.assertIn(
+            {
+                "key": "cloud.google.com/gke-spot",
+                "operator": "Equal",
+                "value": "true",
+                "effect": "NoSchedule",
+            },
+            tolerations,
+        )
 
         for vol in volumes:
-            if vol in host_vols or vol in pvc_vols:
+            if "hostPath" in vol:
                 continue
             self.assertTrue("emptyDir" in vol or "configMap" in vol, vol)
 
@@ -249,10 +272,6 @@ class TestFluentBitCollector(unittest.TestCase):
         rendered = yaml.dump(ds) + yaml.dump(sa)
         self.assertNotIn("secretKeyRef", rendered)
         self.assertNotRegex(rendered, r"(?i)\bsecret\b")
-
-        pvc = _by_kind_name(docs, "PersistentVolumeClaim", "fluent-bit-state")
-        self.assertEqual(pvc["spec"]["accessModes"], ["ReadWriteOnce"])
-        self.assertEqual(pvc["spec"]["resources"]["requests"]["storage"], "1Gi")
 
     def test_tail_glob_matches_only_project_namespaces(self):
         docs = render()
@@ -305,16 +324,20 @@ class TestFluentBitCollector(unittest.TestCase):
         self.assertIn("json_date_key _time", conf)
         self.assertIn("Mem_Buf_Limit 5MB", conf)
         self.assertIn("DB /state/tail.db", conf)
+        self.assertIn("storage.path /state/chunks", conf)
+        self.assertIn("storage.type filesystem", conf)
         self.assertRegex(conf, r"Retry_Limit\s+5\b")
         self.assertIn("Log_Level warn", conf)
 
-        # Output blocks check: exactly two http outputs for main (ProjectID 0) and quarantine (ProjectID 1)
+        # Output blocks check: exactly two http outputs for main (ProjectID 0, 192M) and quarantine (ProjectID 1, 64M)
         output_blocks = re.findall(r"\[OUTPUT\][\s\S]*?(?=\n\s*\[|$)", conf)
         self.assertEqual(len(output_blocks), 2, "expected exactly two http outputs (main and quarantine)")
         main_out = [b for b in output_blocks if re.search(r"Match\s+proj\.\*", b) and "ProjectID 0" in b]
         quarantine_out = [b for b in output_blocks if re.search(r"Match\s+quarantine\.\*", b) and "ProjectID 1" in b]
         self.assertEqual(len(main_out), 1, "expected one main http output with Match proj.* and ProjectID 0")
         self.assertEqual(len(quarantine_out), 1, "expected one quarantine http output with Match quarantine.* and ProjectID 1")
+        self.assertIn("storage.total_limit_size 192M", main_out[0])
+        self.assertIn("storage.total_limit_size 64M", quarantine_out[0])
         for b in (main_out[0], quarantine_out[0]):
             self.assertIn("AccountID 0", b)
             self.assertIn(expected_uri, b)
@@ -325,6 +348,7 @@ class TestFluentBitCollector(unittest.TestCase):
         self.assertIn("Name multiline", filter_blocks[0])
         self.assertIn("multiline.parser go, python, java", filter_blocks[0])
         self.assertIn("buffer on", filter_blocks[0])
+        self.assertIn("emitter_storage.type filesystem", filter_blocks[0])
 
         # Filters before rewrite_tag must match proj.*
         for fb in filter_blocks[:-1]:
@@ -342,6 +366,7 @@ class TestFluentBitCollector(unittest.TestCase):
         rewrite_blocks = [b for b in filter_blocks if "Name rewrite_tag" in b]
         self.assertEqual(len(rewrite_blocks), 1)
         self.assertIn("Rule $_route ^quarantine$ quarantine.$TAG false", rewrite_blocks[0])
+        self.assertIn("Emitter_Storage.type filesystem", rewrite_blocks[0])
 
         # Lua filter comes after JSON parser filter
         json_idx = next(i for i, b in enumerate(filter_blocks) if "Parser json" in b)
@@ -356,11 +381,14 @@ class TestFluentBitCollector(unittest.TestCase):
 
         ds = _by_kind_name(docs, "DaemonSet", "fluent-bit")
         pod = ds["spec"]["template"]["spec"]
-        pvc_vol = next(vol for vol in pod["volumes"] if "persistentVolumeClaim" in vol)
-        self.assertEqual(pvc_vol["persistentVolumeClaim"]["claimName"], "fluent-bit-state")
-        self.assertNotIn("emptyDir", pvc_vol)
-        mount = next(mnt for mnt in pod["containers"][0]["volumeMounts"] if mnt["name"] == pvc_vol["name"])
-        self.assertTrue("/state/tail.db".startswith(mount["mountPath"].rstrip("/") + "/") or mount["mountPath"] == "/state")
+        state_vol = next(vol for vol in pod["volumes"] if vol["name"] == "state")
+        self.assertEqual(
+            state_vol["hostPath"],
+            {"path": "/var/lib/fluent-bit-state", "type": "DirectoryOrCreate"},
+        )
+        mount = next(mnt for mnt in pod["containers"][0]["volumeMounts"] if mnt["name"] == "state")
+        self.assertEqual(mount["mountPath"], "/state")
+        self.assertIs(mount["readOnly"], False)
 
     def test_fluent_bit_network_policy(self):
         docs = render()
@@ -482,6 +510,42 @@ class TestFluentBitCollector(unittest.TestCase):
         )
 
 
+class TestGkeObservabilityOverlay(unittest.TestCase):
+    def test_gke_deletes_victorialogs_pauses_detector_and_ships_to_oci_kafka(self):
+        docs = render(GKE_OBSERVABILITY_DIR)
+        kind_names = {(d.get("kind"), d.get("metadata", {}).get("name")) for d in docs}
+        self.assertNotIn(("StatefulSet", "victorialogs"), kind_names)
+        self.assertNotIn(("Service", "victorialogs"), kind_names)
+        self.assertNotIn(("NetworkPolicy", "victorialogs-ingress"), kind_names)
+        self.assertIn(("PersistentVolumeClaim", "error-detector-state"), kind_names)
+
+        detector = _by_kind_name(docs, "Deployment", "error-detector")
+        self.assertEqual(detector["spec"].get("replicas"), 0)
+
+        fb_netpol = _by_kind_name(docs, "NetworkPolicy", "fluent-bit-egress")
+        egress = fb_netpol["spec"]["egress"]
+        self.assertEqual(len(egress), 2)
+        kafka_rule = next(r for r in egress if any(p.get("port") == 9092 for p in r.get("ports", [])))
+        cidrs = {peer["ipBlock"]["cidr"] for peer in kafka_rule["to"]}
+        self.assertEqual(cidrs, {"10.200.0.11/32", "10.200.0.12/32", "10.200.0.13/32"})
+
+        conf = _configmap_text(docs, "fluent-bit.conf")
+        output_blocks = re.findall(r"\[OUTPUT\][\s\S]*?(?=\n\s*\[|$)", conf)
+        self.assertEqual(len(output_blocks), 2)
+        for block in output_blocks:
+            self.assertIn("Name kafka", block)
+            self.assertIn("Brokers 10.200.0.11:9092,10.200.0.12:9092,10.200.0.13:9092", block)
+            self.assertIn("rdkafka.request.required.acks -1", block)
+            self.assertIn("rdkafka.enable.idempotence true", block)
+            self.assertIn("Retry_Limit False", block)
+        valid_out = [b for b in output_blocks if "Topics logs.proj.valid" in b]
+        quar_out = [b for b in output_blocks if "Topics logs.proj.quarantine" in b]
+        self.assertEqual(len(valid_out), 1)
+        self.assertEqual(len(quar_out), 1)
+        self.assertIn("storage.total_limit_size 192M", valid_out[0])
+        self.assertIn("storage.total_limit_size 64M", quar_out[0])
+
+
 class TestLayerWiring(unittest.TestCase):
     def test_observability_layer(self):
         for env in ("local-k3s", "vps-k3s"):
@@ -510,6 +574,25 @@ class TestLayerWiring(unittest.TestCase):
             }
             self.assertIn(("DaemonSet", "fluent-bit", "observability"), checks)
             self.assertIn(("StatefulSet", "victorialogs", "observability"), checks)
+
+        gke_path = os.path.join(BASE_DIR, "clusters", "gke", "layers.yaml")
+        if os.path.exists(gke_path):
+            with open(gke_path, encoding="utf-8") as handle:
+                gke_docs = [doc for doc in yaml.safe_load_all(handle) if doc]
+            gke_obs = next(
+                doc
+                for doc in gke_docs
+                if doc.get("kind") == "Kustomization"
+                and doc.get("metadata", {}).get("name") == "observability"
+            )
+            gke_spec = gke_obs["spec"]
+            self.assertEqual(gke_spec["path"], "./clusters/gke/observability")
+            self.assertEqual([item["name"] for item in gke_spec["dependsOn"]], ["governance"])
+            gke_checks = {
+                (item["kind"], item["name"], item["namespace"])
+                for item in gke_spec["healthChecks"]
+            }
+            self.assertEqual(gke_checks, {("DaemonSet", "fluent-bit", "observability")})
 
     def test_manual_change_policy_lists_observability(self):
         path = os.path.join(
