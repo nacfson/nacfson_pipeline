@@ -2831,10 +2831,10 @@
       },
       {
         icon: '🏦',
-        name: 'OpenBao + vault-db-proxy + vault-registry-proxy',
+        name: 'OpenBao (gcpckms) + DB / AI / Notify Proxies',
         analogy: 'The Bank Vault & Armored Couriers',
-        plain: 'App pods hold ZERO passwords. When pn-backend connects to vault-db-proxy:5432 without a password, the proxy fetches the real password from OpenBao in RAM and logs into Postgres on its behalf.',
-        file: 'services/vault-proxies/'
+        plain: 'App pods hold ZERO passwords or API keys. vault-db-proxy (:5432), vault-ai-proxy (:8080), and vault-notify-proxy (:8080) inject credentials in RAM, while public GAR/GHCR @sha256 digests replace vault-registry-proxy.',
+        file: 'services/vault-proxies/ & deploy/gcp/'
       }
     ];
 

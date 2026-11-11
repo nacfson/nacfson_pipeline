@@ -20,8 +20,9 @@ spec:
         request.userInfo.username == 'system:serviceaccount:proj-health:health-reconciler' ||
         request.userInfo.username == 'system:serviceaccount:proj-blog:blog-reconciler' ||
         request.userInfo.username.startsWith('system:serviceaccount:kube-system:') ||
+        request.userInfo.username.startsWith('system:serviceaccount:gke-managed-') ||
         request.userInfo.username.startsWith('system:node:') ||
-        request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver', 'system:k3s-controller', 'k3s-cloud-controller-manager'] ||
+        request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver', 'system:k3s-controller', 'k3s-cloud-controller-manager', 'system:gke-common-webhooks', 'system:gcp-controller-manager', 'system:addon-manager', 'system:cluster-autoscaler'] ||
         (request.userInfo.username.startsWith('system:serviceaccount:cert-manager:') &&
           request.namespace in ['platform', 'cert-manager'] &&
           request.resource.group in ['', 'cert-manager.io', 'acme.cert-manager.io', 'networking.k8s.io', 'events.k8s.io'] &&
@@ -90,9 +91,10 @@ spec:
         request.userInfo.username == 'system:serviceaccount:proj-health:health-reconciler' ||
         request.userInfo.username == 'system:serviceaccount:proj-blog:blog-reconciler' ||
         request.userInfo.username.startsWith('system:serviceaccount:kube-system:') ||
+        request.userInfo.username.startsWith('system:serviceaccount:gke-managed-') ||
         request.userInfo.username.startsWith('system:node:') ||
-        request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver', 'system:k3s-controller', 'k3s-cloud-controller-manager'] ||
-        (request.resource.resource == 'customresourcedefinitions' && (request.name.endsWith('.cattle.io') || request.name.endsWith('.k3s.io'))) ||
+        request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver', 'system:k3s-controller', 'k3s-cloud-controller-manager', 'system:gke-common-webhooks', 'system:gcp-controller-manager', 'system:addon-manager', 'system:cluster-autoscaler'] ||
+        (request.resource.resource == 'customresourcedefinitions' && (request.name.endsWith('.cattle.io') || request.name.endsWith('.k3s.io') || request.name.endsWith('.gke.io') || request.name.endsWith('.cloud.google.com') || request.name.endsWith('.networking.gke.io'))) ||
         (request.userInfo.username == 'system:serviceaccount:cert-manager:cert-manager-cainjector' &&
           request.operation == 'UPDATE' &&
           request.resource.resource in ['validatingwebhookconfigurations', 'mutatingwebhookconfigurations'] &&
