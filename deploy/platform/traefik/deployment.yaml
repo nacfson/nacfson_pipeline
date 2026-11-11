@@ -42,6 +42,8 @@ spec:
             - --entrypoints.web.address=:8000
             - --entrypoints.websecure.address=:8443
             - --ping=true
+            # Without this, /ping is served on the default "traefik" entrypoint (:8080) and the probes on :8082 get 404.
+            - --ping.entrypoint=ping
             - --entrypoints.ping.address=:8082
           ports:
             - name: web

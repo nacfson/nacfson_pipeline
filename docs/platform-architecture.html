@@ -1274,7 +1274,9 @@
         bullets: [
           '➔ Port 80 (:8000 containerPort) redirects HTTP to HTTPS except ACME HTTP-01 solver paths.',
           '➔ Blocks /admin, /realms/master, and port 9000 on Keycloak by omission (returns 404).',
-          '➔ Recreate rollout strategy prevents hostPort 80/443 bind collisions on single On-Demand node.'
+          '➔ Recreate rollout strategy prevents hostPort 80/443 bind collisions on single On-Demand node.',
+          '➔ GKE probes hit /ping on the dedicated ping entrypoint (:8082, --ping.entrypoint=ping).',
+          '➔ GKE ClusterRole traefik-ingress-controller reads Secrets cluster-wide (read-only): Traefik providers watch Secrets in every namespace.'
         ],
         path: 'deploy/platform/traefik/deployment.yaml'
       },
@@ -1405,6 +1407,7 @@
         desc: 'Self-hosted open-source Vault fork providing KV v2 secret storage, Transit cryptographic signing engine, and Kubernetes ServiceAccount JWT authentication. Auto-unseals on GKE via Cloud KMS (gcpckms) and Workload Identity.',
         bullets: [
           '➔ Portable NetworkPolicy blocks 0.0.0.0/0 while allowing kube-apiserver + GKE KMS Private Google Access.',
+          '➔ GKE pod hostAliases pins cloudkms.googleapis.com to private.googleapis.com (199.36.153.8) so unseal stays inside the allowed /30.',
           '➔ Zero plaintext secrets or static GCP key files ever touch Git or pods (Amendment 2.3.0).',
           '➔ Daily encrypted Raft snapshot CronJob + cutover-bundle.sh Shamir->gcpckms migration.'
         ],

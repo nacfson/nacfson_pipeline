@@ -170,6 +170,12 @@ spec:
             spec:
               serviceAccountName: openbao
               automountServiceAccountToken: true
+              # Pin Cloud KMS to the private.googleapis.com VIP: openbao-ingress-policy only allows
+              # 199.36.153.8/30:443, and default DNS would return public addresses that it drops.
+              hostAliases:
+                - ip: "199.36.153.8"
+                  hostnames:
+                    - cloudkms.googleapis.com
               containers:
                 - name: openbao
                   resources:
