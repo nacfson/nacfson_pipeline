@@ -2893,10 +2893,10 @@
 
     const JUNIOR_DRILLS = {
       'sealed-vault': {
-        title: 'Scenario 1: The Host VM Reboots — Why Are Pods Stuck in Init:CrashLoopBackOff?',
-        symptom: 'After an Oracle VPS reboot, OpenBao is Running (0/1 Ready), and gateway, keycloak, and postgres pods sit in Init:0/1 or CrashLoopBackOff.',
-        why: 'By Constitution Principle V, OpenBao stores its master unseal key in RAM only — never on disk. When the VM reboots, OpenBao starts in a "Sealed" state, so initContainers cannot fetch secrets.',
-        fix: `# 1. Unseal OpenBao in memory using your offline unseal key:\n./scripts/vault-unseal.sh\n\n# 2. Verify OpenBao is Sealed=false and Ready 1/1:\nkubectl get pods -n vault\n# Kubernetes will automatically retry the initContainers and bring all pods Ready!`
+        title: 'Scenario 1: A Node Reboots — Shamir Unseal (K3s) vs. Cloud KMS Auto-Unseal (GKE)',
+        symptom: 'On K3s after a VM reboot, OpenBao starts Sealed (0/1 Ready) and initContainers wait; on GKE post-Gate-4, OpenBao unseals itself automatically via Cloud KMS.',
+        why: 'By Constitution Principle V (Amendment 2.3.0), K3s keeps Shamir unseal keys offline, whereas GKE binds ServiceAccount/openbao via Workload Identity to Cloud KMS (seal "gcpckms") with zero static GCP key files.',
+        fix: `# On local-k3s / vps-k3s (Shamir seal): unseal in memory:\n./scripts/vault-unseal.sh\n\n# On GKE (post-Gate-4 gcpckms seal): verify Workload Identity auto-unseal:\nkubectl get pods -n vault && kubectl exec -n vault openbao-0 -- bao status`
       },
       'cors-mismatch': {
         title: 'Scenario 2: Frontend Loads Fine, But Browser API Calls Fail with CORS Error',

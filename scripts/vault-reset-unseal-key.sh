@@ -143,7 +143,7 @@ fi
 echo "=== [6/6] Revoking Initial Root Token & Rolling Dependent Proxies ==="
 cleanup_root_token
 
-${KUBE_BG} rollout restart deployment/vault-db-proxy deployment/vault-registry-proxy deployment/vault-ai-proxy -n "${VAULT_NS}" 2>/dev/null || true
+${KUBE_BG} rollout restart deployment/vault-db-proxy deployment/vault-ai-proxy deployment/vault-notify-proxy -n "${VAULT_NS}" 2>/dev/null || true
 ${KUBE_BG} rollout restart deployment/keycloak deployment/gateway -n "${IDENTITY_NS}" 2>/dev/null || true
 
 echo "================================================================================"
