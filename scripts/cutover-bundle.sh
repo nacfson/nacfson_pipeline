@@ -185,7 +185,7 @@ for d in docs:
 }
 
 if [[ "${SUBCOMMAND}" == "export" ]]; then
-  mkdir -p -m 0700 "${ABS_BUNDLE_DIR}"
+  mkdir -p "${ABS_BUNDLE_DIR}"
   chmod 0700 "${ABS_BUNDLE_DIR}"
   umask 0077
   echo "=== [1/5] Exporting OpenBao Raft Snapshot (openbao.snap) ==="
