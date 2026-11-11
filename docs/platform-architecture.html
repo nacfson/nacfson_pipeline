@@ -1408,6 +1408,7 @@
         bullets: [
           '➔ Portable NetworkPolicy blocks 0.0.0.0/0 while allowing kube-apiserver + GKE KMS Private Google Access.',
           '➔ GKE pod hostAliases pins cloudkms.googleapis.com to private.googleapis.com (199.36.153.8) so unseal stays inside the allowed /30.',
+          '➔ Gate 4 pre-check: a public GKE API server address must be added to openbao-ingress-policy (/32 :443) before Flux bootstrap; a private one is already allowed.',
           '➔ Zero plaintext secrets or static GCP key files ever touch Git or pods (Amendment 2.3.0).',
           '➔ Daily encrypted Raft snapshot CronJob + cutover-bundle.sh Shamir->gcpckms migration.'
         ],
