@@ -13,6 +13,9 @@ import unittest
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SCRIPT = os.path.join(BASE_DIR, "scripts", "platform-preflight.py")
 FIXTURES = os.path.join(BASE_DIR, "tests", "preflight", "fixtures")
+if os.path.join(BASE_DIR, "scripts") not in sys.path:
+    sys.path.insert(0, os.path.join(BASE_DIR, "scripts"))
+from kustomize_render import kustomize_build
 
 
 class TestPlatformPreflight(unittest.TestCase):
@@ -375,13 +378,7 @@ spec:
         """CNI kustomization (+225m CPU / +1248Mi memory), OpenBao CiliumNetworkPolicy, and Hubble ClusterIP invariants pass."""
         import yaml
 
-        kustomize_res = subprocess.run(
-            ["kubectl", "kustomize", os.path.join(BASE_DIR, "deploy", "platform", "cni")],
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        cni_yaml = kustomize_res.stdout
+        cni_yaml = kustomize_build(os.path.join(BASE_DIR, "deploy", "platform", "cni"))
         with open(os.path.join(BASE_DIR, "deploy", "platform", "vault", "network-policy.yaml"), encoding="utf-8") as fh:
             vault_np_yaml = fh.read()
 
@@ -467,15 +464,7 @@ spec:
             os.path.join(BASE_DIR, "deploy", "projects", "health", "workloads"),
             os.path.join(BASE_DIR, "deploy", "platform", "tls"),
         ]
-        base_chunks = []
-        for kdir in kustomize_dirs:
-            res = subprocess.run(
-                ["kubectl", "kustomize", kdir],
-                capture_output=True,
-                text=True,
-                check=True,
-            )
-            base_chunks.append(res.stdout)
+        base_chunks = [kustomize_build(kdir) for kdir in kustomize_dirs]
         base_yaml = "\n---\n".join(base_chunks)
 
         for env, expected_host, expected_pn_host in (
