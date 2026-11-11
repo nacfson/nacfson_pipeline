@@ -4,7 +4,7 @@ To prevent rule drift across agent harnesses (`agy`, `claude`, `omp`, `opencode`
 
 1. **Architecture, Context & Engineering Rules**: [`AGENTS.md`](AGENTS.md)
 2. **Code Review & Verification Rulebook**: [`REVIEW.md`](REVIEW.md)
-3. **Constitutional Invariants**: [`.specify/memory/constitution.md`](.specify/memory/constitution.md)
+3. **Constitutional Invariants (`v2.3.0`)**: [`.specify/memory/constitution.md`](.specify/memory/constitution.md)
 4. **Canonical Interactive Architecture Handbook**: [`docs/platform-architecture.html`](docs/platform-architecture.html)
 
 ## Required Verification & Quality Gates
@@ -21,8 +21,9 @@ Run the relevant validation commands from [`AGENTS.md` §5](AGENTS.md) before cl
 # 3. Platform preflight unit tests (1/n budget, QoS, isolation, door & TLS rules)
 python3 -m unittest discover tests/preflight
 
-# 4. Full Kustomize render, kubeconform schema validation & preflight gate (local-k3s & vps-k3s)
+# 4. Full Kustomize render, kubeconform schema validation & preflight gate (local-k3s, gke & vps-k3s)
 ./scripts/render-validate.sh local-k3s
+./scripts/render-validate.sh gke
 ./scripts/render-validate.sh vps-k3s
 
 # 5. Canonical Architecture Handbook synchronization & invariant check
