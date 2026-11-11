@@ -1,0 +1,765 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: governance
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/governance
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: cert-manager
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: governance
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/cert-manager
+  patches:
+    - target:
+        kind: Deployment
+        name: cert-manager
+        namespace: cert-manager
+      patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: cert-manager
+          namespace: cert-manager
+        spec:
+          template:
+            spec:
+              nodeSelector:
+                cloud.google.com/gke-spot: "true"
+              tolerations:
+                - key: cloud.google.com/gke-spot
+                  operator: Equal
+                  value: "true"
+                  effect: NoSchedule
+              containers:
+                - name: cert-manager-controller
+                  resources:
+                    requests:
+                      cpu: "25m"
+                      memory: "96Mi"
+                    limits:
+                      cpu: "200m"
+                      memory: "128Mi"
+    - target:
+        kind: Deployment
+        name: cert-manager-cainjector
+        namespace: cert-manager
+      patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: cert-manager-cainjector
+          namespace: cert-manager
+        spec:
+          template:
+            spec:
+              nodeSelector:
+                cloud.google.com/gke-spot: "true"
+              tolerations:
+                - key: cloud.google.com/gke-spot
+                  operator: Equal
+                  value: "true"
+                  effect: NoSchedule
+              containers:
+                - name: cert-manager-cainjector
+                  resources:
+                    requests:
+                      cpu: "10m"
+                      memory: "64Mi"
+                    limits:
+                      cpu: "100m"
+                      memory: "64Mi"
+    - target:
+        kind: Deployment
+        name: cert-manager-webhook
+        namespace: cert-manager
+      patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: cert-manager-webhook
+          namespace: cert-manager
+        spec:
+          template:
+            spec:
+              nodeSelector:
+                cloud.google.com/gke-spot: "true"
+              tolerations:
+                - key: cloud.google.com/gke-spot
+                  operator: Equal
+                  value: "true"
+                  effect: NoSchedule
+              containers:
+                - name: cert-manager-webhook
+                  resources:
+                    requests:
+                      cpu: "10m"
+                      memory: "32Mi"
+                    limits:
+                      cpu: "100m"
+                      memory: "48Mi"
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: vault
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: openbao
+      namespace: vault
+  dependsOn:
+    - name: governance
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/vault
+  patches:
+    - target:
+        kind: ServiceAccount
+        name: openbao
+        namespace: vault
+      patch: |
+        apiVersion: v1
+        kind: ServiceAccount
+        metadata:
+          name: openbao
+          namespace: vault
+          annotations:
+            iam.gke.io/gcp-service-account: openbao-kms@nacfson-pipeline.iam.gserviceaccount.com
+    - target:
+        kind: StatefulSet
+        name: openbao
+        namespace: vault
+      patch: |
+        apiVersion: apps/v1
+        kind: StatefulSet
+        metadata:
+          name: openbao
+          namespace: vault
+        spec:
+          template:
+            spec:
+              serviceAccountName: openbao
+              automountServiceAccountToken: true
+              containers:
+                - name: openbao
+                  resources:
+                    requests:
+                      cpu: 25m
+                      memory: 64Mi
+                    limits:
+                      cpu: 200m
+                      memory: 96Mi
+    - target:
+        kind: ConfigMap
+        name: openbao-config
+        namespace: vault
+      patch: |
+        apiVersion: v1
+        kind: ConfigMap
+        metadata:
+          name: openbao-config
+          namespace: vault
+        data:
+          openbao.hcl: |
+            ui = false
+
+            storage "raft" {
+              path = "/var/lib/openbao/data"
+              node_id = "openbao-0"
+            }
+
+            listener "tcp" {
+              address = "0.0.0.0:8200"
+              cluster_address = "0.0.0.0:8201"
+              tls_disable = 1
+            }
+
+            seal "gcpckms" {
+              project    = "nacfson-pipeline"
+              region     = "asia-northeast3"
+              key_ring   = "nacfson-vault"
+              crypto_key = "openbao-unseal"
+            }
+
+            api_addr = "http://openbao-service.vault.svc:8200"
+            cluster_addr = "http://openbao-0.openbao-internal.vault.svc:8201"
+    - target:
+        kind: CronJob
+        name: openbao-daily-snapshot
+        namespace: vault
+      patch: |
+        apiVersion: batch/v1
+        kind: CronJob
+        metadata:
+          name: openbao-daily-snapshot
+          namespace: vault
+        spec:
+          jobTemplate:
+            spec:
+              template:
+                spec:
+                  containers:
+                    - name: raft-snapshot
+                      resources:
+                        requests:
+                          cpu: 25m
+                          memory: 64Mi
+                        limits:
+                          cpu: 100m
+                          memory: 128Mi
+    # Allow OpenBao Workload Identity token exchange (nacfson-pipeline.svc.id.goog via gke-metadata-server)
+    # and Private Google Access KMS auto-unseal (199.36.153.8/30:443) without 0.0.0.0/0 egress.
+    - target:
+        kind: NetworkPolicy
+        name: openbao-ingress-policy
+        namespace: vault
+      patch: |
+        - op: add
+          path: /spec/egress/-
+          value:
+            to:
+              - ipBlock:
+                  cidr: 169.254.169.254/32
+            ports:
+              - protocol: TCP
+                port: 80
+              - protocol: TCP
+                port: 988
+        - op: add
+          path: /spec/egress/-
+          value:
+            to:
+              - ipBlock:
+                  cidr: 199.36.153.8/30
+            ports:
+              - protocol: TCP
+                port: 443
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: vault-proxies
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: vault
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/vault-proxies
+  patches:
+    - target:
+        kind: Deployment
+        name: vault-db-proxy
+        namespace: vault
+      patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: vault-db-proxy
+          namespace: vault
+        spec:
+          template:
+            spec:
+              containers:
+                - name: db-proxy
+                  resources:
+                    requests:
+                      cpu: 15m
+                      memory: 32Mi
+                    limits:
+                      cpu: 100m
+                      memory: 64Mi
+    - target:
+        kind: Deployment
+        name: vault-ai-proxy
+        namespace: vault
+      patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: vault-ai-proxy
+          namespace: vault
+        spec:
+          template:
+            spec:
+              containers:
+                - name: ai-proxy
+                  resources:
+                    requests:
+                      cpu: 15m
+                      memory: 32Mi
+                    limits:
+                      cpu: 100m
+                      memory: 64Mi
+    - target:
+        kind: Deployment
+        name: vault-notify-proxy
+        namespace: vault
+      patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: vault-notify-proxy
+          namespace: vault
+        spec:
+          template:
+            spec:
+              containers:
+                - name: notify-proxy
+                  resources:
+                    requests:
+                      cpu: 15m
+                      memory: 32Mi
+                    limits:
+                      cpu: 25m
+                      memory: 32Mi
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: database
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: StatefulSet
+      name: postgres
+      namespace: identity
+  dependsOn:
+    - name: vault
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/database
+  patches:
+    - target:
+        kind: StatefulSet
+        name: postgres
+        namespace: identity
+      patch: |
+        apiVersion: apps/v1
+        kind: StatefulSet
+        metadata:
+          name: postgres
+          namespace: identity
+        spec:
+          template:
+            spec:
+              containers:
+                - name: postgres
+                  resources:
+                    requests:
+                      cpu: 50m
+                      memory: 256Mi
+                    limits:
+                      cpu: 250m
+                      memory: 256Mi
+    - target:
+        kind: CronJob
+        name: postgres-daily-backup
+        namespace: identity
+      patch: |
+        apiVersion: batch/v1
+        kind: CronJob
+        metadata:
+          name: postgres-daily-backup
+          namespace: identity
+        spec:
+          jobTemplate:
+            spec:
+              template:
+                spec:
+                  containers:
+                    - name: pg-backup
+                      resources:
+                        requests:
+                          cpu: "25m"
+                          memory: "128Mi"
+                        limits:
+                          cpu: "100m"
+                          memory: "128Mi"
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: identity
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: database
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/identity
+  patches:
+    - target:
+        kind: Deployment
+        name: gateway
+        namespace: identity
+      patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: gateway
+          namespace: identity
+        spec:
+          template:
+            spec:
+              containers:
+                - name: gateway
+                  env:
+                    - name: COOKIE_DOMAIN
+                      value: ".nacfson.cloud"
+                    - name: KEYCLOAK_PUBLIC_URL
+                      value: "https://auth.nacfson.cloud/realms/platform"
+                    - name: PROJECT_RETURN_HOSTS
+                      value: "pn.nacfson.cloud,health.nacfson.cloud"
+                  resources:
+                    requests:
+                      cpu: 25m
+                      memory: 64Mi
+                    limits:
+                      cpu: 100m
+                      memory: 64Mi
+    - target:
+        kind: Deployment
+        name: keycloak
+        namespace: identity
+      patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: keycloak
+          namespace: identity
+        spec:
+          template:
+            spec:
+              containers:
+                - name: keycloak
+                  env:
+                    - name: KC_HOSTNAME_URL
+                      value: "https://auth.nacfson.cloud"
+                    - name: JAVA_OPTS_APPEND
+                      value: "-Xms256m -Xmx576m -XX:MaxRAMPercentage=70 -Dkeycloak.migration.strategy=OVERWRITE_EXISTING -Dkeycloak.migration.replace-placeholders=true"
+                  resources:
+                    requests:
+                      cpu: 100m
+                      memory: 832Mi
+                    limits:
+                      cpu: 500m
+                      memory: 832Mi
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: traefik
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: traefik
+      namespace: platform
+  dependsOn:
+    - name: governance
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/traefik
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: ingress
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: identity
+    - name: traefik
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/ingress
+  # Spec 004 R3 amendment: postBuild is allowed on this layer only, for AUTH_HOST only.
+  # Route paths live in deploy/platform/ingress/ingress-allowlist.yaml (single copy).
+  postBuild:
+    substitute:
+      AUTH_HOST: auth.nacfson.cloud
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: project-boundaries
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: governance
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/projects/pn/boundary
+  patches:
+    - target:
+        kind: ResourceQuota
+        name: project-pn-quota
+        namespace: proj-pn
+      patch: |
+        apiVersion: v1
+        kind: ResourceQuota
+        metadata:
+          name: project-pn-quota
+          namespace: proj-pn
+        spec:
+          hard:
+            requests.memory: "416Mi"
+            limits.memory: "416Mi"
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: project-boundaries-health
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: governance
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/projects/health/boundary
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: project-boundaries-blog
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: governance
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/projects/blog/boundary
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: tls
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 10m
+  prune: true
+  wait: true
+  dependsOn:
+    - name: cert-manager
+    - name: ingress
+    - name: project-boundaries
+    - name: project-boundaries-health
+    - name: project-boundaries-blog
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./deploy/platform/tls
+  patches:
+    - target:
+        kind: Certificate
+        name: auth-tls
+      patch: |
+        - op: replace
+          path: /spec/dnsNames/0
+          value: auth.nacfson.cloud
+        - op: replace
+          path: /spec/issuerRef/name
+          value: letsencrypt-prod
+    - target:
+        kind: Certificate
+        name: pn-tls
+      patch: |
+        - op: replace
+          path: /spec/dnsNames/0
+          value: pn.nacfson.cloud
+        - op: replace
+          path: /spec/issuerRef/name
+          value: letsencrypt-prod
+    - target:
+        kind: Certificate
+        name: health-tls
+      patch: |
+        - op: replace
+          path: /spec/dnsNames/0
+          value: health.nacfson.cloud
+        - op: replace
+          path: /spec/issuerRef/name
+          value: letsencrypt-prod
+    - target:
+        kind: Certificate
+        name: blog-tls
+      patch: |
+        - op: replace
+          path: /spec/dnsNames/0
+          value: blog.nacfson.cloud
+        - op: replace
+          path: /spec/issuerRef/name
+          value: letsencrypt-prod
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: projects
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: false
+  dependsOn:
+    - name: project-boundaries
+    - name: project-boundaries-health
+    - name: project-boundaries-blog
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./clusters/gke/projects
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: observability
+  namespace: flux-system
+spec:
+  interval: 5m
+  retryInterval: 1m
+  timeout: 5m
+  prune: true
+  wait: true
+  # VictoriaLogs is deleted on GKE (logs stream to OCI Kafka via WireGuard) and error-detector is paused
+  # at replicas: 0 until Spec 014 switches it to Kafka logs.proj.errors, so healthChecks watch fluent-bit only.
+  healthChecks:
+    - apiVersion: apps/v1
+      kind: DaemonSet
+      name: fluent-bit
+      namespace: observability
+  dependsOn:
+    - name: governance
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  path: ./clusters/gke/observability
+  patches:
+    - target:
+        kind: DaemonSet
+        name: fluent-bit
+        namespace: observability
+      patch: |
+        apiVersion: apps/v1
+        kind: DaemonSet
+        metadata:
+          name: fluent-bit
+          namespace: observability
+        spec:
+          template:
+            spec:
+              containers:
+                - name: fluent-bit
+                  resources:
+                    requests:
+                      cpu: 25m
+                      memory: 64Mi
+                    limits:
+                      cpu: 50m
+                      memory: 64Mi
+    - target:
+        kind: Deployment
+        name: error-detector
+        namespace: observability
+      patch: |
+        apiVersion: apps/v1
+        kind: Deployment
+        metadata:
+          name: error-detector
+          namespace: observability
+        spec:
+          template:
+            spec:
+              containers:
+                - name: error-detector
+                  resources:
+                    requests:
+                      cpu: 25m
+                      memory: 64Mi
+                    limits:
+                      cpu: 25m
+                      memory: 64Mi

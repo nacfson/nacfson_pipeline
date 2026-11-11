@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/part-of: platform
+spec:
+  # ClusterIP only: public traffic enters via hostPort 80/443 on ondemand-core static IP (zero GCP LoadBalancer).
+  type: ClusterIP
+  ports:
+    - name: web
+      port: 80
+      targetPort: 8000
+      protocol: TCP
+    - name: websecure
+      port: 443
+      targetPort: 8443
+      protocol: TCP
+  selector:
+    app.kubernetes.io/name: traefik

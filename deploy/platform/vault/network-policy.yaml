@@ -75,14 +75,11 @@ spec:
       ports:
         - protocol: TCP
           port: 8201
-    # Kubernetes API Server TokenReview egress (auth/kubernetes) — kube-router fallback.
-    # K3s kube-router (still active on any node not yet migrated to
-    # `--flannel-backend=none --disable-network-policy`) ignores CiliumNetworkPolicy, so
-    # without this rule it REJECTs TokenReview and every Vault Kubernetes login fails.
-    # kube-proxy DNATs 10.43.0.1:443 to the node IP :6443 before policy evaluation, so the
-    # destination is the node's private address; scope to RFC1918 instead of 0.0.0.0/0.
-    # Under Cilium, ipBlock never matches node IPs; the CiliumNetworkPolicy below
-    # (toEntities: kube-apiserver) is what admits this traffic there.
+    # Kubernetes API Server TokenReview egress (auth/kubernetes).
+    # On local-k3s Cilium, policy-cidr-match-mode=nodes allows RFC1918 ipBlock rules to match
+    # the single-node apiserver IP. On GKE, clusters/gke/layers.yaml adds the control-plane CIDR,
+    # Workload Identity (169.254.169.254/32:80,988), and Private Google Access KMS (199.36.153.8/30:443).
+    # General 0.0.0.0/0 egress is strictly forbidden on openbao.
     - to:
         - ipBlock:
             cidr: 10.0.0.0/8
@@ -95,29 +92,6 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
----
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: openbao-apiserver-egress
-  namespace: vault
-  labels:
-    app.kubernetes.io/name: openbao-policy
-    app.kubernetes.io/part-of: platform-vault
-spec:
-  endpointSelector:
-    matchLabels:
-      app.kubernetes.io/name: openbao
-  egress:
-    # Kubernetes API Server TokenReview egress (auth/kubernetes)
-    - toEntities:
-        - kube-apiserver
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
-            - port: "6443"
-              protocol: TCP
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -159,7 +133,7 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Allow project pods (e.g. proj-pn) to connect on Postgres port 5432
+    # Allow project pods (proj-pn, proj-health) to connect on Postgres port 5432
     - from:
         - namespaceSelector:
             matchLabels:
@@ -212,40 +186,6 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: registry-proxy-policy
-  namespace: vault
-  labels:
-    app.kubernetes.io/name: registry-proxy-policy
-    app.kubernetes.io/part-of: platform-vault
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: vault-registry-proxy
-  policyTypes:
-    - Ingress
-    - Egress
-  ingress:
-    # Allow local node / containerd to pull images on port 5000
-    - ports:
-        - protocol: TCP
-          port: 5000
-  egress:
-    # Allow connection to OpenBao API
-    - to:
-        - podSelector:
-            matchLabels:
-              app.kubernetes.io/name: openbao
-      ports:
-        - protocol: TCP
-          port: 8200
-    # Allow outbound HTTPS to GHCR for image manifests and layer blobs
-    - ports:
-        - protocol: TCP
-          port: 443
----
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
   name: ai-proxy-policy
   namespace: vault
   labels:
@@ -277,6 +217,19 @@ spec:
         - protocol: TCP
           port: 8080
   egress:
+    # Allow DNS resolution via kube-dns only
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
     # Allow connection to OpenBao API
     - to:
         - podSelector:
@@ -285,7 +238,7 @@ spec:
       ports:
         - protocol: TCP
           port: 8200
-    # Allow kube-router fallback to kube-apiserver (RFC1918) for Pod-IP attribution
+    # Allow kube-apiserver (RFC1918) for Pod-IP attribution
     - to:
         - ipBlock:
             cidr: 10.0.0.0/8
@@ -298,53 +251,20 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
----
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: ai-proxy-egress
-  namespace: vault
-  labels:
-    app.kubernetes.io/name: ai-proxy-policy
-    app.kubernetes.io/part-of: platform-vault
-spec:
-  endpointSelector:
-    matchLabels:
-      app.kubernetes.io/name: vault-ai-proxy
-  egress:
-    - toEndpoints:
-        - matchLabels:
-            "k8s:io.kubernetes.pod.namespace": kube-system
-            "k8s:k8s-app": kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: ANY
-          rules:
-            dns:
-              - matchPattern: "*"
-    - toEndpoints:
-        - matchLabels:
-            "k8s:io.kubernetes.pod.namespace": vault
-            "k8s:app.kubernetes.io/name": openbao
-      toPorts:
-        - ports:
-            - port: "8200"
-              protocol: TCP
-    - toEntities:
-        - kube-apiserver
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
-            - port: "6443"
-              protocol: TCP
-    - toFQDNs:
-        - matchName: generativelanguage.googleapis.com
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
+    # Portable outbound HTTPS to upstream AI API (generativelanguage.googleapis.com:443)
+    # while blocking RFC1918, CGNAT, and cloud metadata / Workload Identity (169.254.169.254/32).
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.169.254/32
+              - 100.64.0.0/10
+      ports:
+        - protocol: TCP
+          port: 443
 ---
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -362,9 +282,7 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Only the two pods the grants name may post here. The proxy attributes the
-    # caller by pod IP, so this is the second lock on the same door: a pod that
-    # reached the port but was not granted a channel still gets 403.
+    # Only the two pods the grants name may post here.
     - from:
         - namespaceSelector:
             matchLabels:
@@ -382,6 +300,19 @@ spec:
         - protocol: TCP
           port: 8080
   egress:
+    # Allow DNS resolution via kube-dns only
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
     # OpenBao holds the Discord webhook URLs; the proxy keeps no secret of its own.
     - to:
         - podSelector:
@@ -390,9 +321,7 @@ spec:
       ports:
         - protocol: TCP
           port: 8200
-    # kube-router fallback to kube-apiserver for pod-IP attribution (same as
-    # ai-proxy-policy): under Cilium ipBlock never matches node IPs, so the
-    # CiliumNetworkPolicy below covers that path.
+    # Allow kube-apiserver (RFC1918) for Pod-IP attribution
     - to:
         - ipBlock:
             cidr: 10.0.0.0/8
@@ -405,53 +334,17 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
----
-apiVersion: cilium.io/v2
-kind: CiliumNetworkPolicy
-metadata:
-  name: notify-proxy-egress
-  namespace: vault
-  labels:
-    app.kubernetes.io/name: notify-proxy-policy
-    app.kubernetes.io/part-of: platform-vault
-spec:
-  endpointSelector:
-    matchLabels:
-      app.kubernetes.io/name: vault-notify-proxy
-  egress:
-    - toEndpoints:
-        - matchLabels:
-            "k8s:io.kubernetes.pod.namespace": kube-system
-            "k8s:k8s-app": kube-dns
-      toPorts:
-        - ports:
-            - port: "53"
-              protocol: ANY
-          rules:
-            dns:
-              - matchPattern: "*"
-    - toEndpoints:
-        - matchLabels:
-            "k8s:io.kubernetes.pod.namespace": vault
-            "k8s:app.kubernetes.io/name": openbao
-      toPorts:
-        - ports:
-            - port: "8200"
-              protocol: TCP
-    - toEntities:
-        - kube-apiserver
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
-            - port: "6443"
-              protocol: TCP
-    # Discord only, and by exact name: a wildcard would let a compromised proxy
-    # exfiltrate to any Discord-adjacent host, and Cilium would learn it as a
-    # DNS name from whatever the proxy asked for.
-    - toFQDNs:
-        - matchName: discord.com
-      toPorts:
-        - ports:
-            - port: "443"
-              protocol: TCP
+    # Portable outbound HTTPS to Discord webhook API (discord.com:443)
+    # while blocking RFC1918, CGNAT, and cloud metadata / Workload Identity (169.254.169.254/32).
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.169.254/32
+              - 100.64.0.0/10
+      ports:
+        - protocol: TCP
+          port: 443

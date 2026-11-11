@@ -85,19 +85,17 @@ class TestNotifyGatewayPreflightContract(unittest.TestCase):
         netpol["spec"]["ingress"] = [{"ports": [{"port": 8080, "protocol": "TCP"}]}]
         self.assertIn("notify-proxy-policy", self._details(docs))
 
-    def test_egress_fqdn_other_than_discord_rejected(self):
-        # A wildcard would let the proxy reach any Discord-adjacent host, and a
-        # second matchName would widen the door beyond Discord itself.
-        for broken in (
-            [{"matchPattern": "*.discord.com"}],
-            [{"matchName": "discord.com"}, {"matchName": "evil.example"}],
-        ):
+    def test_egress_missing_private_or_metadata_except_cidrs_rejected(self):
+        for dropped in ("169.254.169.254/32", "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"):
             docs = copy.deepcopy(self.platform_docs)
-            cnp = _by_kind_name(docs, "CiliumNetworkPolicy", "notify-proxy-egress")
-            for rule in cnp["spec"]["egress"]:
-                if "toFQDNs" in rule:
-                    rule["toFQDNs"] = broken
-            self.assertIn("discord.com", self._details(docs), f"accepted {broken!r}")
+            netpol = _by_kind_name(docs, "NetworkPolicy", "notify-proxy-policy")
+            for rule in netpol["spec"]["egress"]:
+                for peer in rule.get("to") or []:
+                    if (peer.get("ipBlock") or {}).get("cidr") == "0.0.0.0/0":
+                        peer["ipBlock"]["except"] = [
+                            c for c in peer["ipBlock"]["except"] if c != dropped
+                        ]
+            self.assertIn("except", self._details(docs), f"accepted missing {dropped!r}")
 
     def test_latest_tag_rejected(self):
         docs = copy.deepcopy(self.platform_docs)

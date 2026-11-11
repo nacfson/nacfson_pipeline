@@ -24,7 +24,7 @@ proj-pn backend image: <link>
 
 A role is required per image. If a project or role is missing, ask before editing.
 
-Supported links: GHCR package/version links with `?tag=`; GitHub Actions run or job links; GitHub commit links; `ghcr.io/<owner>/<repo>:<tag>`; `ghcr.io/<owner>/<repo>@sha256:<64-hex>`; bare `sha256:<64-hex>`.
+Supported links: public GAR image references (`<region>-docker.pkg.dev/nacfson-pipeline/nacfson-public/<repo>:<tag>` or `<region>-docker.pkg.dev/nacfson-pipeline/nacfson-public/<repo>@sha256:<64-hex>`); GHCR package/version links with `?tag=`; GitHub Actions run or job links; GitHub commit links; `ghcr.io/<owner>/<repo>:<tag>`; `ghcr.io/<owner>/<repo>@sha256:<64-hex>`; bare `sha256:<64-hex>`.
 
 Do not guess a tag from a package page without `?tag=`; ask for the version or digest link.
 
@@ -98,6 +98,7 @@ and in the summary, `validation_skipped: true` marks the image, with empty `plat
 ```bash
 python3 -m unittest discover tests/preflight
 ./scripts/render-validate.sh local-k3s
+./scripts/render-validate.sh gke
 ./scripts/render-validate.sh vps-k3s
 python3 scripts/check-arch-doc-sync.py --worktree
 ```

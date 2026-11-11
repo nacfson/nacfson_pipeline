@@ -61,11 +61,11 @@
         <div>
           <div class="flex flex-wrap items-center gap-2">
             <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-white">nacfson_pipeline Architecture &amp; Junior Engineer Handbook</h1>
-            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">Constitution v2.2.1</span>
-            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Specs 001–010</span>
+            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">Constitution v2.3.0</span>
+            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Specs 001–012</span>
             <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">Hook-Synced</span>
           </div>
-          <p class="text-xs text-slate-400 mt-0.5">Interactive topology, CNI/eBPF packet simulator, Gateway allow-vs-block auth tester, 8 lifecycle flows, Flux 13-layer DAG, 1/n budget &amp; junior mental models. Log envelope and line schema (v3, OpenTelemetry-aligned: JSON lines with time, level, msg, service.name, service.version, exception.*, event.name) are Git-owned in contracts/CONTRACT_LOG_SCHEMA.md; Flux applies the collector ConfigMap, not a schema server, and the collector still does not parse message. observability is a Flux layer (dependsOn cni, governance) and a privileged platform namespace. VictoriaLogs (victoriametrics/victoria-logs:v1.53.0) is the ClusterIP log store (tenant 0:0 main, tenant 0:1 quarantine). Fluent Bit (fluent/fluent-bit:4.2.8) tails proj-* only with Lua contract parsing, secrets redaction, and quarantine routing. VPS access is scripts/open-observe.sh. Day-2 search steps are in docs/operations-runbook.md section 15. The observability reservation is not yet measured and must not be added by hand.</p>
+          <p class="text-xs text-slate-400 mt-0.5">Interactive topology across Zonal GKE Design 1 (<code class="text-cyan-300">clusters/gke/</code> in <code class="text-cyan-300">nacfson-pipeline</code> / <code class="text-cyan-300">asia-northeast3-a</code>: <code class="text-cyan-300">1 × e2-medium</code> On-Demand + <code class="text-cyan-300">1 × e2-small</code> Spot, Traefik <code class="text-cyan-300">v3.3.4</code> <code class="text-cyan-300">hostPort: 80/443</code>, zero paid GCP LoadBalancer) and lockstep <code class="text-cyan-300">local-k3s</code>, portable <code class="text-cyan-300">networking.k8s.io/v1</code> NetworkPolicy simulator, Gateway allow-vs-block auth tester, 8 lifecycle flows, Flux DAG, 1/n budget &amp; junior mental models. Log envelope v3 (OpenTelemetry JSON lines in <code class="text-cyan-300">contracts/CONTRACT_LOG_SCHEMA.md</code>) is tailed from <code class="text-cyan-300">proj-*</code> by Fluent Bit (<code class="text-cyan-300">fluent/fluent-bit:4.2.8</code>) with per-node crash-resilient state on <code class="text-cyan-300">/var/lib/fluent-bit-state</code> (<code class="text-cyan-300">256M</code> cap, Amendment 2.3.0), shipping to VictoriaLogs (<code class="text-cyan-300">v1.53.0</code>) on <code class="text-cyan-300">local-k3s</code> and OCI Kafka (<code class="text-cyan-300">10.200.0.11..13:9092</code>) on GKE.</p>
         </div>
       </div>
 
@@ -163,9 +163,9 @@
             <rect x="15" y="12" width="1030" height="92" rx="12" fill="#0f172a" fill-opacity="0.55" stroke="#334155" stroke-dasharray="5 4" />
             <text x="28" y="30" fill="#94a3b8" font-size="10" font-family="'JetBrains Mono'" font-weight="700">EXTERNAL INTERNET &amp; UPSTREAM PROVIDERS</text>
 
-            <!-- K3s Single-Node Cluster Boundary -->
+            <!-- Cluster Boundary -->
             <rect x="15" y="118" width="1030" height="730" rx="16" fill="#090d16" stroke="#1e293b" stroke-width="2" />
-            <text x="30" y="140" fill="#38bdf8" font-size="11" font-family="'JetBrains Mono'" font-weight="700">SINGLE-NODE K3s CLUSTER (v1.35.9+k3s1 · --flannel-backend=none · Cilium v1.20.3 eBPF)</text>
+            <text x="30" y="140" fill="#38bdf8" font-size="11" font-family="'JetBrains Mono'" font-weight="700">GKE STANDARD DESIGN 1 (asia-northeast3-a · 2 Pools · Dataplane V2) &amp; LOCAL-K3s (v1.35.9+k3s1 · Cilium v1.20.3)</text>
 
             <!-- Namespace: kube-system & platform & cert-manager (Left Column) -->
             <rect x="30" y="155" width="310" height="390" rx="12" fill="#0f172a" fill-opacity="0.6" stroke="#0284c7" stroke-opacity="0.5" />
@@ -186,7 +186,7 @@
             <!-- Namespace: proj-pn (Right Column - Restricted Tenant Boundary) -->
             <rect x="710" y="155" width="320" height="577" rx="12" fill="#0f172a" fill-opacity="0.6" stroke="#f43f5e" stroke-opacity="0.55" />
             <text x="724" y="174" fill="#fb7185" font-size="10" font-family="'JetBrains Mono'" font-weight="700">NS: proj-pn (Restricted Pod Security)</text>
-            <text x="724" y="189" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">Peak: 200m CPU · 640Mi RAM | Quota: 850m · 1536Mi</text>
+            <text x="724" y="189" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">GKE Peak: 250m/384Mi (Quota 416Mi) · K3s: 200m/640Mi</text>
 
             <!-- ======================== CONNECTIONS (EDGES) ======================== -->
             <g id="topology-edges">
@@ -219,6 +219,8 @@
 
               <!-- PN Backend -> Vault DB Proxy -->
               <path data-cat="vault data" data-from="pn-backend" data-to="db-proxy" class="edge-line anim-edge" d="M 735 375 L 680 375 L 680 620 L 520 620" stroke="#34d399" stroke-width="2.3" fill="none" marker-end="url(#arr-emerald)" />
+              <!-- PN Backend -> Vault AI/Notify Proxy -->
+              <path data-cat="vault" data-from="pn-backend" data-to="ai-notify-proxy" class="edge-line anim-edge" d="M 735 385 L 688 385 L 688 605 L 675 605" stroke="#34d399" stroke-width="1.8" fill="none" marker-end="url(#arr-emerald)" />
               <!-- Vault DB Proxy -> Postgres -->
               <path data-cat="data vault" data-from="db-proxy" data-to="postgres" class="edge-line anim-edge" d="M 450 585 L 450 448" stroke="#c084fc" stroke-width="2.2" fill="none" marker-end="url(#arr-purple)" />
               <!-- Keycloak -> Postgres -->
@@ -226,18 +228,17 @@
 
               <!-- OpenBao -> Gateway / Keycloak / Postgres / Proxies -->
               <path data-cat="vault" data-from="openbao" data-to="db-proxy" class="edge-line anim-edge" d="M 495 570 L 460 588" stroke="#34d399" stroke-width="2" fill="none" marker-end="url(#arr-emerald)" />
-              <path data-cat="vault" data-from="openbao" data-to="reg-proxy" class="edge-line anim-edge" d="M 555 570 L 590 588" stroke="#34d399" stroke-width="2" fill="none" marker-end="url(#arr-emerald)" />
+              <path data-cat="vault" data-from="openbao" data-to="ai-notify-proxy" class="edge-line anim-edge" d="M 555 570 L 590 588" stroke="#34d399" stroke-width="2" fill="none" marker-end="url(#arr-emerald)" />
               <path data-cat="vault" data-from="openbao" data-to="gateway" class="edge-line" d="M 380 540 L 352 540 L 352 242 L 380 242" stroke="#34d399" stroke-width="1.6" stroke-dasharray="3 3" fill="none" marker-end="url(#arr-emerald)" />
               <path data-cat="vault" data-from="openbao" data-to="keycloak" class="edge-line" d="M 380 532 L 355 532 L 355 332 L 380 332" stroke="#34d399" stroke-width="1.6" stroke-dasharray="3 3" fill="none" marker-end="url(#arr-emerald)" />
 
-              <!-- Cilium eBPF & Hubble edges -->
+              <!-- Cilium / Dataplane V2 eBPF edges -->
               <path data-cat="cni vault" data-from="k3s-runtime" data-to="openbao" class="edge-line anim-edge" d="M 300 495 L 380 540" stroke="#34d399" stroke-width="2" fill="none" marker-end="url(#arr-emerald)" />
               <path data-cat="cni" data-from="k3s-runtime" data-to="pn-boundary" class="edge-line anim-edge" d="M 300 510 L 735 510" stroke="#22d3ee" stroke-width="1.8" stroke-dasharray="5 4" fill="none" marker-end="url(#arr-cyan)" />
               <path data-cat="cni gitops" data-from="flux" data-to="k3s-runtime" class="edge-line anim-edge" d="M 185 590 L 185 528" stroke="#fbbf24" stroke-width="1.8" fill="none" marker-end="url(#arr-amber)" />
 
-              <!-- Kubelet -> Registry Proxy -> GHCR -->
-              <path data-cat="vault" data-from="k3s-runtime" data-to="reg-proxy" class="edge-line anim-edge" d="M 300 495 L 595 660" stroke="#34d399" stroke-width="1.8" fill="none" marker-end="url(#arr-emerald)" />
-              <path data-cat="vault" data-from="reg-proxy" data-to="github" class="edge-line anim-edge" d="M 665 620 L 1038 620 L 1038 60 L 970 60" stroke="#34d399" stroke-width="2" fill="none" marker-end="url(#arr-emerald)" />
+              <!-- Public GAR / GHCR -> Node Runtime (@sha256 unauthenticated pulls) -->
+              <path data-cat="gitops" data-from="github" data-to="k3s-runtime" class="edge-line anim-edge" d="M 790 90 L 332 490 L 300 490" stroke="#a855f7" stroke-width="1.6" stroke-dasharray="4 4" fill="none" marker-end="url(#arr-purple)" />
 
               <!-- GitHub -> Flux -> Governance & Cluster -->
               <path data-cat="gitops" data-from="github" data-to="flux" class="edge-line anim-edge" d="M 830 90 L 830 112 L 22 112 L 22 620 L 50 620" stroke="#fbbf24" stroke-width="2.2" fill="none" marker-end="url(#arr-amber)" />
@@ -272,21 +273,21 @@
               <text x="14" y="40" fill="#94a3b8" font-size="9.5" font-family="'JetBrains Mono'">Identity Broker Upstream</text>
             </g>
 
-            <!-- 4. GitHub (Git + Actions + GHCR) -->
+            <!-- 4. GitHub + Cloud Build + GAR/GHCR -->
             <g class="node-box" id="node-github" onclick="selectNode('github')" transform="translate(755, 38)">
               <rect class="main-rect" width="215" height="52" rx="10" fill="#0f172a" stroke="#a855f7" stroke-width="1.8" />
               <text x="14" y="22" font-size="14">🐙</text>
-              <text x="36" y="22" fill="#f8fafc" font-size="11" font-weight="700">GitHub + Actions + GHCR</text>
-              <text x="14" y="40" fill="#94a3b8" font-size="9.5" font-family="'JetBrains Mono'">main branch · ghcr.io blobs</text>
+              <text x="36" y="22" fill="#f8fafc" font-size="11" font-weight="700">GitHub + GAR + GHCR</text>
+              <text x="14" y="40" fill="#94a3b8" font-size="9.5" font-family="'JetBrains Mono'">main · public @sha256 pulls</text>
             </g>
 
             <!-- 5. Traefik Ingress -->
             <g class="node-box" id="node-traefik" onclick="selectNode('traefik')" transform="translate(50, 190)">
               <rect class="main-rect" width="225" height="62" rx="10" fill="#0c192c" stroke="#38bdf8" stroke-width="2" />
               <text x="14" y="23" font-size="14">🚦</text>
-              <text x="36" y="23" fill="#f8fafc" font-size="11.5" font-weight="700">Traefik Ingress (:80/:443)</text>
-              <text x="14" y="40" fill="#7dd3fc" font-size="9.5" font-family="'JetBrains Mono'">strip-forged-headers · SNI</text>
-              <text x="14" y="53" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">Direct Project Door &amp; Auth Allowlist</text>
+              <text x="36" y="23" fill="#f8fafc" font-size="11.5" font-weight="700">Traefik v3.3.4 (:80/:443)</text>
+              <text x="14" y="40" fill="#7dd3fc" font-size="9.5" font-family="'JetBrains Mono'">GKE hostPort 80/443 · ClusterIP</text>
+              <text x="14" y="53" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">Zero GCP LB · SNI · Strip Headers</text>
             </g>
 
             <!-- 6. TLSStore & Certificates -->
@@ -294,7 +295,7 @@
               <rect class="main-rect" width="225" height="60" rx="10" fill="#172033" stroke="#fbbf24" stroke-width="1.8" />
               <text x="14" y="22" font-size="13">🔒</text>
               <text x="34" y="22" fill="#fef08a" font-size="11" font-weight="700">TLSStore platform/default</text>
-              <text x="14" y="38" fill="#cbd5e1" font-size="9.5" font-family="'JetBrains Mono'">Secrets: auth-tls, pn-tls</text>
+              <text x="14" y="38" fill="#cbd5e1" font-size="9.5" font-family="'JetBrains Mono'">Secrets: auth, pn, health, blog</text>
               <text x="14" y="51" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">ECDSA P-256 · renewBefore 720h</text>
             </g>
 
@@ -303,17 +304,17 @@
               <rect class="main-rect" width="225" height="60" rx="10" fill="#172033" stroke="#fbbf24" stroke-width="1.8" />
               <text x="14" y="22" font-size="13">📜</text>
               <text x="34" y="22" fill="#f8fafc" font-size="11" font-weight="700">cert-manager v1.21.2</text>
-              <text x="14" y="38" fill="#fde68a" font-size="9.5" font-family="'JetBrains Mono'">ClusterIssuer: letsencrypt-prod</text>
+              <text x="14" y="38" fill="#fde68a" font-size="9.5" font-family="'JetBrains Mono'">GKE: spot-controllers pool</text>
               <text x="14" y="51" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">HTTP-01 solver: ClusterIP only</text>
             </g>
 
-            <!-- 8. K3s + Cilium v1.20.3 eBPF + Hubble UI -->
+            <!-- 8. GKE Dataplane V2 / K3s + Cilium v1.20.3 eBPF -->
             <g class="node-box" id="node-k3s-runtime" onclick="selectNode('k3s-runtime')" transform="translate(50, 462)">
               <rect class="main-rect" width="250" height="66" rx="10" fill="#064e3b" stroke="#34d399" stroke-width="2" />
               <text x="14" y="22" font-size="13">🐝</text>
-              <text x="34" y="22" fill="#ecfdf5" font-size="10.5" font-weight="700">Cilium v1.20.3 eBPF + Hubble</text>
-              <text x="14" y="39" fill="#6ee7b7" font-size="9" font-family="'JetBrains Mono'">Hubble Relay + UI v0.13.6 (:12000)</text>
-              <text x="14" y="53" fill="#a7f3d0" font-size="8.5" font-family="'JetBrains Mono'">K3s containerd ➔ localhost:5000 · CoreDNS</text>
+              <text x="34" y="22" fill="#ecfdf5" font-size="10.5" font-weight="700">Dataplane V2 / Cilium v1.20.3</text>
+              <text x="14" y="39" fill="#6ee7b7" font-size="9" font-family="'JetBrains Mono'">Portable NetworkPolicy · Hubble UI</text>
+              <text x="14" y="53" fill="#a7f3d0" font-size="8.5" font-family="'JetBrains Mono'">ondemand-core + spot-controllers</text>
             </g>
 
             <!-- 9. FluxCD Controllers -->
@@ -321,7 +322,7 @@
               <rect class="main-rect" width="270" height="55" rx="10" fill="#1c1917" stroke="#f59e0b" stroke-width="2" />
               <text x="14" y="22" font-size="13">🔄</text>
               <text x="34" y="22" fill="#fef3c7" font-size="11" font-weight="700">FluxCD v1.9.5 (GitOps Engine)</text>
-              <text x="14" y="39" fill="#fcd34d" font-size="9.5" font-family="'JetBrains Mono'">source + kustomize-controller (prune)</text>
+              <text x="14" y="39" fill="#fcd34d" font-size="9.5" font-family="'JetBrains Mono'">source + kustomize (GKE Spot pool)</text>
             </g>
 
             <!-- 10. ValidatingAdmissionPolicy -->
@@ -329,7 +330,7 @@
               <rect class="main-rect" width="270" height="50" rx="10" fill="#1c1917" stroke="#f43f5e" stroke-width="1.8" />
               <text x="14" y="20" font-size="13">🛑</text>
               <text x="34" y="20" fill="#fecdd3" font-size="11" font-weight="700">ValidatingAdmissionPolicy</text>
-              <text x="14" y="37" fill="#fda4af" font-size="9.5" font-family="'JetBrains Mono'">Denies manual kubectl changes</text>
+              <text x="14" y="37" fill="#fda4af" font-size="9.5" font-family="'JetBrains Mono'">Denies manual edits · GKE allowlist</text>
             </g>
 
             <!-- 11. Go Auth Gateway -->
@@ -346,8 +347,8 @@
               <rect class="main-rect" width="270" height="66" rx="10" fill="#1e1b4b" stroke="#a855f7" stroke-width="2" />
               <text x="14" y="22" font-size="14">🪪</text>
               <text x="36" y="22" fill="#f8fafc" font-size="11.5" font-weight="700">Keycloak IdP v24.0.5 (:8080)</text>
-              <text x="14" y="39" fill="#d8b4fe" font-size="9.5" font-family="'JetBrains Mono'">Realm: platform · Google JIT Broker</text>
-              <text x="14" y="53" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">/admin &amp; :9000 blocked at Ingress</text>
+              <text x="14" y="39" fill="#d8b4fe" font-size="9.5" font-family="'JetBrains Mono'">persistent-user-sessions · Google JIT</text>
+              <text x="14" y="53" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">GKE ondemand-core 832Mi · /admin blocked</text>
             </g>
 
             <!-- 13. PostgreSQL StatefulSet -->
@@ -355,8 +356,8 @@
               <rect class="main-rect" width="270" height="66" rx="10" fill="#1e1b4b" stroke="#c084fc" stroke-width="2" />
               <text x="14" y="22" font-size="14">🐘</text>
               <text x="36" y="22" fill="#f8fafc" font-size="11.5" font-weight="700">PostgreSQL 16.8-alpine (:5432)</text>
-              <text x="14" y="39" fill="#e9d5ff" font-size="9.5" font-family="'JetBrains Mono'">Isolated DBs: keycloak | proj_pn</text>
-              <text x="14" y="53" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">10Gi PVC · 00:00 UTC Backup CronJob</text>
+              <text x="14" y="39" fill="#e9d5ff" font-size="9.5" font-family="'JetBrains Mono'">DBs: keycloak | proj_pn | proj_health</text>
+              <text x="14" y="53" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">10Gi RWO PVC · ondemand-core</text>
             </g>
 
             <!-- 14. OpenBao StatefulSet -->
@@ -364,8 +365,8 @@
               <rect class="main-rect" width="290" height="58" rx="10" fill="#064e3b" stroke="#10b981" stroke-width="2.2" />
               <text x="14" y="22" font-size="14">🏦</text>
               <text x="36" y="22" fill="#ecfdf5" font-size="11.5" font-weight="700">OpenBao Vault v2.0.0 (:8200)</text>
-              <text x="14" y="39" fill="#6ee7b7" font-size="9.5" font-family="'JetBrains Mono'">KV v2 + Transit + K8s Auth Engine</text>
-              <text x="14" y="51" fill="#a7f3d0" font-size="8.5" font-family="'JetBrains Mono'">8 HCL Policies · 10Gi PVC · Snapshot Cron</text>
+              <text x="14" y="39" fill="#6ee7b7" font-size="9.5" font-family="'JetBrains Mono'">KV v2 + Transit + K8s Auth + gcpckms</text>
+              <text x="14" y="51" fill="#a7f3d0" font-size="8.5" font-family="'JetBrains Mono'">7 HCL Policies · 10Gi PVC · Snapshot Cron</text>
             </g>
 
             <!-- 15. Vault DB Proxy -->
@@ -374,16 +375,16 @@
               <text x="10" y="21" font-size="12">🔌</text>
               <text x="28" y="21" fill="#ecfdf5" font-size="10.5" font-weight="700">vault-db-proxy</text>
               <text x="10" y="37" fill="#6ee7b7" font-size="9" font-family="'JetBrains Mono'">Go Wire Proxy :5432</text>
-              <text x="10" y="51" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">Injects user_pn auth</text>
+              <text x="10" y="51" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">Injects DB auth</text>
             </g>
 
-            <!-- 16. Vault Registry Proxy -->
-            <g class="node-box" id="node-reg-proxy" onclick="selectNode('reg-proxy')" transform="translate(530, 590)">
+            <!-- 16. Vault AI & Notify Proxies (registry-proxy retired) -->
+            <g class="node-box" id="node-ai-notify-proxy" onclick="selectNode('ai-notify-proxy')" transform="translate(530, 590)">
               <rect class="main-rect" width="145" height="66" rx="10" fill="#022c22" stroke="#34d399" stroke-width="1.8" />
-              <text x="10" y="21" font-size="12">📦</text>
-              <text x="28" y="21" fill="#ecfdf5" font-size="10.5" font-weight="700">registry-proxy</text>
-              <text x="10" y="37" fill="#6ee7b7" font-size="9" font-family="'JetBrains Mono'">OCI Proxy :5000</text>
-              <text x="10" y="51" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">Injects GHCR PAT</text>
+              <text x="10" y="21" font-size="12">🤖</text>
+              <text x="28" y="21" fill="#ecfdf5" font-size="10" font-weight="700">ai &amp; notify proxy</text>
+              <text x="10" y="37" fill="#6ee7b7" font-size="9" font-family="'JetBrains Mono'">Zero-Dep Go :8080</text>
+              <text x="10" y="51" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">RAM-wiped Gemini/Discord</text>
             </g>
 
             <!-- 17. initContainer Secret Pattern badge -->
@@ -420,14 +421,14 @@
               <text x="14" y="66" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">2. SA: project-pn-sa (no token mount)</text>
               <text x="14" y="86" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">3. IngressRoute: tls: {} (SNI store)</text>
               <text x="14" y="106" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">4. NetworkPolicy Ingress:</text>
-              <text x="24" y="122" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">• Traefik (kube-system) ➔ :80, :8080</text>
+              <text x="24" y="122" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">• Traefik (platform/kube-sys) ➔ :80,:8080</text>
               <text x="24" y="136" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">• pn-frontend ➔ pn-backend :8080</text>
               <text x="14" y="156" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">5. In-cluster egress to:</text>
               <text x="24" y="172" fill="#34d399" font-size="8.5" font-family="'JetBrains Mono'">• vault-db-proxy:5432 &amp; ai-gateway:8080</text>
               <text x="24" y="186" fill="#38bdf8" font-size="8.5" font-family="'JetBrains Mono'">• gateway.identity.svc:8080</text>
               <text x="24" y="200" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">• kube-dns (UDP/TCP :53)</text>
-              <text x="14" y="220" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">6. Cilium FQDN, pn-backend only:</text>
-              <text x="24" y="236" fill="#34d399" font-size="8.5" font-family="'JetBrains Mono'">• api.wiktapi.dev:443</text>
+              <text x="14" y="220" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">6. Portable NetPol, pn-backend:</text>
+              <text x="24" y="236" fill="#34d399" font-size="8.5" font-family="'JetBrains Mono'">• TCP :443 minus RFC1918/metadata</text>
               <text x="24" y="250" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">• (Gemini via vault/vault-ai-proxy:8080)</text>
               <text x="14" y="270" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">✗ Direct Postgres (:5432) BLOCKED</text>
               <text x="14" y="286" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">✗ Direct OpenBao (:8200) BLOCKED</text>
@@ -436,20 +437,20 @@
 
             <!-- Namespace: observability -->
             <rect x="30" y="752" width="1000" height="88" rx="12" fill="#042f2e" fill-opacity="0.45" stroke="#14b8a6" stroke-opacity="0.6" />
-            <text x="44" y="770" fill="#5eead4" font-size="10" font-family="'JetBrains Mono'" font-weight="700">NS: observability (platform log collector; not a project workload)</text>
+            <text x="44" y="770" fill="#5eead4" font-size="10" font-family="'JetBrains Mono'" font-weight="700">NS: observability (Fluent Bit Solution B collector · Amendment 2.3.0)</text>
 
             <!-- 21. Fluent Bit -->
             <g class="node-box" id="node-fluent-bit" onclick="selectNode('fluent-bit')" transform="translate(44, 780)">
-              <rect class="main-rect" width="236" height="48" rx="10" fill="#042f2e" stroke="#14b8a6" stroke-width="1.8" />
-              <text x="12" y="20" fill="#ccfbf1" font-size="11" font-weight="700">Fluent Bit 4.2.8</text>
-              <text x="12" y="36" fill="#99f6e4" font-size="8.5" font-family="'JetBrains Mono'">hostPath /var/log/pods read-only · proj-* only</text>
+              <rect class="main-rect" width="286" height="48" rx="10" fill="#042f2e" stroke="#14b8a6" stroke-width="1.8" />
+              <text x="12" y="20" fill="#ccfbf1" font-size="11" font-weight="700">Fluent Bit 4.2.8 (Solution B)</text>
+              <text x="12" y="36" fill="#99f6e4" font-size="8.5" font-family="'JetBrains Mono'">/var/log/pods (ro) + /var/lib/fluent-bit-state (256M)</text>
             </g>
 
-            <!-- 22. VictoriaLogs -->
+            <!-- 22. VictoriaLogs / OCI Kafka -->
             <g class="node-box" id="node-victorialogs" onclick="selectNode('victorialogs')" transform="translate(380, 780)">
-              <rect class="main-rect" width="280" height="48" rx="10" fill="#042f2e" stroke="#2dd4bf" stroke-width="1.8" />
-              <text x="12" y="20" fill="#ccfbf1" font-size="11" font-weight="700">VictoriaLogs v1.53.0 (:9428)</text>
-              <text x="12" y="36" fill="#99f6e4" font-size="8.5" font-family="'JetBrains Mono'">ClusterIP · 10Gi PVC · 30d · 8Gi disk cap</text>
+              <rect class="main-rect" width="330" height="48" rx="10" fill="#042f2e" stroke="#2dd4bf" stroke-width="1.8" />
+              <text x="12" y="20" fill="#ccfbf1" font-size="11" font-weight="700">OCI Kafka (:9092 GKE) | VictoriaLogs (:9428 K3s)</text>
+              <text x="12" y="36" fill="#99f6e4" font-size="8.5" font-family="'JetBrains Mono'">WireGuard 10.200.0.11..13 (GKE) · 10Gi PVC (local-k3s)</text>
             </g>
           </svg>
         </div>
@@ -723,14 +724,17 @@
       <div class="bg-slate-900/60 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h2 class="text-base font-bold text-white">FluxCD Kustomization Reconciliation DAG (<code class="text-cyan-300">clusters/&lt;env&gt;/layers.yaml</code>)</h2>
-          <p class="text-xs text-slate-400">Every 5m Flux reconciles these 13 layers in strict <code class="text-amber-300">dependsOn</code> order with <code class="text-rose-300">prune: true</code>. Click any layer to inspect its patches.</p>
+          <p class="text-xs text-slate-400">Every 5m Flux reconciles these ordered layers in strict <code class="text-amber-300">dependsOn</code> order with <code class="text-rose-300">prune: true</code> across <code class="text-cyan-300">gke</code>, <code class="text-cyan-300">local-k3s</code>, and <code class="text-cyan-300">vps-k3s</code>. Click any layer to inspect its patches.</p>
         </div>
-        <div class="flex items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
-          <button onclick="setDagEnv('vps-k3s')" id="env-btn-vps" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-cyan-500 text-slate-950">
-            ☁️ vps-k3s (Oracle Prod)
+        <div class="flex flex-wrap items-center gap-2 bg-slate-950 p-1.5 rounded-xl border border-slate-800">
+          <button onclick="setDagEnv('gke')" id="env-btn-gke" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-cyan-500 text-slate-950">
+            🌐 gke (GCP Zonal Design 1)
           </button>
           <button onclick="setDagEnv('local-k3s')" id="env-btn-local" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 hover:text-white">
             💻 local-k3s (Linux Dev)
+          </button>
+          <button onclick="setDagEnv('vps-k3s')" id="env-btn-vps" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 hover:text-white">
+            ☁️ vps-k3s (Pre-Cutover)
           </button>
         </div>
       </div>
@@ -772,7 +776,7 @@
             <!-- Layer 1a: cni -->
             <g class="node-box" onclick="selectDagLayer('cni')" transform="translate(80, 20)">
               <rect class="main-rect" width="215" height="52" rx="10" fill="#064e3b" stroke="#34d399" stroke-width="2" />
-              <text x="107" y="22" text-anchor="middle" fill="#ecfdf5" font-size="12" font-weight="700">1a. cni (Cilium + Hubble)</text>
+              <text x="107" y="22" text-anchor="middle" fill="#ecfdf5" font-size="12" font-weight="700">1a. cni (K3s) / DP-v2 (GKE)</text>
               <text x="107" y="39" text-anchor="middle" fill="#6ee7b7" font-size="9.5" font-family="'JetBrains Mono'">./deploy/platform/cni</text>
             </g>
 
@@ -794,7 +798,7 @@
             <g class="node-box" onclick="selectDagLayer('vault')" transform="translate(265, 138)">
               <rect class="main-rect" width="190" height="52" rx="10" fill="#064e3b" stroke="#10b981" stroke-width="2" />
               <text x="95" y="22" text-anchor="middle" fill="#ecfdf5" font-size="12" font-weight="700">2b. vault (OpenBao)</text>
-              <text x="95" y="39" text-anchor="middle" fill="#6ee7b7" font-size="9.5" font-family="'JetBrains Mono'">dependsOn: [cni, governance]</text>
+              <text x="95" y="39" text-anchor="middle" fill="#6ee7b7" font-size="9.5" font-family="'JetBrains Mono'">Shamir (K3s) | gcpckms (GKE)</text>
             </g>
 
             <!-- Layer 2c: project-boundaries -->
@@ -821,7 +825,7 @@
             <g class="node-box" onclick="selectDagLayer('vault-proxies')" transform="translate(155, 248)">
               <rect class="main-rect" width="175" height="52" rx="10" fill="#022c22" stroke="#34d399" stroke-width="1.8" />
               <text x="87" y="22" text-anchor="middle" fill="#ecfdf5" font-size="11.5" font-weight="700">3a. vault-proxies</text>
-              <text x="87" y="39" text-anchor="middle" fill="#6ee7b7" font-size="9" font-family="'JetBrains Mono'">db-proxy + registry-proxy</text>
+              <text x="87" y="39" text-anchor="middle" fill="#6ee7b7" font-size="9" font-family="'JetBrains Mono'">db + ai + notify proxies</text>
             </g>
 
             <!-- Layer 3b: database -->
@@ -834,7 +838,7 @@
             <!-- Layer 3c: projects -->
             <g class="node-box" onclick="selectDagLayer('projects')" transform="translate(490, 248)">
               <rect class="main-rect" width="205" height="52" rx="10" fill="#1f1224" stroke="#fb7185" stroke-width="2" />
-              <text x="102" y="22" text-anchor="middle" fill="#f8fafc" font-size="11.5" font-weight="700">3c. projects (proj-pn, health)</text>
+              <text x="102" y="22" text-anchor="middle" fill="#f8fafc" font-size="11.5" font-weight="700">3c. projects (pn, health, blog)</text>
               <text x="102" y="39" text-anchor="middle" fill="#fda4af" font-size="9" font-family="'JetBrains Mono'">wait: false · ./clusters/*/projects</text>
             </g>
 
@@ -843,6 +847,13 @@
               <rect class="main-rect" width="185" height="54" rx="10" fill="#1e1b4b" stroke="#22d3ee" stroke-width="2" />
               <text x="92" y="22" text-anchor="middle" fill="#f8fafc" font-size="11.5" font-weight="700">4. identity</text>
               <text x="92" y="39" text-anchor="middle" fill="#67e8f9" font-size="9" font-family="'JetBrains Mono'">Keycloak + Go Auth Gateway</text>
+            </g>
+
+            <!-- Layer 4b: traefik (GKE) -->
+            <g class="node-box" onclick="selectDagLayer('traefik')" transform="translate(570, 342)">
+              <rect class="main-rect" width="135" height="54" rx="10" fill="#0c192c" stroke="#38bdf8" stroke-width="1.8" stroke-dasharray="4 2" />
+              <text x="67" y="22" text-anchor="middle" fill="#f8fafc" font-size="11" font-weight="700">4b. traefik (GKE)</text>
+              <text x="67" y="39" text-anchor="middle" fill="#7dd3fc" font-size="8.5" font-family="'JetBrains Mono'">hostPort 80/443</text>
             </g>
 
             <!-- Layer 5: ingress -->
@@ -859,11 +870,11 @@
               <text x="115" y="39" text-anchor="middle" fill="#fde68a" font-size="9" font-family="'JetBrains Mono'">dependsOn: cert-manager, ingress, boundary</text>
             </g>
 
-            <!-- Layer 2e: observability. dependsOn cni and governance; drawn beside tls so the arrow does not cross the DAG. -->
+            <!-- Layer 2f: observability -->
             <g class="node-box" onclick="selectDagLayer('observability')" transform="translate(400, 432)">
               <rect class="main-rect" width="290" height="54" rx="10" fill="#042f2e" stroke="#14b8a6" stroke-width="2" />
-              <text x="145" y="22" text-anchor="middle" fill="#ccfbf1" font-size="12" font-weight="700">2e. observability</text>
-              <text x="145" y="39" text-anchor="middle" fill="#5eead4" font-size="9" font-family="'JetBrains Mono'">dependsOn: cni, governance · proj-* only</text>
+              <text x="145" y="22" text-anchor="middle" fill="#ccfbf1" font-size="12" font-weight="700">2f. observability</text>
+              <text x="145" y="39" text-anchor="middle" fill="#5eead4" font-size="9" font-family="'JetBrains Mono'">Fluent Bit Solution B ➔ Kafka / VLogs</text>
             </g>
           </svg>
         </div>
@@ -875,7 +886,7 @@
               <span id="dag-layer-badge" class="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">FLUX KUSTOMIZATION</span>
               <h3 id="dag-layer-title" class="text-lg font-bold text-white mt-1">Select a layer in the DAG</h3>
             </div>
-            <span id="dag-env-label" class="font-mono text-xs text-cyan-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">env: vps-k3s</span>
+            <span id="dag-env-label" class="font-mono text-xs text-cyan-400 bg-slate-950 px-2.5 py-1 rounded-lg border border-slate-800">env: gke</span>
           </div>
 
           <p id="dag-layer-desc" class="text-xs text-slate-300 leading-relaxed"></p>
@@ -909,7 +920,7 @@
           <p class="text-xs text-slate-400">Complete bill of materials across host automation, Cilium eBPF CNI, cluster orchestration, identity, zero-plaintext secrets, and custom Go services.</p>
         </div>
         <div class="flex flex-wrap gap-1.5">
-          <button onclick="filterOss('all')" class="oss-filter px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500 text-slate-950">All (18)</button>
+          <button onclick="filterOss('all')" class="oss-filter px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-500 text-slate-950">All (20)</button>
           <button onclick="filterOss('oss')" class="oss-filter px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800">Open-Source Upstream</button>
           <button onclick="filterOss('custom')" class="oss-filter px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800">Custom Zero-Dep Go</button>
           <button onclick="filterOss('ci')" class="oss-filter px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-950 text-slate-300 border border-slate-800">Bootstrap &amp; CI Tooling</button>
@@ -923,7 +934,7 @@
           <div>
             <h3 class="text-sm font-bold text-white">Constitutional Principle III &amp; V: Zero Third-Party Runtime Go Modules</h3>
             <p class="text-xs text-slate-300 mt-0.5">
-              Both <code class="text-cyan-300">gateway/go.mod</code> and <code class="text-emerald-300">services/vault-proxies/go.mod</code> declare <code class="text-amber-300">go 1.22</code> with <strong>zero external `require` statements</strong>. OIDC PKCE, JWT RS256/ECDSA verification, CSRF HMAC tokens, PostgreSQL wire-protocol handshakes, and OCI registry reverse-proxying are implemented purely with the Go standard library (`crypto/*`, `net/http`, `net`, `encoding/json`).
+              <code class="text-cyan-300">gateway/go.mod</code>, <code class="text-emerald-300">services/vault-proxies/go.mod</code>, and <code class="text-sky-300">services/error-pipeline/go.mod</code> declare <code class="text-amber-300">go 1.22</code> with <strong>zero external `require` statements</strong>. OIDC PKCE, JWT RS256/ECDSA verification, CSRF HMAC tokens, PostgreSQL wire-protocol handshakes, RAM-wiped AI proxying (<code class="text-emerald-300">vault-ai-proxy</code>), and pod-attributed Discord notification delivery (<code class="text-emerald-300">vault-notify-proxy</code>) are implemented purely with the Go standard library (`crypto/*`, `net/http`, `net`, `encoding/json`).
             </p>
           </div>
         </div>
@@ -965,7 +976,7 @@
     </section>
 
     <!-- ===================================================================== -->
-    <!-- TAB 7: 1/N RESOURCE BUDGET CALCULATOR & SPEC EVOLUTION (001-010)      -->
+    <!-- TAB 7: 1/N RESOURCE BUDGET CALCULATOR & SPEC EVOLUTION (001-012)      -->
     <!-- ===================================================================== -->
     <section id="tab-budget" class="hidden space-y-6">
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -977,8 +988,9 @@
               <h2 class="text-base font-bold text-white mt-1">Interactive 1/n Resource Budget Simulator</h2>
             </div>
             <select id="calc-env" onchange="updateBudgetCalc()" class="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-cyan-300">
-              <option value="vps">vps-k3s (2000m CPU / 10898 MiB)</option>
+              <option value="gke">gke Design 1 (1880m CPU / 4408 MiB, 2 nodes)</option>
               <option value="local">local-k3s (4000m CPU / 8192 MiB)</option>
+              <option value="vps">vps-k3s (2000m CPU / 10898 MiB)</option>
             </select>
           </div>
 
@@ -986,25 +998,25 @@
             <div>
               <div class="flex justify-between mb-1">
                 <label class="font-semibold text-slate-300">Deployed Tenant Project Count (<code class="text-cyan-300">n</code>):</label>
-                <span id="calc-n-val" class="font-mono font-bold text-cyan-400">1 project (proj-pn)</span>
+                <span id="calc-n-val" class="font-mono font-bold text-cyan-400">3 projects (pn, health, blog)</span>
               </div>
-              <input type="range" id="calc-n" min="1" max="5" value="1" oninput="updateBudgetCalc()" class="w-full accent-cyan-400 cursor-pointer" />
+              <input type="range" id="calc-n" min="1" max="5" value="3" oninput="updateBudgetCalc()" class="w-full accent-cyan-400 cursor-pointer" />
             </div>
 
             <div>
               <div class="flex justify-between mb-1">
                 <label class="font-semibold text-slate-300">Candidate Project Peak Memory Limit (MiB):</label>
-                <span id="calc-mem-val" class="font-mono font-bold text-emerald-400">640 MiB</span>
+                <span id="calc-mem-val" class="font-mono font-bold text-emerald-400">384 MiB</span>
               </div>
-              <input type="range" id="calc-mem" min="128" max="8192" step="64" value="640" oninput="updateBudgetCalc()" class="w-full accent-emerald-400 cursor-pointer" />
+              <input type="range" id="calc-mem" min="128" max="8192" step="64" value="384" oninput="updateBudgetCalc()" class="w-full accent-emerald-400 cursor-pointer" />
             </div>
 
             <div>
               <div class="flex justify-between mb-1">
                 <label class="font-semibold text-slate-300">Candidate Project Peak CPU Limit (millicores):</label>
-                <span id="calc-cpu-val" class="font-mono font-bold text-amber-400">400m</span>
+                <span id="calc-cpu-val" class="font-mono font-bold text-amber-400">250m</span>
               </div>
-              <input type="range" id="calc-cpu" min="100" max="3000" step="50" value="400" oninput="updateBudgetCalc()" class="w-full accent-amber-400 cursor-pointer" />
+              <input type="range" id="calc-cpu" min="50" max="3000" step="50" value="250" oninput="updateBudgetCalc()" class="w-full accent-amber-400 cursor-pointer" />
             </div>
           </div>
 
@@ -1012,36 +1024,36 @@
           <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2.5 font-mono text-xs">
             <div class="flex justify-between text-slate-400">
               <span>Node Allocatable (<code class="text-slate-300">capacity.yaml</code>):</span>
-              <span id="calc-alloc" class="text-white">2000m CPU · 10898 MiB</span>
+              <span id="calc-alloc" class="text-white">1880m CPU · 4408 MiB</span>
             </div>
             <div class="flex justify-between text-slate-400">
-              <span>Platform Reservation (sysReserved + Cilium/Hubble + Flux + Vault + PG + KC + GW + Cert):</span>
-              <span id="calc-plat" class="text-amber-300">1395m CPU · 5920 MiB</span>
+              <span>Platform Reservation (sysReserved + Traefik/CNI + Flux + Vault + PG + KC + GW + Cert + Obs):</span>
+              <span id="calc-plat" class="text-amber-300">970m CPU · 3152 MiB</span>
             </div>
             <div class="flex justify-between text-slate-300 border-t border-slate-800 pt-2">
               <span>Available Application Pool:</span>
-              <span id="calc-pool" class="text-cyan-300 font-bold">2380m CPU · 19200 MiB</span>
+              <span id="calc-pool" class="text-cyan-300 font-bold">910m CPU · 1256 MiB</span>
             </div>
             <div class="flex justify-between text-slate-200">
               <span>Per-Project 1/n Slice (<code class="text-cyan-300">Pool / n</code>):</span>
-              <span id="calc-slice" class="text-emerald-300 font-bold">2380m CPU · 19200 MiB</span>
+              <span id="calc-slice" class="text-emerald-300 font-bold">303m CPU · 418 MiB</span>
             </div>
-            <p class="text-[11px] text-amber-300/90 border-t border-slate-800 pt-2">⚠ Observed 2026-10-31: the live vps-k3s node is 2 OCPU (2000m / 10898 MiB allocatable), and capacity.yaml now records that. CPU requests had reached 1985m/2000m, leaving vault-notify-proxy and the daily backups Pending (Insufficient cpu). Platform CPU requests were lowered with limits unchanged, so each of the 3 projects now gets a slice of about 201m against a 200m peak.</p>
+            <p class="text-[11px] text-amber-300/90 border-t border-slate-800 pt-2">ℹ Spec 012 GKE Design 1 (1 × e2-medium On-Demand + 1 × e2-small Spot): platform reservation is 970m / 3152 MiB, yielding a 303m / 418 MiB slice at n=3 (proj-pn peak 250m / 384 MiB, quota 416Mi) with >= 50m / 192 MiB backup headroom on ondemand-core. On local-k3s / vps-k3s, retiring vault-registry-proxy (-25m / -64Mi) lowered platform reservation from 1395m / 5920 MiB to 1370m / 5856 MiB.</p>
           </div>
 
           <!-- Preflight Gate Verdict -->
           <div id="calc-verdict-box" class="rounded-xl p-4 border bg-emerald-950/30 border-emerald-500/40">
             <div class="flex items-center justify-between">
               <span id="calc-verdict-title" class="text-xs font-mono font-bold uppercase text-emerald-300">✓ platform-preflight.py: PASS</span>
-              <span class="text-[11px] font-mono text-slate-400">Deployed Peak: 400m / 640Mi · Quota: 850m / 1536Mi</span>
+              <span class="text-[11px] font-mono text-slate-400">GKE Peak: 250m / 384Mi (Quota 416Mi) · K3s Peak: 200m / 640Mi</span>
             </div>
             <p id="calc-verdict-desc" class="text-xs text-slate-300 mt-1"></p>
           </div>
         </div>
 
-        <!-- Spec 001 - 010 Evolution & Constitutional Matrix -->
+        <!-- Spec 001 - 012 Evolution & Constitutional Matrix -->
         <div class="lg:col-span-6 bg-slate-900/60 border border-slate-800 rounded-2xl p-5 space-y-3">
-          <span class="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">SPEC-DRIVEN ARCHITECTURE (SPECS 001–010)</span>
+          <span class="px-2 py-0.5 text-[10px] font-mono font-bold rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">SPEC-DRIVEN ARCHITECTURE (SPECS 001–012)</span>
           <h2 class="text-base font-bold text-white">Architectural Evolution &amp; Feature Packages</h2>
           <div class="space-y-2.5 max-h-[450px] overflow-y-auto pr-1">
             <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
@@ -1113,6 +1125,13 @@
                 <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/011-project-log-contract</span>
               </div>
               <p class="text-xs text-slate-400 mt-1">Enforces OpenTelemetry log line schema v3 (<code class="text-sky-300">time</code>, <code class="text-sky-300">level</code>, <code class="text-sky-300">msg</code>, <code class="text-sky-300">service.name</code>, <code class="text-sky-300">service.version</code>), secrets redaction (<code class="text-sky-300">[REDACTED:&lt;kind&gt;]</code>), 8 KiB stack trace cap, quarantine routing (<code class="text-sky-300">0:1</code>) with Discord alerting, daily violation digests, and preflight/logcheck/pin enforcement gates.</p>
+            </div>
+            <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
+              <div class="flex justify-between items-center">
+                <span class="font-mono text-xs font-bold text-cyan-300">Spec 012 — GKE Platform Portability &amp; Full-State Cutover</span>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/012-gke-platform-migration</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Adds declarative <code class="text-cyan-300">clusters/gke/</code> Design 1 overlay in GCP project <code class="text-cyan-300">nacfson-pipeline</code> (<code class="text-cyan-300">asia-northeast3-a</code> Seoul, <code class="text-cyan-300">1 × e2-medium</code> On-Demand <code class="text-cyan-300">ondemand-core</code> + <code class="text-cyan-300">1 × e2-small</code> Spot <code class="text-cyan-300">spot-controllers</code> with <code class="text-cyan-300">--logging=NONE --monitoring=NONE</code>, <code class="text-cyan-300">303m / 418Mi</code> per-project <code class="text-cyan-300">1/n</code> slice, Traefik <code class="text-cyan-300">v3.3.4</code> <code class="text-cyan-300">hostPort: 80/443</code> with zero GCP LoadBalancer, keeping <code class="text-cyan-300">keycloak</code> <code class="text-cyan-300">832Mi</code> + all live projects/PVCs 24/7 on On-Demand and offloading only <code class="text-cyan-300">cert-manager</code> + <code class="text-cyan-300">flux-system</code> to Spot) alongside cloud-agnostic <code class="text-cyan-300">clusters/local-k3s/</code>, Cloud Build + public <code class="text-cyan-300">GAR</code> (<code class="text-cyan-300">asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public</code>) <code class="text-cyan-300">@sha256</code> pulls retiring <code class="text-cyan-300">vault-registry-proxy</code>, portable <code class="text-cyan-300">networking.k8s.io/v1</code> <code class="text-cyan-300">NetworkPolicy</code> rules, Fluent Bit <code class="text-cyan-300">/var/lib/fluent-bit-state</code> (<code class="text-cyan-300">256M</code> cap) + <code class="text-cyan-300">[OUTPUT] kafka</code>, Constitution Amendment <code class="text-cyan-300">2.3.0</code>, and <code class="text-cyan-300">scripts/cutover-bundle.sh</code> full-state restore + <code class="text-cyan-300">gcpckms</code> auto-unseal (<code class="text-cyan-300">T001</code>–<code class="text-cyan-300">T035</code> in <code class="text-cyan-300">tasks.md</code>).</p>
             </div>
           </div>
         </div>
@@ -1230,34 +1249,34 @@
         path: 'specs/002-internal-cluster-vault/contracts/google-oauth-broker.md'
       },
       'github': {
-        badge: 'GitOps Source & OCI Registry',
-        title: 'GitHub Repository, Actions CI & GHCR',
+        badge: 'GitOps Source, Cloud Build & Public GAR/GHCR',
+        title: 'GitHub Repository, Cloud Build & Public GAR / GHCR',
         ns: 'External Internet',
-        image: 'ghcr.io/nacfson/*',
+        image: 'asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public/* & ghcr.io/nacfson/*',
         oss: 'Git / OCI Distribution Spec',
-        res: 'GitHub Hosted Runners',
-        desc: 'Single source of desired state (main branch) watched by FluxCD, plus GitHub Container Registry hosting immutable SHA256-pinned multi-arch container images.',
+        res: 'GitHub Runners & Cloud Build Free Tier',
+        desc: 'Single source of desired state (main branch) watched by FluxCD, plus Google Artifact Registry (nacfson-public, 2-digest/7d cleanup < 0.5 GB) and GHCR hosting immutable @sha256 multi-arch images with zero pull secrets.',
         bullets: [
-          '➔ Runs platform-preflight.py and render-validate.sh on every candidate PR.',
-          '➔ FluxCD source-controller pulls main branch every 5m.',
-          '➔ vault-registry-proxy pulls private OCI layers from ghcr.io using OpenBao PAT.'
+          '➔ Runs platform-preflight.py and render-validate.sh across local-k3s, gke, and vps-k3s on every PR.',
+          '➔ Cloud Build (deploy/gcp/cloudbuild.yaml) publishes linux/amd64,linux/arm64 @sha256 manifest lists.',
+          '➔ Retires vault-registry-proxy: worker nodes pull public @sha256 digests directly without PATs.'
         ],
-        path: 'clusters/vps-k3s/flux-system/gotk-sync.yaml'
+        path: 'deploy/gcp/cloudbuild.yaml'
       },
       'traefik': {
-        badge: 'Edge Ingress Controller',
-        title: 'Traefik Proxy (:80 web / :443 websecure)',
-        ns: 'kube-system (CRDs in platform & proj-pn)',
-        image: 'Rancher K3s Bundled Traefik',
+        badge: 'Edge Ingress Controller (Spec 008 & 012)',
+        title: 'Traefik v3.3.4 (GKE hostPort :80/:443 | K3s Bundled)',
+        ns: 'platform (GKE) / kube-system (K3s)',
+        image: 'traefik:v3.3.4 (non-root UID 65532)',
         oss: 'Traefik Proxy (MIT License)',
-        res: 'System Reserved',
-        desc: 'Single cluster entry point. Terminates TLS using SNI matching against TLSStore platform/default, strips forged identity headers, enforces narrow route allowlists on auth host, and executes ForwardAuth checks.',
+        res: 'GKE: 30m/64Mi req -> 200m/96Mi lim (ondemand-core)',
+        desc: 'Single cluster entry point. On GKE, binds hostPort 80/443 directly on ondemand-core static IP (Service type: ClusterIP, zero paid GCP LoadBalancer). Terminates TLS via TLSStore platform/default and strips forged headers.',
         bullets: [
-          '➔ Port 80 redirects all HTTP traffic to HTTPS (except ACME HTTP-01 challenge path).',
+          '➔ Port 80 (:8000 containerPort) redirects HTTP to HTTPS except ACME HTTP-01 solver paths.',
           '➔ Blocks /admin, /realms/master, and port 9000 on Keycloak by omission (returns 404).',
-          '➔ Applies strip-forged-headers middleware before forwarding to project services.'
+          '➔ Recreate rollout strategy prevents hostPort 80/443 bind collisions on single On-Demand node.'
         ],
-        path: 'deploy/platform/ingress/ingress-allowlist.yaml'
+        path: 'deploy/platform/traefik/deployment.yaml'
       },
       'tlsstore': {
         badge: 'Platform Edge TLS (Spec 008)',
@@ -1266,7 +1285,7 @@
         image: 'traefik.io/v1alpha1 TLSStore',
         oss: 'Traefik CRD + cert-manager Certificates',
         res: 'Secret Storage Only',
-        desc: 'Centralized certificate store holding auth-tls and pn-tls Secrets in namespace platform. Traefik selects the matching certificate by SNI hostname automatically.',
+        desc: 'Centralized certificate store holding auth-tls, pn-tls, health-tls, and blog-tls Secrets in namespace platform. Traefik selects the matching certificate by SNI hostname automatically.',
         bullets: [
           '➔ defaultCertificate is intentionally unset so unknown hosts get Traefik default cert.',
           '➔ Projects simply write tls: {} on their IngressRoute without owning TLS Secrets.',
@@ -1280,42 +1299,42 @@
         ns: 'cert-manager',
         image: 'quay.io/jetstack/cert-manager-*:v1.21.2',
         oss: 'CNCF cert-manager (Apache-2.0)',
-        res: '3 Deployments (Restricted non-root)',
-        desc: 'Watches Certificate objects in namespace platform and reconciles ACME HTTP-01 orders with Let\'s Encrypt (vps-k3s) or selfsigned ClusterIssuer (local-k3s).',
+        res: 'GKE spot-controllers: 55m/240Mi total req',
+        desc: 'Watches Certificate objects in namespace platform and reconciles ACME HTTP-01 orders with Let\'s Encrypt (gke / vps-k3s) or local-rehearsal-ca (local-k3s). Scheduled onto spot-controllers in GKE.',
         bullets: [
           '➔ Configured with serviceType: ClusterIP on HTTP-01 solver to obey Principle II.',
-          '➔ Scoped exception in ValidatingAdmissionPolicy allows solver Pods/Services in platform.'
+          '➔ Transient Spot preemption never drops live HTTPS traffic (TLSStore secrets live in etcd).'
         ],
         path: 'deploy/platform/cert-manager/upstream/cert-manager.yaml'
       },
       'k3s-runtime': {
-        badge: 'CNI & Node Runtime (Spec 003 & 010)',
-        title: 'K3s v1.35.9+k3s1 + Cilium v1.20.3 eBPF + Hubble UI v0.13.6',
+        badge: 'CNI & Multi-Node Runtime (Spec 003, 010 & 012)',
+        title: 'GKE Dataplane V2 (2 Pools) & K3s + Cilium v1.20.3 eBPF',
         ns: 'Host OS / kube-system',
-        image: 'quay.io/cilium/cilium:v1.20.3 · hubble-ui:v0.13.6',
-        oss: 'CNCF K3s, Cilium & Hubble (Apache-2.0)',
-        res: 'sysReserved 200m/512Mi + Cilium/Hubble 225m/1248Mi',
-        desc: 'K3s boots with --flannel-backend=none --disable-network-policy. Ansible applies Git-vendored Cilium v1.20.3 eBPF CNI before Flux starts, enforcing both standard NetworkPolicies and identity-aware CiliumNetworkPolicies while streaming flow verdicts to Hubble Relay & Hubble UI.',
+        image: 'GKE Zonal Standard | Cilium v1.20.3 + Hubble v0.13.6',
+        oss: 'CNCF Kubernetes & Cilium (Apache-2.0)',
+        res: 'GKE: 1880m / 4408Mi (ondemand-core + spot-controllers)',
+        desc: 'GKE runs 1 × e2-medium On-Demand + 1 × e2-small Spot in asia-northeast3-a with managed Dataplane V2 eBPF; local-k3s runs K3s v1.35.9+k3s1 with Git-vendored Cilium v1.20.3 (policy-cidr-match-mode: "nodes") and Hubble UI.',
         bullets: [
-          '➔ Replaces Flannel + kube-router iptables policy with kernel eBPF programs.',
-          '➔ Hubble UI & Relay are ClusterIP-only; accessed privately via ./scripts/open-hubble-ui.sh (:12000).',
-          '➔ Worker node holds ZERO GHCR pull tokens; containerd mirrors ghcr.io to localhost:5000.'
+          '➔ Enforces identical standard networking.k8s.io/v1 NetworkPolicies via kernel eBPF across both environments.',
+          '➔ Hubble UI & Relay on K3s are ClusterIP-only; accessed privately via ./scripts/open-hubble-ui.sh (:12000).',
+          '➔ Worker nodes hold ZERO registry pull secrets; images pull by @sha256 from public GAR / GHCR.'
         ],
-        path: 'deploy/platform/cni/kustomization.yaml'
+        path: 'clusters/gke/capacity.yaml'
       },
       'flux': {
-        badge: 'GitOps Reconciler (Spec 004 & 010)',
+        badge: 'GitOps Reconciler (Spec 004, 010 & 012)',
         title: 'FluxCD v1.9.5 (source-controller & kustomize-controller)',
         ns: 'flux-system',
         image: 'ghcr.io/fluxcd/*-controller:v1.9.5',
         oss: 'CNCF FluxCD (Apache-2.0)',
-        res: '2 Controllers in flux-system',
-        desc: 'Continuously pulls git repository main branch and reconciles 10 ordered Kustomization layers (cni + governance roots -> vault / cert-manager / project-boundaries -> vault-proxies / database / projects -> identity -> ingress -> tls) with prune: true.',
+        res: 'GKE spot-controllers: 150m/128Mi req -> 1000m/256Mi lim',
+        desc: 'Continuously pulls git repository main branch and reconciles ordered Kustomization layers across gke, local-k3s, and vps-k3s with prune: true. Offloaded to spot-controllers on GKE.',
         bullets: [
           '➔ Automatically reverts any manual cluster drift.',
           '➔ Uses postBuild.substitute.AUTH_HOST exclusively on the ingress layer (Spec 004 R3).'
         ],
-        path: 'clusters/vps-k3s/layers.yaml'
+        path: 'clusters/gke/layers.yaml'
       },
       'vap': {
         badge: 'Cluster Governance Gate',
@@ -1326,8 +1345,8 @@
         res: 'API Server In-Process CEL',
         desc: 'Enforces GitOps exclusivity by rejecting any CREATE, UPDATE, or DELETE from human kubectl users across managed namespaces unless the user belongs to platform:break-glass.',
         bullets: [
-          '➔ Allows system:serviceaccount:flux-system:* and proj-pn:pn-reconciler.',
-          '➔ Allows cert-manager SA only within namespaces platform and cert-manager.'
+          '➔ Allows system:serviceaccount:flux-system:* and per-project reconciler SAs.',
+          '➔ Allowlists GKE control-plane system principals and *.gke.io / *.cloud.google.com CRDs.'
         ],
         path: 'deploy/platform/governance/manual-change-policy.yaml'
       },
@@ -1335,30 +1354,29 @@
         badge: 'Custom Go Service (Principle III)',
         title: 'Platform Auth Gateway (:8080)',
         ns: 'identity',
-        image: 'ghcr.io/nacfson/platform-auth-gateway@sha256:0258c395dc81bbf7cbff2d17e6e8d0b88a0372295fa85f2ee0a74efb29fb32c8 (sha-faa1536, PR #117)',
+        image: 'ghcr.io/nacfson/platform-auth-gateway@sha256:0258c395dc81bbf7cbff2d17e6e8d0b88a0372295fa85f2ee0a74efb29fb32c8',
         oss: 'Custom Go 1.22 (Zero 3rd-Party Runtime Deps)',
-        res: 'request 50m CPU · limit 100m CPU · 64Mi',
+        res: 'GKE: 25m/64Mi req · K3s: 50m/64Mi req -> 100m/64Mi lim',
         desc: 'Pure Go standard-library authentication service implementing OIDC Authorization Code + PKCE flow (with kc_idp_hint=google direct redirect per Spec 009), on-demand session confirmation (/auth), and CSRF-protected synchronous session revocation (/auth/logout).',
         bullets: [
           '➔ initContainer (curl:8.10.1) authenticates to OpenBao via K8s SA JWT and writes secrets to tmpfs.',
           '➔ Validates return_to host against PROJECT_RETURN_HOSTS before starting OIDC.',
-          '➔ Performs online session check against Keycloak on /auth. /auth/logout deletes the session as session-revocation-client and fails closed: a failed delete is 502/503, not revoked.'
+          '➔ Performs online session check against Keycloak on /auth and fails closed on /auth/logout.'
         ],
         path: 'gateway/cmd/gateway/main.go'
       },
       'keycloak': {
-        badge: 'Identity Provider & Broker',
-        title: 'Keycloak v24.0.5 (:8080)',
+        badge: 'Identity Provider & Broker (Spec 001 & 012)',
+        title: 'Keycloak v24.0.5 (:8080, Persistent User Sessions)',
         ns: 'identity',
         image: 'quay.io/keycloak/keycloak:24.0.5',
         oss: 'CNCF Keycloak (Apache-2.0)',
-        res: 'request 100m CPU · limit 500m CPU · 1536Mi',
-        desc: 'Central OIDC identity provider and session authority for the platform realm. Brokers Google OAuth2 sign-in, just-in-time creates the platform user on first Google SSO (AUTH-01), and issues project-scoped JWT access tokens.',
+        res: 'GKE: 100m/832Mi (ondemand-core) · K3s: 100m/1536Mi',
+        desc: 'Central OIDC identity provider for the platform realm with --features=persistent-user-sessions enabled so active logins persist in PostgreSQL across pod restarts and Gate 4 cutover.',
         bullets: [
           '➔ InitContainer fetches DB credentials and Google OAuth broker secret from OpenBao into memory.',
-          '➔ Realm import declares google jit first broker login: Review Profile off, Create User If Unique required, VERIFY_PROFILE disabled, trustEmail true.',
-          '➔ Public ingress exposes ONLY login-actions, OIDC auth, broker callback, and /resources.',
-          '➔ Admin console (/admin) and metrics (:9000) are strictly internal.'
+          '➔ Realm import declares google jit first broker login (AUTH-01); /admin & :9000 stay internal.',
+          '➔ Pinned 24/7 on GKE ondemand-core (never Spot) with -XX:MaxRAMPercentage=65.0 inside 832Mi.'
         ],
         path: 'deploy/platform/identity/keycloak-deployment.yaml'
       },
@@ -1368,27 +1386,27 @@
         ns: 'identity',
         image: 'postgres:16.8-alpine',
         oss: 'PostgreSQL Global Dev Group (PostgreSQL License)',
-        res: '100m CPU request (250m limit) / 256Mi RAM · 10Gi PVC',
-        desc: 'Single shared PostgreSQL instance hosting isolated databases and restricted roles for Keycloak (keycloak) and tenant projects (proj_pn / user_pn).',
+        res: 'GKE: 75m/256Mi req · K3s: 100m/256Mi req · 10Gi RWO PVC',
+        desc: 'Single shared PostgreSQL instance on ondemand-core hosting isolated databases and restricted roles for Keycloak (keycloak / keycloak_user) and tenant projects (proj_pn, proj_health).',
         bullets: [
           '➔ postgres-init-job provisions per-project databases and roles using credentials from OpenBao.',
           '➔ Tenant pods CANNOT reach Postgres directly; NetworkPolicy forces traffic through vault-db-proxy.',
-          '➔ Daily 00:00 UTC CronJob performs logical backups with 7-day retention.'
+          '➔ scripts/db-migrate-dump.sh (--keycloak | --project) streams SHA-256 verified logical dumps.'
         ],
         path: 'deploy/platform/database/postgres-statefulset.yaml'
       },
       'openbao': {
-        badge: 'Zero-Plaintext Secret Authority (Spec 002 & 010)',
+        badge: 'Zero-Plaintext Secret Authority (Spec 002, 010 & 012)',
         title: 'OpenBao v2.0.0 StatefulSet (:8200)',
         ns: 'vault',
         image: 'openbao/openbao:2.0.0',
         oss: 'Linux Foundation OpenBao (MPL-2.0)',
-        res: '50m-200m CPU / 64Mi-128Mi RAM · 10Gi PVC',
-        desc: 'Self-hosted open-source Vault fork providing KV v2 secret storage, Transit cryptographic signing engine, and Kubernetes ServiceAccount JWT authentication.',
+        res: 'GKE: 25m/128Mi req -> 200m/128Mi lim · 10Gi RWO PVC',
+        desc: 'Self-hosted open-source Vault fork providing KV v2 secret storage, Transit cryptographic signing engine, and Kubernetes ServiceAccount JWT authentication. Auto-unseals on GKE via Cloud KMS (gcpckms) and Workload Identity.',
         bullets: [
-          '➔ Egress tightened via CiliumNetworkPolicy/openbao-apiserver-egress (toEntities: ["kube-apiserver"]).',
-          '➔ Zero plaintext secrets ever touch Git, Helm values, or application pod env vars; openbao-backup uses raft-snapshot.hcl (encrypted snapshot read only, 403 on kv/*).',
-          '➔ vault-ai-proxy holds kv/ai/gemini-api-key in a mutable []byte RAM slice and zeroes every byte (0x00) immediately when the Kill Switch is STOPPED.'
+          '➔ Portable NetworkPolicy blocks 0.0.0.0/0 while allowing kube-apiserver + GKE KMS Private Google Access.',
+          '➔ Zero plaintext secrets or static GCP key files ever touch Git or pods (Amendment 2.3.0).',
+          '➔ Daily encrypted Raft snapshot CronJob + cutover-bundle.sh Shamir->gcpckms migration.'
         ],
         path: 'deploy/platform/vault/network-policy.yaml'
       },
@@ -1396,30 +1414,31 @@
         badge: 'Custom Go Wire Proxy (Spec 002)',
         title: 'vault-db-proxy (:5432)',
         ns: 'vault',
-        image: 'ghcr.io/nacfson/vault-db-proxy:latest',
+        image: 'ghcr.io/nacfson/vault-db-proxy@sha256:...',
         oss: 'Custom Go 1.22 Stdlib (Zero External Deps)',
-        res: '25m-100m CPU / 32Mi-64Mi RAM',
-        desc: 'Intercepts PostgreSQL wire-protocol connections from tenant workloads (proj-pn), fetches the latest user_pn password from OpenBao in memory, completes upstream MD5/SCRAM auth with Postgres, and streams SQL traffic.',
+        res: 'GKE: 20m/64Mi req · K3s: 25m/64Mi req',
+        desc: 'Intercepts PostgreSQL wire-protocol connections from tenant workloads (proj-pn, proj-health), fetches the latest role password from OpenBao in memory, completes upstream SCRAM/MD5 auth with Postgres, and streams SQL traffic.',
         bullets: [
-          '➔ Enforces ENFORCED_DB=proj_pn and ENFORCED_ROLE=user_pn.',
+          '➔ Enforces per-project database and role mapping (ALLOWED_PROJECTS="pn,health").',
           '➔ Application pods connect without passwords and never see DB credentials.',
           '➔ Supports zero-downtime credential rotation in OpenBao.'
         ],
         path: 'services/vault-proxies/cmd/db-proxy/main.go'
       },
-      'reg-proxy': {
-        badge: 'Custom Go OCI Proxy (Spec 002)',
-        title: 'vault-registry-proxy (:5000)',
+      'ai-notify-proxy': {
+        badge: 'Custom Go Proxies (Spec 011 & 012 · registry-proxy Retired)',
+        title: 'vault-ai-proxy & vault-notify-proxy (:8080)',
         ns: 'vault',
-        image: 'ghcr.io/nacfson/vault-registry-proxy:latest',
+        image: 'ghcr.io/nacfson/vault-{ai,notify}-proxy@sha256:...',
         oss: 'Custom Go 1.22 Stdlib (Zero External Deps)',
-        res: '25m-100m CPU / 32Mi-64Mi RAM',
-        desc: 'Intercepts containerd OCI registry pull requests from the K3s node, injects the read:packages GitHub PAT from OpenBao upstream to ghcr.io, strips auth headers on return, and streams clean OCI layers.',
+        res: 'GKE: 20m/64Mi + 15m/64Mi req',
+        desc: 'vault-ai-proxy injects Gemini API keys in RAM (wiping 0x00 on Kill Switch stop) and vault-notify-proxy delivers pod-attributed Discord webhooks. (vault-registry-proxy was retired in Spec 012 in favor of public GAR/GHCR @sha256 pulls.)',
         bullets: [
-          '➔ Eliminates Kubernetes imagePullSecrets from tenant namespaces.',
-          '➔ Confines GHCR token strictly inside the vault namespace memory.'
+          '➔ Portable NetworkPolicy restricts egress to TCP :443 minus RFC1918, 169.254.169.254/32, and 100.64.0.0/10.',
+          '➔ Loopback admin ports (127.0.0.1:8081) are unreachable from cluster network.',
+          '➔ API keys and Discord webhook URLs never leave namespace vault memory.'
         ],
-        path: 'services/vault-proxies/cmd/registry-proxy/main.go'
+        path: 'services/vault-proxies/cmd/ai-proxy/main.go'
       },
       'init-fetcher': {
         badge: 'Ephemeral Secret Hydration (Spec 005)',
@@ -1455,7 +1474,7 @@
         ns: 'proj-pn',
         image: 'ghcr.io/nacfson/project-pn-backend@sha256:eda08299...',
         oss: 'Go Application Server (Non-root UID 10001)',
-        res: '150m CPU / 512Mi RAM (req == lim)',
+        res: 'GKE: 100m/256Mi · K3s: 150m/512Mi (req == lim)',
         desc: 'Digest-pinned backend API server running with readOnlyRootFilesystem: true, automountServiceAccountToken: false, PUBLIC_APP_URL in ALLOWED_ORIGINS, and zero database or OAuth secrets in its environment.',
         bullets: [
           '➔ Connects to PostgreSQL exclusively via vault-db-proxy.vault.svc:5432 (sslmode=disable internal).',
@@ -1464,50 +1483,49 @@
         path: 'deploy/projects/pn/workloads/backend-deployment.yaml'
       },
       'pn-boundary': {
-        badge: 'Tenant Isolation Contract (ISOLATE-01)',
-        title: 'proj-pn Namespace Security & Network Boundary',
+        badge: 'Tenant Isolation Contract (ISOLATE-01 & Spec 012)',
+        title: 'proj-pn Namespace Security & Portable Network Boundary',
         ns: 'proj-pn',
-        image: 'PSS Restricted + NetworkPolicy + ResourceQuota',
+        image: 'PSS Restricted + Portable NetworkPolicy + ResourceQuota',
         oss: 'Kubernetes Native Isolation Controls',
-        res: 'Peak: 200m/640Mi · Quota: 850m CPU · 1536Mi RAM · 10 Pods',
-        desc: 'Platform-owned boundary layer reconciled before tenant workloads. Enforces Restricted Pod Security Admission, zero ServiceAccount token mounts, strict egress firewalling, and 1/n ResourceQuota.',
+        res: 'GKE Peak: 250m/384Mi (Quota 416Mi) · K3s Peak: 200m/640Mi (Quota 1536Mi)',
+        desc: 'Platform-owned boundary layer reconciled before tenant workloads. Enforces Restricted Pod Security Admission, zero ServiceAccount token mounts, portable networking.k8s.io/v1 egress firewalling, and 1/n ResourceQuota.',
         bullets: [
           '➔ services.nodeports: "0" and services.loadbalancers: "0" enforced at quota admission.',
           '➔ In-cluster egress: kube-dns (:53), vault-db-proxy (:5432), vault-ai-proxy (:8080), gateway (:8080), and intra-namespace.',
-          '➔ Cilium FQDN allow for pn-backend only: api.wiktapi.dev:443 (Gemini generativelanguage.googleapis.com:443 egresses exclusively from vault/vault-ai-proxy). Other world destinations stay dropped. check_translation_egress rejects any other public name.',
+          '➔ Portable NetworkPolicy for pn-backend only: TCP :443 (api.wiktapi.dev) minus RFC1918, 169.254.169.254/32, and 100.64.0.0/10 (Gemini generativelanguage.googleapis.com:443 egresses via vault/vault-ai-proxy).',
           '➔ Reconciler RBAC (pn-reconciler) cannot modify Quotas, NetworkPolicies, or RoleBindings.'
         ],
-        path: 'deploy/projects/pn/boundary/network-policy.yaml'
+        path: 'deploy/projects/pn/boundary/translation-egress.yaml'
       },
       'fluent-bit': {
-        badge: 'Platform log collector (Clarification 2.2.1)',
-        title: 'Fluent Bit 4.2.8 DaemonSet',
+        badge: 'Platform log collector (Clarification 2.2.1 & Amendment 2.3.0)',
+        title: 'Fluent Bit 4.2.8 DaemonSet (Solution B State)',
         ns: 'observability',
         image: 'fluent/fluent-bit:4.2.8',
         oss: 'Fluent Bit (Apache-2.0)',
-        res: '50m CPU · 64Mi (request = limit)',
-        desc: 'Platform collector, not a project workload. Mounts /var/log/pods read-only through hostPath and tails only proj-* container logs. Principle II and the hostPath rejection rule still apply to project namespaces and manifests.',
+        res: 'GKE: 25m/64Mi × 2 nodes · K3s: 50m/64Mi',
+        desc: 'Platform collector DaemonSet mounting /var/log/pods (read-only) and per-node /var/lib/fluent-bit-state (DirectoryOrCreate, SQLite WAL tail.db + 256 MiB filesystem chunk cap). Tolerates Spot taint on GKE.',
         bullets: [
-          '➔ Path glob is /var/log/pods/proj-* only. identity, vault, platform, and kube-system logs are not collected.',
-          '➔ Bookmarks tail.db on PVC fluent-bit-state at /state. Not an emptyDir.',
-          '➔ Sends json lines to victorialogs.observability.svc.cluster.local:9428.'
+          '➔ Path glob is /var/log/pods/proj-* only; platform and kube-system logs are never collected.',
+          '➔ Replaces single-node RWO PVC with per-node /var/lib/fluent-bit-state for multi-node crash/outage safety.',
+          '➔ Outputs to VictoriaLogs :9428 on local-k3s/vps-k3s and OCI Kafka (10.200.0.11..13:9092) on GKE.'
         ],
         path: 'deploy/platform/observability/fluent-bit-daemonset.yaml'
       },
       'victorialogs': {
-        badge: 'Platform log store',
-        title: 'VictoriaLogs v1.53.0 (:9428)',
+        badge: 'Local & Pre-Cutover Log Store (OCI Kafka on GKE)',
+        title: 'VictoriaLogs v1.53.0 (:9428) | GKE -> OCI Kafka',
         ns: 'observability',
         image: 'victoriametrics/victoria-logs:v1.53.0',
-        oss: 'VictoriaLogs (Apache-2.0)',
-        res: 'request 50m CPU · limit 500m CPU · 384Mi',
-        desc: 'ClusterIP log store in namespace observability. Not exposed by an IngressRoute. Flux layer observability dependsOn cni and governance.',
+        oss: 'VictoriaLogs / Apache Kafka (Apache-2.0)',
+        res: 'K3s: 50m/384Mi req · Deleted on GKE (0 MiB)',
+        desc: 'ClusterIP log store on local-k3s (and vps-k3s pre-cutover). Deleted in clusters/gke/observability/ where Fluent Bit ships directly to the 3-broker OCI Kafka cluster over WireGuard (Spec 013/014).',
         bullets: [
-          '➔ Listens on :9428. Insert path is /insert/jsonline.',
-          '➔ 10Gi PVC, 30d retention, 8Gi disk cap.',
-          '➔ VPS UI is scripts/open-observe.sh. local-k3s UI is scripts/open-victorialogs-ui.sh. No public route.'
+          '➔ local-k3s / vps-k3s: 10Gi PVC, 30d retention, 8Gi disk cap, private tunnel UI.',
+          '➔ GKE: error-detector paused at replicas: 0 (25m/64Mi pre-reserved) until Spec 014 Kafka consumer.'
         ],
-        path: 'deploy/platform/observability/victorialogs-statefulset.yaml'
+        path: 'clusters/gke/observability/kustomization.yaml'
       }
     };
 
@@ -1709,14 +1727,14 @@
           guard: 'Prevents cross-database escalation: pn-backend cannot request database=keycloak even if it alters its connection string.'
         },
         {
-          title: '5. K3s Kubelet Pulls Private Image via vault-registry-proxy',
-          spec: 'Spec 002 · Contract registry-proxy.md',
-          from: 'K3s containerd',
-          to: 'vault-registry-proxy (:5000) -> ghcr.io',
-          proto: 'HTTP OCI Distribution API (/v2/nacfson/project-pn-*/manifests/sha256:...)',
-          desc: 'When scheduling a pod, containerd mirrors ghcr.io requests to localhost:5000 (vault-registry-proxy). The proxy fetches the read:packages PAT from OpenBao, injects Authorization: Bearer upstream to ghcr.io, strips auth headers, and streams blobs back.',
-          code: `# /etc/rancher/k3s/registries.yaml\nmirrors:\n  "ghcr.io":\n    endpoint:\n      - "http://localhost:5000"`,
-          guard: 'Zero GHCR pull tokens exist in proj-pn or on worker node disk; rotating the PAT in OpenBao updates pulls cluster-wide.'
+          title: '5. Zero-Plaintext AI & Notify Proxies + Public GAR / GHCR @sha256 Pulls',
+          spec: 'Spec 002 & 012 · services/vault-proxies + deploy/gcp',
+          from: 'pn-backend / error-detector / Kubelet',
+          to: 'vault-ai-proxy & vault-notify-proxy (:8080) · GAR / GHCR',
+          proto: 'HTTP Proxy Credential Injection + Unauthenticated @sha256 OCI Pull',
+          desc: 'vault-ai-proxy injects Gemini API keys in RAM (wiping 0x00 when stopped) and vault-notify-proxy delivers pod-attributed Discord alerts. Spec 012 retires vault-registry-proxy in favor of multi-arch Cloud Build images pushed to public GAR (asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public) and GHCR pinned by @sha256.',
+          code: `# deploy/gcp/cloudbuild.yaml -> public GAR (2-digest / 7d cleanup policy)\nasia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public/<image>@sha256:...`,
+          guard: 'Zero imagePullSecrets or node-level PATs exist in any namespace or worker node.'
         }
       ],
       bootstrap: [
@@ -1727,80 +1745,80 @@
           to: 'Target Linux VM (Oracle ARM64 / Local)',
           proto: 'SSH + Ansible Playbook',
           desc: 'Validates environment variables (cluster_environment, gitops_repo_url, gitops_branch) and checks OS kernel, swap disabled, required ports (6443, 80, 443), and disk/memory capacity before installing anything.',
-          code: `ansible-playbook -i bootstrap/inventory/hosts.ini bootstrap/bootstrap.yml \\\n  -e cluster_environment=vps-k3s`,
+          code: `ansible-playbook -i bootstrap/inventory/hosts.ini bootstrap/bootstrap.yml \\\n  -e cluster_environment=local-k3s`,
           guard: 'Spec 003 Scope Boundary: Bootstrap NEVER creates application namespaces, secrets, or tenant workloads.'
         },
         {
-          title: '2. Stage 3: Install K3s v1.35.9+k3s1 (Flannel & Kube-Router Disabled)',
-          spec: 'Spec 003 & 010 · bootstrap/roles/k3s_runtime',
-          from: 'Ansible k3s_runtime Role',
-          to: 'K3s Systemd Service',
-          proto: '--flannel-backend=none --disable-network-policy',
-          desc: 'Installs K3s with pinned version v1.35.9+k3s1, configures /etc/rancher/k3s/registries.yaml to mirror ghcr.io -> localhost:5000, and disables bundled Flannel and kube-router so Cilium eBPF owns CNI networking.',
-          code: `INSTALL_K3S_VERSION: "v1.35.9+k3s1"\nK3S_EXEC: "server --flannel-backend=none --disable-network-policy"`,
-          guard: 'Before Cilium reconciles in Stage 5, non-hostNetwork pods stay Pending (ContainerCreating) by design.'
+          title: '2. Stage 3: Install K3s v1.35.9+k3s1 (or Provision Zonal GKE Standard)',
+          spec: 'Spec 003, 010 & 012 · bootstrap/ & clusters/gke/',
+          from: 'Ansible / gcloud container clusters create',
+          to: 'K3s Service | GKE Zonal Standard (asia-northeast3-a)',
+          proto: '--flannel-backend=none (K3s) | --enable-dataplane-v2 --logging=NONE --monitoring=NONE (GKE)',
+          desc: 'Local dev installs K3s v1.35.9+k3s1 with Flannel/kube-router disabled so Cilium owns CNI. Production GKE runs 1 × e2-medium On-Demand (ondemand-core) + 1 × e2-small Spot (spot-controllers) in nacfson-pipeline with Dataplane V2 and Workload Identity.',
+          code: `# GKE Design 1 (Spec 012): zero control-plane fee, zero GCP LoadBalancer\nondemand-core:    1 × e2-medium (940m / 2972Mi allocatable, static IP :80/:443)\nspot-controllers: 1 × e2-small  (940m / 1436Mi allocatable, tainted gke-spot)`,
+          guard: 'Both local-k3s and gke enforce identical standard networking.k8s.io/v1 NetworkPolicy manifests.'
         },
         {
           title: '3. Stage 4 & 5: Control-Plane Readiness & FluxCD GitOps Hand-off',
-          spec: 'Spec 003 & 004 · bootstrap/roles/gitops_reconciler',
-          from: 'Ansible gitops_reconciler Role',
+          spec: 'Spec 003, 004 & 012 · clusters/<env>/flux-system',
+          from: 'Bootstrap / Operator CLI',
           to: 'Namespace flux-system',
-          proto: 'kubectl apply clusters/<env>/flux-system',
-          desc: 'Verifies Kubernetes API readiness, applies FluxCD v1.9.5 controllers (which use hostNetwork or start as soon as cni layer applies), and registers the GitRepository and root Kustomization.',
-          code: `# Flux immediately begins reconciling Layer 1a (cni) & Layer 1b (governance)\nkubectl get kustomizations -n flux-system`,
-          guard: 'Once Flux is running, Ansible exits permanently; all further cluster state is 100% pull-based from Git.'
+          proto: 'kubectl apply -k clusters/<env>/flux-system',
+          desc: 'Verifies Kubernetes API readiness, applies FluxCD v1.9.5 controllers (scheduled onto spot-controllers on GKE), and registers the GitRepository and root Kustomization.',
+          code: `# Flux immediately begins reconciling clusters/gke or clusters/local-k3s\nkubectl get kustomizations -n flux-system`,
+          guard: 'Once Flux is running, all cluster state is 100% pull-based from Git.'
         },
         {
-          title: '4. Day-1 Post-Vault Initialization & Unseal',
-          spec: 'Spec 002 & 005 · scripts/vault-init.sh',
+          title: '4. Full-State Cutover Bundle Restore & Cloud KMS Auto-Unseal',
+          spec: 'Spec 002, 005 & 012 · scripts/cutover-bundle.sh',
           from: 'Operator Break-Glass CLI',
-          to: 'OpenBao StatefulSet (ns: vault)',
-          proto: 'scripts/vault-init.sh & scripts/vault-seed.sh',
-          desc: 'On initial cluster creation (or after a VM reboot), the operator runs vault-init.sh / vault-unseal.sh to unseal OpenBao in memory and seeds KV v2 paths and Kubernetes Auth roles via vault-seed.sh.',
-          code: `./scripts/vault-unseal.sh\n./scripts/vault-seed.sh --env vps-k3s`,
-          guard: 'Unseal keys and root token are stored offline by the operator — never in Git, Kubernetes Secrets, or host files.'
+          to: 'OpenBao (ns: vault) & PostgreSQL (ns: identity)',
+          proto: 'cutover-bundle.sh export | verify | restore -> gcpckms migrate',
+          desc: 'On local-k3s, vault-init.sh/vault-unseal.sh unseals OpenBao with Shamir keys. For GKE Gate 4 cutover, cutover-bundle.sh verifies SHA-256 checksums, suspends Flux vault, restores the Raft snapshot + keycloak/proj_pn/proj_health DBs + TLS secrets, re-binds K8s SA auth, and migrates OpenBao to Cloud KMS (gcpckms) auto-unseal.',
+          code: `./scripts/cutover-bundle.sh verify --bundle-dir "$BUNDLE_DIR"\n./scripts/cutover-bundle.sh restore --target gke --bundle-dir "$BUNDLE_DIR"`,
+          guard: 'Bundle lives strictly outside Git (chmod 0700); GKE Workload Identity uses zero static GCP key files.'
         }
       ],
       gitops: [
         {
           title: '1. Candidate Revision & CI Invariant Validation',
-          spec: 'Spec 004 · DEPLOY-04',
+          spec: 'Spec 004 & 012 · DEPLOY-04',
           from: 'Developer / PR',
           to: 'GitHub Actions (gitops.yaml)',
-          proto: 'scripts/render-validate.sh & scripts/render-invariants.py',
-          desc: 'Every pull request renders the Kustomize layers for both local-k3s and vps-k3s and checks 9 structural invariants (e.g., postBuild restricted solely to ingress AUTH_HOST, no unresolved ${...} in IngressRoutes).',
-          code: `# Invariant 1 & 9 in scripts/render-invariants.py:\n- postBuild allowed ONLY on layer 'ingress', ONLY key 'AUTH_HOST'\n- Zero unresolved '\${' or empty Host() in rendered IngressRoutes`,
-          guard: 'Prevents Flux variable substitution from corrupting ${VAULT_TOKEN} shell scripts in initContainers.'
+          proto: 'scripts/render-validate.sh {local-k3s,gke,vps-k3s} & render-invariants.py',
+          desc: 'Every pull request renders the Kustomize layers across local-k3s, gke, and vps-k3s, validates schemas with kubeconform, and enforces structural invariants (postBuild restricted to ingress AUTH_HOST, zero Service LoadBalancer/NodePort, Traefik hostPort 80/443 only).',
+          code: `./scripts/render-validate.sh local-k3s\n./scripts/render-validate.sh gke\n./scripts/render-validate.sh vps-k3s`,
+          guard: 'Prevents Flux variable substitution leaks and blocks paid cloud LoadBalancers offline before merge.'
         },
         {
-          title: '2. 1/n Resource Budget & Peak Memory Envelope Gate',
-          spec: 'Spec 001 & 004 · RESOURCE-02',
+          title: '2. Multi-Node 1/n Resource Budget & Per-Pool Fit Gate',
+          spec: 'Spec 001, 004 & 012 · RESOURCE-02',
           from: 'GitHub Actions',
           to: 'scripts/platform-preflight.py',
           proto: 'Python Preflight Check against clusters/*/capacity.yaml',
-          desc: 'platform-preflight.py calculates peak concurrent CPU and memory (including Deployment rollout surge and CronJob concurrency) and verifies every project fits its 1/n slice without shrinking existing peak memory limits.',
+          desc: 'platform-preflight.py multiplies DaemonSets across nodeCount, checks On-Demand vs. Spot node-pool CPU/RAM fit (forbidding RWO PVCs, keycloak, and proj-* on Spot), reserves >= 50m / 192 MiB backup headroom on ondemand-core, and verifies every project fits its 1/n slice.',
           code: `Application Capacity = Node Allocatable - Shared Platform Allocation\nPer-Project Budget   = Application Capacity / Deployed Project Count (n)`,
-          guard: 'Fails closed if committed allocatable capacity exceeds observed node capacity or if requests != limits.'
+          guard: 'Fails closed if any pool overflows, if Spot hosts stateful/auth pods, or if project requests != limits.'
         },
         {
-          title: '3. FluxCD Pull-Based 10-Layer DAG Reconciliation',
-          spec: 'Spec 004 & 010 · Principle I',
+          title: '3. FluxCD Pull-Based Ordered DAG Reconciliation',
+          spec: 'Spec 004, 010 & 012 · Principle I',
           from: 'FluxCD (flux-system)',
           to: 'Kubernetes API Server',
-          proto: 'GitRepository -> 10 Ordered Kustomizations (interval: 5m)',
-          desc: 'Once merged to main, source-controller fetches the revision and kustomize-controller applies 10 layers in dependency order: (cni, governance) -> (vault, cert-manager, project-boundaries) -> (vault-proxies, database, projects) -> identity -> ingress -> tls.',
+          proto: 'GitRepository -> Ordered Kustomizations (interval: 5m)',
+          desc: 'Once merged to main, source-controller fetches the revision and kustomize-controller applies all layers in dependency order (governance -> cert-manager / vault / project-boundaries / observability -> vault-proxies / database / projects -> identity -> traefik -> ingress -> tls) with prune: true.',
           code: `spec:\n  interval: 5m\n  prune: true\n  wait: true\n  sourceRef:\n    kind: GitRepository\n    name: flux-system`,
           guard: 'prune: true ensures deleted manifests in Git are garbage-collected in the cluster.'
         },
         {
           title: '4. ValidatingAdmissionPolicy Blocks Manual Drift',
-          spec: 'Spec 004 · deploy/platform/governance/manual-change-policy.yaml',
+          spec: 'Spec 004 & 012 · deploy/platform/governance/manual-change-policy.yaml',
           from: 'Operator kubectl',
           to: 'Kubernetes API Server (CEL Admission)',
           proto: 'ValidatingAdmissionPolicy: gitops-managed-namespaces',
-          desc: 'If an operator attempts kubectl edit/apply/delete directly in managed namespaces, the CEL admission policy rejects the request immediately unless the user authenticates with the platform:break-glass group.',
+          desc: 'If an operator attempts kubectl edit/apply/delete directly in managed namespaces, the CEL admission policy rejects the request immediately unless authenticated with platform:break-glass (while allowlisting GKE control-plane system principals).',
           code: `message: "Manual change rejected: merge to main in github.com/nacfson/nacfson_pipeline, or use the break-glass procedure (operations §12)."`,
-          guard: 'Guarantees Git remains the single source of truth at runtime.'
+          guard: 'Guarantees Git remains the single source of truth at runtime across K3s and GKE.'
         }
       ],
       tls: [
@@ -1837,34 +1855,34 @@
       ],
       cni: [
         {
-          title: '1. Flux Layer 1a Deploys Cilium v1.20.3 eBPF Datapath',
-          spec: 'Spec 010 · deploy/platform/cni/cilium.yaml',
-          from: 'Flux cni Layer',
-          to: 'Namespace kube-system (DaemonSet/cilium)',
-          proto: 'eBPF tc/socket hooks + VXLAN overlay',
-          desc: 'Flux reconciles deploy/platform/cni before vault or tenant pods start. Cilium attaches eBPF programs directly to Linux kernel network hooks and assigns cryptographic security identities to every pod.',
-          code: `image: quay.io/cilium/cilium:v1.20.3\nargs:\n  - --enable-ipv4=true\n  - --enable-hubble=true\n  - --hubble-metrics=dns,drop,tcp,flow,icmp,http`,
-          guard: 'Vault layer dependsOn: [cni, governance] guarantees pod networking and policy enforcement exist before StatefulSets start.'
+          title: '1. eBPF Datapath: Cilium v1.20.3 (local-k3s) & Dataplane V2 (GKE)',
+          spec: 'Spec 010 & 012 · deploy/platform/cni/',
+          from: 'Flux cni Layer / GKE Dataplane V2',
+          to: 'Kernel eBPF Hooks',
+          proto: 'eBPF tc/socket hooks + policy-cidr-match-mode: "nodes"',
+          desc: 'On local-k3s, Flux reconciles Cilium v1.20.3 with policy-cidr-match-mode: "nodes" in ConfigMap/cilium-config; on GKE, managed Dataplane V2 runs Cilium eBPF in system space with zero tenant pool RAM cost.',
+          code: `# deploy/platform/cni/kustomization.yaml\npatches:\n  - target: { kind: ConfigMap, name: cilium-config }\n    patch: policy-cidr-match-mode: "nodes"`,
+          guard: 'Identical standard networking.k8s.io/v1 NetworkPolicy manifests execute on both clusters.'
         },
         {
-          title: '2. L3/L4 NetworkPolicy Isolates Tenant Namespace (proj-pn)',
-          spec: 'Spec 001 & 010 · deploy/projects/pn/boundary/networkpolicy.yaml',
-          from: 'Cilium eBPF Policy Engine',
+          title: '2. Portable L3/L4 NetworkPolicy Isolates Tenant Namespace (proj-pn)',
+          spec: 'Spec 001, 010 & 012 · deploy/projects/pn/boundary/',
+          from: 'eBPF Policy Engine',
           to: 'Namespace proj-pn',
-          proto: 'Default-Deny Ingress/Egress + Explicit Allowlist',
-          desc: 'Cilium compiles proj-pn policy into kernel eBPF maps. Ingress is allowed only from Traefik and intra-namespace pods. In-cluster egress is CoreDNS, vault-db-proxy, vault-ai-proxy, and gateway. pn-backend only: api.wiktapi.dev:443 (while vault/vault-ai-proxy owns generativelanguage.googleapis.com:443). Every other world destination stays dropped.',
-          code: `# Allowed egress from proj-pn:\n1. kube-system CoreDNS (UDP/TCP 53)\n2. vault/vault-db-proxy (TCP 5432) & vault/vault-ai-proxy (TCP 8080)\n3. identity/gateway (TCP 8080)\n4. pn-backend only: api.wiktapi.dev:443 (Gemini via vault/vault-ai-proxy)\n# Other world destinations, postgres:5432, and openbao:8200 stay dropped`,
-          guard: 'Blocks lateral movement to PostgreSQL and OpenBao. Public egress from pn-backend is api.wiktapi.dev:443 only; Gemini egresses via vault-ai-proxy.'
+          proto: 'Default-Deny + PortableEgressPolicy (TCP :443 minus private/metadata)',
+          desc: 'Ingress is allowed only from Traefik and intra-namespace pods. In-cluster egress is CoreDNS, vault-db-proxy, vault-ai-proxy, and gateway. pn-backend adds portable TCP :443 egress (api.wiktapi.dev) excluding RFC1918, 169.254.169.254/32, and 100.64.0.0/10, while vault/vault-ai-proxy owns generativelanguage.googleapis.com:443.',
+          code: `# Allowed egress from proj-pn:\n1. kube-system CoreDNS (UDP/TCP 53)\n2. vault/vault-db-proxy (:5432) & vault/vault-ai-proxy (:8080)\n3. identity/gateway (:8080)\n4. pn-backend TCP :443 minus [10/8, 172.16/12, 192.168/16, 169.254.169.254/32, 100.64/10]`,
+          guard: 'Blocks lateral movement to PostgreSQL, OpenBao, cloud metadata, and private networks.'
         },
         {
-          title: '3. CiliumNetworkPolicy Resolves kube-apiserver Entity for OpenBao',
-          spec: 'Spec 010 · deploy/platform/vault/networkpolicy.yaml',
+          title: '3. Portable NetworkPolicy Protects OpenBao API & Cloud KMS Egress',
+          spec: 'Spec 010 & 012 · deploy/platform/vault/network-policy.yaml',
           from: 'OpenBao (:8200)',
-          to: 'Kubernetes API Server (TokenReview)',
-          proto: 'CiliumNetworkPolicy toEntities: ["kube-apiserver"]',
-          desc: 'On single-node K3s, the API server resides on the host IP where standard CIDR NetworkPolicies fail after SNAT. Cilium tracks the API server dynamically via the reserved kube-apiserver entity so OpenBao can validate ServiceAccount JWTs.',
-          code: `apiVersion: cilium.io/v2\nkind: CiliumNetworkPolicy\nmetadata:\n  name: vault-apiserver-egress\n  namespace: vault\nspec:\n  endpointSelector:\n    matchLabels: { app: openbao }\n  egress:\n    - toEntities: ["kube-apiserver"]`,
-          guard: 'Eliminates brittle node-IP hardcoding while keeping vault egress default-deny.'
+          to: 'Kubernetes API Server & GKE Cloud KMS',
+          proto: 'networking.k8s.io/v1 NetworkPolicy (0.0.0.0/0 forbidden)',
+          desc: 'OpenBao validates ServiceAccount JWTs against kube-apiserver via RFC1918 :443/:6443 ipBlock (matched on single-node K3s via policy-cidr-match-mode: "nodes"). On GKE, narrow rules add Workload Identity (169.254.169.254/32:80,988) and Private Google Access (199.36.153.8/30:443) for gcpckms auto-unseal.',
+          code: `# platform-preflight.py invariant:\n# 0.0.0.0/0 egress is strictly FORBIDDEN on vault/openbao across all clusters!`,
+          guard: 'Keeps vault egress default-deny with zero wildcard internet access.'
         },
         {
           title: '4. Hubble Relay & UI Stream Real-Time Flow Verdicts',
@@ -1931,24 +1949,24 @@
           guard: 'Only proj-* paths are in scope. Platform and kube-system log files stay on the node.'
         },
         {
-          title: '2. Fluent Bit tails proj-* files through a read-only hostPath',
-          spec: 'Clarification 2.2.1 · fluent-bit-daemonset.yaml',
-          from: 'Fluent Bit 4.2.8 (observability)',
-          to: 'hostPath /var/log/pods (read-only)',
-          proto: 'tail input · Mem_Buf_Limit · DB /state/tail.db',
-          desc: 'The platform DaemonSet mounts /var/log/pods read-only. It is not a project workload, so Principle II and the hostPath rejection rule apply to project namespaces and manifests only. The tail bookmark lives on PVC fluent-bit-state, not emptyDir.',
-          code: `image: fluent/fluent-bit:4.2.8\nPath /var/log/pods/proj-*\nDB /state/tail.db`,
-          guard: 'Project manifests still cannot declare hostPath. One read-only node mount, one platform pod.'
+          title: '2. Fluent Bit Solution B persists per-node state on /var/lib/fluent-bit-state',
+          spec: 'Amendment 2.3.0 & Spec 012 · fluent-bit-daemonset.yaml',
+          from: 'Fluent Bit 4.2.8 DaemonSet (observability)',
+          to: 'hostPath /var/log/pods (ro) + /var/lib/fluent-bit-state (rw)',
+          proto: 'SQLite WAL /state/tail.db + filesystem /state/chunks (256M cap)',
+          desc: 'Spec 012 replaces the single-node RWO PVC with per-node hostPath /var/lib/fluent-bit-state (DirectoryOrCreate) so every GKE node (including spot-controllers) tracks its own inode offsets and buffers up to 256 MiB of chunks across restarts and sink outages.',
+          code: `image: fluent/fluent-bit:4.2.8\nDB /state/tail.db (DB.sync normal, WAL)\nstorage.path /state/chunks (storage.total_limit_size 256M)`,
+          guard: 'Project manifests still cannot declare hostPath; preflight restricts both hostPaths exclusively to DaemonSet/fluent-bit in observability.'
         },
         {
-          title: '3. JSON lines go to VictoriaLogs on the cluster network',
-          spec: 'deploy/platform/observability/fluent-bit-configmap.yaml',
+          title: '3. Validated & redacted lines ship to VictoriaLogs (local-k3s) or OCI Kafka (GKE)',
+          spec: 'Spec 011 & 012 · fluent-bit-configmap.yaml & fluent-bit-kafka.conf',
           from: 'Fluent Bit',
-          to: 'VictoriaLogs v1.53.0 (:9428)',
-          proto: 'HTTP POST /insert/jsonline',
-          desc: 'Fluent Bit sends json lines to victorialogs.observability.svc.cluster.local:9428. Stream fields are project, container, and pod. Egress is DNS plus that ClusterIP only.',
-          code: `Host victorialogs.observability.svc.cluster.local\nPort 9428\nURI /insert/jsonline?_stream_fields=project,container,pod&_msg_field=message&_time_field=time`,
-          guard: 'No 0.0.0.0/0 egress. VictoriaLogs has no public IngressRoute.'
+          to: 'VictoriaLogs (:9428) | OCI Kafka (10.200.0.11..13:9092)',
+          proto: 'HTTP /insert/jsonline (local-k3s) | Kafka acks=-1 idempotent (GKE)',
+          desc: 'On local-k3s (and vps-k3s pre-cutover), Fluent Bit posts JSON lines to VictoriaLogs ClusterIP :9428. On GKE, VictoriaLogs is deleted and Fluent Bit streams proj.* (192M cap -> logs.proj.valid) and quarantine.* (64M cap -> logs.proj.quarantine) over WireGuard to the 3-broker OCI Kafka cluster.',
+          code: `# GKE clusters/gke/observability/fluent-bit-kafka.conf\nBrokers 10.200.0.11:9092,10.200.0.12:9092,10.200.0.13:9092\nrdkafka.request.required.acks -1 · rdkafka.enable.idempotence true`,
+          guard: 'No 0.0.0.0/0 egress; GKE Fluent Bit egresses only to CoreDNS and 10.200.0.11..13:9092.'
         },
         {
           title: '4. Operator reads the store through a private tunnel',
@@ -2027,160 +2045,188 @@
     // =========================================================================
     // 3. FLUX GITOPS DAG EXPLORER DATA
     // =========================================================================
-    let currentDagEnv = 'vps-k3s';
+    let currentDagEnv = 'gke';
     let currentDagLayer = 'ingress';
 
     const DAG_LAYERS = {
       'cni': {
-        title: '1a. cni (Root Layer — Cilium eBPF & Hubble)',
+        title: '1a. cni (Root Layer on K3s — Managed Dataplane V2 on GKE)',
         path: './deploy/platform/cni',
-        deps: 'None (Root)',
-        desc: 'Deploys Cilium v1.20.3 eBPF CNI DaemonSet, Cilium Operator, Hubble Relay v1.20.3, and Hubble UI v0.13.6 in namespace kube-system. Replaces K3s Flannel and kube-router.',
+        deps: 'None (Root on local-k3s / vps-k3s; omitted on gke)',
+        desc: 'Deploys Cilium v1.20.3 eBPF CNI DaemonSet (with policy-cidr-match-mode: "nodes" in ConfigMap/cilium-config), Cilium Operator, Hubble Relay v1.20.3, and Hubble UI v0.13.6 on K3s. Omitted on GKE where Google-managed Dataplane V2 enforces the exact same networking.k8s.io/v1 NetworkPolicy manifests.',
         yaml: {
-          'vps-k3s': `dependsOn: [] (Root Layer)\npath: ./deploy/platform/cni\nimages:\n  - quay.io/cilium/cilium:v1.20.3\n  - quay.io/cilium/operator-generic:v1.20.3\n  - quay.io/cilium/hubble-relay:v1.20.3\n  - quay.io/cilium/hubble-ui:v0.13.6`,
-          'local-k3s': `dependsOn: [] (Root Layer)\npath: ./deploy/platform/cni (identical Cilium v1.20.3 manifest)`
+          'gke': `# Omitted in clusters/gke/layers.yaml:\n# GKE Dataplane V2 (--enable-dataplane-v2) provides managed Cilium eBPF\n# inside GKE system space with zero tenant node-pool memory overhead.`,
+          'vps-k3s': `dependsOn: [] (Root Layer)\npath: ./deploy/platform/cni\npatches:\n  - ConfigMap/cilium-config: policy-cidr-match-mode="nodes"`,
+          'local-k3s': `dependsOn: [] (Root Layer)\npath: ./deploy/platform/cni\npatches:\n  - ConfigMap/cilium-config: policy-cidr-match-mode="nodes"`
         }
       },
       'governance': {
         title: '1b. governance (Root Layer)',
         path: './deploy/platform/governance',
         deps: 'None (Root)',
-        desc: 'Establishes core namespaces (identity, platform, governance), base NetworkPolicies, break-glass RBAC, operator access, and the ValidatingAdmissionPolicies that block manual kubectl changes.',
+        desc: 'Establishes core namespaces (identity, platform, governance), base NetworkPolicies, break-glass RBAC, operator access, and the ValidatingAdmissionPolicies that block manual kubectl changes while allowlisting GKE control-plane principals and CRD suffixes.',
         yaml: {
-          'vps-k3s': `resources:\n  - namespaces.yaml (identity, platform, governance)\n  - base-network-policy.yaml\n  - manual-change-policy.yaml (ValidatingAdmissionPolicy)\n  - break-glass-rbac.yaml & operator-access.yaml\n  - openbao-rbac.yaml`,
-          'local-k3s': `resources:\n  - Identical base governance manifests\n  - Enforces ValidatingAdmissionPolicy across all 8 namespaces`
+          'gke': `dependsOn: [] (Root Layer)\nresources:\n  - namespaces.yaml, base-network-policy.yaml, openbao-rbac.yaml\n  - manual-change-policy.yaml (allowlists system:gke-common-webhooks,\n    system:gcp-controller-manager, system:addon-manager, system:cluster-autoscaler,\n    system:serviceaccount:gke-managed-*, and *.gke.io / *.cloud.google.com CRDs)`,
+          'vps-k3s': `resources:\n  - namespaces.yaml (identity, platform, governance)\n  - base-network-policy.yaml & manual-change-policy.yaml\n  - break-glass-rbac.yaml, operator-access.yaml & openbao-rbac.yaml`,
+          'local-k3s': `resources:\n  - Identical governance manifests shared with clusters/gke/`
         }
       },
       'cert-manager': {
         title: '2a. cert-manager',
         path: './deploy/platform/cert-manager',
         deps: 'governance',
-        desc: 'Deploys upstream cert-manager v1.21.2 (controller, webhook, cainjector) and CRDs with Restricted Pod Security compliance (runAsNonRoot: true, seccompProfile: RuntimeDefault, drop ALL capabilities).',
+        desc: 'Deploys upstream cert-manager v1.21.2 (controller, webhook, cainjector) and CRDs with Restricted Pod Security compliance. Scheduled onto spot-controllers (e2-small) in GKE.',
         yaml: {
-          'vps-k3s': `dependsOn: [governance]\nimages:\n  - quay.io/jetstack/cert-manager-controller:v1.21.2\n  - quay.io/jetstack/cert-manager-webhook:v1.21.2\n  - quay.io/jetstack/cert-manager-cainjector:v1.21.2`,
-          'local-k3s': `dependsOn: [governance]\nimages:\n  - Same pinned v1.21.2 upstream manifest`
+          'gke': `dependsOn: [governance]\npatches (spot-controllers e2-small placement + right-sized limits):\n  - cert-manager:            20m/128Mi req -> 100m/128Mi lim\n  - cert-manager-cainjector: 20m/64Mi  req -> 100m/64Mi  lim\n  - cert-manager-webhook:    15m/48Mi  req -> 100m/48Mi  lim`,
+          'vps-k3s': `dependsOn: [governance]\nimages: quay.io/jetstack/cert-manager-{controller,webhook,cainjector}:v1.21.2`,
+          'local-k3s': `dependsOn: [governance]\nimages: Same pinned v1.21.2 upstream manifest`
         }
       },
       'vault': {
-        title: '2b. vault (OpenBao Server & Policies)',
+        title: '2b. vault (OpenBao Server & Portable Policies)',
         path: './deploy/platform/vault',
-        deps: 'cni, governance',
-        desc: 'Deploys the OpenBao 2.0.0 StatefulSet in namespace vault, 8 HCL policies (including sys/storage/raft/snapshot on operator-admin), vault NetworkPolicy + CiliumNetworkPolicy (kube-apiserver entity), and daily Raft snapshot CronJob.',
+        deps: 'governance (plus cni on K3s)',
+        desc: 'Deploys OpenBao 2.0.0 StatefulSet in namespace vault, 7 HCL policies (registry-proxy retired), portable NetworkPolicy, and daily Raft snapshot CronJob. On GKE, enables Cloud KMS (gcpckms) auto-unseal via Workload Identity.',
         yaml: {
-          'vps-k3s': `dependsOn: [cni, governance]\nhealthChecks:\n  - kind: StatefulSet, name: openbao, namespace: vault\npolicies:\n  - db-proxy, registry-proxy, gateway-transit, keycloak-broker,\n    postgres-init, postgres-server, backup-job, operator-admin`,
+          'gke': `dependsOn: [governance]\npatches:\n  - ServiceAccount/openbao: iam.gke.io/gcp-service-account=openbao-kms@nacfson-pipeline.iam.gserviceaccount.com\n  - StatefulSet/openbao: seal "gcpckms" (project=nacfson-pipeline, region=asia-northeast3)\n  - NetworkPolicy/openbao-ingress-policy: +169.254.169.254/32:80,988 & 199.36.153.8/30:443 (0.0.0.0/0 forbidden)`,
+          'vps-k3s': `dependsOn: [cni, governance]\nhealthChecks:\n  - kind: StatefulSet, name: openbao, namespace: vault\npolicies: db-proxy, ai-proxy, notify-proxy, gateway-transit, keycloak-broker, postgres-*, raft-snapshot, operator-admin`,
           'local-k3s': `dependsOn: [cni, governance]\nhealthChecks:\n  - kind: StatefulSet, name: openbao, namespace: vault`
         }
       },
       'project-boundaries': {
         title: '2c. project-boundaries (Tenant Sandbox — proj-pn)',
         path: './deploy/projects/pn/boundary',
-        deps: 'cni, governance',
-        desc: 'Creates namespace proj-pn with Pod Security Restricted labels, ResourceQuota (850m CPU, 1536Mi RAM, 0 NodePorts/LBs), strict NetworkPolicy, project-pn-sa (no token mount), and pn-reconciler RBAC. Waits for Cilium before applying the translation FQDN policy.',
+        deps: 'governance (plus cni on K3s)',
+        desc: 'Creates namespace proj-pn with Pod Security Restricted labels, ResourceQuota (416Mi on GKE / 1536Mi on K3s, 0 NodePorts/LBs), strict NetworkPolicy, and portable pn-backend-translation-egress NetworkPolicy.',
         yaml: {
-          'vps-k3s': `dependsOn: [cni, governance]\npath: ./deploy/projects/pn/boundary\nobjects:\n  - Namespace proj-pn (pod-security.kubernetes.io/enforce: restricted)\n  - ResourceQuota project-pn-quota (850m / 1536Mi)\n  - NetworkPolicy project-pn-isolation\n  - CiliumNetworkPolicy pn-backend-translation-egress`,
-          'local-k3s': `dependsOn: [cni, governance]\npath: ./deploy/projects/pn/boundary\nobjects:\n  - NetworkPolicy project-pn-isolation\n  - CiliumNetworkPolicy pn-backend-translation-egress`
+          'gke': `dependsOn: [governance]\npatches:\n  - ResourceQuota/project-pn-quota: requests.memory=416Mi, limits.memory=416Mi\nobjects:\n  - NetworkPolicy project-pn-isolation & pn-backend-translation-egress (networking.k8s.io/v1)`,
+          'vps-k3s': `dependsOn: [cni, governance]\nobjects:\n  - ResourceQuota project-pn-quota (850m / 1536Mi)\n  - NetworkPolicy project-pn-isolation & pn-backend-translation-egress`,
+          'local-k3s': `dependsOn: [cni, governance]\nobjects:\n  - Portable networking.k8s.io/v1 NetworkPolicy shared with clusters/gke/`
         }
       },
       'project-boundaries-health': {
         title: '2d. project-boundaries-health (Tenant Sandbox — proj-health)',
         path: './deploy/projects/health/boundary',
         deps: 'governance',
-        desc: 'Creates namespace proj-health with Pod Security Restricted labels, ResourceQuota (700m CPU, 768Mi RAM, 0 NodePorts/LBs), strict NetworkPolicy, health-workload-sa (no token mount), and health-reconciler RBAC.',
+        desc: 'Creates namespace proj-health with Pod Security Restricted labels, ResourceQuota (0 NodePorts/LBs), strict NetworkPolicy, health-workload-sa (no token mount), and health-reconciler RBAC.',
         yaml: {
-          'vps-k3s': `dependsOn: [governance]\npath: ./deploy/projects/health/boundary\nobjects:\n  - Namespace proj-health (pod-security.kubernetes.io/enforce: restricted)\n  - ResourceQuota project-health-quota (700m / 768Mi)\n  - NetworkPolicy project-health-isolation`,
+          'gke': `dependsOn: [governance]\npath: ./deploy/projects/health/boundary`,
+          'vps-k3s': `dependsOn: [governance]\npath: ./deploy/projects/health/boundary (ResourceQuota 700m / 768Mi)`,
           'local-k3s': `dependsOn: [governance]\npath: ./deploy/projects/health/boundary (identical isolation contract)`
         }
       },
       'project-boundaries-blog': {
         title: '2e. project-boundaries-blog (Tenant Sandbox — proj-blog)',
         path: './deploy/projects/blog/boundary',
-        deps: 'cni, governance',
-        desc: 'Creates namespace proj-blog with Pod Security Restricted labels, ResourceQuota (600m CPU, 512Mi RAM, 0 NodePorts/LBs), strict NetworkPolicy allowing egress only to CoreDNS and flux-system source-controller, project-blog-sa (no token mount), and blog-reconciler RBAC. The proj-blog workload (blog-web, 100m CPU, 1 replica) rolls out with maxSurge: 0 / maxUnavailable: 1 so an image update never needs a second pod on the 2-OCPU vps-k3s node.',
+        deps: 'governance (plus cni on K3s)',
+        desc: 'Creates namespace proj-blog with Pod Security Restricted labels, ResourceQuota (0 NodePorts/LBs), strict NetworkPolicy, project-blog-sa (no token mount), and blog-reconciler RBAC.',
         yaml: {
-          'vps-k3s': `dependsOn: [cni, governance]\npath: ./deploy/projects/blog/boundary\nobjects:\n  - Namespace proj-blog (pod-security.kubernetes.io/enforce: restricted)\n  - ResourceQuota project-blog-quota (600m / 512Mi)\n  - NetworkPolicy project-blog-isolation`,
+          'gke': `dependsOn: [governance]\npath: ./deploy/projects/blog/boundary`,
+          'vps-k3s': `dependsOn: [cni, governance]\npath: ./deploy/projects/blog/boundary (ResourceQuota 600m / 512Mi)`,
           'local-k3s': `dependsOn: [cni, governance]\npath: ./deploy/projects/blog/boundary (identical isolation contract)`
         }
       },
       'vault-proxies': {
-        title: '3a. vault-proxies (Zero-Plaintext Proxies)',
+        title: '3a. vault-proxies (Zero-Plaintext DB, AI & Notify Proxies)',
         path: './deploy/platform/vault-proxies',
         deps: 'vault',
-        desc: 'Deploys vault-db-proxy (:5432 PostgreSQL wire proxy), vault-registry-proxy (:5000 GHCR image pull proxy), vault-ai-proxy (:8080 internal AI gateway + 127.0.0.1:8081 loopback Kill Switch), and vault-notify-proxy (:8080 destination-neutral notify API + 127.0.0.1:8081 loopback webhook admin) inside namespace vault.',
+        desc: 'Deploys vault-db-proxy (:5432 PostgreSQL wire proxy), vault-ai-proxy (:8080 internal AI gateway + 127.0.0.1:8081 Kill Switch), and vault-notify-proxy (:8080 pod-attributed notify API) in namespace vault. (vault-registry-proxy retired in Spec 012.)',
         yaml: {
-          'vps-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml (ALLOWED_PROJECTS="pn,health")\n  - registry-proxy.yaml (UPSTREAM_REGISTRY=ghcr.io)\n  - ai-proxy.yaml (Service/ai-gateway:8080, ADMIN_ADDR=127.0.0.1:8081)\n  - notify-proxy.yaml (Service/notify-gateway:8080, ADMIN_ADDR=127.0.0.1:8081, NOTIFY_GRANTS="errors:observability:error-detector,ai-debug:observability:error-investigator")`,
-          'local-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml, registry-proxy.yaml, ai-proxy.yaml & notify-proxy.yaml`
+          'gke': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml (20m/64Mi req)\n  - ai-proxy.yaml (20m/64Mi req)\n  - notify-proxy.yaml (15m/64Mi req)`,
+          'vps-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml (ALLOWED_PROJECTS="pn,health")\n  - ai-proxy.yaml & notify-proxy.yaml (registry-proxy retired)`,
+          'local-k3s': `dependsOn: [vault]\nresources:\n  - db-proxy.yaml, ai-proxy.yaml & notify-proxy.yaml`
         }
       },
       'database': {
         title: '3b. database (PostgreSQL 16.8 & Init Job)',
         path: './deploy/platform/database',
         deps: 'vault',
-        desc: 'Deploys PostgreSQL 16.8-alpine StatefulSet, 10Gi PVC, postgres-init-job (which provisions keycloak, proj_pn, and proj_health databases using secrets from OpenBao), and the daily backup CronJob.',
+        desc: 'Deploys PostgreSQL 16.8-alpine StatefulSet on ondemand-core (10Gi RWO PVC), postgres-init-job (keycloak, proj_pn, proj_health), and daily backup CronJob.',
         yaml: {
-          'vps-k3s': `dependsOn: [vault]\nhealthChecks:\n  - kind: StatefulSet, name: postgres, namespace: identity\nresources:\n  - postgres-statefulset.yaml, postgres-init-job.yaml (PROJECT_SLUGS="pn,health"), backup-cronjob.yaml`,
-          'local-k3s': `dependsOn: [vault]\nhealthChecks:\n  - kind: StatefulSet, name: postgres, namespace: identity`
+          'gke': `dependsOn: [vault]\npatches:\n  - StatefulSet/postgres: 75m/256Mi req -> 250m/256Mi lim (ondemand-core)\n  - CronJob/postgres-daily-backup: 25m/128Mi req`,
+          'vps-k3s': `dependsOn: [vault]\nhealthChecks: [StatefulSet/postgres]\nresources: postgres-statefulset.yaml, postgres-init-job.yaml, backup-cronjob.yaml`,
+          'local-k3s': `dependsOn: [vault]\nhealthChecks: [StatefulSet/postgres]`
         }
       },
       'projects': {
         title: '3c. projects (Tenant Workloads)',
         path: './clusters/<env>/projects',
-        deps: 'project-boundaries, project-boundaries-health',
-        desc: 'Reconciles tenant project Kustomizations (proj-pn, proj-health) using per-project reconciler ServiceAccounts. Patches IngressRoute hostnames and frontend/backend environment per cluster.',
+        deps: 'project-boundaries, project-boundaries-health, project-boundaries-blog',
+        desc: 'Reconciles tenant project Kustomizations (proj-pn, proj-health, proj-blog) using per-project reconciler ServiceAccounts. Right-sizes GKE pods to fit the 303m / 418 MiB 1/3 slice on ondemand-core.',
         yaml: {
-          'vps-k3s': `dependsOn: [project-boundaries, project-boundaries-health]\nwait: false\n# clusters/vps-k3s/projects/proj-pn.yaml & proj-health.yaml patches:\n- IngressRoute match: Host(\`pn.nacfson.cloud\`) and Host(\`health.nacfson.cloud\`)\n- backend env: PUBLIC_APP_URL & ALLOWED_ORIGINS for *.nacfson.cloud`,
-          'local-k3s': `dependsOn: [project-boundaries, project-boundaries-health]\nwait: false\n# clusters/local-k3s/projects/proj-pn.yaml & proj-health.yaml:\n- Uses base Host(\`pn.example.com\`) and Host(\`health.example.com\`)`
+          'gke': `dependsOn: [project-boundaries, project-boundaries-health, project-boundaries-blog]\n# clusters/gke/projects/{proj-pn,proj-health,proj-blog}.yaml:\n- pn-frontend 50m/128Mi + pn-backend 100m/256Mi (peak 250m/384Mi <= 303m/418Mi)\n- health-frontend 50m/128Mi + health-backend 100m/256Mi\n- blog-web 50m/128Mi (maxSurge: 0)`,
+          'vps-k3s': `dependsOn: [project-boundaries, project-boundaries-health, project-boundaries-blog]\n# Host(*.nacfson.cloud), peak 200m/640Mi`,
+          'local-k3s': `dependsOn: [project-boundaries, project-boundaries-health, project-boundaries-blog]\n# Host(*.example.com), baseline 640Mi peak`
         }
       },
       'identity': {
-        title: '4. identity (Keycloak & Go Auth Gateway)',
+        title: '4. identity (Keycloak DB-Persisted Sessions & Go Auth Gateway)',
         path: './deploy/platform/identity',
         deps: 'database',
-        desc: 'Deploys Keycloak 24.0.5 and the custom Go Auth Gateway in namespace identity, with per-environment patches for cookie domain, public URL, and allowed project return hosts. Realm import must parse on Keycloak 24.0.5, so the Google identity provider must not contain hideOnLogin. The login form stays skipped by kc_idp_hint=google, not by a Keycloak login-page switch.',
+        desc: 'Deploys Keycloak 24.0.5 (--features=persistent-user-sessions) and the pure-stdlib Go Auth Gateway in namespace identity on ondemand-core.',
         yaml: {
-          'vps-k3s': `dependsOn: [database]\npatches (Deployment/gateway):\n  COOKIE_DOMAIN: ".nacfson.cloud"\n  KEYCLOAK_PUBLIC_URL: "https://auth.nacfson.cloud/realms/platform"\n  PROJECT_RETURN_HOSTS: "pn.nacfson.cloud,health.nacfson.cloud"`,
-          'local-k3s': `dependsOn: [database]\npatches (Deployment/gateway):\n  COOKIE_DOMAIN: ".example.com"\n  PROJECT_RETURN_HOSTS: "pn.example.com,health.example.com"`
+          'gke': `dependsOn: [database]\npatches:\n  - Deployment/keycloak: 100m/832Mi req -> 500m/832Mi lim (-XX:MaxRAMPercentage=65.0)\n  - Deployment/gateway:  25m/64Mi req, COOKIE_DOMAIN=".nacfson.cloud",\n    PROJECT_RETURN_HOSTS="pn.nacfson.cloud,health.nacfson.cloud,blog.nacfson.cloud"`,
+          'vps-k3s': `dependsOn: [database]\npatches: COOKIE_DOMAIN=".nacfson.cloud", KEYCLOAK_PUBLIC_URL="https://auth.nacfson.cloud/realms/platform"`,
+          'local-k3s': `dependsOn: [database]\npatches: COOKIE_DOMAIN=".example.com", PROJECT_RETURN_HOSTS="pn.example.com,health.example.com,blog.example.com"`
+        }
+      },
+      'traefik': {
+        title: '4b. traefik (GKE Non-Root hostPort 80/443 Edge Ingress)',
+        path: './deploy/platform/traefik',
+        deps: 'governance (GKE only; bundled in K3s)',
+        desc: 'Deploys Traefik v3.3.4 CRDs, RBAC, ClusterIP Service, and non-root Deployment (UID 65532, drop ALL, Recreate strategy) binding hostPort 80/443 on GKE ondemand-core static IP with zero paid GCP LoadBalancer.',
+        yaml: {
+          'gke': `dependsOn: [governance]\npath: ./deploy/platform/traefik\nresources: crds.yaml, rbac.yaml, deployment.yaml (30m/64Mi -> 200m/96Mi, hostPort 80/443), service.yaml (ClusterIP)`,
+          'vps-k3s': `# Omitted on vps-k3s: K3s bundles Traefik in kube-system.`,
+          'local-k3s': `# Omitted on local-k3s: K3s bundles Traefik in kube-system.`
         }
       },
       'ingress': {
         title: '5. ingress (Traefik Middlewares & Auth Allowlist)',
         path: './deploy/platform/ingress',
-        deps: 'identity',
+        deps: 'identity (plus traefik on GKE)',
         desc: 'Configures Traefik middlewares (http-to-https, strip-forged-headers, forward-auth) and public-auth-allowlist IngressRoute. Uses Spec 004 R3 narrow postBuild substitution for AUTH_HOST.',
         yaml: {
-          'vps-k3s': `dependsOn: [identity]\npostBuild:\n  substitute:\n    AUTH_HOST: auth.nacfson.cloud\n# Single-source routes in ingress-allowlist.yaml:\n# /oauth/start, /oauth/callback, /auth/logout, /realms/platform/...`,
+          'gke': `dependsOn: [identity, traefik]\npostBuild:\n  substitute:\n    AUTH_HOST: auth.nacfson.cloud`,
+          'vps-k3s': `dependsOn: [identity]\npostBuild:\n  substitute:\n    AUTH_HOST: auth.nacfson.cloud`,
           'local-k3s': `dependsOn: [identity]\npostBuild:\n  substitute:\n    AUTH_HOST: auth.example.com`
         }
       },
       'tls': {
         title: '6. tls (Centralized TLSStore & Certificates)',
         path: './deploy/platform/tls',
-        deps: 'cert-manager, ingress, project-boundaries, project-boundaries-health',
-        desc: 'Creates ClusterIssuers (selfsigned, local-rehearsal-ca, letsencrypt-staging, letsencrypt-prod), TLSStore platform/default, and Certificates (auth-tls, pn-tls, health-tls) in namespace platform.',
+        deps: 'cert-manager, ingress, project-boundaries*',
+        desc: 'Creates ClusterIssuers (selfsigned, local-rehearsal-ca, letsencrypt-staging, letsencrypt-prod), TLSStore platform/default, and Certificates (auth-tls, pn-tls, health-tls, blog-tls) in namespace platform.',
         yaml: {
-          'vps-k3s': `dependsOn: [cert-manager, ingress, project-boundaries, project-boundaries-health]\npatches:\n  - Certificate/auth-tls:   dnsNames=[auth.nacfson.cloud],   issuer=letsencrypt-prod\n  - Certificate/pn-tls:     dnsNames=[pn.nacfson.cloud],     issuer=letsencrypt-prod\n  - Certificate/health-tls: dnsNames=[health.nacfson.cloud], issuer=letsencrypt-prod`,
-          'local-k3s': `dependsOn: [cert-manager, ingress, project-boundaries, project-boundaries-health]\n# Uses base values (local-rehearsal-ca):\n  - Certificate/auth-tls:   dnsNames=[auth.example.com],   issuer=local-rehearsal-ca\n  - Certificate/pn-tls:     dnsNames=[pn.example.com],     issuer=local-rehearsal-ca\n  - Certificate/health-tls: dnsNames=[health.example.com], issuer=local-rehearsal-ca`
+          'gke': `dependsOn: [cert-manager, ingress, project-boundaries, project-boundaries-health, project-boundaries-blog]\npatches:\n  - Certificates auth-tls, pn-tls, health-tls, blog-tls -> letsencrypt-prod`,
+          'vps-k3s': `dependsOn: [cert-manager, ingress, project-boundaries, project-boundaries-health]\npatches:\n  - Certificates auth-tls, pn-tls, health-tls, blog-tls -> letsencrypt-prod`,
+          'local-k3s': `dependsOn: [cert-manager, ingress, project-boundaries, project-boundaries-health]\n# Uses local-rehearsal-ca for *.example.com`
         }
       },
       'observability': {
-        title: '2e. observability (Fluent Bit, VictoriaLogs & Error Detector)',
-        path: './deploy/platform/observability',
-        deps: 'cni, governance',
-        desc: 'Deploys the Fluent Bit DaemonSet and VictoriaLogs StatefulSet in namespace observability, plus the error-detector Deployment that tails proj-* logs, classifies them against contract v2, and alerts #errors through vault-notify-proxy. Collects proj-* container logs only, not node or platform logs. dependsOn is exactly cni and governance. The detector is Guaranteed QoS (50m/64Mi) and runs with automountServiceAccountToken: false.',
+        title: '2f. observability (Fluent Bit Solution B -> Kafka / VictoriaLogs)',
+        path: './clusters/gke/observability | ./deploy/platform/observability',
+        deps: 'governance (plus cni on K3s)',
+        desc: 'Deploys Fluent Bit 4.2.8 DaemonSet with per-node hostPath /var/lib/fluent-bit-state (SQLite WAL tail.db + 256 MiB filesystem chunk cap). On local-k3s/vps-k3s outputs to VictoriaLogs + error-detector; on GKE deletes VictoriaLogs, pauses error-detector at replicas: 0 (until Spec 014), and streams to OCI Kafka (10.200.0.11..13:9092).',
         yaml: {
-          'vps-k3s': `dependsOn: [cni, governance]\npath: ./deploy/platform/observability\nhealthChecks:\n  - kind: DaemonSet, name: fluent-bit, namespace: observability\n  - kind: StatefulSet, name: victorialogs, namespace: observability\n  - kind: Deployment, name: error-detector, namespace: observability`,
-          'local-k3s': `dependsOn: [cni, governance]\npath: ./deploy/platform/observability\nhealthChecks:\n  - kind: DaemonSet, name: fluent-bit, namespace: observability\n  - kind: StatefulSet, name: victorialogs, namespace: observability\n  - kind: Deployment, name: error-detector, namespace: observability`
+          'gke': `dependsOn: [governance]\npath: ./clusters/gke/observability\nhealthChecks: [DaemonSet/fluent-bit]\n# Deletes VictoriaLogs, sets error-detector replicas: 0, outputs to Kafka logs.proj.{valid,quarantine}`,
+          'vps-k3s': `dependsOn: [cni, governance]\npath: ./deploy/platform/observability\nhealthChecks: [DaemonSet/fluent-bit, StatefulSet/victorialogs, Deployment/error-detector]`,
+          'local-k3s': `dependsOn: [cni, governance]\npath: ./deploy/platform/observability\nhealthChecks: [DaemonSet/fluent-bit, StatefulSet/victorialogs, Deployment/error-detector]`
         }
       }
     };
 
     function setDagEnv(env) {
       currentDagEnv = env;
-      document.getElementById('env-btn-vps').className = env === 'vps-k3s'
-        ? 'px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-cyan-500 text-slate-950'
-        : 'px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 hover:text-white';
-      document.getElementById('env-btn-local').className = env === 'local-k3s'
-        ? 'px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-cyan-500 text-slate-950'
-        : 'px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 hover:text-white';
+      ['gke', 'vps', 'local'].forEach(k => {
+        const full = k === 'gke' ? 'gke' : (k === 'vps' ? 'vps-k3s' : 'local-k3s');
+        const btn = document.getElementById('env-btn-' + k);
+        if (btn) {
+          btn.className = env === full
+            ? 'px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-cyan-500 text-slate-950'
+            : 'px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 hover:text-white';
+        }
+      });
       document.getElementById('dag-env-label').textContent = 'env: ' + env;
       selectDagLayer(currentDagLayer);
     }
@@ -2193,7 +2239,7 @@
       document.getElementById('dag-layer-desc').textContent = d.desc;
       document.getElementById('dag-layer-path').textContent = d.path;
       document.getElementById('dag-layer-deps').textContent = d.deps;
-      document.getElementById('dag-layer-yaml').textContent = d.yaml[currentDagEnv];
+      document.getElementById('dag-layer-yaml').textContent = d.yaml[currentDagEnv] || d.yaml['vps-k3s'];
     }
 
     // =========================================================================
@@ -2202,12 +2248,12 @@
     const OSS_ITEMS = [
       {
         cat: 'oss',
-        name: 'K3s Kubernetes',
-        ver: 'v1.35.9+k3s1',
+        name: 'GKE Standard & K3s Kubernetes',
+        ver: 'GKE Zonal / v1.35.9+k3s1',
         license: 'Apache-2.0 (CNCF)',
-        role: 'Single-Node Kubernetes Control Plane & Kubelet',
-        where: 'bootstrap/bootstrap.yml',
-        details: 'Lightweight certified Kubernetes distribution bundling containerd, CoreDNS, local-path-provisioner, and Traefik ingress.'
+        role: 'Zonal GKE Standard (2 Pools) & Local K3s Parity',
+        where: 'clusters/gke/capacity.yaml & bootstrap/bootstrap.yml',
+        details: 'Production runs Zonal GKE Standard in nacfson-pipeline (asia-northeast3-a: 1 × e2-medium On-Demand + 1 × e2-small Spot, --logging=NONE --monitoring=NONE); local dev runs K3s v1.35.9+k3s1.'
       },
       {
         cat: 'oss',
@@ -2216,25 +2262,25 @@
         license: 'Apache-2.0 (CNCF)',
         role: 'source-controller & kustomize-controller',
         where: 'clusters/*/flux-system/gotk-components.yaml',
-        details: 'Continuously reconciles Git state from main branch every 5 minutes across 9 ordered Kustomization layers with prune: true.'
+        details: 'Continuously reconciles Git state from main branch every 5 minutes across ordered Kustomization layers with prune: true across gke, local-k3s, and vps-k3s (scheduled on spot-controllers in GKE).'
       },
       {
         cat: 'oss',
         name: 'VictoriaLogs',
         ver: 'v1.53.0',
         license: 'Apache-2.0 (VictoriaMetrics)',
-        role: 'Single-node project log store',
+        role: 'Local & pre-cutover project log store',
         where: 'deploy/platform/observability/victorialogs-statefulset.yaml',
-        details: 'ClusterIP store on :9428 with a 10Gi PVC, 30d retention, and an 8Gi disk cap. Flux layer observability (dependsOn cni, governance). Image victoriametrics/victoria-logs:v1.53.0.'
+        details: 'ClusterIP store on :9428 with a 10Gi PVC, 30d retention, and an 8Gi disk cap on local-k3s (and vps-k3s pre-cutover). Deleted on GKE where Fluent Bit streams directly to OCI Kafka over WireGuard.'
       },
       {
         cat: 'oss',
         name: 'Fluent Bit',
         ver: '4.2.8',
         license: 'Apache-2.0',
-        role: 'Project log collector',
+        role: 'Multi-node crash-resilient project log collector',
         where: 'deploy/platform/observability/fluent-bit-daemonset.yaml',
-        details: 'DaemonSet tails /var/log/pods/proj-* only, bookmarks tail.db on PVC fluent-bit-state, and sends json lines to VictoriaLogs. Image fluent/fluent-bit:4.2.8. Read-only hostPath is the Clarification 2.2.1 exception, not a project mount. Flux layer observability.'
+        details: 'DaemonSet tails /var/log/pods/proj-* only, persists SQLite WAL tail.db + filesystem chunks (256 MiB/node cap) on hostPath /var/lib/fluent-bit-state (Amendment 2.3.0), and outputs to VictoriaLogs (local-k3s) or OCI Kafka 10.200.0.11..13:9092 (gke).'
       },
       {
         cat: 'oss',
@@ -2243,7 +2289,7 @@
         license: 'MPL-2.0 (Linux Foundation)',
         role: 'Centralized Internal Cluster Vault',
         where: 'deploy/platform/vault/openbao-statefulset.yaml',
-        details: 'Community-driven open-source fork of HashiCorp Vault providing KV v2 secrets, Transit signing engine, and Kubernetes SA JWT authentication.'
+        details: 'Open-source Vault fork providing KV v2 secrets, Transit signing engine, and Kubernetes SA JWT auth. Uses Shamir offline unseal on K3s and Cloud KMS (gcpckms) Workload Identity auto-unseal on GKE.'
       },
       {
         cat: 'oss',
@@ -2252,7 +2298,7 @@
         license: 'Apache-2.0 (CNCF)',
         role: 'OIDC Identity Provider & Google Broker',
         where: 'deploy/platform/identity/keycloak-deployment.yaml',
-        details: 'Manages the platform realm, brokers Google OAuth 2.0 sign-in, just-in-time creates users via google jit first broker login (AUTH-01), issues project-scoped access tokens, and handles session termination.'
+        details: 'Manages the platform realm with --features=persistent-user-sessions (DB-backed sessions in PostgreSQL across restarts), brokers Google OAuth 2.0 JIT login (AUTH-01), and runs 24/7 on GKE ondemand-core (832Mi).'
       },
       {
         cat: 'oss',
@@ -2261,16 +2307,16 @@
         license: 'PostgreSQL License',
         role: 'Shared Relational Database StatefulSet',
         where: 'deploy/platform/database/postgres-statefulset.yaml',
-        details: 'Provides persistent storage on a 10Gi volume with isolated databases and roles for Keycloak and tenant projects (proj_pn).'
+        details: 'Provides persistent storage on a 10Gi RWO volume with isolated databases and roles for Keycloak (keycloak_user) and tenant projects (proj_pn, proj_health).'
       },
       {
         cat: 'oss',
         name: 'Traefik Proxy',
-        ver: 'K3s Bundled (v2/v3 CRD)',
+        ver: 'v3.3.4 (GKE) / K3s Bundled',
         license: 'MIT License',
         role: 'Edge Ingress Controller & SNI Termination',
-        where: 'deploy/platform/ingress/* & deploy/platform/tls/*',
-        details: 'Routes traffic via IngressRoute CRDs, strips forged identity headers, triggers ForwardAuth, and serves certificates from TLSStore default.'
+        where: 'deploy/platform/traefik/* & deploy/platform/ingress/*',
+        details: 'On GKE, non-root Traefik v3.3.4 (:8000->hostPort 80, :8443->hostPort 443, Service ClusterIP) terminates TLS on ondemand-core with zero GCP LoadBalancer cost; K3s uses bundled Traefik.'
       },
       {
         cat: 'oss',
@@ -2279,7 +2325,7 @@
         license: 'Apache-2.0 (CNCF)',
         role: 'Automated X.509 Certificate Controller',
         where: 'deploy/platform/cert-manager/upstream/cert-manager.yaml',
-        details: 'Automates Let\'s Encrypt ACME v2 HTTP-01 challenges (using ClusterIP solver services) and self-signed local certificates.'
+        details: 'Automates Let\'s Encrypt ACME v2 HTTP-01 challenges (ClusterIP solver) and local rehearsal certificates; scheduled on spot-controllers in GKE.'
       },
       {
         cat: 'custom',
@@ -2297,16 +2343,16 @@
         license: 'First-Party (Pure Go Stdlib)',
         role: 'Zero-Plaintext PostgreSQL Wire-Protocol Proxy',
         where: 'services/vault-proxies/cmd/db-proxy/main.go',
-        details: 'Intercepts PostgreSQL protocol handshakes on :5432, fetches dynamic credentials from OpenBao in memory, and enforces ENFORCED_DB=proj_pn.'
+        details: 'Intercepts PostgreSQL protocol handshakes on :5432, fetches dynamic credentials from OpenBao in memory, and enforces ENFORCED_DB per project.'
       },
       {
-        cat: 'custom',
-        name: 'vault-registry-proxy',
-        ver: 'Go 1.22 (0 external deps)',
-        license: 'First-Party (Pure Go Stdlib)',
-        role: 'Zero-Plaintext OCI Container Registry Proxy',
-        where: 'services/vault-proxies/cmd/registry-proxy/main.go',
-        details: 'Mirrors ghcr.io on :5000 for K3s containerd, injecting the GitHub PAT from OpenBao upstream and stripping auth headers on return.'
+        cat: 'ci',
+        name: 'Cloud Build & Public GAR (Retires registry-proxy)',
+        ver: 'Multi-Arch OCI @sha256',
+        license: 'GCP Free Tier / OCI Spec',
+        role: 'Multi-Arch Image Builder & Unauthenticated Digest Registry',
+        where: 'deploy/gcp/cloudbuild.yaml & gar-cleanup-policy.json',
+        details: 'Spec 012 retires vault-registry-proxy: Cloud Build pushes linux/amd64,linux/arm64 images to asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public with a 2-digest/7d cleanup policy (< 0.5 GB Free Tier).'
       },
       {
         cat: 'custom',
@@ -2315,7 +2361,7 @@
         license: 'First-Party (Pure Go Stdlib)',
         role: 'Zero-Plaintext AI Gateway with Secure Memory',
         where: 'services/vault-proxies/cmd/ai-proxy/main.go',
-        details: 'Internal AI gateway (:8080) with project-specific quota enforcement, loopback admin kill switch (127.0.0.1:8081), OpenBao credential sync, and secure RAM key wiping (0x00 overwrite) when all projects disabled. HTTP client blocks redirects.'
+        details: 'Internal AI gateway (:8080) with project-specific quota enforcement, loopback admin kill switch (127.0.0.1:8081), OpenBao credential sync, and secure RAM key wiping (0x00 overwrite) when all projects disabled. Portable NetworkPolicy egress on TCP :443.'
       },
       {
         cat: 'custom',
@@ -2324,7 +2370,7 @@
         license: 'First-Party (Pure Go Stdlib)',
         role: 'Pod-Attributed Notification Gateway',
         where: 'services/vault-proxies/cmd/notify-proxy/main.go',
-        details: 'Destination-neutral notify API (:8080): POST /v1/notify/{channel} is accepted only from a pod the grant names (attributed by pod IP), answered 202 on delivery and 403 otherwise. Owns the Discord webhook URLs in OpenBao and never returns them: the loopback webhook admin (127.0.0.1:8081) seeds them and /admin/status reports configured/sent/failed only. Discord rendering with 429/5xx retry ladder; egress is FQDN-pinned to discord.com:443.'
+        details: 'Destination-neutral notify API (:8080): POST /v1/notify/{channel} is accepted only from a pod the grant names (attributed by pod IP), answered 202 on delivery and 403 otherwise. Owns Discord webhook URLs in OpenBao; portable NetworkPolicy egress on TCP :443 minus RFC1918/metadata/CGNAT.'
       },
       {
         cat: 'custom',
@@ -2333,7 +2379,7 @@
         license: 'First-Party (Pure Go Stdlib)',
         role: 'Log Tailing, Classification & Alerting',
         where: 'services/error-pipeline/cmd/error-detector/main.go',
-        details: 'Tails proj-* logs from VictoriaLogs, dual-reads v2 and v3 schemas ({project=~"proj-.*"} OR {k8s.namespace.name=~"proj-.*"}), fingerprints and groups them per 3-minute window, and alerts #errors through vault-notify-proxy under a 10/minute burst cap with one "+N more new errors" overflow message. Holds the cursor and group table on PVC error-detector-state, saves atomically every 30 s and on SIGTERM, and retries notifications from a bounded queue. Keeps no secret: the webhook URL never leaves the notify proxy.'
+        details: 'Tails proj-* logs from VictoriaLogs on local-k3s/vps-k3s, fingerprints and groups them per 3-minute window, and alerts #errors via vault-notify-proxy. Paused at replicas: 0 on GKE (with 25m/64Mi pre-reserved) until Spec 014 switches it to Kafka logs.proj.errors.'
       },
       {
         cat: 'oss',
@@ -2346,21 +2392,21 @@
       },
       {
         cat: 'ci',
-        name: 'Ansible Core',
-        ver: '2.21.4',
-        license: 'GPL-3.0',
-        role: 'Minimal VM Bootstrap & Reconciler Installer',
-        where: 'bootstrap/requirements.txt & bootstrap/bootstrap.yml',
-        details: 'Executes 5-stage VM bootstrap: request validation, host preflight, K3s v1.35.9+k3s1 installation, readiness verification, and Flux reconciler setup.'
+        name: 'Ansible Core & Cutover Bundle',
+        ver: '2.21.4 + cutover-bundle.sh',
+        license: 'GPL-3.0 / Bash',
+        role: 'K3s Bootstrap & Full-State GKE Cutover Orchestrator',
+        where: 'bootstrap/bootstrap.yml & scripts/cutover-bundle.sh',
+        details: 'Ansible bootstraps K3s hosts; scripts/cutover-bundle.sh exports, SHA-256 verifies, and restores OpenBao Raft snapshots, PostgreSQL dumps (keycloak, proj_pn, proj_health), TLS certs, and VictoriaLogs archives.'
       },
       {
         cat: 'ci',
         name: 'Python 3 + PyYAML',
         ver: 'PyYAML 6.0.3',
         license: 'MIT License',
-        role: 'CI Preflight & Render Invariant Engine',
+        role: 'CI Multi-Pool Preflight & Render Invariant Engine',
         where: 'scripts/platform-preflight.py & render-invariants.py',
-        details: 'Computes 1/n resource slices from capacity.yaml, enforces Peak Memory Envelope Freeze, verifies rendered Kustomize invariants, and gates project log contract declarations and version labels.'
+        details: 'Computes 1/n resource slices and per-pool (ondemand-core vs spot-controllers) fit from capacity.yaml, multiplies DaemonSets across nodeCount, validates PortableEgressPolicy, and enforces GAR/GHCR @sha256 pins.'
       },
       {
         cat: 'ci',
@@ -2369,16 +2415,16 @@
         license: 'Apache-2.0 / MIT',
         role: 'Rendered Manifest Schema Validation',
         where: 'scripts/render-validate.sh',
-        details: 'Validates rendered manifests in strict mode against CRD schemas from a pinned catalog commit. The pinned CiliumNetworkPolicy schema is Cilium 1.18.2, because the catalog update to 1.20.2 fails under kubeconform v0.6.7.'
+        details: 'Validates rendered manifests in strict mode across local-k3s, gke, and vps-k3s against upstream Kubernetes and CRD schemas.'
       },
       {
         cat: 'oss',
-        name: 'Cilium eBPF CNI',
-        ver: 'v1.20.3',
+        name: 'Cilium eBPF CNI / GKE Dataplane V2',
+        ver: 'v1.20.3 (K3s) / Managed eBPF (GKE)',
         license: 'Apache-2.0 (CNCF)',
-        role: 'Kernel eBPF Pod Networking & NetworkPolicy Engine',
-        where: 'deploy/platform/cni/cilium.yaml',
-        details: 'Replaces K3s Flannel and kube-router with eBPF datapath programs and CiliumNetworkPolicy (including kube-apiserver entity tracking).'
+        role: 'Kernel eBPF Pod Networking & Portable NetworkPolicy Engine',
+        where: 'deploy/platform/cni/kustomization.yaml',
+        details: 'Enforces identical standard networking.k8s.io/v1 NetworkPolicy manifests via kernel eBPF on both K3s (Cilium v1.20.3 with policy-cidr-match-mode: "nodes") and GKE Dataplane V2.'
       },
       {
         cat: 'oss',
@@ -2387,7 +2433,7 @@
         license: 'Apache-2.0 (CNCF)',
         role: 'Real-Time Network Flow & Policy Drop Observability',
         where: 'deploy/platform/cni/cilium.yaml',
-        details: 'Streams FORWARDED and DROPPED packet verdicts with pod identity and policy reason labels over a private ClusterIP UI.'
+        details: 'Streams FORWARDED and DROPPED packet verdicts with pod identity and policy reason labels over a private ClusterIP UI on K3s.'
       },
       {
         cat: 'custom',
@@ -2437,10 +2483,11 @@
       const candMem = parseInt(document.getElementById('calc-mem').value, 10);
       const candCpu = parseInt(document.getElementById('calc-cpu').value, 10);
 
-      const allocCpu = env === 'vps' ? 2000 : 4000;
-      const allocMem = env === 'vps' ? 10898 : 8192;
-      const platCpu = 1395; // Shared Platform Reservation (including Cilium + Hubble + Vault + vault-ai-proxy + vault-notify-proxy + error-detector + Identity + Cert-Manager); requests lowered for the 2-OCPU node: Keycloak 100m, PostgreSQL 100m, Gateway 50m, VictoriaLogs 50m, postgres-daily-backup 50m
-      const platMem = 5920;
+      // Exact platform-preflight.py figures (Spec 012 retired vault-registry-proxy -25m/-64Mi from pre-Spec-012 1395m / 5920 MiB -> 1370m / 5856 MiB on K3s; GKE Design 1 2-node reservation = 970m / 3152 MiB)
+      const allocCpu = env === 'gke' ? 1880 : (env === 'vps' ? 2000 : 4000);
+      const allocMem = env === 'gke' ? 4408 : (env === 'vps' ? 10898 : 8192);
+      const platCpu = env === 'gke' ? 970 : 1370;
+      const platMem = env === 'gke' ? 3152 : 5856;
 
       const poolCpu = allocCpu - platCpu;
       const poolMem = allocMem - platMem;
@@ -2461,7 +2508,7 @@
       const vtitle = document.getElementById('calc-verdict-title');
       const vdesc = document.getElementById('calc-verdict-desc');
 
-      const deployedPeakMem = 640; // Current proj-pn deployed peak memory envelope (128Mi FE + 512Mi BE)
+      const deployedPeakMem = env === 'gke' ? 384 : 640; // proj-pn peak memory envelope: 384 MiB on GKE Design 1 (128Mi FE + 256Mi BE) vs 640 MiB on K3s (128Mi FE + 512Mi BE)
 
       if (candMem < deployedPeakMem) {
         vbox.className = 'rounded-xl p-4 border bg-rose-950/40 border-rose-500/50';
@@ -2515,22 +2562,22 @@
         src: 'proj-pn/pn-backend (app=pn-backend)',
         dst: 'vault/openbao-service (:8200)',
         allowed: false,
-        policy: 'NetworkPolicy: project-pn-isolation + vault-network-policy',
+        policy: 'NetworkPolicy: project-pn-isolation + openbao-ingress-policy',
         kernelHook: 'eBPF tc egress hook -> Port 8200 & pod app=openbao not in egress map -> DROP',
         hubble: `TIMESTAMP             SOURCE                        DESTINATION                   TYPE            VERDICT   SUMMARY\nOct 17 09:42:19.012   proj-pn/pn-backend:38910      vault/openbao-0:8200          Policy denied   DROPPED   TCP SYN (Drop reason: Policy denied)`,
-        yaml: `# deploy/platform/vault/networkpolicy.yaml\n# OpenBao ingress only allows: vault-db-proxy, vault-registry-proxy,\n# gateway, keycloak, postgres-init, postgres, and operator-admin.`,
+        yaml: `# deploy/platform/vault/network-policy.yaml\n# OpenBao ingress only allows: vault-db-proxy, vault-ai-proxy, vault-notify-proxy,\n# gateway, keycloak, postgres-init, postgres, openbao-backup, and operator-admin.`,
         why: 'Two independent policies block this: proj-pn egress blocks :8200, and vault ingress only accepts traffic from platform proxies and identity/database init containers.'
       },
       'bao-apiserver': {
-        title: 'openbao ➔ kube-apiserver (:6443) [TokenReview Auth]',
-        src: 'vault/openbao-0 (app=openbao)',
-        dst: 'reserved:kube-apiserver (:6443)',
+        title: 'openbao ➔ kube-apiserver (:443/:6443) & GKE KMS [Portable NetworkPolicy]',
+        src: 'vault/openbao-0 (app.kubernetes.io/name=openbao)',
+        dst: 'kube-apiserver (:443/:6443) + GKE KMS (199.36.153.8/30:443)',
         allowed: true,
-        policy: 'NetworkPolicy: openbao-ingress-policy (RFC1918 :443/:6443 kube-router fallback) + CiliumNetworkPolicy: openbao-apiserver-egress (deploy/platform/vault/network-policy.yaml)',
-        kernelHook: 'eBPF toEntities: ["kube-apiserver"] -> Host IP / SNAT Identity Match -> FORWARDED',
-        hubble: `TIMESTAMP             SOURCE                        DESTINATION                   TYPE            VERDICT     SUMMARY\nOct 17 09:42:22.410   vault/openbao-0:44218         reserved:kube-apiserver:6443  policy-verdict  FORWARDED   TCP TLSv1.3 (TokenReview validation)`,
-        yaml: `# 1) kube-router fallback (Cilium never matches node IPs with ipBlock)\nkind: NetworkPolicy\nmetadata: { name: openbao-ingress-policy, namespace: vault }\nspec:\n  egress:\n    - to:\n        - ipBlock: { cidr: 10.0.0.0/8 }\n        - ipBlock: { cidr: 172.16.0.0/12 }\n        - ipBlock: { cidr: 192.168.0.0/16 }\n      ports: [{ port: 443 }, { port: 6443 }]\n---\n# 2) Cilium-native entity match (only enforced once Cilium owns the pod)\napiVersion: cilium.io/v2\nkind: CiliumNetworkPolicy\nmetadata:\n  name: openbao-apiserver-egress\n  namespace: vault\nspec:\n  endpointSelector:\n    matchLabels: { app.kubernetes.io/name: openbao }\n  egress:\n    - toEntities:\n        - kube-apiserver`,
-        why: 'kube-proxy DNATs 10.43.0.1:443 to the node IP :6443 before policy evaluation. Cilium matches it as reserved:kube-apiserver; kube-router (still active on any node not yet migrated to --flannel-backend=none --disable-network-policy) ignores CiliumNetworkPolicy, so the RFC1918 NetworkPolicy rule must stay as a fallback (Cilium ignores ipBlock for node IPs, so after migration only the CNP entity rule applies). Incident 2026-10-17: removing it REJECTed TokenReview on vps-k3s and took down postgres, keycloak and pn.'
+        policy: 'NetworkPolicy: openbao-ingress-policy (deploy/platform/vault/network-policy.yaml + GKE patch)',
+        kernelHook: 'eBPF ipBlock (policy-cidr-match-mode: "nodes" on local-k3s / Dataplane V2 on GKE) -> FORWARDED',
+        hubble: `TIMESTAMP             SOURCE                        DESTINATION                   TYPE            VERDICT     SUMMARY\nOct 17 09:42:22.410   vault/openbao-0:44218         kube-apiserver:6443           policy-verdict  FORWARDED   TCP TLSv1.3 (TokenReview validation)`,
+        yaml: `# Portable networking.k8s.io/v1 NetworkPolicy (0.0.0.0/0 strictly forbidden on openbao!)\nkind: NetworkPolicy\nmetadata: { name: openbao-ingress-policy, namespace: vault }\nspec:\n  egress:\n    - to:\n        - ipBlock: { cidr: 10.0.0.0/8 }\n        - ipBlock: { cidr: 172.16.0.0/12 }\n        - ipBlock: { cidr: 192.168.0.0/16 }\n      ports: [{ port: 443 }, { port: 6443 }]\n# GKE overlay adds Workload Identity (169.254.169.254/32:80,988) & Private Google Access (199.36.153.8/30:443) for gcpckms.`,
+        why: 'Spec 012 replaces Cilium-proprietary CRDs with standard networking.k8s.io/v1 NetworkPolicy across all clusters. Setting policy-cidr-match-mode: "nodes" in ConfigMap/cilium-config lets Cilium match the single-node K3s host API server IP via ipBlock, while GKE adds narrow Workload Identity + Private Google Access CIDRs for Cloud KMS auto-unseal with 0.0.0.0/0 still forbidden.'
       },
       'pn-gateway': {
         title: 'pn-backend ➔ gateway (:8080/jwks) [JWT Verification]',
@@ -2544,26 +2591,26 @@
         why: 'Allows pn-backend to fetch public RS256 JWKS keys from the Gateway without exposing Keycloak (:8080) directly to tenant pods.'
       },
       'pn-internet': {
-        title: 'pn-backend ➔ External Internet (1.1.1.1:443) [Exfiltration Attempt]',
-        src: 'proj-pn/pn-backend (app=pn-backend)',
-        dst: 'world / 1.1.1.1:443',
+        title: 'pn-frontend ➔ Internet (:443) or pn-backend ➔ Metadata (169.254.169.254) [Blocked]',
+        src: 'proj-pn/pn-frontend or pn-backend',
+        dst: '169.254.169.254:80 / RFC1918 / non-443 TCP',
         allowed: false,
-        policy: 'NetworkPolicy: project-pn-isolation (Zero External Egress)',
-        kernelHook: 'eBPF tc egress -> Destination reserved:world not in policy map -> DROP',
-        hubble: `TIMESTAMP             SOURCE                        DESTINATION                   TYPE            VERDICT   SUMMARY\nOct 17 09:42:33.901   proj-pn/pn-backend:55190      1.1.1.1:443 (world)           Policy denied   DROPPED   TCP SYN (Drop reason: Policy denied)`,
-        yaml: `# policyTypes: [Ingress, Egress]\n# Because Egress is listed in policyTypes and no 0.0.0.0/0 rule exists,\n# all outbound internet connections from proj-pn are blocked.`,
-        why: 'Unnamed world destinations such as 1.1.1.1 stay dropped. Named translation hosts are the pn-translation scenario, and only for pn-backend.'
+        policy: 'NetworkPolicy: project-pn-isolation + pn-backend-translation-egress (except CIDRs)',
+        kernelHook: 'eBPF tc egress -> Destination in except CIDRs or non-443 port -> DROP',
+        hubble: `TIMESTAMP             SOURCE                        DESTINATION                   TYPE            VERDICT   SUMMARY\nOct 17 09:42:33.901   proj-pn/pn-backend:55190      169.254.169.254:80            Policy denied   DROPPED   TCP SYN (Drop reason: Policy denied)`,
+        yaml: `# PortableEgressPolicy mandatory except CIDRs on TCP :443:\n# except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.169.254/32, 100.64.0.0/10]\n# pn-frontend has ZERO external egress; pn-backend blocks metadata, RFC1918, CGNAT, and all non-443 ports.`,
+        why: 'pn-frontend has zero internet egress, and pn-backend blocks cloud metadata (169.254.169.254/32), RFC1918 private networks, CGNAT (100.64.0.0/10), and every port except TCP :443.'
       },
       'pn-translation': {
         title: 'pn-backend ➔ api.wiktapi.dev:443 & vault-ai-proxy ➔ generativelanguage.googleapis.com:443',
         src: 'proj-pn/pn-backend (app=pn-backend)',
         dst: 'api.wiktapi.dev:443 (direct) & vault/vault-ai-proxy:8080 ➔ generativelanguage.googleapis.com:443',
         allowed: true,
-        policy: 'CiliumNetworkPolicy: pn-backend-translation-egress (proj-pn) + ai-proxy-egress (vault)',
-        kernelHook: 'eBPF toFQDNs matchName -> TCP 443 FORWARDED; any other world host DROP',
-        hubble: `TIMESTAMP             SOURCE                        DESTINATION                              TYPE            VERDICT     SUMMARY\nOct 19 12:00:01.100   proj-pn/pn-backend:44012      api.wiktapi.dev:443                      policy-verdict  FORWARDED   TCP TLS\nOct 19 12:00:01.200   proj-pn/pn-backend:44016      vault/vault-ai-proxy:8080                policy-verdict  FORWARDED   TCP HTTP\nOct 19 12:00:01.240   vault/vault-ai-proxy:51020    generativelanguage.googleapis.com:443    policy-verdict  FORWARDED   TCP TLS\nOct 19 12:00:02.010   proj-pn/pn-backend:44040      evil.example:443 (world)                 Policy denied   DROPPED     TCP SYN`,
-        yaml: `# CiliumNetworkPolicy/pn-backend-translation-egress (proj-pn)\nendpointSelector:\n  matchLabels: { app.kubernetes.io/name: pn-backend }\ntoFQDNs:\n  - matchName: api.wiktapi.dev\ntoPorts: [{ port: "443", protocol: TCP }]\n# CiliumNetworkPolicy/ai-proxy-egress (vault)\n# vault-ai-proxy owns generativelanguage.googleapis.com:443; direct tenant Gemini egress is dropped.`,
-        why: 'pn-backend may only call api.wiktapi.dev on TCP 443 directly; Gemini calls traverse vault/vault-ai-proxy:8080, which owns generativelanguage.googleapis.com:443 egress. There is no kube-router world fallback.'
+        policy: 'NetworkPolicy: pn-backend-translation-egress (proj-pn) + vault-ai-proxy-policy (vault)',
+        kernelHook: 'Portable networking.k8s.io/v1 ipBlock 0.0.0.0/0 minus RFC1918/metadata/CGNAT on TCP :443 -> FORWARDED',
+        hubble: `TIMESTAMP             SOURCE                        DESTINATION                              TYPE            VERDICT     SUMMARY\nOct 19 12:00:01.100   proj-pn/pn-backend:44012      api.wiktapi.dev:443                      policy-verdict  FORWARDED   TCP TLS\nOct 19 12:00:01.200   proj-pn/pn-backend:44016      vault/vault-ai-proxy:8080                policy-verdict  FORWARDED   TCP HTTP\nOct 19 12:00:01.240   vault/vault-ai-proxy:51020    generativelanguage.googleapis.com:443    policy-verdict  FORWARDED   TCP TLS\nOct 19 12:00:02.010   proj-pn/pn-backend:44040      169.254.169.254:80 (metadata)            Policy denied   DROPPED     TCP SYN`,
+        yaml: `# NetworkPolicy/pn-backend-translation-egress (proj-pn) — Portable across Cilium & GKE Dataplane V2\npodSelector:\n  matchLabels: { app.kubernetes.io/name: pn-backend }\negress:\n  - to:\n      - ipBlock:\n          cidr: 0.0.0.0/0\n          except: [10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16, 169.254.169.254/32, 100.64.0.0/10]\n    ports: [{ port: 443, protocol: TCP }]\n# NetworkPolicy/vault-ai-proxy-policy (vault): vault/vault-ai-proxy owns generativelanguage.googleapis.com:443`,
+        why: 'Spec 012 standardizes pn-backend (api.wiktapi.dev:443), vault/vault-ai-proxy (generativelanguage.googleapis.com:443), and vault-notify-proxy (discord.com:443) onto portable networking.k8s.io/v1 NetworkPolicy with mandatory RFC1918 + metadata + CGNAT exclusions so clusters/local-k3s/ and clusters/gke/ enforce identical rules.'
       }
     };
 
@@ -2796,45 +2843,45 @@
     const JUNIOR_MENTAL_MODELS = [
       {
         icon: '🏢',
-        name: 'K3s (v1.35.9+k3s1)',
+        name: 'GKE Standard (2 Pools) & K3s (v1.35.9+k3s1)',
         analogy: 'The Apartment Building Foundation',
-        plain: 'Runs containers on your single Linux VM. We turn off its default networking (Flannel) so Cilium can install high-security smart doors on every room.',
-        file: 'bootstrap/roles/k3s_runtime'
+        plain: 'GKE runs 1 On-Demand e2-medium node (24/7 core + tenant workloads + PVCs) and 1 Spot e2-small node (stateless cert-manager + Flux controllers). Local dev uses single-node K3s with identical portable manifests.',
+        file: 'clusters/gke/capacity.yaml & bootstrap/'
       },
       {
         icon: '🐝',
-        name: 'Cilium eBPF + Hubble (v1.20.3)',
+        name: 'Portable NetworkPolicy (Cilium / Dataplane V2)',
         analogy: 'Kernel-Level Smart Badge Doors + CCTV',
-        plain: 'Attaches tiny security programs (eBPF) directly to the Linux kernel. Every pod gets a cryptographic badge; if pn-backend tries to talk to Postgres directly, the kernel drops the packet and Hubble records it on camera.',
-        file: 'deploy/platform/cni/cilium.yaml'
+        plain: 'Standard networking.k8s.io/v1 NetworkPolicy manifests compile into eBPF maps on both Cilium v1.20.3 (local-k3s) and GKE Dataplane V2, blocking private RFC1918/metadata IPs while Hubble streams drop verdicts.',
+        file: 'deploy/projects/pn/boundary/translation-egress.yaml'
       },
       {
         icon: '🔄',
         name: 'FluxCD + ValidatingAdmissionPolicy',
         analogy: 'Automated Blueprint Robot + Locked Fusebox',
-        plain: 'Flux reads Git every 5 minutes and makes the cluster match main across 13 ordered layers. If you try to run kubectl edit by hand, the Admission Policy rejects your command so Git never drifts.',
-        file: 'clusters/vps-k3s/layers.yaml'
+        plain: 'Flux reads Git every 5 minutes and reconciles ordered layers across gke, local-k3s, and vps-k3s. Manual human kubectl edits are rejected by CEL admission rules while GKE system controllers are allowlisted.',
+        file: 'clusters/gke/layers.yaml'
       },
       {
         icon: '🚦',
-        name: 'Traefik + cert-manager + TLSStore',
+        name: 'Traefik v3.3.4 (hostPort 80/443) + TLSStore',
         analogy: 'Front Desk Receptionist & SSL Notary',
-        plain: 'cert-manager renews Let\'s Encrypt certificates in the platform lobby (namespace platform). Traefik terminates HTTPS using TLSStore default and strips any fake X-User-* headers from visitors.',
-        file: 'deploy/platform/tls/'
+        plain: 'On GKE, Traefik binds hostPort 80/443 directly on the On-Demand node static IP (zero paid GCP LoadBalancer). cert-manager renews Let\'s Encrypt certs in namespace platform behind TLSStore default.',
+        file: 'deploy/platform/traefik/ & deploy/platform/tls/'
       },
       {
         icon: '🛂',
-        name: 'Go Auth Gateway + Keycloak',
+        name: 'Go Auth Gateway + Keycloak (DB Sessions)',
         analogy: 'Passport Control & Google Visa Broker',
-        plain: 'Visitors can enter pn.nacfson.cloud freely (mode: shared). When they click Sign In, the Go Gateway sends them straight to Google login via Keycloak (kc_idp_hint=google) and issues an HMAC cookie.',
-        file: 'gateway/cmd/gateway/main.go'
+        plain: 'Visitors enter project doors freely (mode: shared). Sign-in jumps straight to Google OAuth via Keycloak (kc_idp_hint=google), with --features=persistent-user-sessions keeping active logins safe in PostgreSQL.',
+        file: 'gateway/ & deploy/platform/identity/'
       },
       {
         icon: '🏦',
-        name: 'OpenBao + vault-db-proxy + vault-registry-proxy',
+        name: 'OpenBao (gcpckms) + DB / AI / Notify Proxies',
         analogy: 'The Bank Vault & Armored Couriers',
-        plain: 'App pods hold ZERO passwords. When pn-backend connects to vault-db-proxy:5432 without a password, the proxy fetches the real password from OpenBao in RAM and logs into Postgres on its behalf.',
-        file: 'services/vault-proxies/'
+        plain: 'App pods hold ZERO passwords or API keys. vault-db-proxy (:5432), vault-ai-proxy (:8080), and vault-notify-proxy (:8080) inject credentials in RAM, while public GAR/GHCR @sha256 digests replace vault-registry-proxy.',
+        file: 'services/vault-proxies/ & deploy/gcp/'
       }
     ];
 
@@ -2842,10 +2889,10 @@
 
     const JUNIOR_DRILLS = {
       'sealed-vault': {
-        title: 'Scenario 1: The Host VM Reboots — Why Are Pods Stuck in Init:CrashLoopBackOff?',
-        symptom: 'After an Oracle VPS reboot, OpenBao is Running (0/1 Ready), and gateway, keycloak, and postgres pods sit in Init:0/1 or CrashLoopBackOff.',
-        why: 'By Constitution Principle V, OpenBao stores its master unseal key in RAM only — never on disk. When the VM reboots, OpenBao starts in a "Sealed" state, so initContainers cannot fetch secrets.',
-        fix: `# 1. Unseal OpenBao in memory using your offline unseal key:\n./scripts/vault-unseal.sh\n\n# 2. Verify OpenBao is Sealed=false and Ready 1/1:\nkubectl get pods -n vault\n# Kubernetes will automatically retry the initContainers and bring all pods Ready!`
+        title: 'Scenario 1: A Node Reboots — Shamir Unseal (K3s) vs. Cloud KMS Auto-Unseal (GKE)',
+        symptom: 'On K3s after a VM reboot, OpenBao starts Sealed (0/1 Ready) and initContainers wait; on GKE post-Gate-4, OpenBao unseals itself automatically via Cloud KMS.',
+        why: 'By Constitution Principle V (Amendment 2.3.0), K3s keeps Shamir unseal keys offline, whereas GKE binds ServiceAccount/openbao via Workload Identity to Cloud KMS (seal "gcpckms") with zero static GCP key files.',
+        fix: `# On local-k3s / vps-k3s (Shamir seal): unseal in memory:\n./scripts/vault-unseal.sh\n\n# On GKE (post-Gate-4 gcpckms seal): verify Workload Identity auto-unseal:\nkubectl get pods -n vault && kubectl exec -n vault openbao-0 -- bao status`
       },
       'cors-mismatch': {
         title: 'Scenario 2: Frontend Loads Fine, But Browser API Calls Fail with CORS Error',

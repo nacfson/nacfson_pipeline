@@ -1,0 +1,75 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: observability
+
+resources:
+  - ../../../deploy/platform/observability
+
+configMapGenerator:
+  - name: fluent-bit-config
+    behavior: merge
+    files:
+      - fluent-bit.conf=fluent-bit-kafka.conf
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+patches:
+  - target:
+      kind: StatefulSet
+      name: victorialogs
+    patch: |-
+      $patch: delete
+      apiVersion: apps/v1
+      kind: StatefulSet
+      metadata:
+        name: victorialogs
+  - target:
+      kind: Service
+      name: victorialogs
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: victorialogs
+  - target:
+      kind: NetworkPolicy
+      name: victorialogs-ingress
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: victorialogs-ingress
+  # Pause error-detector at replicas: 0 until Spec 014 switches it from VictoriaLogs HTTP tailing
+  # to consuming Kafka topic logs.proj.errors (PVC/error-detector-state and 25m/64Mi slot stay pre-reserved).
+  - target:
+      kind: Deployment
+      name: error-detector
+    patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: error-detector
+      spec:
+        replicas: 0
+  # Replace VictoriaLogs pod egress with WireGuard OCI Kafka broker CIDRs (10.200.0.11..13:9092).
+  - target:
+      kind: NetworkPolicy
+      name: fluent-bit-egress
+    patch: |-
+      - op: replace
+        path: /spec/egress/1
+        value:
+          to:
+            - ipBlock:
+                cidr: 10.200.0.11/32
+            - ipBlock:
+                cidr: 10.200.0.12/32
+            - ipBlock:
+                cidr: 10.200.0.13/32
+          ports:
+            - protocol: TCP
+              port: 9092

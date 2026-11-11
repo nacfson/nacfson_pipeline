@@ -105,6 +105,15 @@ class ValidateRequestTests(unittest.TestCase):
         self.assertEqual(request.source_repo, "nacfson/nacfson_health")
         self.assertEqual(request.roles, ["backend", "frontend"])
 
+    def test_accepts_public_gar_digest_refs_in_images_map(self):
+        gar_backend = (
+            f"asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public/"
+            f"project-pn-backend@{NEW_DIGEST}"
+        )
+        request = valid(roles=["backend"], images={"backend": gar_backend})
+        self.assertEqual(request.roles, ["backend"])
+        self.assertEqual(request.image_link("backend"), gar_backend)
+
     def test_rejects_bad_requests(self):
         cases = {
             "unknown project": dict(project="evil"),
@@ -114,6 +123,21 @@ class ValidateRequestTests(unittest.TestCase):
             "foreign run url": dict(run_url="https://github.com/attacker/x/actions/runs/1"),
             "markdown in run url": dict(
                 run_url="https://github.com/nacfson/Project_PN/actions/runs/1) **x** [y](https://evil"
+            ),
+            "foreign gar project": dict(
+                roles=["backend"],
+                images={
+                    "backend": (
+                        f"asia-northeast3-docker.pkg.dev/evil-proj/nacfson-public/"
+                        f"project-pn-backend@{NEW_DIGEST}"
+                    )
+                },
+            ),
+            "tag instead of digest in images": dict(
+                roles=["backend"],
+                images={
+                    "backend": "asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public/project-pn-backend:v1.0.0"
+                },
             ),
         }
         for name, payload in cases.items():

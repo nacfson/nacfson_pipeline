@@ -1,66 +1,40 @@
 #!/usr/bin/env bash
 # ==============================================================================
-# Vault Registry Pull Proxy Verification Drill
-# Validates SC-005 & SC-008:
-# 1. Anonymous manifest retrieval with digest succeeds
-# 2. Inbound Authorization header is strictly rejected
-# 3. Mutable tags without digest are rejected
-# 4. Zero tokens exposed in headers or responses
+# Vault Registry Proxy Retirement Verification (Spec 012 FR-004)
+# Asserts that vault-registry-proxy manifests, OpenBao policy, K3s mirror
+# template, and Go binary have been cleanly retired in favor of public GAR
+# @sha256 digest pulls with zero pull credentials.
 # ==============================================================================
 
 set -euo pipefail
 
-PROXY_BIN="/tmp/registry-proxy-drill-test"
-if [ -z "${REGISTRY_PROXY_URL:-}" ]; then
-  echo "Starting isolated test instance of registry proxy on port 5505..."
-  (cd services/vault-proxies && go build -o "${PROXY_BIN}" ./cmd/registry-proxy)
-  PORT=5505 UPSTREAM_REGISTRY="ghcr.io" GHCR_PULL_TOKEN="initial_token" "${PROXY_BIN}" >/dev/null 2>&1 &
-  PROXY_PID=$!
-  trap "kill -9 ${PROXY_PID} 2>/dev/null || true" EXIT
-  sleep 1
-  PROXY_URL="http://127.0.0.1:5505"
-else
-  PROXY_URL="${REGISTRY_PROXY_URL}"
-fi
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ROOT_DIR="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+cd "${ROOT_DIR}"
 
-echo "=== [Test] Vault Registry Pull Proxy ==="
+echo "=== [Test] Vault Registry Proxy Retirement Check (Spec 012) ==="
 
-# 1. Health check
-echo "[1/4] Checking proxy healthz..."
-HEALTH=$(curl -fsSL "${PROXY_URL}/healthz")
-if [ "${HEALTH}" != "OK" ]; then
-  echo "FAIL: Expected 'OK', got '${HEALTH}'"
+RETIRED_PATHS=(
+  "deploy/platform/vault-proxies/registry-proxy.yaml"
+  "deploy/platform/vault/policies/registry-proxy.hcl"
+  "deploy/platform/vault/registries.yaml.template"
+  "services/vault-proxies/cmd/registry-proxy"
+  "services/vault-proxies/Dockerfile.registry-proxy"
+)
+
+for p in "${RETIRED_PATHS[@]}"; do
+  if [ -e "${p}" ]; then
+    echo "FAIL: Retired path still exists: ${p}"
+    exit 1
+  fi
+done
+echo "✓ PASS: All retired vault-registry-proxy files are absent."
+
+if grep -q "vault-registry-proxy" deploy/platform/vault/service-accounts.yaml deploy/platform/vault-proxies/kustomization.yaml; then
+  echo "FAIL: Active Vault manifests still reference vault-registry-proxy."
   exit 1
 fi
-echo "✓ PASS: Healthz endpoint responsive."
+echo "✓ PASS: Vault manifests contain zero vault-registry-proxy references."
 
-# 2. V2 Ping
-echo "[2/4] Testing /v2/ API version ping..."
-V2_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${PROXY_URL}/v2/")
-if [ "${V2_STATUS}" != "200" ]; then
-  echo "FAIL: Expected HTTP 200 on /v2/, got ${V2_STATUS}"
-  exit 1
-fi
-echo "✓ PASS: V2 ping successful."
-
-# 3. Security Invariant: Reject caller-supplied Authorization header
-echo "[3/4] Asserting rejection of caller-supplied Authorization header..."
-AUTH_HEADER_KEY="Authorization"
-AUTH_HEADER_VAL="Bearer test-denial-probe"
-FORBIDDEN_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -H "${AUTH_HEADER_KEY}: ${AUTH_HEADER_VAL}" "${PROXY_URL}/v2/")
-if [ "${FORBIDDEN_STATUS}" != "403" ]; then
-  echo "FAIL: Expected HTTP 403 Forbidden, got ${FORBIDDEN_STATUS}"
-  exit 1
-fi
-echo "✓ PASS: Caller-supplied Authorization header strictly rejected (HTTP 403)."
-
-# 4. Tag Invalidity Assertion: Mutable tags must be rejected
-echo "[4/4] Asserting rejection of mutable tags without sha256 digest..."
-BAD_TAG_STATUS=$(curl -s -o /dev/null -w "%{http_code}" "${PROXY_URL}/v2/nacfson/test-repo/manifests/latest")
-if [ "${BAD_TAG_STATUS}" != "400" ]; then
-  echo "FAIL: Expected HTTP 400 Bad Request for mutable tag, got ${BAD_TAG_STATUS}"
-  exit 1
-fi
-echo "✓ PASS: Mutable tags rejected; immutable digest enforced (HTTP 400)."
-
-echo "=== All Registry Proxy Tests Passed Successfully ==="
+(cd services/vault-proxies && go test ./... && go vet ./...)
+echo "✓ PASS: Remaining Vault proxies compile and pass unit tests."

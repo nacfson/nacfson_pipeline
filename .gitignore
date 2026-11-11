@@ -64,3 +64,10 @@ secrets.env
 *-secret.yaml
 image-pull-secret.yaml
 .orca/
+
+# Migration cutover bundles (must stay outside Git)
+cutover-bundle*/
+*.snap
+*.dump.gz
+edge-tls-secrets.yaml
+victoria-logs-data.tar.gz

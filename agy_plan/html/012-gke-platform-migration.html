@@ -1,0 +1,820 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Spec 012 Implementation Plan — GKE Platform Portability &amp; Full-State Cutover</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    @keyframes dashMove {
+      to { stroke-dashoffset: -24; }
+    }
+    .flow-active {
+      stroke-dasharray: 7 5;
+      animation: dashMove 0.9s linear infinite;
+    }
+    .svg-dim {
+      opacity: 0.22;
+      transition: opacity 0.25s ease;
+    }
+    .svg-node {
+      transition: opacity 0.25s ease, transform 0.2s ease;
+    }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 antialiased m-0 p-0">
+  <!-- Explicit Executive Header -->
+  <header class="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-slate-200 shadow-sm">
+    <div class="max-w-7xl mx-auto px-5 py-4 space-y-4">
+      <div class="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+        <div class="space-y-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200">SPEC 012 · IMPLEMENTATION PLAN</span>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-mono bg-slate-100 text-slate-700 border border-slate-200">GCP Project: nacfson-pipeline · Zone: asia-northeast3-a (Seoul)</span>
+            <span class="px-2.5 py-0.5 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">Gate 1 Ready · Zero Cloud Changes Until Verified</span>
+          </div>
+          <h1 class="text-xl sm:text-2xl font-bold tracking-tight text-slate-900">
+            GKE Platform Portability, Hybrid Node Placement &amp; Full-State Cutover
+          </h1>
+          <p class="text-xs sm:text-sm text-slate-600 max-w-4xl">
+            Migrates all live tenant apps, Keycloak OIDC, PostgreSQL, and OpenBao from Oracle Cloud <code class="px-1 py-0.5 rounded bg-slate-100 text-slate-800 font-mono text-xs">vps-k3s</code> to a 2-node Zonal GKE Standard cluster in Seoul (<code class="px-1 py-0.5 rounded bg-slate-100 text-slate-800 font-mono text-xs">asia-northeast3-a</code>; Tokyo <code class="px-1 py-0.5 rounded bg-slate-100 text-slate-800 font-mono text-xs">asia-northeast1-a</code> drop-in compatible), while keeping <code class="px-1 py-0.5 rounded bg-slate-100 text-slate-800 font-mono text-xs">clusters/local-k3s/</code> in 100% cloud-agnostic lockstep.
+          </p>
+        </div>
+
+        <div class="flex items-center gap-2 self-start bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs">
+          <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0"></span>
+          <div>
+            <div class="font-semibold text-slate-800">Constitution v2.2.1 → v2.3.0</div>
+            <div class="text-slate-500">All decisions locked · Ready for tasks</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5">
+          <div class="text-xs font-medium text-slate-500">All-In Monthly Cost (Seoul)</div>
+          <div class="text-base font-bold text-slate-900 mt-0.5">$53.31<span class="text-xs font-normal text-slate-500">/mo PAYG</span> · <span class="text-emerald-700">$41.70</span><span class="text-xs font-normal text-slate-500">/mo 1-yr</span></div>
+          <div class="text-xs text-slate-500 mt-0.5">$0 GCP LoadBalancer (Tokyo: $54.92 / $43.31)</div>
+        </div>
+
+        <div class="bg-blue-50/60 border border-blue-200 rounded-xl px-3.5 py-2.5">
+          <div class="text-xs font-medium text-blue-800">Node 1 · On-Demand (24/7 Live Path)</div>
+          <div class="text-base font-bold text-slate-900 mt-0.5">1 × e2-medium <span class="text-xs font-normal text-slate-600">(4 GB · $31.38/mo)</span></div>
+          <div class="text-xs text-slate-600 mt-0.5">All 3 projects + Keycloak + Gateway + DB + Vault</div>
+        </div>
+
+        <div class="bg-amber-50/70 border border-amber-200 rounded-xl px-3.5 py-2.5">
+          <div class="text-xs font-medium text-amber-900">Node 2 · Tiny Spot (Controllers Only)</div>
+          <div class="text-base font-bold text-slate-900 mt-0.5">1 × e2-small <span class="text-xs font-normal text-slate-600">(2 GB · $7.81/mo)</span></div>
+          <div class="text-xs text-slate-600 mt-0.5">5 single-replica (<code class="font-mono">replicas: 1</code>) controllers · 0 PVCs</div>
+        </div>
+
+        <div class="bg-emerald-50/60 border border-emerald-200 rounded-xl px-3.5 py-2.5">
+          <div class="text-xs font-medium text-emerald-800">1/n Per-Project Compute Slice</div>
+          <div class="text-base font-bold text-slate-900 mt-0.5">303m CPU · 418 MiB RAM</div>
+          <div class="text-xs text-slate-600 mt-0.5">Fits largest project (<code class="font-mono">proj-pn</code>: 150m / 384 MiB)</div>
+        </div>
+      </div>
+
+      <nav class="flex flex-wrap gap-1.5 pt-1" role="tablist">
+        <button onclick="switchTab('arch')" id="tab-btn-arch" class="px-3.5 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white shadow-sm">
+          1. Architecture &amp; Failure Simulator
+        </button>
+        <button onclick="switchTab('workloads')" id="tab-btn-workloads" class="px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200">
+          2. Explicit Pod &amp; Replica Inventory
+        </button>
+        <button onclick="switchTab('budget')" id="tab-btn-budget" class="px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200">
+          3. Cost, 1/n Math &amp; Amendment 2.3.0
+        </button>
+        <button onclick="switchTab('cutover')" id="tab-btn-cutover" class="px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200">
+          4. Cutover Timeline &amp; File Changes
+        </button>
+        <button onclick="switchTab('gates')" id="tab-btn-gates" class="px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200">
+          5. 4-Gate Verification Commands
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-5 py-6 space-y-6">
+    <section id="panel-arch" class="space-y-5">
+      <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Interactive GKE Design 1 Architecture &amp; Blast-Radius Simulator</h2>
+            <p class="text-xs text-slate-600 mt-0.5">Click any scenario button to trace how user traffic, Keycloak OIDC token verification, OpenBao KMS unseal, and Fluent Bit disk recovery behave.</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button onclick="setScenario('normal')" id="sc-btn-normal" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white shadow-sm">
+              A. Normal 24/7 User &amp; Auth Flow
+            </button>
+            <button onclick="setScenario('spot')" id="sc-btn-spot" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200">
+              B. Spot Node Preempted (e2-small)
+            </button>
+            <button onclick="setScenario('kms')" id="sc-btn-kms" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200">
+              C. Node 1 OS Upgrade (KMS Auto-Unseal)
+            </button>
+            <button onclick="setScenario('wan')" id="sc-btn-wan" class="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200">
+              D. OCI WAN Outage (Fluent Bit 256M)
+            </button>
+          </div>
+        </div>
+
+        <div id="sc-banner" class="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div>
+            <div class="font-bold uppercase tracking-wider text-emerald-800" id="sc-badge">LIVE VERDICT · 100% ONLINE</div>
+            <div class="font-semibold text-slate-900 text-sm mt-1" id="sc-title">Normal 24/7 Visitor &amp; OIDC Introspection Path</div>
+          </div>
+          <div>
+            <div class="font-semibold text-slate-700">Active Packet / Control Path</div>
+            <p class="text-slate-600 mt-0.5 font-mono" id="sc-path">Browser → Static IP :443 → Traefik (hostPort) → proj-pn → Gateway → Keycloak (On-Demand) → vault-db-proxy → postgres-0</p>
+          </div>
+          <div>
+            <div class="font-semibold text-slate-700">Visitor &amp; Platform Impact</div>
+            <p class="text-slate-600 mt-0.5" id="sc-impact">Zero Spot nodes sit on the request, OIDC verification, or database path. Every login, session check, and DB query executes on On-Demand Node 1.</p>
+          </div>
+        </div>
+
+        <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 overflow-x-auto">
+          <svg viewBox="0 0 1080 470" class="w-full min-w-[880px] h-auto">
+            <g id="svg-pool1" class="svg-node">
+              <rect x="175" y="16" width="565" height="436" rx="14" fill="#eff6ff" stroke="#3b82f6" stroke-width="2" />
+              <rect x="175" y="16" width="565" height="36" rx="14" fill="#dbeafe" />
+              <text x="192" y="39" fill="#1e3a8a" font-size="12.5" font-weight="700">NODE 1: ondemand-core · 1 × e2-medium On-Demand (4 GB RAM · 940m CPU · Static IPv4)</text>
+            </g>
+
+            <g id="svg-pool2" class="svg-node">
+              <rect x="765" y="16" width="298" height="276" rx="14" fill="#fffbeb" stroke="#f59e0b" stroke-width="2" />
+              <rect x="765" y="16" width="298" height="36" rx="14" fill="#fef3c7" />
+              <text x="780" y="38" fill="#92400e" font-size="12" font-weight="700">NODE 2: spot-controllers · 1 × e2-small Spot</text>
+              <text x="780" y="68" fill="#78350f" font-size="10.5" font-weight="600">5 Single-Replica (replicas: 1) Sub-Controllers · 0 PVCs</text>
+            </g>
+
+            <g id="svg-user" class="svg-node">
+              <rect x="14" y="72" width="132" height="72" rx="10" fill="#ffffff" stroke="#10b981" stroke-width="2" />
+              <text x="80" y="98" text-anchor="middle" fill="#0f172a" font-size="12" font-weight="700">Visitor Browser</text>
+              <text x="80" y="116" text-anchor="middle" fill="#047857" font-size="10.5" font-family="monospace">HTTPS :443 / :80</text>
+              <text x="80" y="132" text-anchor="middle" fill="#64748b" font-size="9.5">DNS → Node 1 IP</text>
+            </g>
+
+            <g id="svg-kms" class="svg-node svg-dim">
+              <rect x="14" y="218" width="132" height="84" rx="10" fill="#ffffff" stroke="#0284c7" stroke-width="2" />
+              <text x="80" y="242" text-anchor="middle" fill="#0f172a" font-size="11.5" font-weight="700">GCP Cloud KMS</text>
+              <text x="80" y="259" text-anchor="middle" fill="#0369a1" font-size="10" font-family="monospace">199.36.153.8/30</text>
+              <text x="80" y="275" text-anchor="middle" fill="#475569" font-size="9.5">Workload Identity</text>
+              <text x="80" y="290" text-anchor="middle" fill="#047857" font-size="9.5" font-weight="600">Auto-Unseal ($0.06)</text>
+            </g>
+
+            <g id="svg-gar" class="svg-node">
+              <rect x="14" y="330" width="132" height="82" rx="10" fill="#ffffff" stroke="#64748b" stroke-width="1.5" />
+              <text x="80" y="354" text-anchor="middle" fill="#0f172a" font-size="11.5" font-weight="700">Public GAR</text>
+              <text x="80" y="371" text-anchor="middle" fill="#334155" font-size="10" font-family="monospace">@sha256 digests</text>
+              <text x="80" y="387" text-anchor="middle" fill="#047857" font-size="9.5">&lt; 0.5 GB Free Tier</text>
+              <text x="80" y="401" text-anchor="middle" fill="#64748b" font-size="9.5">0 Pull Secrets</text>
+            </g>
+
+            <g id="svg-traefik" class="svg-node">
+              <rect x="192" y="68" width="150" height="82" rx="10" fill="#ffffff" stroke="#2563eb" stroke-width="1.8" />
+              <text x="267" y="90" text-anchor="middle" fill="#0f172a" font-size="12" font-weight="700">Traefik v3.3.4</text>
+              <text x="267" y="107" text-anchor="middle" fill="#1d4ed8" font-size="10" font-family="monospace">replicas: 1 · 128Mi</text>
+              <text x="267" y="123" text-anchor="middle" fill="#334155" font-size="10">hostPort 80 / 443</text>
+              <text x="267" y="138" text-anchor="middle" fill="#047857" font-size="9.5" font-weight="600">ClusterIP (No LB)</text>
+            </g>
+
+            <g id="svg-projects" class="svg-node">
+              <rect x="364" y="68" width="175" height="96" rx="10" fill="#ffffff" stroke="#10b981" stroke-width="1.8" />
+              <text x="451" y="90" text-anchor="middle" fill="#0f172a" font-size="11.5" font-weight="700">3 Tenant Apps (replicas: 1)</text>
+              <text x="451" y="108" text-anchor="middle" fill="#047857" font-size="9.5" font-family="monospace">proj-pn: 1 FE + 1 BE (384Mi)</text>
+              <text x="451" y="124" text-anchor="middle" fill="#047857" font-size="9.5" font-family="monospace">proj-health: 1 FE + 1 BE (320Mi)</text>
+              <text x="451" y="140" text-anchor="middle" fill="#047857" font-size="9.5" font-family="monospace">proj-blog: 1 Static FE (128Mi)</text>
+              <text x="451" y="155" text-anchor="middle" fill="#64748b" font-size="9.5">FE &amp; BE isolated, NOT 2 replicas</text>
+            </g>
+
+            <g id="svg-auth" class="svg-node">
+              <rect x="558" y="68" width="165" height="96" rx="10" fill="#ffffff" stroke="#2563eb" stroke-width="1.8" />
+              <text x="640" y="90" text-anchor="middle" fill="#0f172a" font-size="12" font-weight="700">Identity &amp; OIDC (24/7)</text>
+              <text x="640" y="108" text-anchor="middle" fill="#1d4ed8" font-size="10" font-family="monospace">gateway: 1 pod (64Mi)</text>
+              <text x="640" y="124" text-anchor="middle" fill="#1d4ed8" font-size="10" font-family="monospace">keycloak: 1 pod (832Mi)</text>
+              <text x="640" y="140" text-anchor="middle" fill="#047857" font-size="9.5" font-weight="600">Online Introspection 24/7</text>
+              <text x="640" y="155" text-anchor="middle" fill="#64748b" font-size="9.5">DB persistent-user-sessions</text>
+            </g>
+
+            <g id="svg-stateful" class="svg-node">
+              <rect x="192" y="196" width="531" height="114" rx="10" fill="#ffffff" stroke="#059669" stroke-width="1.8" />
+              <text x="457" y="219" text-anchor="middle" fill="#0f172a" font-size="12" font-weight="700">Stateful ReadWriteOnce (RWO) Core &amp; Zero-Plaintext Vault Proxies (All replicas: 1)</text>
+              <text x="325" y="242" text-anchor="middle" fill="#047857" font-size="10.5" font-family="monospace">openbao-0 (96Mi · 10Gi PVC)</text>
+              <text x="585" y="242" text-anchor="middle" fill="#047857" font-size="10.5" font-family="monospace">postgres-0 (256Mi · 10Gi PVC)</text>
+              <text x="325" y="262" text-anchor="middle" fill="#334155" font-size="10" font-family="monospace">vault-db / ai / notify-proxy (3×32Mi)</text>
+              <text x="585" y="262" text-anchor="middle" fill="#334155" font-size="10" font-family="monospace">error-detector (64Mi · 1Gi PVC)</text>
+              <text x="457" y="284" text-anchor="middle" fill="#64748b" font-size="10">00:00 UTC CronJobs: postgres-daily-backup (2Gi PVC) + openbao-daily-snapshot (5Gi PVC) · registry-proxy retired</text>
+              <text x="457" y="300" text-anchor="middle" fill="#0369a1" font-size="9.5" font-weight="600">Portable networking.k8s.io/v1 NetworkPolicy (blocks RFC1918 &amp; 169.254.169.254 on tenant/proxy :443)</text>
+            </g>
+
+            <g id="svg-fb" class="svg-node">
+              <rect x="192" y="336" width="531" height="98" rx="10" fill="#ffffff" stroke="#d97706" stroke-width="1.8" />
+              <text x="457" y="359" text-anchor="middle" fill="#0f172a" font-size="12" font-weight="700">DaemonSet/fluent-bit (1 Pod per Node · Bookmark + 256 MiB Disk Outbox)</text>
+              <text x="457" y="379" text-anchor="middle" fill="#b45309" font-size="10.5" font-family="monospace">hostPath: /var/lib/fluent-bit-state (Bookmark: tail.db + Outbox: /state/chunks &lt;= 256 MiB)</text>
+              <text x="457" y="398" text-anchor="middle" fill="#334155" font-size="10" font-family="monospace">[OUTPUT] kafka → 10.200.0.11..13:9092 · acks=-1 · topics: logs.proj.valid (192M) / quarantine (64M)</text>
+              <text x="457" y="416" text-anchor="middle" fill="#64748b" font-size="9.5">In-cluster StatefulSet/victorialogs removed on GKE from day 1 (saves 384Mi RAM &amp; 10Gi PVC)</text>
+            </g>
+
+            <g id="svg-cm" class="svg-node">
+              <rect x="780" y="80" width="268" height="100" rx="10" fill="#ffffff" stroke="#d97706" stroke-width="1.6" />
+              <text x="914" y="100" text-anchor="middle" fill="#0f172a" font-size="11.5" font-weight="700">cert-manager Namespace (3 Distinct Roles)</text>
+              <text x="914" y="119" text-anchor="middle" fill="#92400e" font-size="10" font-family="monospace">• cert-manager (replicas:1, 96Mi)</text>
+              <text x="914" y="136" text-anchor="middle" fill="#92400e" font-size="10" font-family="monospace">• cert-manager-cainjector (replicas:1, 64Mi)</text>
+              <text x="914" y="153" text-anchor="middle" fill="#92400e" font-size="10" font-family="monospace">• cert-manager-webhook (replicas:1, 32Mi)</text>
+              <text x="914" y="170" text-anchor="middle" fill="#64748b" font-size="9.5">Renews Let's Encrypt certs every 60 days</text>
+            </g>
+
+            <g id="svg-flux" class="svg-node">
+              <rect x="780" y="192" width="268" height="86" rx="10" fill="#ffffff" stroke="#d97706" stroke-width="1.6" />
+              <text x="914" y="212" text-anchor="middle" fill="#0f172a" font-size="11.5" font-weight="700">flux-system Namespace (2 Distinct Roles)</text>
+              <text x="914" y="231" text-anchor="middle" fill="#92400e" font-size="10" font-family="monospace">• source-controller (replicas:1, 64Mi)</text>
+              <text x="914" y="248" text-anchor="middle" fill="#92400e" font-size="10" font-family="monospace">• kustomize-controller (replicas:1, 64Mi)</text>
+              <text x="914" y="266" text-anchor="middle" fill="#64748b" font-size="9.5">Polls GitHub every 5m · emptyDir only</text>
+            </g>
+
+            <g id="svg-oci" class="svg-node">
+              <rect x="765" y="318" width="298" height="134" rx="14" fill="#ecfdf5" stroke="#10b981" stroke-width="2" />
+              <text x="782" y="342" fill="#065f46" font-size="12" font-weight="700">OCI Always Free (Spec 013/014 Sink)</text>
+              <text x="782" y="363" fill="#0f172a" font-size="10.5" font-family="monospace">Host WireGuard Tunnel (0 K8s Secrets)</text>
+              <text x="782" y="383" fill="#047857" font-size="10.5" font-family="monospace">VM 1–3: Kafka KRaft ×3 (RF=3, ISR=2)</text>
+              <text x="782" y="403" fill="#334155" font-size="10" font-family="monospace">VM 4: Flink SQL + VictoriaLogs + Iceberg</text>
+              <text x="782" y="426" fill="#64748b" font-size="9.5">vps-k3s shrunk/recreated into VM 1 at Gate 4</text>
+            </g>
+
+            <line id="edge-user-traefik" x1="146" y1="108" x2="192" y2="108" stroke="#10b981" stroke-width="3" class="flow-active" />
+            <line id="edge-traefik-proj" x1="342" y1="108" x2="364" y2="108" stroke="#10b981" stroke-width="3" class="flow-active" />
+            <line id="edge-proj-auth" x1="539" y1="112" x2="558" y2="112" stroke="#2563eb" stroke-width="3" class="flow-active" />
+            <line id="edge-proj-db" x1="451" y1="164" x2="451" y2="196" stroke="#059669" stroke-width="2.5" class="flow-active" />
+            <line id="edge-auth-db" x1="640" y1="164" x2="590" y2="196" stroke="#2563eb" stroke-width="2.5" class="flow-active" />
+            <line id="edge-kms-bao" x1="146" y1="255" x2="192" y2="255" stroke="#0284c7" stroke-width="3" class="svg-dim" />
+            <line id="edge-fb-oci" x1="723" y1="385" x2="765" y2="385" stroke="#d97706" stroke-width="3" class="flow-active" />
+          </svg>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-1">
+          <div class="bg-emerald-50/50 border border-emerald-200 rounded-xl p-4 space-y-1.5 text-xs">
+            <div class="font-bold text-emerald-900">Why 1 Frontend + 1 Backend Pod (Not 2 Replicas)?</div>
+            <p class="text-slate-700"><code class="font-mono bg-white px-1 rounded">proj-pn</code> and <code class="font-mono bg-white px-1 rounded">proj-health</code> run <strong>replicas: 1</strong> of two separate tiers: a web UI container (<code class="font-mono">frontend</code>) and an API server (<code class="font-mono">backend</code>). <code class="font-mono bg-white px-1 rounded">proj-blog</code> is static HTML only (1 pod).</p>
+            <p class="text-slate-600">Splitting UI from API enforces zero-trust <code class="font-mono">NetworkPolicy</code> (the frontend pod cannot touch PostgreSQL or Vault proxies) and lets UI updates deploy without restarting the API.</p>
+          </div>
+
+          <div class="bg-blue-50/50 border border-blue-200 rounded-xl p-4 space-y-1.5 text-xs">
+            <div class="font-bold text-blue-900">Simulator C: Why Does GKE Ever Reboot an On-Demand Node?</div>
+            <p class="text-slate-700">On-Demand VMs are never preempted for cheap capacity, <strong>but Google still patches the Linux kernel &amp; Kubernetes kubelet</strong> against security CVEs during scheduled maintenance (and OpenBao can restart on any pod update).</p>
+            <p class="text-slate-600">Without Cloud KMS auto-unseal, a 3 AM security reboot leaves OpenBao locked ("sealed") until you wake up and type keys. With KMS, OpenBao unlocks itself in ~2s automatically.</p>
+          </div>
+
+          <div class="bg-amber-50/50 border border-amber-200 rounded-xl p-4 space-y-1.5 text-xs">
+            <div class="font-bold text-amber-900">Simulator D: Fluent Bit "Bookmark + Disk Outbox"</div>
+            <p class="text-slate-700">1 USB stick (RWO PVC) cannot plug into 2 nodes at once. Instead, each node uses a folder on its own boot disk (<code class="font-mono bg-white px-1 rounded">/var/lib/fluent-bit-state</code>):</p>
+            <ul class="list-disc pl-4 text-slate-600 space-y-0.5">
+              <li><strong>Bookmark (<code class="font-mono">tail.db</code>):</strong> Remembers the exact log line read (e.g. line #500) so pod restarts never skip or duplicate lines.</li>
+              <li><strong>Outbox (<code class="font-mono">/state/chunks</code>, max 256 MiB):</strong> Saves unsent logs to disk (not RAM) while OCI internet is down, then sends them when it recovers.</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-workloads" class="hidden space-y-5">
+      <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">Complete Pod-by-Pod Placement &amp; Replica Inventory</h2>
+            <p class="text-xs text-slate-600 mt-0.5">Every single workload runs <code class="font-mono bg-slate-100 px-1 rounded">replicas: 1</code> (except <code class="font-mono bg-slate-100 px-1 rounded">DaemonSet/fluent-bit</code>, which runs 1 collector pod per node). Why 3 pods in <code class="font-mono">cert-manager</code> and 2 in <code class="font-mono">flux-system</code>? Each pod is a different upstream microservice binary, not a duplicate replica.</p>
+          </div>
+          <div class="flex flex-wrap gap-1.5">
+            <button onclick="filterRows('all')" id="flt-all" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-600 text-white">All</button>
+            <button onclick="filterRows('ondemand')" id="flt-ondemand" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200">Node 1: On-Demand</button>
+            <button onclick="filterRows('spot')" id="flt-spot" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200">Node 2: Spot</button>
+            <button onclick="filterRows('retired')" id="flt-retired" class="px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200">Retired / Moved</button>
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-xs text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-50 text-slate-600 border-b border-slate-200">
+                <th class="py-2.5 px-3 font-semibold">Placement</th>
+                <th class="py-2.5 px-3 font-semibold">Namespace / Workload</th>
+                <th class="py-2.5 px-3 font-semibold">Kind &amp; Replicas</th>
+                <th class="py-2.5 px-3 font-semibold">CPU (req / lim)</th>
+                <th class="py-2.5 px-3 font-semibold">RAM (req / lim)</th>
+                <th class="py-2.5 px-3 font-semibold">RWO Disk</th>
+                <th class="py-2.5 px-3 font-semibold">Distinct Role &amp; Placement Reason</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100">
+              <tr data-pool="ondemand" class="hover:bg-slate-50/80">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200">Node 1 · On-Demand</span></td>
+                <td class="py-2 px-3 font-mono font-medium text-slate-900">platform / traefik</td>
+                <td class="py-2 px-3 font-mono">Deployment · 1</td>
+                <td class="py-2 px-3 font-mono">30m / 200m</td>
+                <td class="py-2 px-3 font-mono">64Mi / 96Mi</td>
+                <td class="py-2 px-3 text-slate-400">None</td>
+                <td class="py-2 px-3 text-slate-600">Edge HTTPS ingress (<code class="font-mono">hostPort: 80/443</code> on Node 1 static IP). Must stay up 24/7.</td>
+              </tr>
+              <tr data-pool="ondemand" class="hover:bg-slate-50/80">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200">Node 1 · On-Demand</span></td>
+                <td class="py-2 px-3 font-mono font-medium text-slate-900">identity / gateway</td>
+                <td class="py-2 px-3 font-mono">Deployment · 1</td>
+                <td class="py-2 px-3 font-mono">25m / 100m</td>
+                <td class="py-2 px-3 font-mono">64Mi / 64Mi</td>
+                <td class="py-2 px-3 text-slate-400">None</td>
+                <td class="py-2 px-3 text-slate-600">Go stdlib session authority &amp; logout endpoint. Live auth path.</td>
+              </tr>
+              <tr data-pool="ondemand" class="hover:bg-slate-50/80">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200">Node 1 · On-Demand</span></td>
+                <td class="py-2 px-3 font-mono font-medium text-slate-900">identity / keycloak</td>
+                <td class="py-2 px-3 font-mono">Deployment · 1</td>
+                <td class="py-2 px-3 font-mono">100m / 500m</td>
+                <td class="py-2 px-3 font-mono">832Mi / 832Mi</td>
+                <td class="py-2 px-3 text-slate-400">None</td>
+                <td class="py-2 px-3 text-slate-600">Google OIDC broker &amp; online token introspection. Kept on On-Demand so user auth never 503s.</td>
+              </tr>
+              <tr data-pool="ondemand" class="hover:bg-slate-50/80">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200">Node 1 · On-Demand</span></td>
+                <td class="py-2 px-3 font-mono font-medium text-slate-900">identity / postgres</td>
+                <td class="py-2 px-3 font-mono">StatefulSet · 1</td>
+                <td class="py-2 px-3 font-mono">50m / 250m</td>
+                <td class="py-2 px-3 font-mono">256Mi / 256Mi</td>
+                <td class="py-2 px-3 font-mono text-emerald-700 font-semibold">10Gi RWO</td>
+                <td class="py-2 px-3 text-slate-600">Shared PostgreSQL (<code class="font-mono">keycloak</code>, <code class="font-mono">proj_pn</code>, <code class="font-mono">proj_health</code>). RWO disk must never be preempted.</td>
+              </tr>
+              <tr data-pool="ondemand" class="hover:bg-slate-50/80">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200">Node 1 · On-Demand</span></td>
+                <td class="py-2 px-3 font-mono font-medium text-slate-900">vault / openbao</td>
+                <td class="py-2 px-3 font-mono">StatefulSet · 1</td>
+                <td class="py-2 px-3 font-mono">25m / 200m</td>
+                <td class="py-2 px-3 font-mono">64Mi / 96Mi</td>
+                <td class="py-2 px-3 font-mono text-emerald-700 font-semibold">10Gi RWO</td>
+                <td class="py-2 px-3 text-slate-600">Secrets &amp; Transit signing engine (<code class="font-mono">gcpckms</code> auto-unseal via Workload Identity).</td>
+              </tr>
+              <tr data-pool="ondemand" class="hover:bg-slate-50/80">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200">Node 1 · On-Demand</span></td>
+                <td class="py-2 px-3 font-mono font-medium text-slate-900">vault / db, ai, notify-proxy</td>
+                <td class="py-2 px-3 font-mono">3 Deployments · 1 ea</td>
+                <td class="py-2 px-3 font-mono">3×15m / 100m</td>
+                <td class="py-2 px-3 font-mono">96Mi / 160Mi</td>
+                <td class="py-2 px-3 text-slate-400">None</td>
+                <td class="py-2 px-3 text-slate-600">3 distinct proxies (Postgres auth, Gemini AI, Discord webhook) injecting Vault secrets.</td>
+              </tr>
+              <tr data-pool="ondemand" class="hover:bg-slate-50/80">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200">Node 1 · On-Demand</span></td>
+                <td class="py-2 px-3 font-mono font-medium text-slate-900">proj-pn, proj-health, proj-blog</td>
+                <td class="py-2 px-3 font-mono">5 Deployments · 1 ea</td>
+                <td class="py-2 px-3 font-mono">350m / 350m</td>
+                <td class="py-2 px-3 font-mono">832Mi / 832Mi</td>
+                <td class="py-2 px-3 text-slate-400">None</td>
+                <td class="py-2 px-3 text-slate-600"><code class="font-mono">pn</code> (256+128Mi), <code class="font-mono">health</code> (256+64Mi), <code class="font-mono">blog</code> (128Mi). Strict Guaranteed QoS 24/7.</td>
+              </tr>
+              <tr data-pool="ondemand" class="hover:bg-slate-50/80">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-blue-50 text-blue-700 font-semibold border border-blue-200">Node 1 · On-Demand</span></td>
+                <td class="py-2 px-3 font-mono font-medium text-slate-900">observability / error-detector + backups</td>
+                <td class="py-2 px-3 font-mono">1 Deploy (0→1) + 2 CronJob</td>
+                <td class="py-2 px-3 font-mono">25m (+50m @ 00:00)</td>
+                <td class="py-2 px-3 font-mono">64Mi (+192Mi @ 00:00)</td>
+                <td class="py-2 px-3 font-mono text-emerald-700 font-semibold">1Gi+2Gi+5Gi</td>
+                <td class="py-2 px-3 text-slate-600">Paused (<code class="font-mono">replicas: 0</code>) on GKE until Spec 014 switches to Kafka, with 25m/64Mi slot &amp; RWO PVCs pre-reserved on On-Demand.</td>
+              </tr>
+
+              <tr data-pool="spot" class="bg-amber-50/30 hover:bg-amber-50/60">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-semibold border border-amber-300">Node 2 · Spot</span></td>
+                <td class="py-2 px-3 font-mono font-medium text-slate-900">cert-manager / cert-manager</td>
+                <td class="py-2 px-3 font-mono">Deployment · 1</td>
+                <td class="py-2 px-3 font-mono">50m / 200m</td>
+                <td class="py-2 px-3 font-mono">64Mi / 128Mi</td>
+                <td class="py-2 px-3 text-slate-400">None</td>
+                <td class="py-2 px-3 text-slate-700"><strong>Sub-component 1 of 3:</strong> ACME controller that renews Let's Encrypt certs every 60 days.</td>
+              </tr>
+              <tr data-pool="spot" class="bg-amber-50/30 hover:bg-amber-50/60">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-semibold border border-amber-300">Node 2 · Spot</span></td>
+                <td class="py-2 px-3 font-mono font-medium text-slate-900">cert-manager / cainjector</td>
+                <td class="py-2 px-3 font-mono">Deployment · 1</td>
+                <td class="py-2 px-3 font-mono">25m / 100m</td>
+                <td class="py-2 px-3 font-mono">32Mi / 64Mi</td>
+                <td class="py-2 px-3 text-slate-400">None</td>
+                <td class="py-2 px-3 text-slate-700"><strong>Sub-component 2 of 3:</strong> Injects internal TLS CA into the webhook configuration.</td>
+              </tr>
+              <tr data-pool="spot" class="bg-amber-50/30 hover:bg-amber-50/60">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-semibold border border-amber-300">Node 2 · Spot</span></td>
+                <td class="py-2 px-3 font-mono font-medium text-slate-900">cert-manager / webhook</td>
+                <td class="py-2 px-3 font-mono">Deployment · 1</td>
+                <td class="py-2 px-3 font-mono">20m / 100m</td>
+                <td class="py-2 px-3 font-mono">32Mi / 48Mi</td>
+                <td class="py-2 px-3 text-slate-400">None</td>
+                <td class="py-2 px-3 text-slate-700"><strong>Sub-component 3 of 3:</strong> Validates Certificate YAML when Flux reconciles <code class="font-mono">tls</code>.</td>
+              </tr>
+              <tr data-pool="spot" class="bg-amber-50/30 hover:bg-amber-50/60">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-semibold border border-amber-300">Node 2 · Spot</span></td>
+                <td class="py-2 px-3 font-mono font-medium text-slate-900">flux-system / source-controller</td>
+                <td class="py-2 px-3 font-mono">Deployment · 1</td>
+                <td class="py-2 px-3 font-mono">50m / 500m</td>
+                <td class="py-2 px-3 font-mono">64Mi / 128Mi</td>
+                <td class="py-2 px-3 text-slate-400">emptyDir</td>
+                <td class="py-2 px-3 text-slate-700"><strong>Sub-component 1 of 2:</strong> Polls GitHub commits every 5m (<code class="font-mono">helm</code> &amp; <code class="font-mono">notification</code> omitted).</td>
+              </tr>
+              <tr data-pool="spot" class="bg-amber-50/30 hover:bg-amber-50/60">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-amber-100 text-amber-900 font-semibold border border-amber-300">Node 2 · Spot</span></td>
+                <td class="py-2 px-3 font-mono font-medium text-slate-900">flux-system / kustomize-controller</td>
+                <td class="py-2 px-3 font-mono">Deployment · 1</td>
+                <td class="py-2 px-3 font-mono">50m / 500m</td>
+                <td class="py-2 px-3 font-mono">64Mi / 128Mi</td>
+                <td class="py-2 px-3 text-slate-400">emptyDir</td>
+                <td class="py-2 px-3 text-slate-700"><strong>Sub-component 2 of 2:</strong> Renders Kustomize overlays and applies drift corrections.</td>
+              </tr>
+              <tr data-pool="ondemand spot" class="hover:bg-slate-50/80">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-slate-100 text-slate-700 font-semibold border border-slate-300">Both Nodes</span></td>
+                <td class="py-2 px-3 font-mono font-medium text-slate-900">observability / fluent-bit</td>
+                <td class="py-2 px-3 font-mono">DaemonSet · 1/node</td>
+                <td class="py-2 px-3 font-mono">25m / 50m ea</td>
+                <td class="py-2 px-3 font-mono">64Mi / 64Mi ea</td>
+                <td class="py-2 px-3 font-mono text-amber-800">hostPath 256M</td>
+                <td class="py-2 px-3 text-slate-600">Node log collector writing SQLite offsets &amp; chunks to <code class="font-mono">/var/lib/fluent-bit-state</code>.</td>
+              </tr>
+
+              <tr data-pool="retired" class="bg-rose-50/40 text-slate-500">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-semibold border border-rose-200">Moved to OCI VM 4</span></td>
+                <td class="py-2 px-3 font-mono line-through">observability / victorialogs</td>
+                <td class="py-2 px-3 font-mono">Removed on GKE</td>
+                <td class="py-2 px-3 font-mono">−50m</td>
+                <td class="py-2 px-3 font-mono">−384Mi</td>
+                <td class="py-2 px-3 font-mono">−10Gi PVC</td>
+                <td class="py-2 px-3">Moved to Always Free OCI VM 4 behind Kafka ×3 + Flink SQL (retained on <code class="font-mono">local-k3s</code>).</td>
+              </tr>
+              <tr data-pool="retired" class="bg-rose-50/40 text-slate-500">
+                <td class="py-2 px-3"><span class="px-2 py-0.5 rounded bg-rose-100 text-rose-800 font-semibold border border-rose-200">Retired Everywhere</span></td>
+                <td class="py-2 px-3 font-mono line-through">vault / vault-registry-proxy</td>
+                <td class="py-2 px-3 font-mono">Deleted</td>
+                <td class="py-2 px-3 font-mono">−25m</td>
+                <td class="py-2 px-3 font-mono">−64Mi</td>
+                <td class="py-2 px-3">None</td>
+                <td class="py-2 px-3">Replaced by public Google Artifact Registry (<code class="font-mono">allUsers</code> reader, <code class="font-mono">@sha256</code> digests).</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-budget" class="hidden space-y-5">
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+          <h2 class="text-base font-bold text-slate-900">Line-by-Line Monthly GKE Cost — Seoul (<code class="font-mono text-sm">asia-northeast3-a</code>)</h2>
+          <table class="w-full text-xs">
+            <thead>
+              <tr class="border-b border-slate-200 text-slate-500 text-left">
+                <th class="py-2">GCP Resource (<code class="font-mono">nacfson-pipeline</code>)</th>
+                <th class="py-2">Pay-As-You-Go</th>
+                <th class="py-2">1-Yr Commit (Node 1)</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-100 font-mono">
+              <tr><td class="py-2 font-sans text-slate-700">Zonal GKE Standard Management Fee</td><td class="text-emerald-700 font-semibold">$0.00</td><td class="text-emerald-700 font-semibold">$0.00</td></tr>
+              <tr><td class="py-2 font-sans text-slate-700">Node 1: <code class="font-mono">e2-medium</code> On-Demand (4 GB)</td><td>$31.38</td><td>$19.77</td></tr>
+              <tr><td class="py-2 font-sans text-slate-700">Node 2: <code class="font-mono">e2-small</code> Spot (2 GB)</td><td class="text-blue-700 font-semibold">$7.81</td><td class="text-blue-700 font-semibold">$7.81</td></tr>
+              <tr><td class="py-2 font-sans text-slate-700">GCP Cloud LoadBalancer (Traefik <code class="font-mono">hostPort</code>)</td><td class="text-emerald-700 font-semibold">$0.00 (saves $18+)</td><td class="text-emerald-700 font-semibold">$0.00</td></tr>
+              <tr><td class="py-2 font-sans text-slate-700">2 × Public IPv4 Addresses ($0.005/hr × 2)</td><td>$7.30</td><td>$7.30</td></tr>
+              <tr><td class="py-2 font-sans text-slate-700">Boot Disks (2 × 30 GB <code class="font-mono">pd-standard</code> @ $0.052/GB)</td><td>$3.12</td><td>$3.12</td></tr>
+              <tr><td class="py-2 font-sans text-slate-700">Stateful RWO PVCs (28 GiB <code class="font-mono">pd-balanced</code> @ $0.13/GB)</td><td>$3.64</td><td>$3.64</td></tr>
+              <tr><td class="py-2 font-sans text-slate-700">Cloud KMS Key + Cloud Build + Public GAR (&lt;0.5 GB)</td><td>$0.06</td><td>$0.06</td></tr>
+              <tr class="bg-slate-50 font-bold text-slate-900 border-t-2 border-slate-200">
+                <td class="py-2.5 font-sans">Total Monthly GKE Run-Rate (Seoul)</td>
+                <td class="py-2.5 text-blue-700">$53.31 / mo</td>
+                <td class="py-2.5 text-emerald-700">$41.70 / mo</td>
+              </tr>
+            </tbody>
+          </table>
+          <p class="text-[11px] text-slate-500">Note: In Tokyo (<code class="font-mono">asia-northeast1-a</code>), <code class="font-mono">e2-small</code> Spot is $9.42/mo (+$1.61/mo → $54.92 PAYG / $43.31 1-yr). In US Tier-1 (<code class="font-mono">us-west1-a</code>), total is $40.69 PAYG / $31.64 1-yr.</p>
+        </div>
+
+        <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+          <h2 class="text-base font-bold text-slate-900">Verified Per-Node &amp; 1/n Preflight Allocation</h2>
+
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <span class="font-semibold text-slate-800">Node 1 (<code class="font-mono">e2-medium</code>) Memory Requests</span>
+              <span class="font-mono text-slate-700">2,720 / 2,972 MiB (252 MiB free)</span>
+            </div>
+            <div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+              <div class="h-full bg-blue-600 rounded-full" style="width: 91.5%"></div>
+            </div>
+            <p class="text-xs text-slate-500">252 MiB free accommodates concurrent 00:00 UTC backup CronJobs (96Mi + 64Mi = 160Mi) with 92 MiB spare.</p>
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <span class="font-semibold text-slate-800">Node 2 (<code class="font-mono">e2-small</code> Spot) Memory Limits</span>
+              <span class="font-mono text-slate-700">944 / 1,436 MiB (492 MiB free)</span>
+            </div>
+            <div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+              <div class="h-full bg-amber-500 rounded-full" style="width: 65.7%"></div>
+            </div>
+            <p class="text-xs text-slate-500">With <code class="font-mono">--logging=NONE --monitoring=NONE</code>, <code class="font-mono">e2-small</code> retains 492 MiB headroom above hard limits.</p>
+          </div>
+
+          <div class="space-y-1.5">
+            <div class="flex justify-between text-xs">
+              <span class="font-semibold text-slate-800">1/3 Per-Project Slice vs. Largest Tenant (<code class="font-mono">proj-pn</code>)</span>
+              <span class="font-mono text-emerald-700 font-semibold">384 / 418 MiB · 150 / 303m CPU</span>
+            </div>
+            <div class="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+              <div class="h-full bg-emerald-600 rounded-full" style="width: 91.8%"></div>
+            </div>
+            <p class="text-xs text-slate-500">Cluster allocatable (4,408Mi) − Platform reservations (3,152Mi) = 1,256Mi ÷ 3 projects = <strong>418 MiB/project</strong>.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-3">
+        <h3 class="text-sm font-bold text-slate-900">Planned Constitution Amendment 2.3.0 (3 Narrowly Scoped Clauses)</h3>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+            <div class="font-bold text-slate-800">1. Fluent Bit Node-Local State</div>
+            <p class="text-slate-600">Extends Clarification 2.2.1 so <code class="font-mono">DaemonSet/fluent-bit</code> in <code class="font-mono">observability</code> may mount <code class="font-mono">/var/lib/fluent-bit-state</code> (<code class="font-mono">readOnly: false</code>) alongside <code class="font-mono">/var/log/pods</code>. All other <code class="font-mono">hostPath</code> mounts stay banned.</p>
+          </div>
+          <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+            <div class="font-bold text-slate-800">2. Public GAR Digest Portability</div>
+            <p class="text-slate-600">Authorizes immutable <code class="font-mono">@sha256:...</code> image pulls from publicly readable Google Artifact Registry (<code class="font-mono">GAR</code>) alongside <code class="font-mono">GHCR</code>, retiring <code class="font-mono">vault-registry-proxy</code> with zero K8s pull secrets.</p>
+          </div>
+          <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
+            <div class="font-bold text-slate-800">3. Keyless Cloud KMS Seal Wrapper</div>
+            <p class="text-slate-600">Permits <code class="font-mono">openbao-0</code> to wrap its master seal key with GCP Cloud KMS (<code class="font-mono">gcpckms</code>) via keyless GKE Workload Identity so planned node upgrades unseal unattended.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-cutover" class="hidden space-y-5">
+      <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+        <h2 class="text-base font-bold text-slate-900">Gate 4 Single-Shot Cutover &amp; KMS Seal-Migration Sequence</h2>
+        <div class="grid grid-cols-1 md:grid-cols-7 gap-2.5 text-xs">
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div class="font-mono font-bold text-blue-700">Step 1</div>
+            <div class="font-semibold text-slate-900 mt-0.5">Quiesce &amp; Export</div>
+            <p class="text-slate-600 mt-1">Export SHA-256 verified <code class="font-mono">openbao.snap</code>, <code class="font-mono">keycloak</code> + <code class="font-mono">proj_*</code> dumps, TLS Secrets &amp; VictoriaLogs tar.</p>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div class="font-mono font-bold text-blue-700">Step 2</div>
+            <div class="font-semibold text-slate-900 mt-0.5">Pre-Seed TLS</div>
+            <p class="text-slate-600 mt-1">Apply <code class="font-mono">{auth,pn,health,blog}-tls</code> in <code class="font-mono">platform</code> before DNS flip (zero cert gap).</p>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div class="font-mono font-bold text-blue-700">Step 3</div>
+            <div class="font-semibold text-slate-900 mt-0.5">Vault + K8s Auth</div>
+            <p class="text-slate-600 mt-1">Restore <code class="font-mono">openbao.snap</code> (Shamir) &amp; re-bind GKE <code class="font-mono">kube-root-ca.crt</code> + reviewer JWT.</p>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div class="font-mono font-bold text-blue-700">Step 4</div>
+            <div class="font-semibold text-slate-900 mt-0.5">Restore Postgres</div>
+            <p class="text-slate-600 mt-1">Import <code class="font-mono">keycloak</code>, <code class="font-mono">proj_pn</code>, <code class="font-mono">proj_health</code>; preserves user <code class="font-mono">(issuer, sub)</code>.</p>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div class="font-mono font-bold text-blue-700">Step 5</div>
+            <div class="font-semibold text-slate-900 mt-0.5">Smoke &amp; Flip DNS</div>
+            <p class="text-slate-600 mt-1">Pass <code class="font-mono">smoke-auth-chain.sh</code> via <code class="font-mono">--resolve</code>, then switch DNS <code class="font-mono">A</code> records to Node 1 IP.</p>
+          </div>
+          <div class="p-3 rounded-xl bg-slate-50 border border-slate-200">
+            <div class="font-mono font-bold text-blue-700">Step 6</div>
+            <div class="font-semibold text-slate-900 mt-0.5">Migrate to KMS</div>
+            <p class="text-slate-600 mt-1">Run <code class="font-mono">bao operator unseal -migrate</code> onto <code class="font-mono">gcpckms</code> via Workload Identity.</p>
+          </div>
+          <div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200">
+            <div class="font-mono font-bold text-emerald-700">Step 7</div>
+            <div class="font-semibold text-slate-900 mt-0.5">Repurpose OCI</div>
+            <p class="text-slate-600 mt-1">Immediately shrink/recreate old <code class="font-mono">vps-k3s</code> VM into OCI Kafka Broker VM 1.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+        <h2 class="text-base font-bold text-slate-900">Repository File Impact Matrix</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+          <div class="p-4 rounded-xl bg-emerald-50/50 border border-emerald-200 space-y-2">
+            <div class="font-bold text-emerald-800">ADDED (NEW)</div>
+            <ul class="space-y-1.5 font-mono text-slate-700 list-disc pl-4">
+              <li>clusters/gke/capacity.yaml</li>
+              <li>clusters/gke/layers.yaml</li>
+              <li>clusters/gke/flux-system/*</li>
+              <li>clusters/gke/observability/*</li>
+              <li>clusters/gke/projects/{kustomization,proj-pn,proj-health,proj-blog}.yaml</li>
+              <li>deploy/platform/traefik/*</li>
+              <li>deploy/gcp/{cloudbuild.yaml,gar-cleanup-policy.json}</li>
+              <li>scripts/cutover-bundle.sh</li>
+            </ul>
+          </div>
+          <div class="p-4 rounded-xl bg-blue-50/50 border border-blue-200 space-y-2">
+            <div class="font-bold text-blue-800">MODIFIED</div>
+            <ul class="space-y-1.5 font-mono text-slate-700 list-disc pl-4">
+              <li>.specify/memory/constitution.md</li>
+              <li>deploy/platform/governance/manual-change-policy.yaml</li>
+              <li>deploy/platform/vault/network-policy.yaml</li>
+              <li>deploy/projects/pn/boundary/translation-egress.yaml</li>
+              <li>deploy/platform/observability/{fluent-bit*,error-detector.yaml}</li>
+              <li>deploy/platform/identity/keycloak-deployment.yaml</li>
+              <li>scripts/{platform-preflight.py,db-migrate-dump.sh,vault-configure-k8s-auth.sh}</li>
+              <li>docs/platform-architecture.html</li>
+            </ul>
+          </div>
+          <div class="p-4 rounded-xl bg-rose-50/50 border border-rose-200 space-y-2">
+            <div class="font-bold text-rose-800">DELETED (RETIRED)</div>
+            <ul class="space-y-1.5 font-mono text-slate-700 list-disc pl-4">
+              <li>deploy/platform/observability/fluent-bit-state-pvc.yaml</li>
+              <li>deploy/platform/vault-proxies/registry-proxy.yaml</li>
+              <li>deploy/platform/vault/{policies/registry-proxy.hcl,registries.yaml.template}</li>
+              <li>services/vault-proxies/cmd/registry-proxy/</li>
+              <li>clusters/vps-k3s/ (retired at Gate 4 cutover)</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="panel-gates" class="hidden space-y-4">
+      <div class="bg-white border border-slate-200 rounded-2xl p-5 shadow-sm space-y-4">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-slate-100">
+          <div>
+            <h2 class="text-base font-bold text-slate-900">4-Gate Verification Checklist &amp; One-Click CLI Commands</h2>
+            <p class="text-xs text-slate-600 mt-0.5">Check off each validation stage as it passes; zero cloud resources are created before Gate 4.</p>
+          </div>
+          <div id="gate-progress" class="px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs font-mono font-semibold text-slate-700 self-start">
+            0 / 5 Gates Checked
+          </div>
+        </div>
+
+        <div class="space-y-3 text-xs">
+          <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <label class="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" onchange="updateProgress()" class="gate-chk mt-0.5 w-4 h-4 accent-blue-600" />
+              <div>
+                <div class="font-semibold text-slate-900">Gate 1A · Multi-Node Preflight &amp; Kustomize Render (<code class="font-mono">local-k3s</code> &amp; <code class="font-mono">gke</code>)</div>
+                <code class="text-slate-600 font-mono block mt-1">python3 -m unittest discover tests/preflight &amp;&amp; ./scripts/render-validate.sh local-k3s &amp;&amp; ./scripts/render-validate.sh gke</code>
+              </div>
+            </label>
+            <button onclick="copyCmd(this, 'python3 -m unittest discover tests/preflight && ./scripts/render-validate.sh local-k3s && ./scripts/render-validate.sh gke')" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-semibold shrink-0 self-start sm:self-center">Copy</button>
+          </div>
+
+          <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <label class="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" onchange="updateProgress()" class="gate-chk mt-0.5 w-4 h-4 accent-blue-600" />
+              <div>
+                <div class="font-semibold text-slate-900">Gate 1B · Go Stdlib Build &amp; Architecture Handbook Sync</div>
+                <code class="text-slate-600 font-mono block mt-1">(cd gateway &amp;&amp; go test -v ./...) &amp;&amp; (cd services/vault-proxies &amp;&amp; go test -v ./...) &amp;&amp; python3 scripts/check-arch-doc-sync.py --worktree</code>
+              </div>
+            </label>
+            <button onclick="copyCmd(this, '(cd gateway && go test -v ./...) && (cd services/vault-proxies && go test -v ./...) && python3 scripts/check-arch-doc-sync.py --worktree')" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-semibold shrink-0 self-start sm:self-center">Copy</button>
+          </div>
+
+          <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <label class="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" onchange="updateProgress()" class="gate-chk mt-0.5 w-4 h-4 accent-blue-600" />
+              <div>
+                <div class="font-semibold text-slate-900">Gate 2 · <code class="font-mono">local-k3s</code> Fluent Bit Crash &amp; Sink-Outage Recovery Drill</div>
+                <code class="text-slate-600 font-mono block mt-1">kubectl -n observability rollout restart daemonset/fluent-bit &amp;&amp; kubectl -n observability rollout status daemonset/fluent-bit --timeout=120s</code>
+              </div>
+            </label>
+            <button onclick="copyCmd(this, 'kubectl -n observability rollout restart daemonset/fluent-bit && kubectl -n observability rollout status daemonset/fluent-bit --timeout=120s')" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-semibold shrink-0 self-start sm:self-center">Copy</button>
+          </div>
+
+          <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <label class="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" onchange="updateProgress()" class="gate-chk mt-0.5 w-4 h-4 accent-blue-600" />
+              <div>
+                <div class="font-semibold text-slate-900">Gate 3 · Full-State Production Export &amp; Local Restore Rehearsal</div>
+                <code class="text-slate-600 font-mono block mt-1">./scripts/cutover-bundle.sh export --bundle-dir "$HOME/.nacfson-cutover/rehearsal" --ssh oracleCloud &amp;&amp; ./scripts/cutover-bundle.sh restore --bundle-dir "$HOME/.nacfson-cutover/rehearsal" --target local-k3s</code>
+              </div>
+            </label>
+            <button onclick="copyCmd(this, './scripts/cutover-bundle.sh export --bundle-dir \"$HOME/.nacfson-cutover/rehearsal\" --ssh oracleCloud && ./scripts/cutover-bundle.sh restore --bundle-dir \"$HOME/.nacfson-cutover/rehearsal\" --target local-k3s')" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-semibold shrink-0 self-start sm:self-center">Copy</button>
+          </div>
+
+          <div class="p-3.5 rounded-xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <label class="flex items-start gap-3 cursor-pointer">
+              <input type="checkbox" onchange="updateProgress()" class="gate-chk mt-0.5 w-4 h-4 accent-blue-600" />
+              <div>
+                <div class="font-semibold text-slate-900">Gate 4 · Single-Shot GKE Cutover, Smoke Auth Check &amp; KMS Seal Migration</div>
+                <code class="text-slate-600 font-mono block mt-1">./scripts/cutover-bundle.sh restore --bundle-dir "$HOME/.nacfson-cutover/cutover" --target gke &amp;&amp; ./scripts/smoke-auth-chain.sh</code>
+              </div>
+            </label>
+            <button onclick="copyCmd(this, './scripts/cutover-bundle.sh restore --bundle-dir \"$HOME/.nacfson-cutover/cutover\" --target gke && ./scripts/smoke-auth-chain.sh')" class="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 font-semibold shrink-0 self-start sm:self-center">Copy</button>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const tabs = ['arch', 'workloads', 'budget', 'cutover', 'gates'];
+    function switchTab(active) {
+      tabs.forEach(t => {
+        document.getElementById('panel-' + t).classList.toggle('hidden', t !== active);
+        const btn = document.getElementById('tab-btn-' + t);
+        btn.className = t === active
+          ? 'px-3.5 py-2 rounded-lg text-xs font-semibold bg-blue-600 text-white shadow-sm'
+          : 'px-3.5 py-2 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200';
+      });
+    }
+
+    const scenarios = {
+      normal: {
+        bannerClass: 'rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs',
+        badgeClass: 'font-bold uppercase tracking-wider text-emerald-800',
+        badge: 'LIVE VERDICT · 100% ONLINE',
+        title: 'Normal 24/7 Visitor & OIDC Introspection Path',
+        path: 'Browser → Static IP :443 → Traefik (hostPort) → proj-pn → Gateway → Keycloak (On-Demand) → vault-db-proxy → postgres-0',
+        impact: 'Zero Spot nodes sit on the request, OIDC verification, or database path. Every login, session check, and DB query executes on On-Demand Node 1.',
+        dimNodes: ['svg-kms'],
+        activeEdges: ['edge-user-traefik', 'edge-traefik-proj', 'edge-proj-auth', 'edge-proj-db', 'edge-auth-db', 'edge-fb-oci']
+      },
+      spot: {
+        bannerClass: 'rounded-xl border border-amber-300 bg-amber-50/80 p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs',
+        badgeClass: 'font-bold uppercase tracking-wider text-amber-900',
+        badge: 'SPOT PREEMPTED · ZERO USER OUTAGE',
+        title: 'GCP Reclaims Node 2 (e2-small Spot) for ~90 Seconds',
+        path: 'Browser → Traefik → proj-pn → Gateway → Keycloak (On-Demand Node 1) [100% UNAFFECTED]',
+        impact: 'Only the 5 single-replica cert-manager & flux-system controllers pause briefly while GKE boots a replacement e2-small Spot VM. Zero HTTP 503 auth errors and zero RWO disk locks.',
+        dimNodes: ['svg-pool2', 'svg-cm', 'svg-flux', 'svg-kms'],
+        activeEdges: ['edge-user-traefik', 'edge-traefik-proj', 'edge-proj-auth', 'edge-proj-db', 'edge-auth-db', 'edge-fb-oci']
+      },
+      kms: {
+        bannerClass: 'rounded-xl border border-blue-200 bg-blue-50/80 p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs',
+        badgeClass: 'font-bold uppercase tracking-wider text-blue-800',
+        badge: 'UNATTENDED RECOVERY · CLOUD KMS',
+        title: 'Planned GKE Node 1 OS Upgrade & Unattended Vault Unseal',
+        path: 'openbao-0 → 169.254.169.254 (Workload Identity) → 199.36.153.8/30:443 (private.googleapis.com → Cloud KMS)',
+        impact: 'openbao-0 unwraps its master key automatically on boot using keyless GKE Workload Identity—no manual Shamir unseal ceremony and zero Kubernetes Secrets.',
+        dimNodes: ['svg-pool2', 'svg-cm', 'svg-flux'],
+        activeEdges: ['edge-kms-bao', 'edge-proj-db', 'edge-auth-db']
+      },
+      wan: {
+        bannerClass: 'rounded-xl border border-amber-300 bg-amber-50/80 p-4 grid grid-cols-1 md:grid-cols-3 gap-4 text-xs',
+        badgeClass: 'font-bold uppercase tracking-wider text-amber-900',
+        badge: 'DISK BUFFER ACTIVE · ZERO LOG LOSS',
+        title: 'Cross-Cloud GKE ↔ OCI WireGuard Outage or Pod Restart',
+        path: 'proj-* stdout → /var/log/pods → fluent-bit → /var/lib/fluent-bit-state/chunks (<= 256 MiB) + tail.db',
+        impact: 'Unacknowledged log chunks and SQLite byte offsets persist on the node boot disk across pod restarts and flush to OCI Kafka (acks=-1) once connectivity returns.',
+        dimNodes: ['svg-oci', 'svg-kms', 'svg-pool2', 'svg-cm', 'svg-flux'],
+        activeEdges: []
+      }
+    };
+
+    function setScenario(key) {
+      const s = scenarios[key];
+      ['normal', 'spot', 'kms', 'wan'].forEach(k => {
+        document.getElementById('sc-btn-' + k).className = k === key
+          ? 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white shadow-sm'
+          : 'px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 border border-slate-200';
+      });
+      document.getElementById('sc-banner').className = s.bannerClass;
+      const badge = document.getElementById('sc-badge');
+      badge.className = s.badgeClass;
+      badge.textContent = s.badge;
+      document.getElementById('sc-title').textContent = s.title;
+      document.getElementById('sc-path').textContent = s.path;
+      document.getElementById('sc-impact').textContent = s.impact;
+
+      ['svg-pool1','svg-pool2','svg-user','svg-kms','svg-gar','svg-traefik','svg-projects','svg-auth','svg-stateful','svg-fb','svg-cm','svg-flux','svg-oci'].forEach(id => {
+        document.getElementById(id).classList.toggle('svg-dim', s.dimNodes.includes(id));
+      });
+      ['edge-user-traefik','edge-traefik-proj','edge-proj-auth','edge-proj-db','edge-auth-db','edge-kms-bao','edge-fb-oci'].forEach(id => {
+        const el = document.getElementById(id);
+        const on = s.activeEdges.includes(id);
+        el.classList.toggle('flow-active', on);
+        el.classList.toggle('svg-dim', !on);
+      });
+    }
+
+    function filterRows(group) {
+      ['all', 'ondemand', 'spot', 'retired'].forEach(g => {
+        document.getElementById('flt-' + g).className = g === group
+          ? 'px-2.5 py-1 rounded-lg text-xs font-semibold bg-blue-600 text-white'
+          : 'px-2.5 py-1 rounded-lg text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200';
+      });
+      document.querySelectorAll('tbody tr[data-pool]').forEach(row => {
+        const pools = row.getAttribute('data-pool').split(' ');
+        row.classList.toggle('hidden', group !== 'all' && !pools.includes(group));
+      });
+    }
+
+    function updateProgress() {
+      const all = document.querySelectorAll('.gate-chk');
+      const done = Array.from(all).filter(c => c.checked).length;
+      const el = document.getElementById('gate-progress');
+      el.textContent = done + ' / ' + all.length + ' Gates Checked';
+      el.className = done === all.length
+        ? 'px-3 py-1 rounded-full bg-emerald-100 border border-emerald-300 text-xs font-mono font-semibold text-emerald-800 self-start'
+        : 'px-3 py-1 rounded-full bg-slate-100 border border-slate-200 text-xs font-mono font-semibold text-slate-700 self-start';
+    }
+
+    function copyCmd(btn, text) {
+      navigator.clipboard.writeText(text).then(() => {
+        const prev = btn.textContent;
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.textContent = prev; }, 1300);
+      });
+    }
+  </script>
+</body>
+</html>

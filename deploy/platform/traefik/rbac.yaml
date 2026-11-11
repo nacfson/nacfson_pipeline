@@ -1,0 +1,129 @@
+apiVersion: networking.k8s.io/v1
+kind: IngressClass
+metadata:
+  name: traefik
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/part-of: platform
+spec:
+  controller: traefik.io/ingress-controller
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: traefik
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/part-of: platform
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traefik-ingress-controller
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/part-of: platform
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - services
+      - endpoints
+      - nodes
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - discovery.k8s.io
+    resources:
+      - endpointslices
+    verbs:
+      - list
+      - watch
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - ingresses
+      - ingressclasses
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - networking.k8s.io
+    resources:
+      - ingresses/status
+    verbs:
+      - update
+  - apiGroups:
+      - traefik.io
+    resources:
+      - middlewares
+      - middlewaretcps
+      - ingressroutes
+      - traefikservices
+      - ingressroutetcps
+      - ingressrouteudps
+      - tlsoptions
+      - tlsstores
+      - serverstransports
+      - serverstransporttcps
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: traefik-ingress-controller
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/part-of: platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik-ingress-controller
+subjects:
+  - kind: ServiceAccount
+    name: traefik
+    namespace: platform
+---
+# Least-privilege TLS secret access scoped strictly to namespace `platform` (auth-tls, pn-tls, health-tls, blog-tls).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: traefik-tls-secrets
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/part-of: platform
+rules:
+  - apiGroups:
+      - ""
+    resources:
+      - secrets
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: traefik-tls-secrets
+  namespace: platform
+  labels:
+    app.kubernetes.io/name: traefik
+    app.kubernetes.io/part-of: platform
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: traefik-tls-secrets
+subjects:
+  - kind: ServiceAccount
+    name: traefik
+    namespace: platform

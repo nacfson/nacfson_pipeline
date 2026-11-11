@@ -37,6 +37,10 @@ HELPER_PATH = (
 )
 SOURCES_PATH = REPO_ROOT / "config" / "image-pin-sources.json"
 SHA_RE = re.compile(r"[0-9a-f]{40}")
+DIGEST_REF_RE = re.compile(
+    r"^(?:ghcr\.io/nacfson|[a-z0-9-]+-docker\.pkg\.dev/nacfson-pipeline/nacfson-public)/"
+    r"[a-z0-9._-]+@sha256:[0-9a-f]{64}$"
+)
 MARKER_RE = re.compile(r"<!-- image-bump-request: (\{.*?\}) -->")
 
 
@@ -51,9 +55,15 @@ class Request:
     sha: str
     roles: list[str]
     run_url: str | None = None
+    images: dict[str, str] | None = None
 
     def commit_url(self) -> str:
         return f"https://github.com/{self.source_repo}/commit/{self.sha}"
+
+    def image_link(self, role: str) -> str:
+        if self.images and role in self.images:
+            return self.images[role]
+        return self.commit_url()
 
 
 def load_sources(path: Path = SOURCES_PATH) -> dict:
@@ -70,6 +80,24 @@ def _roles(value) -> list[str]:
     return [str(item).strip().lower() for item in items if str(item).strip()]
 
 
+def _images_map(value) -> dict[str, str] | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise RequestError(f"images must be a JSON object: {exc}") from exc
+    if not isinstance(value, dict):
+        raise RequestError("images must be a role -> digest-ref mapping")
+    cleaned = {
+        str(k).strip().lower(): str(v).strip()
+        for k, v in value.items()
+        if str(k).strip()
+    }
+    return cleaned or None
+
+
 def parse_request(event: dict, event_name: str) -> Request:
     if event_name == "repository_dispatch":
         payload = event.get("client_payload") or {}
@@ -83,6 +111,7 @@ def parse_request(event: dict, event_name: str) -> Request:
         sha=str(payload.get("sha") or "").strip().lower(),
         roles=_roles(payload.get("roles")),
         run_url=str(payload.get("run_url") or "").strip() or None,
+        images=_images_map(payload.get("images")),
     )
 
 
@@ -105,13 +134,29 @@ def validate_request(request: Request, sources: dict) -> Request:
     if not SHA_RE.fullmatch(request.sha):
         raise RequestError(f"sha must be a full 40-character commit sha: {request.sha!r}")
     allowed_roles = list(entry["roles"])
-    roles = request.roles or allowed_roles
+    roles = request.roles or (sorted(request.images) if request.images else allowed_roles)
     unknown = sorted(set(roles) - set(allowed_roles))
     if unknown:
         raise RequestError(
             f"roles {unknown} are not allowed for project {request.project!r}; "
             f"allowed: {', '.join(allowed_roles)}"
         )
+    validated_images: dict[str, str] | None = None
+    if request.images:
+        bad_img_roles = sorted(set(request.images) - set(roles))
+        if bad_img_roles:
+            raise RequestError(
+                f"images contains unrequested or disallowed roles {bad_img_roles}"
+            )
+        validated_images = {}
+        for role, ref in request.images.items():
+            if not DIGEST_REF_RE.fullmatch(ref):
+                raise RequestError(
+                    f"invalid image digest ref for role {role!r}: {ref!r} "
+                    "(expected <region>-docker.pkg.dev/nacfson-pipeline/nacfson-public/"
+                    "<name>@sha256:<64-hex> or ghcr.io/nacfson/<name>@sha256:<64-hex>)"
+                )
+            validated_images[role] = ref
     run_url = request.run_url
     # run_url is rendered as a link, so allow nothing but a run (attempt) URL.
     run_re = rf"https://github\.com/{re.escape(source_repo)}/actions/runs/\d+(/attempts/\d+)?"
@@ -123,6 +168,7 @@ def validate_request(request: Request, sources: dict) -> Request:
         sha=request.sha,
         roles=[role for role in allowed_roles if role in roles],
         run_url=run_url,
+        images=validated_images,
     )
 
 
@@ -137,8 +183,8 @@ def load_helper():
 
 
 def resolve(root: Path, request: Request, helper) -> dict:
-    """Dry-run the pin helper: resolve the commit tag and validate each image."""
-    image_args = [f"{role}={request.commit_url()}" for role in request.roles]
+    """Dry-run the pin helper: resolve the commit tag or digest ref and validate each image."""
+    image_args = [f"{role}={request.image_link(role)}" for role in request.roles]
     try:
         return helper.run_update(
             root=root,
@@ -252,7 +298,7 @@ def render_body(request: Request, summary: dict, receiver_run_url: str | None) -
             )
         lines.append("")
     image_flags = " ".join(
-        f"--image {role}={request.commit_url()}" for role in request.roles
+        f"--image {role}={request.image_link(role)}" for role in request.roles
     )
     lines += [
         "### Decision",
