@@ -8,7 +8,7 @@ Core platform pillars:
 - **Continuous Pull-Based GitOps**: In-cluster FluxCD reconciles `deploy/` and `clusters/` in explicit dependency order (`cni` / `governance` → `vault` / `cert-manager` / `project-boundaries` → `vault-proxies` / `database` / `projects` → `identity` → `ingress` → `tls`).
 - **Workload Isolation & $1/n$ Budgeting**: Project namespaces enforce Kubernetes `Restricted` Pod Security, `ClusterIP`-only services, strict Guaranteed QoS (`requests == limits`), and deterministic $1/n$ compute slicing enforced by [`scripts/platform-preflight.py`](scripts/platform-preflight.py).
 - **Decoupled Project Door & Stdlib Auth Gateway**: Visitors reach projects directly through their own routes (`mode: none` or `mode: shared` in `sign-in.yaml`). Shared authentication is handled by a zero-dependency Go standard-library gateway (`gateway/`) and Keycloak Google OIDC brokering.
-- **Zero-Plaintext Internal Cluster Vault**: Backend credentials (DB passwords, GHCR tokens, OAuth secrets, signing keys) live exclusively inside self-hosted OpenBao (`deploy/platform/vault/`) and execute via in-cluster Vault proxies (`services/vault-proxies/`).
+- **Zero-Plaintext Internal Cluster Vault**: Backend credentials (DB passwords, OAuth secrets, signing keys) live exclusively inside self-hosted OpenBao (`deploy/platform/vault/`) and execute via in-cluster Vault proxies (`services/vault-proxies/`).
 - **Platform-Owned Edge TLS**: Public TLS terminates at Traefik using a single platform `TLSStore` and cert-manager inventory in `deploy/platform/tls/`.
 
 ---
@@ -19,10 +19,10 @@ Always consult these top-level indexes before exploring or modifying the codebas
 
 | Document | Purpose |
 | :--- | :--- |
-| [`.specify/memory/constitution.md`](.specify/memory/constitution.md) | **Supreme Authority (v2.2.1)**: Core principles (I–VII), security constraints, quality gates, and amendments. Clarification 2.2.1 allows one read-only `/var/log/pods` mount in platform namespace `observability`. |
+| [`.specify/memory/constitution.md`](.specify/memory/constitution.md) | **Supreme Authority (v2.3.0)**: Core principles (I–VII), security constraints, quality gates, and amendments (`2.3.0` permits `DaemonSet/fluent-bit` `/var/log/pods` RO + `/var/lib/fluent-bit-state` RW in `observability` and `ServiceAccount/openbao` Workload Identity for Cloud KMS auto-unseal). |
 | [`docs/platform-architecture.html`](docs/platform-architecture.html) | **Canonical Interactive Architecture Handbook (Hook-Enforced)**: Visual topology, 8 end-to-end flows, CNI/eBPF packet simulator, Gateway allow-vs-block simulator, 13-layer Flux DAG, OSS catalog, $1/n$ budget calculator, and junior-engineer guide. |
 | [`contracts/README.md`](contracts/README.md) | **Canonical Contract Catalog (`CONTRACT_*.md`)**: Consolidated, preflight-enforced contracts for [`CONTRACT_DATABASE.md`](contracts/CONTRACT_DATABASE.md), [`CONTRACT_PROBES_READINESS.md`](contracts/CONTRACT_PROBES_READINESS.md), [`CONTRACT_AUTH_DOOR.md`](contracts/CONTRACT_AUTH_DOOR.md), [`CONTRACT_TLS_INGRESS.md`](contracts/CONTRACT_TLS_INGRESS.md), [`CONTRACT_ISOLATION_BUDGET.md`](contracts/CONTRACT_ISOLATION_BUDGET.md), and [`CONTRACT_LOG_SCHEMA.md`](contracts/CONTRACT_LOG_SCHEMA.md). |
-| [`INDEX.md`](INDEX.md) | **Master Repository & Doc Map**: Complete catalog of `contracts/`, `docs/`, `specs/001..010`, `deploy/`, `clusters/`, `gateway/`, `services/`, `scripts/`, and `tests/`. |
+| [`INDEX.md`](INDEX.md) | **Master Repository & Doc Map**: Complete catalog of `contracts/`, `docs/`, `specs/001..012`, `deploy/`, `clusters/`, `gateway/`, `services/`, `scripts/`, and `tests/`. |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | **System Topology & Data Flows**: Mermaid architecture diagrams, Flux GitOps layer DAG, TLS termination, auth routing, Vault proxy boundary, and probe roles. |
 | [`DEPENDENCIES.md`](DEPENDENCIES.md) | **Dependencies, Pinned Versions & Tenant Contracts**: Go stdlib-only rule, pinned infra/image tags, CI toolchains, capacity envelopes, and `Project_PN` integration contracts. |
 | [`README.md`](README.md) & [`SPEC.md`](SPEC.md) | **Onboarding Portal & Baseline Spec**: High-level traceability matrix, quickstart progression, and original platform specification baseline. |
@@ -116,8 +116,9 @@ python3 -m unittest discover tests/preflight
 # 3b. Agent session-start git fetch tests (throttle, fail-open, no working-tree changes)
 python3 -m unittest discover tests/hooks
 
-# 4. Full Kustomize render, kubeconform schema validation & preflight gate (local-k3s & vps-k3s)
+# 4. Full Kustomize render, kubeconform schema validation & preflight gate (local-k3s, gke & vps-k3s)
 ./scripts/render-validate.sh local-k3s
+./scripts/render-validate.sh gke
 ./scripts/render-validate.sh vps-k3s
 
 # 5. Canonical Architecture Handbook synchronization & invariant check
