@@ -10,7 +10,6 @@ resources:
   - victorialogs-service.yaml
   - fluent-bit-serviceaccount.yaml
   - fluent-bit-daemonset.yaml
-  - fluent-bit-state-pvc.yaml
   - error-detector.yaml
 
 configMapGenerator:

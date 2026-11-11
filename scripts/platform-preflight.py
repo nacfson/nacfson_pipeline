@@ -842,11 +842,19 @@ def check_ai_gateway_contract(projects_dict, platform_docs):
             if not isinstance(vol, dict) or "hostPath" not in vol:
                 continue
             hp_path = str((vol.get("hostPath") or {}).get("path") or "").strip()
-            if kind != "DaemonSet" or name != "fluent-bit" or hp_path != "/var/log/pods":
+            if (
+                kind != "DaemonSet"
+                or name != "fluent-bit"
+                or hp_path not in ("/var/log/pods", "/var/lib/fluent-bit-state")
+            ):
                 violations.append({
                     "rule": 2,
                     "object": obj,
-                    "detail": f"observability workload may only mount hostPath '/var/log/pods' on DaemonSet/fluent-bit, got {hp_path!r}",
+                    "detail": (
+                        "observability workload may only mount hostPath '/var/log/pods' "
+                        "or '/var/lib/fluent-bit-state' on DaemonSet/fluent-bit, "
+                        f"got {hp_path!r}"
+                    ),
                 })
         for c in (pod_spec.get("containers") or []) + (pod_spec.get("initContainers") or []):
             if not isinstance(c, dict):
