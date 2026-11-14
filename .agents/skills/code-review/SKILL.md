@@ -13,7 +13,21 @@ $ARGUMENTS
 The review is optional per commit, and the user decides. Before any `git commit`, ask the user whether to run this skill or skip it. Run it only when they choose review. If they choose to skip, do not run it and do not record a receipt: commit with `SKIP_REVIEW_GATE=1` and add `Review: skipped at the user's request.` to the commit message. One answer covers one commit.
 
 ## Purpose
-Execute the full `nacfson_pipeline` multi-agent code review cycle on `staged`, `worktree`, or `branch` changes using fresh-context subagents (`invoke_subagent`) and record a cryptographically bound receipt in `.git/review-cycle/receipt.json`.
+Execute the full `nacfson_pipeline` multi-agent code review cycle on `staged`, `worktree`, or `branch` changes using fresh-context subagents and record a cryptographically bound receipt in `.git/review-cycle/receipt.json`.
+
+## Model & Effort Routing (Per Harness)
+
+Instead of downgrading to smaller model families, keep the primary models and coordinate **reasoning effort** per role (`thought_level` in Antigravity, `effort` in Claude Code). When running inside T3 Code, use `delegate_task` with `target.providerInstanceId`, `target.model`, and `target.options` so both model and effort are enforced; if `delegate_task` is unavailable in a standalone harness, use the native subagent tool (`invoke_subagent` / `Agent`) with the closest supported model/effort setting.
+
+| Stage | Role Prompt | Antigravity (`antigravity`) | Claude Code (`claudeAgent`) | Effort Rationale |
+| :--- | :--- | :--- | :--- | :--- |
+| **Stage 0** | `.agents/review-prompts/diff-simplifier.md` | `gemini-4-hydrogen` (`thought_level: "low"`) | `claude-sonnet-5-5` (`effort: "low"`) | Fast structural & complexity scan |
+| **Stage 0** | `.agents/review-prompts/e2e-behavior.md` | `gemini-4-hydrogen` (`thought_level: "medium"`) | `claude-sonnet-5-5` (`effort: "medium"`) | Cross-boundary flow & verify check |
+| **Stage 1** | `.agents/review-prompts/risk-classifier.md` | `gemini-4-hydrogen` (`thought_level: "low"`) | `claude-sonnet-5-5` (`effort: "low"`) | Policy-guided tier classification |
+| **Stage 1** | `.agents/review-prompts/contract-reviewer.md` | `gemini-4-hydrogen` (`thought_level: "medium"`) | `claude-sonnet-5-5` (`effort: "medium"`) | Contract & arch-doc sync check |
+| **Stage 1** | `.agents/review-prompts/bug-reviewer.md` | `gemini-4-hydrogen` (`thought_level: "medium"`) | `claude-sonnet-5-5` (`effort: "medium"`) | Logic, QoS & budget defect hunt |
+| **Stage 1** | `.agents/review-prompts/security-reviewer.md` | `gemini-4-hydrogen` (`thought_level: "high"`) | `claude-sonnet-5-5` (`effort: "high"`) | Deep trust-boundary & secret audit |
+| **Stage 2** | `.agents/review-prompts/finding-verifier.md` | `gemini-4-carbon` (`thought_level: "high"`) | `claude-opus-5-5` (`effort: "high"`) | Final `file:line` proof & deduplication |
 
 ## Step-by-Step Workflow
 
@@ -26,19 +40,19 @@ Execute the full `nacfson_pipeline` multi-agent code review cycle on `staged`, `
      ```
 
 2. **Stage 0 — Diff Simplification & End-to-End Behavior Check**:
-   - Dispatch fresh-context subagents via `invoke_subagent` (`TypeName: "research"`, `Model: "inherit"`) using the role prompts in:
-     - `.agents/review-prompts/diff-simplifier.md`
-     - `.agents/review-prompts/e2e-behavior.md`
+   - Dispatch fresh-context subagents in parallel using the Stage 0 model/effort settings from the table above (`gemini-4-hydrogen` in Antigravity; `claude-sonnet-5-5` in Claude Code) for:
+     - `.agents/review-prompts/diff-simplifier.md` (`low`)
+     - `.agents/review-prompts/e2e-behavior.md` (`medium`)
 
 3. **Stage 1 — Parallel Specialized Hunters**:
-   - Dispatch parallel fresh-context subagents via `invoke_subagent` (`TypeName: "research"`, `Model: "inherit"`) using:
-     - `.agents/review-prompts/bug-reviewer.md`
-     - `.agents/review-prompts/security-reviewer.md`
-     - `.agents/review-prompts/contract-reviewer.md`
-     - `.agents/review-prompts/risk-classifier.md`
+   - Dispatch parallel fresh-context subagents using the Stage 1 model/effort settings from the table above (`gemini-4-hydrogen` in Antigravity; `claude-sonnet-5-5` in Claude Code) for:
+     - `.agents/review-prompts/risk-classifier.md` (`low`)
+     - `.agents/review-prompts/contract-reviewer.md` (`medium`)
+     - `.agents/review-prompts/bug-reviewer.md` (`medium`)
+     - `.agents/review-prompts/security-reviewer.md` (`high`)
 
 4. **Stage 2 — Skeptical Finding Verification & Deduplication**:
-   - Pass all candidate findings from Stages 0–1 to a fresh verifier subagent via `invoke_subagent` using `.agents/review-prompts/finding-verifier.md`.
+   - Pass all candidate findings from Stages 0–1 to a fresh verifier subagent using `.agents/review-prompts/finding-verifier.md` with the Stage 2 model/effort setting (`gemini-4-carbon` with `thought_level: "high"` in Antigravity; `claude-opus-5-5` with `effort: "high"` in Claude Code).
    - The verifier enforces `REVIEW.md`: drops style/diagnostic noise, verifies exact `line_start`–`line_end` citations, groups repeated defects by `class_of_bug`, and caps `Nit` findings at `max_nits = 2`.
 
 5. **Stage 3 — Persist Verified Receipt & Check Gate**:

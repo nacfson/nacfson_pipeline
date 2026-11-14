@@ -31,13 +31,15 @@ flowchart TD
         NotifyProxy["vault-notify-proxy (:8080 + 127.0.0.1:8081)<br/>(services/vault-proxies/cmd/notify-proxy)"]
     end
 
-    subgraph ProjectPN["Project Namespace (proj-pn) [Restricted PSS]"]
-        FE["pn-frontend (:80)<br/>[startupProbe & readinessProbe -> BE /healthz]"]
-        BE["pn-backend (:8080)<br/>[CORS: ALLOWED_ORIGINS includes PUBLIC_APP_URL]"]
+    subgraph ObservabilityNS["Observability Namespace (observability)"]
+        FB["Fluent Bit DaemonSet (4.2.8) [Tails proj-* only]<br/>[/var/log/pods RO + /var/lib/fluent-bit-state RW (256Mi cap)]"]
+        VictoriaLogs["VictoriaLogs v1.53.0 (local-k3s)<br/>[10Gi PVC, 30d / 8GiB cap]"]
+        ErrorDetector["error-detector (local-k3s; paused on GKE)<br/>(services/error-pipeline)"]
     end
 
-    subgraph ObservabilityNS["Observability Namespace (observability)"]
-        FB["Fluent Bit DaemonSet (4.2.8)<br/>[/var/log/pods RO + /var/lib/fluent-bit-state RW (256Mi cap)]"]
+    subgraph ProjectPN["Hosted Projects (proj-pn, proj-health, proj-blog) [Restricted PSS]"]
+        FE["Frontend (:80)<br/>[startupProbe & readinessProbe -> BE /healthz]"]
+        BE["Backend (:8080)<br/>[CORS: ALLOWED_ORIGINS includes PUBLIC_APP_URL]"]
     end
 
     Google["Google OAuth 2.0"]
@@ -64,6 +66,10 @@ flowchart TD
 
     Kubelet["Node Kubelet"] -->|"Anonymous @sha256 Pull"| GAR
     FB -->|"GKE: [OUTPUT] kafka (acks=-1)"| OCIKafka
+    FB -->|"local-k3s: Structured Logs"| VictoriaLogs
+    ErrorDetector -->|"Tail & Alert"| VictoriaLogs
+    ErrorDetector -->|"Notify via Proxy"| NotifyProxy
+    NotifyProxy <-->|"Fetch Webhook Creds"| OpenBao
 ```
 
 ---
@@ -78,8 +84,10 @@ flowchart LR
     Gov["1b. governance<br/>(./deploy/platform/governance)"]
     Vault["2a. vault<br/>(./deploy/platform/vault)"]
     CertMgr["2b. cert-manager<br/>(./deploy/platform/cert-manager)"]
-    ProjBound["2c. project-boundaries*<br/>(pn, health, blog)"]
-    Obs["2d. observability<br/>(./clusters/gke/observability or ./deploy/platform/observability)"]
+    ProjBound["2c. project-boundaries<br/>(./deploy/projects/pn/boundary)"]
+    ProjBoundH["2d. project-boundaries-health<br/>(./deploy/projects/health/boundary)"]
+    ProjBoundB["2e. project-boundaries-blog<br/>(./deploy/projects/blog/boundary)"]
+    Obs["2f. observability<br/>(./clusters/gke/observability or ./deploy/platform/observability)"]
     VProxies["3a. vault-proxies<br/>(./deploy/platform/vault-proxies)"]
     DB["3b. database<br/>(./deploy/platform/database)"]
     Projects["3c. projects<br/>(./clusters/*/projects)"]
@@ -89,9 +97,12 @@ flowchart LR
     TLS["6. tls<br/>(./deploy/platform/tls)"]
 
     CNI --> Vault
+    CNI --> Obs
     Gov --> Vault
     Gov --> CertMgr
     Gov --> ProjBound
+    Gov --> ProjBoundH
+    Gov --> ProjBoundB
     Gov --> Obs
     Vault --> VProxies
     Vault --> DB
@@ -102,7 +113,11 @@ flowchart LR
     CertMgr --> TLS
     Ingress --> TLS
     ProjBound --> TLS
+    ProjBoundH --> TLS
+    ProjBoundB --> TLS
     ProjBound --> Projects
+    ProjBoundH --> Projects
+    ProjBoundB --> Projects
 ```
 
 ### Key Layer Invariants
@@ -118,13 +133,14 @@ flowchart LR
 - **Platform-Owned Certificate Inventory**: All public TLS certificates (`auth-tls`, `pn-tls`, `health-tls`, `blog-tls`) and the default Traefik `TLSStore` reside exclusively in the `platform` namespace ([`deploy/platform/tls/`](deploy/platform/tls/)).
 - **Zero-Cost GKE Edge Ingress (`deploy/platform/traefik/`)**: On GKE, non-root `Traefik v3.3.4` (`UID 65532`, `ClusterIP` Service, `Recreate` strategy) binds `hostPort: 80` and `hostPort: 443` on `ondemand-core` Node 1's static IPv4 address. `scripts/platform-preflight.py` and `scripts/render-invariants.py` reject `Service` `type: LoadBalancer` in `clusters/gke/` to prevent \$18/mo forwarding rules.
 - **Zero Project TLS Objects**: Hosted projects MUST NOT declare `Certificate`, `Issuer`, `TLSStore`, `TLSOptions`, or TLS `Secret` resources. Project `IngressRoute` manifests specify `tls: {}` and select their certificate automatically by SNI.
+- **Edge Key Exception**: Only edge TLS keys in `platform` and ACME account keys in `cert-manager` may exist as Kubernetes `Secret` objects; all backend credentials remain strictly inside OpenBao.
 - **Reference**: [`docs/tls-certificates.md`](docs/tls-certificates.md) | [`specs/008-platform-tls-termination/`](specs/008-platform-tls-termination/)
 
 ### 3.2 Project Door Separation & Persistent Shared Sign-In (Constitution Principle III, Specs 001, 006, 009 & 012)
-- **Direct Project Door**: Visitors reach a project (`https://pn.nacfson.cloud`) directly through its own `IngressRoute` without ForwardAuth blocking the front door.
+- **Direct Project Door**: Visitors reach a project (`https://pn.nacfson.cloud`, `https://health.nacfson.cloud`, `https://blog.nacfson.cloud`) directly through its own `IngressRoute` without ForwardAuth blocking the front door.
 - **Sign-In Declaration (`sign-in.yaml`)**: Each project declares `mode: none` or `mode: shared` in [`deploy/projects/<project>/sign-in.yaml`](deploy/projects/pn/sign-in.yaml).
 - **Database-Persisted Sessions**: `Deployment/keycloak` runs with `--features=persistent-user-sessions` (Spec 012) so active user and client sessions live in `postgres-0` (`keycloak` DB) across Keycloak pod restarts, GKE node upgrades, and `cutover-bundle.sh` cross-cluster restores.
-- **Public Auth Surface Allowlist**: On `auth.nacfson.cloud`, Traefik exposes **only** `/oauth/start`, `/oauth/callback`, `/auth/logout`, and `/realms/platform/{protocol/openid-connect/*,login-actions*,broker/*}` + `/resources/*`.
+- **Public Auth Surface Allowlist**: On `auth.nacfson.cloud`, Traefik exposes **only** `/oauth/start`, `/oauth/callback`, `/auth/logout`, and `/realms/platform/{protocol/openid-connect/*,login-actions*,broker/*}` + `/resources/*`. Keycloak `/admin/*`, master realm, metrics (`:9000`), and internal JWKS are strictly blocked at the edge.
 - **Identity Tuple**: Platform identity is strictly `(issuer, subject)`. Email is never used as a primary key, and authentication never grants implicit app-admin privileges.
 - **Reference**: [`docs/architecture-auth-routing.md`](docs/architecture-auth-routing.md) | [`docs/project-auth-verification.md`](docs/project-auth-verification.md)
 
@@ -132,8 +148,8 @@ flowchart LR
 - **No Backend Secrets in Pods or Images**: Project pods and K8s Secrets never hold database passwords, OAuth client secrets, webhook URLs, or signing keys. Because container images contain zero secrets, Spec 012 retires `vault-registry-proxy` in favor of anonymous `@sha256`-pinned multi-arch pulls from public Google Artifact Registry (`asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public/*`, built by [`deploy/gcp/cloudbuild.yaml`](deploy/gcp/cloudbuild.yaml) and pruned under `< 0.5 GB` Free Tier by [`deploy/gcp/gar-cleanup-policy.json`](deploy/gcp/gar-cleanup-policy.json)) and `ghcr.io/nacfson/*`.
 - **In-Cluster Proxy Execution (`services/vault-proxies/`)**:
   - `vault-db-proxy` (`cmd/db-proxy`): Authenticates project workloads and proxies PostgreSQL connections (`proj_pn`, `proj_health`) using credentials held only inside the Vault boundary.
-  - `vault-ai-proxy` (`cmd/ai-proxy`): Verifies calling project pod identity via `kube-apiserver`, enforces per-project daily quotas and loopback Kill Switch (`127.0.0.1:8081`), and injects the OpenBao Gemini API key in RAM (zeroing bytes with `0x00` when disabled).
-  - `vault-notify-proxy` (`cmd/notify-proxy`): Pod-attributed notification gateway (`POST /v1/notify/{channel}`) holding Discord webhook URLs exclusively inside the Vault boundary.
+  - `vault-ai-proxy` (`cmd/ai-proxy`): Verifies calling project pod identity via `kube-apiserver`, enforces per-project daily quotas and loopback Kill Switch (`127.0.0.1:8081`), and injects the OpenBao Gemini API key in RAM (zeroing bytes with `0x00` when disabled) ([`docs/internal-ai-gateway.html`](docs/internal-ai-gateway.html)).
+  - `vault-notify-proxy` (`cmd/notify-proxy`): Pod-attributed notification gateway (`POST /v1/notify/{channel}`) holding Discord webhook URLs exclusively inside the Vault boundary; callers include `observability/error-detector`.
   - **Transit Engine**: Signs tokens asymmetrically inside OpenBao without exporting private signing keys.
 
 ### 3.4 Multi-Node Workload Isolation & $1/n$ Resource Budgeting (Constitution Principles II & IV, Spec 012)
@@ -150,6 +166,8 @@ flowchart LR
   - `openbao-ingress-policy` ([`deploy/platform/vault/network-policy.yaml`](deploy/platform/vault/network-policy.yaml)) permits `kube-apiserver` control-plane egress (RFC1918 `:443/:6443`, plus GKE Workload Identity `169.254.169.254/32:80,988` and Private Google Access `199.36.153.8/30:443` for Cloud KMS in `clusters/gke/layers.yaml`), while strictly forbidding `0.0.0.0/0` on `openbao`.
   - `pn-backend-translation-egress`, `ai-proxy-egress`, and `notify-proxy-egress` permit TCP `:443` to `0.0.0.0/0` **minus** RFC1918 (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`), link-local metadata (`169.254.169.254/32`), and CGNAT (`100.64.0.0/10`).
 - **Local Hubble Observability**: On `local-k3s`, Cilium `v1.20.3` + Hubble UI `v0.13.6` stream packet verdicts over private loopback [`scripts/open-hubble-ui.sh`](scripts/open-hubble-ui.sh) (`127.0.0.1:12000`).
+- **Private Operator Access Only**: `Service/hubble-ui` and `Service/hubble-relay` are strictly `ClusterIP` with zero public `IngressRoute`; run automated 5-point live verification via `./scripts/open-hubble-ui.sh --verify`.
+- **Reference**: [`specs/010-cilium-hubble-observability/`](specs/010-cilium-hubble-observability/) | [`specs/012-gke-platform-migration/`](specs/012-gke-platform-migration/)
 
 ### 3.7 Crash-Resilient Project Log Collection & Off-Cluster Sink (Specs 011 & 012)
 
@@ -167,5 +185,7 @@ flowchart LR
 - **Environment Sinks**:
   - **`local-k3s`**: Ships to in-cluster `StatefulSet/victorialogs` (`v1.53.0`, `10Gi` PVC, `30d` / `8 GiB` cap) and `Deployment/error-detector`.
   - **`gke`** ([`clusters/gke/observability/`](clusters/gke/observability/)): Deletes in-cluster `StatefulSet/victorialogs` (moving to OCI VM 4 in Spec 014), pauses `Deployment/error-detector` at `replicas: 0` (retaining `PVC/error-detector-state` and its pre-reserved `25m/64Mi` budget slot until Spec 014 switches it to Kafka `logs.proj.errors`), and ships `proj.*` (`192M` cap -> `logs.proj.valid`) and `quarantine.*` (`64M` cap -> `logs.proj.quarantine`) via idempotent `[OUTPUT] kafka` (`acks=-1`, `Retry_Limit False`).
-- **Reference**: [`docs/operations-runbook.md`](docs/operations-runbook.md) §15–16 | [`specs/012-gke-platform-migration/`](specs/012-gke-platform-migration/)
+- **Error Detector**: [`deploy/platform/observability/error-detector.yaml`](deploy/platform/observability/error-detector.yaml) (`services/error-pipeline/cmd/error-detector`) tails VictoriaLogs, persists SQLite state on PVC `error-detector-state`, and dispatches alerts via `vault-notify-proxy`.
+- **Access**: [`scripts/open-observe.sh`](scripts/open-observe.sh) (transitional `vps-k3s`) and [`scripts/open-victorialogs-ui.sh`](scripts/open-victorialogs-ui.sh) (`local-k3s`) port-forward to loopback only. No public route.
+- **Reference**: [`specs/011-project-log-contract/spec.md`](specs/011-project-log-contract/spec.md) | [`docs/operations-runbook.md`](docs/operations-runbook.md) §15–16 | [`specs/012-gke-platform-migration/`](specs/012-gke-platform-migration/)
 

@@ -60,3 +60,15 @@ Automated review hunters MUST skip vendored upstream manifests unless a security
 A `git commit` is blocked until the staged diff has a receipt with `"pipeline": "code-review"`. The code-review skill sets that field after its review stages. The agent hooks (`scripts/universal-agent-hook.py`, `.omp/extensions/arch-doc-sync.ts`, `.opencode/plugins/arch-doc-sync.js`) deny the commit and tell the agent to run [`.agents/skills/code-review/SKILL.md`](.agents/skills/code-review/SKILL.md) instead of calling `record-receipt` alone. The field is that skill's completion marker. The hook cannot prove subagents ran if the same agent writes the receipt. `.githooks/pre-commit` checks `review-cycle.py check-gate --scope staged --require-pipeline code-review`.
 
 The review is optional per commit, and the user decides. Before each `git commit`, an agent asks the user whether to run the code-review skill or skip it. To skip, the agent commits with `SKIP_REVIEW_GATE=1` and adds `Review: skipped at the user's request.` to the commit message. An agent never skips on its own, and one answer covers one commit only.
+
+---
+
+## 6. Model & Effort Routing
+
+To keep multi-agent reviews fast without downgrading to weaker model families, [`.agents/skills/code-review/SKILL.md`](.agents/skills/code-review/SKILL.md) keeps the primary models and coordinates **reasoning effort** per role (`thought_level` in Antigravity, `effort` in Claude Code):
+
+- **Stages 0–1 (parallel hunters & classifiers)**: `gemini-4-hydrogen` (Antigravity) / `claude-sonnet-5-5` (Claude Code)
+  - `low`: `diff-simplifier`, `risk-classifier`
+  - `medium`: `e2e-behavior`, `contract-reviewer`, `bug-reviewer`
+  - `high`: `security-reviewer`
+- **Stage 2 (`finding-verifier`)**: `gemini-4-carbon` with `thought_level: "high"` (Antigravity) / `claude-opus-5-5` with `effort: "high"` (Claude Code)
