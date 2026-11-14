@@ -140,6 +140,116 @@ fi
             self.assertEqual(result.returncode, 1)
             self.assertIn("Re-run export with --ssh <k3s-host>", result.stderr)
 
+    def test_restore_victorialogs_local_k3s_via_ssh(self) -> None:
+        funcs = _extract_functions(SCRIPT, ["restore_victorialogs_local_k3s"])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bin_dir = os.path.join(tmpdir, "bin")
+            src_dir = os.path.join(tmpdir, "src")
+            pv_dir = os.path.join(tmpdir, "pv-target")
+            bundle_dir = os.path.join(tmpdir, "bundle")
+            log_file = os.path.join(tmpdir, "calls.log")
+            os.makedirs(bin_dir)
+            os.makedirs(src_dir)
+            os.makedirs(pv_dir)
+            os.makedirs(bundle_dir)
+
+            with open(os.path.join(src_dir, "restored.bin"), "wb") as fh:
+                fh.write(b"restored-payload\n")
+
+            archive = os.path.join(bundle_dir, "victoria-logs-data.tar.gz")
+            subprocess.run(
+                ["tar", "-czf", archive, "-C", src_dir, "."],
+                check=True,
+            )
+
+            _write_executable(
+                os.path.join(bin_dir, "ssh"),
+                '#!/usr/bin/env bash\nshift\nexec bash -c "$*"\n',
+            )
+            _write_executable(
+                os.path.join(bin_dir, "sudo"),
+                f"""#!/usr/bin/env bash
+if [[ "${{1:-}}" == "chown" ]]; then
+  echo "sudo $*" >> "{log_file}"
+  exit 0
+fi
+exec "$@"
+""",
+            )
+            _write_executable(
+                os.path.join(bin_dir, "kubectl"),
+                f"""#!/usr/bin/env bash
+echo "kubectl $*" >> "{log_file}"
+if [[ "$*" == *"get pvc"* ]]; then
+  echo "pvc-456"
+elif [[ "$*" == *"get pv pvc-456"* ]]; then
+  echo "{pv_dir}"
+fi
+""",
+            )
+
+            bg_kubectl_def = f"""bg_kubectl() {{
+  echo "bg_kubectl $*" >> "{log_file}"
+}}"""
+
+            env = {
+                **os.environ,
+                "PATH": f"{bin_dir}:{os.environ['PATH']}",
+                "SSH_HOST": "localK3s",
+                "ABS_BUNDLE_DIR": bundle_dir,
+            }
+            result = subprocess.run(
+                [
+                    "bash",
+                    "-euo",
+                    "pipefail",
+                    "-c",
+                    f"{bg_kubectl_def}\n{funcs}\nrestore_victorialogs_local_k3s",
+                ],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertTrue(os.path.isfile(os.path.join(pv_dir, "restored.bin")))
+
+            with open(log_file, encoding="utf-8") as fh:
+                calls = fh.read()
+            self.assertIn("bg_kubectl scale statefulset/victorialogs -n observability --replicas=0", calls)
+            self.assertIn(f"sudo chown -R 1000:1000 {pv_dir}", calls)
+            self.assertIn("bg_kubectl scale statefulset/victorialogs -n observability --replicas=1", calls)
+
+    def test_restore_victorialogs_local_k3s_without_ssh_gives_actionable_error(self) -> None:
+        funcs = _extract_functions(SCRIPT, ["restore_victorialogs_local_k3s"])
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bin_dir = os.path.join(tmpdir, "bin")
+            bundle_dir = os.path.join(tmpdir, "bundle")
+            os.makedirs(bin_dir)
+            os.makedirs(bundle_dir)
+            open(os.path.join(bundle_dir, "victoria-logs-data.tar.gz"), "wb").close()
+
+            _write_executable(
+                os.path.join(bin_dir, "kubectl"),
+                '#!/usr/bin/env bash\necho \'exec: "tar": executable file not found in $PATH\' >&2\nexit 126\n',
+            )
+
+            env = {
+                **os.environ,
+                "PATH": f"{bin_dir}:{os.environ['PATH']}",
+                "SSH_HOST": "",
+                "ABS_BUNDLE_DIR": bundle_dir,
+            }
+            result = subprocess.run(
+                ["bash", "-euo", "pipefail", "-c", f"{funcs}\nrestore_victorialogs_local_k3s"],
+                capture_output=True,
+                text=True,
+                env=env,
+            )
+            self.assertEqual(result.returncode, 1)
+            self.assertIn("Re-run restore with --ssh <k3s-host>", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

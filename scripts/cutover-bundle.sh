@@ -176,6 +176,44 @@ archive_victorialogs() {
   echo "✓ VictoriaLogs archive: ${archive_file} (${archive_size})"
 }
 
+restore_victorialogs_local_k3s() {
+  local archive_file="${ABS_BUNDLE_DIR}/victoria-logs-data.tar.gz"
+  if [[ -n "${SSH_HOST}" ]]; then
+    local pv node_path quoted_path
+    pv="$(kubectl get pvc -n observability data-victorialogs-0 -o 'jsonpath={.spec.volumeName}')"
+    if [[ -z "${pv}" ]]; then
+      echo "Error: failed to resolve PV for PVC observability/data-victorialogs-0." >&2
+      exit 1
+    fi
+
+    node_path="$(kubectl get pv "${pv}" -o 'jsonpath={.spec.hostPath.path}{.spec.local.path}')"
+    if [[ -z "${node_path}" || "${node_path}" != /* ]]; then
+      echo "Error: PV '${pv}' does not expose an absolute hostPath/local node path (got '${node_path}')." >&2
+      exit 1
+    fi
+
+    quoted_path="$(printf '%q' "${node_path}")"
+    bg_kubectl scale statefulset/victorialogs -n observability --replicas=0
+    kubectl wait --for=delete pod/victorialogs-0 -n observability --timeout=120s || true
+
+    # shellcheck disable=SC2029
+    if ! ssh "${SSH_HOST}" "sudo tar -xzf - -C ${quoted_path} && sudo chown -R 1000:1000 ${quoted_path}" < "${archive_file}"; then
+      bg_kubectl scale statefulset/victorialogs -n observability --replicas=1 || true
+      echo "Error: failed to restore VictoriaLogs archive onto '${SSH_HOST}:${node_path}'." >&2
+      exit 1
+    fi
+
+    bg_kubectl scale statefulset/victorialogs -n observability --replicas=1
+  else
+    if ! kubectl exec -i -n observability victorialogs-0 -- \
+      tar -xzf - -C /victoria-logs-data < "${archive_file}"; then
+      echo "Error: in-pod tar failed (the victoria-logs image ships no tar). Re-run restore with --ssh <k3s-host> to extract onto the node PV." >&2
+      exit 1
+    fi
+    bg_kubectl delete pod -n observability victorialogs-0 --ignore-not-found
+  fi
+}
+
 verify_bundle() {
   echo "=== Verifying FullStateMigrationBundle in ${ABS_BUNDLE_DIR} ==="
   if [[ ! -d "${ABS_BUNDLE_DIR}" ]]; then
@@ -412,8 +450,7 @@ kubectl rollout status deployment/keycloak -n identity --timeout=300s
 
 if [[ "${TARGET_ENV}" == "local-k3s" ]]; then
   echo "=== [5/6] Restoring VictoriaLogs History onto local-k3s ==="
-  kubectl exec -i -n observability victorialogs-0 -- tar -xzf - -C /victoria-logs-data < "${ABS_BUNDLE_DIR}/victoria-logs-data.tar.gz"
-  bg_kubectl delete pod -n observability victorialogs-0 --ignore-not-found
+  restore_victorialogs_local_k3s
 else
   echo "=== [5/6] Skipping in-cluster VictoriaLogs restore on GKE (logs stream to OCI Kafka; archive preserved for Spec 014) ==="
 fi
