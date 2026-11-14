@@ -7,10 +7,28 @@ from __future__ import annotations
 
 import os
 import subprocess
+import tempfile
 import unittest
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SCRIPT = os.path.join(BASE_DIR, "scripts", "open-observe.sh")
+
+
+def _path_without_kubectl(tmp: str) -> str:
+    """Return a PATH that keeps system tools but never resolves kubectl.
+
+    CI runners ship kubectl in /usr/bin, so trimming PATH to /usr/bin:/bin
+    does not hide it. Symlink every system tool except kubectl instead.
+    """
+    for src_dir in ("/usr/bin", "/bin"):
+        if not os.path.isdir(src_dir):
+            continue
+        for name in os.listdir(src_dir):
+            dst = os.path.join(tmp, name)
+            if name == "kubectl" or os.path.lexists(dst):
+                continue
+            os.symlink(os.path.join(src_dir, name), dst)
+    return tmp
 
 
 class TestOpenObserve(unittest.TestCase):
@@ -35,12 +53,13 @@ class TestOpenObserve(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stderr)
 
     def test_missing_kubectl_exits_1(self):
-        result = subprocess.run(
-            ["bash", SCRIPT],
-            capture_output=True,
-            text=True,
-            env={**os.environ, "PATH": "/usr/bin:/bin"},
-        )
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                ["bash", SCRIPT],
+                capture_output=True,
+                text=True,
+                env={**os.environ, "PATH": _path_without_kubectl(tmp)},
+            )
         self.assertEqual(result.returncode, 1, result.stderr)
         self.assertIn("kubectl is required", result.stdout + result.stderr)
 
