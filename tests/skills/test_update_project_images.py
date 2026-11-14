@@ -168,6 +168,18 @@ class TestLinkParsing(unittest.TestCase):
         self.assertEqual(link.kind, "image")
         self.assertEqual(link.image, f"ghcr.io/nacfson/project-pn-frontend@{NEW_DIGEST}")
 
+    def test_gar_digest_ref_and_https_url(self):
+        gar_ref = (
+            f"asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public/"
+            f"project-pn-frontend@{NEW_DIGEST}"
+        )
+        link = mod.parse_link(gar_ref)
+        self.assertEqual(link.kind, "image")
+        self.assertEqual(link.image, gar_ref)
+        https_link = mod.parse_link(f"https://{gar_ref}")
+        self.assertEqual(https_link.kind, "image")
+        self.assertEqual(https_link.image, gar_ref)
+
     def test_bare_digest(self):
         link = mod.parse_link(NEW_DIGEST)
         self.assertEqual(link.kind, "digest")
@@ -200,6 +212,20 @@ class TestTargetDiscovery(TempRepo):
         )
         with self.assertRaises(mod.UpdateError):
             mod.resolve_link(target, link)
+
+    def test_same_allowed_package_permits_ghcr_to_public_gar(self):
+        self.assertTrue(
+            mod._same_allowed_package(
+                "asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public/project-pn-frontend",
+                "ghcr.io/nacfson/project-pn-frontend",
+            )
+        )
+        self.assertFalse(
+            mod._same_allowed_package(
+                "asia-northeast3-docker.pkg.dev/other-proj/nacfson-public/project-pn-frontend",
+                "ghcr.io/nacfson/project-pn-frontend",
+            )
+        )
 
     def test_invalid_container_port_raises_update_error(self):
         workload = self.root / "deploy" / "projects" / "bad" / "workloads"
@@ -1240,6 +1266,30 @@ class TestSkipValidation(TempRepo):
             )
         self.assertFalse(run.call_args.kwargs.get("skip_validation"))
 
+    def test_run_update_migrates_ghcr_to_gar_repo(self):
+        gar_repo = "asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public/project-pn-frontend"
+        with mock.patch.object(
+            mod,
+            "validate_image",
+            return_value=mod.ValidationReport(platforms=["linux/amd64", "linux/arm64"]),
+        ) as val_mock, mock.patch.object(
+            mod, "resolve_digest_ref", return_value=NEW_DIGEST
+        ):
+            summary = mod.run_update(
+                root=self.root,
+                project="pn",
+                image_args=[f"frontend={gar_repo}@{NEW_DIGEST}"],
+                dry_run=False,
+                strict=False,
+                pull_check=False,
+            )
+        val_mock.assert_called_once()
+        self.assertEqual(val_mock.call_args.args[0], gar_repo)
+        self.assertEqual(
+            summary["images"][0]["new_image"], f"{gar_repo}@{NEW_DIGEST}"
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
+

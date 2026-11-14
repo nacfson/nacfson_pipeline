@@ -11,12 +11,14 @@ VAULT_POD="${VAULT_POD:-openbao-0}"
 POLICIES_DIR="${POLICIES_DIR:-deploy/platform/vault/policies}"
 KUBE_EXEC="${KUBE_EXEC:-kubectl}"
 
-# If running against remote host without local kubectl cluster access
+# Optional SSH fallback is used only when ALLOW_SSH_FALLBACK=true and local kubectl cannot reach openbao-0
+ALLOW_SSH_FALLBACK="${ALLOW_SSH_FALLBACK:-false}"
 if ! ${KUBE_EXEC} get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
-  # VAULT_NS and VAULT_POD exist on this machine and must expand before ssh.
-  # shellcheck disable=SC2029
-  if ssh oracleCloud "sudo k3s kubectl get pod -n ${VAULT_NS} ${VAULT_POD}" >/dev/null 2>&1; then
-    KUBE_EXEC="ssh oracleCloud sudo k3s kubectl"
+  if [ "${ALLOW_SSH_FALLBACK}" = "true" ]; then
+    # shellcheck disable=SC2029
+    if ssh -o BatchMode=yes -o ConnectTimeout=5 oracleCloud "sudo k3s kubectl get pod -n ${VAULT_NS} ${VAULT_POD}" >/dev/null 2>&1; then
+      KUBE_EXEC="ssh oracleCloud sudo k3s kubectl"
+    fi
   fi
 fi
 
@@ -117,9 +119,21 @@ run_bao() {
 echo "=== [2/4] Enabling & Configuring Kubernetes Auth Method ==="
 run_bao auth enable kubernetes 2>/dev/null || echo "auth/kubernetes already enabled."
 
-echo "Provisioning Kubernetes Cluster CA and Token Reviewer JWT..."
-CA_DATA=$(${KUBE_EXEC} config view --raw | awk '/certificate-authority-data:/ {print $2; exit}' | base64 -d)
-TOKEN_JWT=$(${KUBE_EXEC} --as=system:admin --as-group=platform:break-glass create token openbao-token-reviewer -n vault --duration=87600h)
+echo "Provisioning Kubernetes Cluster CA (from kube-system/kube-root-ca.crt with kubeconfig fallback) and Token Reviewer JWT..."
+CA_DATA=$(${KUBE_EXEC} get configmap kube-root-ca.crt -n kube-system -o jsonpath='{.data.ca\.crt}' 2>/dev/null || true)
+if [ -z "${CA_DATA}" ]; then
+  CA_DATA=$(${KUBE_EXEC} config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' 2>/dev/null | base64 -d || true)
+fi
+if [ -z "${CA_DATA}" ]; then
+  CA_DATA=$(${KUBE_EXEC} config view --raw | awk '/certificate-authority-data:/ {print $2; exit}' | base64 -d)
+fi
+if [ -z "${CA_DATA}" ]; then
+  echo "Error: Could not resolve Kubernetes cluster CA certificate from ConfigMap/kube-root-ca.crt or kubeconfig." >&2
+  exit 1
+fi
+
+TOKEN_JWT=$(${KUBE_EXEC} --as=break-glass:vault-auth --as-group=platform:break-glass create token openbao-token-reviewer -n vault --duration=87600h 2>/dev/null \
+  || ${KUBE_EXEC} create token openbao-token-reviewer -n vault --duration=87600h)
 
 printf "%s\n" "${CA_DATA}" | ${KUBE_EXEC} exec -i -n "${VAULT_NS}" "${VAULT_POD}" -- tee /tmp/ca.crt >/dev/null
 printf "%s\n" "${TOKEN_JWT}" | ${KUBE_EXEC} exec -i -n "${VAULT_NS}" "${VAULT_POD}" -- tee /tmp/token_reviewer.jwt >/dev/null
@@ -129,6 +143,8 @@ run_bao write auth/kubernetes/config \
   kubernetes_ca_cert=@/tmp/ca.crt \
   token_reviewer_jwt=@/tmp/token_reviewer.jwt \
   disable_iss_validation=true
+
+${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- rm -f /tmp/ca.crt /tmp/token_reviewer.jwt
 
 echo "=== [3/4] Syncing Vault RBAC Policies ==="
 if [ -d "${POLICIES_DIR}" ]; then
@@ -142,6 +158,10 @@ if [ -d "${POLICIES_DIR}" ]; then
     fi
   done
 fi
+
+# Purge retired GHCR registry-proxy role and policy if carried over from an older Raft snapshot
+run_bao delete auth/kubernetes/role/vault-registry-proxy >/dev/null 2>&1 || true
+run_bao policy delete registry-proxy >/dev/null 2>&1 || true
 
 echo "=== [4/4] Configuring Workload ServiceAccount Roles ==="
 
@@ -168,7 +188,6 @@ create_k8s_role "gateway" "gateway" "identity" "gateway-transit"
 
 # Vault Proxy & Snapshot Roles (no ServiceAccount is bound to operator-admin)
 create_k8s_role "vault-db-proxy" "vault-db-proxy" "vault" "db-proxy"
-create_k8s_role "vault-registry-proxy" "vault-registry-proxy" "vault" "registry-proxy"
 create_k8s_role "vault-ai-proxy" "vault-ai-proxy" "vault" "ai-proxy"
 create_k8s_role "vault-notify-proxy" "vault-notify-proxy" "vault" "notify-proxy"
 create_k8s_role "openbao-backup" "openbao-backup" "vault" "raft-snapshot"

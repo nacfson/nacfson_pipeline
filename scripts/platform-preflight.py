@@ -263,29 +263,88 @@ def check_project_doors(projects_dict):
     return violations
 
 
-TRANSLATION_HOSTS = frozenset({"api.wiktapi.dev"})
 TRANSLATION_POLICY_NAME = "pn-backend-translation-egress"
-KUBE_DNS_ENDPOINTS = [
-    {
-        "matchLabels": {
-            "k8s:io.kubernetes.pod.namespace": "kube-system",
-            "k8s:k8s-app": "kube-dns",
-        }
-    }
-]
-DNS_PORTS = [
-    {
-        "ports": [{"port": "53", "protocol": "ANY"}],
-        "rules": {"dns": [{"matchPattern": "*"}]},
-    }
-]
-FQDN_PORTS = [{"ports": [{"port": "443", "protocol": "TCP"}]}]
-WORLD_DETAIL = "translation egress must not allow world or 0.0.0.0/0"
-WORLD_RULE_KEYS = ("toCIDR", "toCIDRSet", "toEntities", "toServices")
+REQUIRED_PORTABLE_EXCEPT_CIDRS = frozenset({
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "169.254.169.254/32",
+})
+PROJECT_IMAGE_DIGEST_RE = re.compile(
+    r"^(?:ghcr\.io/nacfson|[a-z0-9-]+-docker\.pkg\.dev/nacfson-pipeline/nacfson-public)/[a-z0-9._/-]+@sha256:[0-9a-f]{64}$"
+)
+WORLD_DETAIL = "translation egress must not allow unrestricted world or 0.0.0.0/0 without private/metadata except CIDRs"
+
+
+def _validate_portable_https_egress(policy_doc, expected_app_name, obj_label):
+    """Validate PortableEgressPolicy invariants on a networking.k8s.io/v1 NetworkPolicy."""
+    violations = []
+
+    def add(detail):
+        violations.append({"rule": 2, "object": obj_label, "detail": detail})
+
+    spec = (policy_doc or {}).get("spec") or {}
+    selector = (spec.get("podSelector") or {}).get("matchLabels") or {}
+    if selector != {"app.kubernetes.io/name": expected_app_name}:
+        add(f"egress policy must select only {expected_app_name}, got {selector!r}")
+
+    egress_rules = spec.get("egress") or []
+    has_kube_dns = False
+    has_public_https = False
+
+    for rule in egress_rules:
+        if not isinstance(rule, dict):
+            continue
+        peers = rule.get("to") or []
+        ports = rule.get("ports") or []
+        if not peers:
+            add(f"{obj_label} egress rule must not omit 'to' peers")
+            continue
+
+        # Check kube-dns rule
+        for peer in peers:
+            ns_labels = ((peer or {}).get("namespaceSelector") or {}).get("matchLabels") or {}
+            pod_labels = ((peer or {}).get("podSelector") or {}).get("matchLabels") or {}
+            if (
+                ns_labels.get("kubernetes.io/metadata.name") == "kube-system"
+                and pod_labels.get("k8s-app") == "kube-dns"
+            ):
+                port_set = {(str(p.get("protocol") or "TCP").upper(), _as_port(p.get("port"))) for p in ports if isinstance(p, dict)}
+                if port_set and port_set.issubset({("UDP", 53), ("TCP", 53)}):
+                    has_kube_dns = True
+
+        # Check ipBlock 0.0.0.0/0 rule
+        for peer in peers:
+            ip_block = (peer or {}).get("ipBlock")
+            if not isinstance(ip_block, dict):
+                continue
+            if str(ip_block.get("cidr") or "").strip() == "0.0.0.0/0":
+                has_public_https = True
+                norm_ports = [
+                    (str(p.get("protocol") or "TCP").upper(), _as_port(p.get("port")))
+                    for p in ports
+                    if isinstance(p, dict)
+                ]
+                if norm_ports != [("TCP", 443)]:
+                    add(f"{obj_label} public 0.0.0.0/0 egress must allow TCP 443 only, got {ports!r}")
+                except_set = {str(c).strip() for c in (ip_block.get("except") or [])}
+                missing_except = sorted(REQUIRED_PORTABLE_EXCEPT_CIDRS - except_set)
+                if missing_except:
+                    add(
+                        f"{obj_label} 0.0.0.0/0 ipBlock missing required except CIDRs: "
+                        f"{', '.join(missing_except)}"
+                    )
+
+    if not has_kube_dns:
+        add(f"{obj_label} must restrict DNS egress (port 53) to kube-system/kube-dns")
+    if not has_public_https:
+        add(f"{obj_label} missing scoped 0.0.0.0/0 TCP 443 ipBlock egress rule")
+
+    return violations
 
 
 def check_translation_egress(docs):
-    """Reject a missing or widened Project PN translation allow.
+    """Enforce PortableEgressPolicy on Project PN translation egress (networking.k8s.io/v1 NetworkPolicy).
 
     Returns [] when NetworkPolicy/project-pn-isolation is absent so fixture
     renders that do not include the boundary stay valid.
@@ -302,12 +361,18 @@ def check_translation_egress(docs):
         kind = doc.get("kind")
         if kind == "NetworkPolicy" and name == "project-pn-isolation" and namespace == "proj-pn":
             isolation = doc
-        if kind == "CiliumNetworkPolicy" and name == TRANSLATION_POLICY_NAME and namespace == "proj-pn":
+        if kind == "NetworkPolicy" and name == TRANSLATION_POLICY_NAME and namespace == "proj-pn":
             policy = doc
+        if kind == "CiliumNetworkPolicy" and namespace == "proj-pn":
+            violations.append({
+                "rule": 2,
+                "object": f"proj-pn/CiliumNetworkPolicy/{name}",
+                "detail": "CiliumNetworkPolicy is prohibited in proj-pn; use portable networking.k8s.io/v1 NetworkPolicy",
+            })
     if isolation is None:
         return []
 
-    obj = f"proj-pn/CiliumNetworkPolicy/{TRANSLATION_POLICY_NAME}"
+    obj = f"proj-pn/NetworkPolicy/{TRANSLATION_POLICY_NAME}"
 
     def add(detail):
         violations.append({"rule": 2, "object": obj, "detail": detail})
@@ -320,54 +385,19 @@ def check_translation_egress(docs):
             if str(entry.get("port")) == "443":
                 add(WORLD_DETAIL)
 
-    for doc in docs or []:
-        if not isinstance(doc, dict):
-            continue
-        meta = doc.get("metadata") or {}
-        if (
-            doc.get("kind") == "CiliumNetworkPolicy"
-            and meta.get("namespace") == "proj-pn"
-            and meta.get("name") != TRANSLATION_POLICY_NAME
-        ):
-            add("translation egress must select only pn-backend")
-
     if policy is None:
         add("proj-pn translation egress policy is missing")
         return violations
 
     spec = policy.get("spec") or {}
-    if "ingress" in spec:
-        add(WORLD_DETAIL)
-    selector = (spec.get("endpointSelector") or {}).get("matchLabels") or {}
-    if selector != {"app.kubernetes.io/name": "pn-backend"}:
-        add("translation egress must select only pn-backend")
+    if "ingress" in spec or spec.get("policyTypes") != ["Egress"]:
+        add("pn-backend-translation-egress must declare policyTypes: ['Egress'] only (no ingress rules)")
+    if len(spec.get("egress") or []) != 2:
+        add("pn-backend-translation-egress must declare exactly 2 egress rules (kube-dns and TCP 443)")
 
-    egress = spec.get("egress") or []
-    for rule in egress:
-        if any(key in rule for key in WORLD_RULE_KEYS):
-            add(WORLD_DETAIL)
-    if len(egress) != 2:
-        add(WORLD_DETAIL)
-        return violations
-
-    dns, fqdn = egress
-    if set(dns) != {"toEndpoints", "toPorts"} or dns.get("toEndpoints") != KUBE_DNS_ENDPOINTS or dns.get("toPorts") != DNS_PORTS:
-        add("translation egress must allow kube-dns lookups with matchPattern *")
-    if set(fqdn) != {"toFQDNs", "toPorts"}:
-        add(WORLD_DETAIL)
-    names = []
-    for item in fqdn.get("toFQDNs") or []:
-        if not isinstance(item, dict) or set(item) != {"matchName"} or item.get("matchName") not in TRANSLATION_HOSTS:
-            unexpected = item.get("matchPattern") or item.get("matchName") or "*"
-            add(f"translation egress host {unexpected} is not allowed")
-            continue
-        names.append(item["matchName"])
-    for required in sorted(TRANSLATION_HOSTS):
-        if required not in names:
-            add(f"translation egress is missing host {required}")
-    if fqdn.get("toPorts") != FQDN_PORTS:
-        add("translation egress must be TCP 443 only")
+    violations.extend(_validate_portable_https_egress(policy, "pn-backend", obj))
     return violations
+
 
 
 def check_database_and_readiness_contract(projects_dict, platform_docs):
@@ -514,13 +544,14 @@ def check_placeholder_image_digests(docs):
 
 
 def check_notify_gateway_contract(platform_docs):
-    """Enforce the notify gateway contract: loopback-only admin, discord.com-only egress.
+    """Enforce the notify gateway contract: loopback-only admin, portable HTTPS egress.
 
     The proxy is the one component that holds a live Discord webhook URL, so its
     blast radius is the point of this rule: the admin listener that seeds those
-    URLs must be unreachable from any pod, and egress must reach Discord and
-    nothing else. A tag rather than a digest is rejected because a silent rebuild
-    would change what #errors posts with and no manifest would show it.
+    URLs must be unreachable from any pod, and egress must block RFC1918 and
+    cloud metadata / Workload Identity CIDRs. A tag rather than a digest is
+    rejected because a silent rebuild would change what #errors posts with and
+    no manifest would show it.
     """
     violations = []
 
@@ -528,16 +559,23 @@ def check_notify_gateway_contract(platform_docs):
         violations.append({"rule": 2, "object": obj, "detail": detail})
 
     found_netpol = False
-    found_cnp = False
     deploy_seen = False
 
     for doc in platform_docs:
         if not isinstance(doc, dict):
             continue
         kind = doc.get("kind", "")
-        name = (doc.get("metadata") or {}).get("name", "")
+        meta = doc.get("metadata") or {}
+        name = meta.get("name", "")
+        ns = meta.get("namespace", "")
 
-        if kind == "Service" and name == "notify-gateway":
+        if kind == "CiliumNetworkPolicy" and (ns == "vault" or "notify-proxy" in name):
+            fail(
+                f"vault/CiliumNetworkPolicy/{name}",
+                "CiliumNetworkPolicy is prohibited in vault; use portable networking.k8s.io/v1 NetworkPolicy",
+            )
+
+        elif kind == "Service" and name == "notify-gateway":
             ports = (doc.get("spec") or {}).get("ports") or []
             port_nums = [_as_port(p.get("port")) for p in ports if isinstance(p, dict)]
             if port_nums != [8080]:
@@ -613,50 +651,18 @@ def check_notify_gateway_contract(platform_docs):
                             "NetworkPolicy/notify-proxy-policy ingress peers must specify both non-empty "
                             "namespaceSelector.matchLabels and podSelector.matchLabels",
                         )
+            violations.extend(
+                _validate_portable_https_egress(doc, "vault-notify-proxy", "vault/NetworkPolicy/notify-proxy-policy")
+            )
 
-        elif kind == "CiliumNetworkPolicy" and name == "notify-proxy-egress":
-            found_cnp = True
-            fqdn_hosts = set()
-            for rule in (doc.get("spec") or {}).get("egress") or []:
-                if not isinstance(rule, dict):
-                    continue
-                if "toCIDR" in rule or "toCIDRSet" in rule:
-                    fail(
-                        "vault/CiliumNetworkPolicy/notify-proxy-egress",
-                        "CiliumNetworkPolicy/notify-proxy-egress must not use toCIDR or toCIDRSet",
-                    )
-                for ent in rule.get("toEntities") or []:
-                    if ent in ("world", "all"):
-                        fail(
-                            "vault/CiliumNetworkPolicy/notify-proxy-egress",
-                            f"CiliumNetworkPolicy/notify-proxy-egress must not allow unrestricted entity {ent!r}",
-                        )
-                for fqdn in rule.get("toFQDNs") or []:
-                    if not isinstance(fqdn, dict) or "matchPattern" in fqdn or set(fqdn.keys()) != {"matchName"}:
-                        fail(
-                            "vault/CiliumNetworkPolicy/notify-proxy-egress",
-                            f"CiliumNetworkPolicy/notify-proxy-egress toFQDNs must use exact matchName only, got {fqdn!r}",
-                        )
-                    else:
-                        fqdn_hosts.add(fqdn["matchName"])
-            if fqdn_hosts != {"discord.com"}:
-                fail(
-                    "vault/CiliumNetworkPolicy/notify-proxy-egress",
-                    f"CiliumNetworkPolicy/notify-proxy-egress must allow exact FQDN discord.com only, "
-                    f"got {sorted(fqdn_hosts)}",
-                )
-
-    if deploy_seen:
-        if not found_netpol:
-            fail("vault/NetworkPolicy/notify-proxy-policy", "missing NetworkPolicy/notify-proxy-policy in vault namespace")
-        if not found_cnp:
-            fail("vault/CiliumNetworkPolicy/notify-proxy-egress", "missing CiliumNetworkPolicy/notify-proxy-egress in vault namespace")
+    if deploy_seen and not found_netpol:
+        fail("vault/NetworkPolicy/notify-proxy-policy", "missing NetworkPolicy/notify-proxy-policy in vault namespace")
 
     return violations
 
 
 def check_ai_gateway_contract(projects_dict, platform_docs):
-    """Enforce Internal AI Gateway (vault-ai-proxy) isolation, loopback admin, and three-probe contract."""
+    """Enforce Internal AI Gateway (vault-ai-proxy) isolation, loopback admin, portable NetworkPolicy, and three-probe contract."""
     violations = []
 
     # 1. Project containers must never hold *API_KEY* or call generativelanguage.googleapis.com directly
@@ -686,16 +692,22 @@ def check_ai_gateway_contract(projects_dict, platform_docs):
                             "detail": f"ENRICH_PRIMARY_BASE_URL must route through http://ai-gateway.vault.svc:8080/v1, got {eval_str!r}",
                         })
 
-    # 2. Check Service/ai-gateway, Deployment/vault-ai-proxy, NetworkPolicy/ai-proxy-policy, and CiliumNetworkPolicy/ai-proxy-egress
+    # 2. Check Service/ai-gateway, Deployment/vault-ai-proxy, NetworkPolicy/ai-proxy-policy, and NetworkPolicy/openbao-ingress-policy
     found_netpol = False
-    found_cnp = False
     for doc in platform_docs:
         if not isinstance(doc, dict):
             continue
         kind = doc.get("kind", "")
         meta = doc.get("metadata") or {}
         name = meta.get("name", "")
-        if kind == "Service" and name == "ai-gateway":
+        ns = meta.get("namespace", "")
+        if kind == "CiliumNetworkPolicy" and (ns == "vault" or "ai-proxy" in name or "openbao" in name):
+            violations.append({
+                "rule": 2,
+                "object": f"vault/CiliumNetworkPolicy/{name}",
+                "detail": "CiliumNetworkPolicy is prohibited in vault; use portable networking.k8s.io/v1 NetworkPolicy",
+            })
+        elif kind == "Service" and name == "ai-gateway":
             ports = (doc.get("spec") or {}).get("ports") or []
             port_nums = [_as_port(p.get("port")) for p in ports if isinstance(p, dict)]
             if port_nums != [8080]:
@@ -773,41 +785,19 @@ def check_ai_gateway_contract(projects_dict, platform_docs):
                             "object": "vault/NetworkPolicy/ai-proxy-policy",
                             "detail": "NetworkPolicy/ai-proxy-policy ingress peers must specify both non-empty namespaceSelector.matchLabels and podSelector.matchLabels",
                         })
-        elif kind == "CiliumNetworkPolicy" and name == "ai-proxy-egress":
-            found_cnp = True
-            egress_rules = (doc.get("spec") or {}).get("egress") or []
-            fqdn_hosts = set()
-            for rule in egress_rules:
-                if not isinstance(rule, dict):
-                    continue
-                if "toCIDR" in rule or "toCIDRSet" in rule:
-                    violations.append({
-                        "rule": 2,
-                        "object": "vault/CiliumNetworkPolicy/ai-proxy-egress",
-                        "detail": "CiliumNetworkPolicy/ai-proxy-egress must not use toCIDR or toCIDRSet",
-                    })
-                for ent in rule.get("toEntities") or []:
-                    if ent in ("world", "all"):
+            violations.extend(
+                _validate_portable_https_egress(doc, "vault-ai-proxy", "vault/NetworkPolicy/ai-proxy-policy")
+            )
+        elif kind == "NetworkPolicy" and name == "openbao-ingress-policy":
+            for rule in (doc.get("spec") or {}).get("egress") or []:
+                for peer in (rule or {}).get("to") or []:
+                    ip_block = (peer or {}).get("ipBlock") or {}
+                    if str(ip_block.get("cidr") or "").strip() == "0.0.0.0/0":
                         violations.append({
                             "rule": 2,
-                            "object": "vault/CiliumNetworkPolicy/ai-proxy-egress",
-                            "detail": f"CiliumNetworkPolicy/ai-proxy-egress must not allow unrestricted entity {ent!r}",
+                            "object": "vault/NetworkPolicy/openbao-ingress-policy",
+                            "detail": "openbao-ingress-policy must never allow 0.0.0.0/0 internet egress",
                         })
-                for fqdn in rule.get("toFQDNs") or []:
-                    if not isinstance(fqdn, dict) or "matchPattern" in fqdn or set(fqdn.keys()) != {"matchName"}:
-                        violations.append({
-                            "rule": 2,
-                            "object": "vault/CiliumNetworkPolicy/ai-proxy-egress",
-                            "detail": f"CiliumNetworkPolicy/ai-proxy-egress toFQDNs must use exact matchName only, got {fqdn!r}",
-                        })
-                    else:
-                        fqdn_hosts.add(fqdn["matchName"])
-            if fqdn_hosts != {"generativelanguage.googleapis.com"}:
-                violations.append({
-                    "rule": 2,
-                    "object": "vault/CiliumNetworkPolicy/ai-proxy-egress",
-                    "detail": f"CiliumNetworkPolicy/ai-proxy-egress must allow exact FQDN generativelanguage.googleapis.com only, got {sorted(fqdn_hosts)}",
-                })
 
     if any(isinstance(d, dict) and d.get("kind") == "Deployment" and (d.get("metadata") or {}).get("name") == "vault-ai-proxy" for d in platform_docs):
         if not found_netpol:
@@ -816,15 +806,10 @@ def check_ai_gateway_contract(projects_dict, platform_docs):
                 "object": "vault/NetworkPolicy/ai-proxy-policy",
                 "detail": "missing NetworkPolicy/ai-proxy-policy in vault namespace",
             })
-        if not found_cnp:
-            violations.append({
-                "rule": 2,
-                "object": "vault/CiliumNetworkPolicy/ai-proxy-egress",
-                "detail": "missing CiliumNetworkPolicy/ai-proxy-egress in vault namespace",
-            })
 
-    # 3. Enforce Constitution Clarification 2.2.1 on observability namespace:
-    #    Only DaemonSet/fluent-bit may declare hostPath (/var/log/pods readOnly: true),
+    # 3. Enforce Constitution Amendments 2.2.1 & 2.3.0 on observability namespace:
+    #    Only DaemonSet/fluent-bit may declare hostPath (/var/log/pods readOnly: true
+    #    and /var/lib/fluent-bit-state readOnly: false DirectoryOrCreate),
     #    and privileged: true is strictly rejected so it can never access OpenBao PVs.
     for doc in platform_docs:
         if not isinstance(doc, dict):
@@ -838,15 +823,28 @@ def check_ai_gateway_contract(projects_dict, platform_docs):
         kind = doc.get("kind", "")
         name = meta.get("name", "")
         obj = f"observability/{kind}/{name}"
+        host_vol_paths = {}
         for vol in pod_spec.get("volumes") or []:
             if not isinstance(vol, dict) or "hostPath" not in vol:
                 continue
-            hp_path = str((vol.get("hostPath") or {}).get("path") or "").strip()
-            if kind != "DaemonSet" or name != "fluent-bit" or hp_path != "/var/log/pods":
+            hp = vol.get("hostPath") or {}
+            hp_path = str(hp.get("path") or "").strip()
+            hp_type = str(hp.get("type") or "").strip()
+            host_vol_paths[vol.get("name")] = hp_path
+            if kind != "DaemonSet" or name != "fluent-bit" or hp_path not in ("/var/log/pods", "/var/lib/fluent-bit-state"):
                 violations.append({
                     "rule": 2,
                     "object": obj,
-                    "detail": f"observability workload may only mount hostPath '/var/log/pods' on DaemonSet/fluent-bit, got {hp_path!r}",
+                    "detail": (
+                        "observability workload may only mount hostPath '/var/log/pods' (readOnly: true) "
+                        f"or '/var/lib/fluent-bit-state' (DirectoryOrCreate) on DaemonSet/fluent-bit, got {hp_path!r}"
+                    ),
+                })
+            elif hp_path == "/var/lib/fluent-bit-state" and hp_type != "DirectoryOrCreate":
+                violations.append({
+                    "rule": 2,
+                    "object": obj,
+                    "detail": f"/var/lib/fluent-bit-state hostPath on DaemonSet/fluent-bit must set type: DirectoryOrCreate, got {hp_type!r}",
                 })
         for c in (pod_spec.get("containers") or []) + (pod_spec.get("initContainers") or []):
             if not isinstance(c, dict):
@@ -859,14 +857,24 @@ def check_ai_gateway_contract(projects_dict, platform_docs):
                     "detail": "observability container must not set privileged: true",
                 })
             for vm in c.get("volumeMounts") or []:
-                if isinstance(vm, dict) and vm.get("mountPath") == "/var/log/pods" and vm.get("readOnly") is not True:
+                if not isinstance(vm, dict):
+                    continue
+                if vm.get("mountPath") == "/var/log/pods" and vm.get("readOnly") is not True:
                     violations.append({
                         "rule": 2,
                         "object": f"{obj}:{c.get('name', '')}",
                         "detail": "/var/log/pods volumeMount in observability must set readOnly: true",
                     })
+                if host_vol_paths.get(vm.get("name")) == "/var/lib/fluent-bit-state":
+                    if vm.get("readOnly") is True or vm.get("mountPath") != "/state":
+                        violations.append({
+                            "rule": 2,
+                            "object": f"{obj}:{c.get('name', '')}",
+                            "detail": "/var/lib/fluent-bit-state volumeMount on fluent-bit must mount read-write at /state",
+                        })
 
     return violations
+
 
 
 def check_edge_tls(project_docs, platform_docs):
@@ -1317,9 +1325,72 @@ def get_pod_spec_and_meta(doc):
     return None, None
 
 
+SPOT_ALLOWED_DEPLOYMENTS = frozenset({
+    ("cert-manager", "cert-manager"),
+    ("cert-manager", "cert-manager-cainjector"),
+    ("cert-manager", "cert-manager-webhook"),
+    ("flux-system", "source-controller"),
+    ("flux-system", "kustomize-controller"),
+})
+
+
+def _pod_tolerates_taint(pod_spec, taint_str):
+    """Return True when pod_spec declares a toleration matching taint_str (key=value:effect or key:effect)."""
+    effect = ""
+    key_val = str(taint_str or "").strip()
+    if ":" in key_val:
+        key_val, effect = key_val.rsplit(":", 1)
+    if "=" in key_val:
+        t_key, t_val = key_val.split("=", 1)
+    else:
+        t_key, t_val = key_val, ""
+
+    for tol in (pod_spec or {}).get("tolerations") or []:
+        if not isinstance(tol, dict):
+            continue
+        tol_op = str(tol.get("operator") or "Equal").strip()
+        tol_key = str(tol.get("key") or "").strip()
+        tol_val = "" if tol.get("value") is None else str(tol.get("value")).strip()
+        tol_eff = str(tol.get("effect") or "").strip()
+        if tol_eff and effect and tol_eff != effect:
+            continue
+        if tol_op == "Exists":
+            if not tol_key or tol_key == t_key:
+                return True
+        elif tol_op == "Equal":
+            if tol_key == t_key and tol_val == t_val:
+                return True
+    return False
+
+
+def _pod_matches_pool(pod_spec, pool):
+    """Return True when pod_spec's nodeSelector and tolerations can schedule onto pool."""
+    labels = {"kubernetes.io/os": "linux", **((pool or {}).get("labels") or {})}
+    for k, v in ((pod_spec or {}).get("nodeSelector") or {}).items():
+        if str(labels.get(k, "")) != str(v):
+            return False
+    for taint in (pool or {}).get("taints") or []:
+        if not _pod_tolerates_taint(pod_spec, taint):
+            return False
+    return True
+
+
+def _effective_pod_resources(pod_spec):
+    """Return Kubernetes effective pod (req_cpu, req_mem, lim_mem) = max(sum(containers), max(initContainers))."""
+    containers = (pod_spec or {}).get("containers") or []
+    init_containers = (pod_spec or {}).get("initContainers") or []
+    c_req_cpu = sum(parse_cpu((c.get("resources") or {}).get("requests", {}).get("cpu")) or 0 for c in containers)
+    ic_req_cpu = max([parse_cpu((c.get("resources") or {}).get("requests", {}).get("cpu")) or 0 for c in init_containers] or [0])
+    c_req_mem = sum(parse_memory_mib((c.get("resources") or {}).get("requests", {}).get("memory")) or 0 for c in containers)
+    ic_req_mem = max([parse_memory_mib((c.get("resources") or {}).get("requests", {}).get("memory")) or 0 for c in init_containers] or [0])
+    c_lim_mem = sum(parse_memory_mib((c.get("resources") or {}).get("limits", {}).get("memory")) or 0 for c in containers)
+    ic_lim_mem = max([parse_memory_mib((c.get("resources") or {}).get("limits", {}).get("memory")) or 0 for c in init_containers] or [0])
+    return max(c_req_cpu, ic_req_cpu), max(c_req_mem, ic_req_mem), max(c_lim_mem, ic_lim_mem)
+
+
 def main():
     parser = argparse.ArgumentParser(description="Platform Preflight Required Check")
-    parser.add_argument("--environment", required=True, help="Target environment (e.g. local-k3s, vps-k3s)")
+    parser.add_argument("--environment", required=True, help="Target environment (e.g. local-k3s, vps-k3s, gke)")
     parser.add_argument("--candidate", required=True, help="Path to rendered candidate YAML")
     parser.add_argument("--baseline", help="Path to rendered baseline YAML (optional)")
     parser.add_argument("--capacity", required=True, help="Path to capacity.yaml")
@@ -1345,6 +1416,7 @@ def main():
         except Exception:
             sys.exit(2)
 
+    pools = None
     if cap_data is not None:
         env = cap_data.get("environment")
         alloc = cap_data.get("allocatable", {})
@@ -1353,11 +1425,74 @@ def main():
         alloc_mem = alloc.get("memoryMib", 0)
         sys_cpu = sys_res.get("cpuMillicores", 0)
         sys_mem = sys_res.get("memoryMib", 0)
+        node_count = cap_data.get("nodeCount", 1)
+        pools = cap_data.get("pools")
 
-        if env != args.environment or alloc_cpu <= 0 or alloc_mem <= 0 or sys_cpu <= 0 or sys_mem <= 0:
+        if (
+            env != args.environment
+            or alloc_cpu <= 0
+            or alloc_mem <= 0
+            or sys_cpu <= 0
+            or sys_mem <= 0
+            or not isinstance(node_count, int)
+            or node_count < 1
+        ):
             status = STATUS_REJECTED_NO_MEASUREMENT
             rejection_reason = "Invalid capacity: environment mismatch or non-positive measurements"
             exit_code = 1
+        elif pools is not None:
+            if not isinstance(pools, list) or not pools:
+                status = STATUS_REJECTED_NO_MEASUREMENT
+                rejection_reason = "Invalid capacity: pools must be a non-empty list"
+                exit_code = 1
+            else:
+                sum_nodes = 0
+                sum_alloc_cpu = 0
+                sum_alloc_mem = 0
+                sum_sys_cpu = 0
+                sum_sys_mem = 0
+                for p in pools:
+                    if not isinstance(p, dict):
+                        status = STATUS_REJECTED_NO_MEASUREMENT
+                        rejection_reason = "Invalid capacity: pool entry must be an object"
+                        exit_code = 1
+                        break
+                    p_nodes = p.get("nodeCount", 0)
+                    p_prov = p.get("provisioning")
+                    p_alloc = p.get("allocatable") or {}
+                    p_sys = p.get("systemReserved") or {}
+                    pa_cpu = p_alloc.get("cpuMillicores", 0)
+                    pa_mem = p_alloc.get("memoryMib", 0)
+                    ps_cpu = p_sys.get("cpuMillicores", 0)
+                    ps_mem = p_sys.get("memoryMib", 0)
+                    if (
+                        not isinstance(p_nodes, int)
+                        or p_nodes < 1
+                        or p_prov not in ("standard", "spot")
+                        or pa_cpu <= 0
+                        or pa_mem <= 0
+                        or ps_cpu <= 0
+                        or ps_mem <= 0
+                    ):
+                        status = STATUS_REJECTED_NO_MEASUREMENT
+                        rejection_reason = f"Invalid capacity pool '{p.get('name')}': invalid provisioning or non-positive measurements"
+                        exit_code = 1
+                        break
+                    sum_nodes += p_nodes
+                    sum_alloc_cpu += pa_cpu
+                    sum_alloc_mem += pa_mem
+                    sum_sys_cpu += ps_cpu
+                    sum_sys_mem += ps_mem
+                if status == STATUS_PASSED and (
+                    sum_nodes != node_count
+                    or sum_alloc_cpu != alloc_cpu
+                    or sum_alloc_mem != alloc_mem
+                    or sum_sys_cpu != sys_cpu
+                    or sum_sys_mem != sys_mem
+                ):
+                    status = STATUS_REJECTED_NO_MEASUREMENT
+                    rejection_reason = "Invalid capacity: pool sums do not match cluster nodeCount, allocatable, or systemReserved"
+                    exit_code = 1
 
     candidate_docs = load_yaml_docs(args.candidate)
     baseline_docs = load_yaml_docs(args.baseline) if args.baseline else []
@@ -1377,7 +1512,65 @@ def main():
             else:
                 platform_docs.append(doc)
 
-        # Rule 2: Isolation in project namespaces
+        # Rule 2: Isolation in project namespaces + GKE zero-LB & Spot placement contracts
+        if args.environment == "gke" or pools is not None:
+            for doc in candidate_docs:
+                if doc.get("kind") == "Service":
+                    svc_type = (doc.get("spec") or {}).get("type", "ClusterIP")
+                    if svc_type == "LoadBalancer":
+                        svc_ns = (doc.get("metadata") or {}).get("namespace", "")
+                        svc_name = (doc.get("metadata") or {}).get("name", "")
+                        violations.append({
+                            "rule": 2,
+                            "object": f"{svc_ns}/Service/{svc_name}",
+                            "detail": f"Service type LoadBalancer prohibited in {args.environment} (zero-LB Traefik hostPort contract)",
+                        })
+
+        if pools is not None:
+            for doc in candidate_docs:
+                pod_spec, _ = get_pod_spec_and_meta(doc)
+                if not pod_spec:
+                    continue
+                kind = doc.get("kind", "")
+                meta = doc.get("metadata") or {}
+                ns = meta.get("namespace", "") or (meta.get("labels") or {}).get("kustomize.toolkit.fluxcd.io/namespace", "")
+                name = meta.get("name", "")
+                obj_name = f"{ns}/{kind}/{name}"
+                matching_pools = [p for p in pools if _pod_matches_pool(pod_spec, p)]
+                if not matching_pools:
+                    violations.append({
+                        "rule": 2,
+                        "object": obj_name,
+                        "detail": f"Workload {obj_name} nodeSelector/tolerations do not match any declared capacity pool",
+                    })
+                    continue
+                has_pvc = bool((doc.get("spec") or {}).get("volumeClaimTemplates")) or any(
+                    isinstance(v, dict) and "persistentVolumeClaim" in v
+                    for v in (pod_spec.get("volumes") or [])
+                )
+                for p in matching_pools:
+                    if p.get("provisioning") == "spot":
+                        if has_pvc:
+                            violations.append({
+                                "rule": 2,
+                                "object": obj_name,
+                                "detail": f"Workload {obj_name} mounts a ReadWriteOnce PVC and cannot schedule onto spot node pool",
+                            })
+                        elif kind == "DaemonSet" and (ns, name) == ("observability", "fluent-bit"):
+                            ns_sel = pod_spec.get("nodeSelector") or {}
+                            if ns_sel.get("cloud.google.com/gke-spot") == "true" or ns_sel.get("cloud.google.com/gke-provisioning") == "spot":
+                                violations.append({
+                                    "rule": 2,
+                                    "object": obj_name,
+                                    "detail": f"DaemonSet {obj_name} must not pin nodeSelector exclusively to spot pool",
+                                })
+                        elif not (kind == "Deployment" and (ns, name) in SPOT_ALLOWED_DEPLOYMENTS):
+                            violations.append({
+                                "rule": 2,
+                                "object": obj_name,
+                                "detail": f"Workload {obj_name} is prohibited on spot node pool; only stateless background controllers are allowed on spot",
+                            })
+
         for doc in project_docs:
             kind = doc.get("kind", "")
             obj_name = f"{doc.get('metadata', {}).get('namespace', '')}/{kind}/{doc.get('metadata', {}).get('name', '')}"
@@ -1403,6 +1596,13 @@ def main():
                 # Check containers
                 all_c = pod_spec.get("containers", []) + pod_spec.get("initContainers", [])
                 for c in all_c:
+                    img = str(c.get("image") or "").strip()
+                    if not PROJECT_IMAGE_DIGEST_RE.match(img):
+                        violations.append({
+                            "rule": 2,
+                            "object": f"{obj_name}:{c.get('name')}",
+                            "detail": f"Project container image '{img}' must pin an immutable @sha256 digest from ghcr.io/nacfson or nacfson-public GAR",
+                        })
                     sc = c.get("securityContext", {})
                     if sc.get("privileged") is True:
                         violations.append({"rule": 2, "object": f"{obj_name}:{c.get('name')}", "detail": "privileged: true prohibited"})
@@ -1512,15 +1712,33 @@ def main():
             if not ns or ns in PLATFORM_NAMESPACES:
                 pod_spec, _ = get_pod_spec_and_meta(doc)
                 if pod_spec:
-                    all_c = pod_spec.get("containers", []) + pod_spec.get("initContainers", [])
-                    for c in all_c:
-                        res = c.get("resources", {})
-                        cpu = parse_cpu(res.get("requests", {}).get("cpu"))
-                        mem = parse_memory_mib(res.get("limits", {}).get("memory"))
-                        if cpu:
-                            plat_req_cpu += cpu
-                        if mem:
-                            plat_lim_mem += mem
+                    if pools is not None:
+                        eff_req_cpu, _, eff_lim_mem = _effective_pod_resources(pod_spec)
+                        kind = doc.get("kind", "")
+                        spec = doc.get("spec") or {}
+                        if kind == "DaemonSet":
+                            multiplier = sum(
+                                int(p.get("nodeCount", 1))
+                                for p in pools
+                                if isinstance(p, dict) and _pod_matches_pool(pod_spec, p)
+                            )
+                        elif kind in ("Deployment", "StatefulSet"):
+                            # Pre-reserve at least 1 replica slot even when paused at replicas: 0
+                            multiplier = max(int(spec.get("replicas", 1)), 1)
+                        else:
+                            multiplier = 1
+                        plat_req_cpu += eff_req_cpu * multiplier
+                        plat_lim_mem += eff_lim_mem * multiplier
+                    else:
+                        all_c = pod_spec.get("containers", []) + pod_spec.get("initContainers", [])
+                        for c in all_c:
+                            res = c.get("resources", {})
+                            cpu = parse_cpu(res.get("requests", {}).get("cpu"))
+                            mem = parse_memory_mib(res.get("limits", {}).get("memory"))
+                            if cpu:
+                                plat_req_cpu += cpu
+                            if mem:
+                                plat_lim_mem += mem
 
     app_cap_cpu = alloc_cpu - plat_req_cpu
     app_cap_mem = alloc_mem - plat_lim_mem
@@ -1680,6 +1898,71 @@ def main():
                 violations.append({"rule": 6, "object": f"project/{proj_id}", "detail": rejection_reason})
                 exit_code = 1
 
+    # Multi-node per-pool steady-state schedulability & standard-pool backup headroom
+    if status == STATUS_PASSED and pools is not None:
+        pool_usage = {
+            str(p.get("name")): {"req_cpu": 0.0, "req_mem": 0.0, "lim_mem": 0.0}
+            for p in pools
+            if isinstance(p, dict)
+        }
+        for doc in candidate_docs:
+            kind = doc.get("kind", "")
+            if kind not in ("Deployment", "StatefulSet", "DaemonSet", "Pod"):
+                continue
+            pod_spec, _ = get_pod_spec_and_meta(doc)
+            if not pod_spec:
+                continue
+            eff_req_cpu, eff_req_mem, eff_lim_mem = _effective_pod_resources(pod_spec)
+            matching_pools = [p for p in pools if isinstance(p, dict) and _pod_matches_pool(pod_spec, p)]
+            if not matching_pools:
+                continue
+            if kind == "DaemonSet":
+                for p in matching_pools:
+                    p_name = str(p.get("name"))
+                    n_cnt = int(p.get("nodeCount", 1))
+                    pool_usage[p_name]["req_cpu"] += eff_req_cpu * n_cnt
+                    pool_usage[p_name]["req_mem"] += eff_req_mem * n_cnt
+                    pool_usage[p_name]["lim_mem"] += eff_lim_mem * n_cnt
+            else:
+                replicas = 1 if kind == "Pod" else int((doc.get("spec") or {}).get("replicas", 1))
+                if replicas <= 0:
+                    continue
+                target_pool = next((p for p in matching_pools if p.get("provisioning") == "standard"), matching_pools[0])
+                p_name = str(target_pool.get("name"))
+                pool_usage[p_name]["req_cpu"] += eff_req_cpu * replicas
+                pool_usage[p_name]["req_mem"] += eff_req_mem * replicas
+                pool_usage[p_name]["lim_mem"] += eff_lim_mem * replicas
+
+        for p in pools:
+            if not isinstance(p, dict):
+                continue
+            p_name = str(p.get("name"))
+            avail_cpu = p["allocatable"]["cpuMillicores"] - p["systemReserved"]["cpuMillicores"]
+            avail_mem = p["allocatable"]["memoryMib"] - p["systemReserved"]["memoryMib"]
+            usage = pool_usage[p_name]
+            if usage["req_cpu"] > avail_cpu or usage["req_mem"] > avail_mem or usage["lim_mem"] > avail_mem:
+                status = STATUS_REJECTED_OVER_BUDGET
+                rejection_reason = (
+                    f"Node pool '{p_name}' steady-state footprint "
+                    f"({usage['req_cpu']}m req, {usage['req_mem']}Mi req, {usage['lim_mem']}Mi lim) "
+                    f"exceeds available ({avail_cpu}m, {avail_mem}Mi)"
+                )
+                violations.append({"rule": 6, "object": f"pool/{p_name}", "detail": rejection_reason})
+                exit_code = 1
+                break
+            if p.get("provisioning") == "standard":
+                free_cpu = avail_cpu - usage["req_cpu"]
+                free_mem = avail_mem - usage["req_mem"]
+                if free_cpu < 50 or free_mem < 192:
+                    status = STATUS_REJECTED_OVER_BUDGET
+                    rejection_reason = (
+                        f"Node pool '{p_name}' insufficient backup headroom: "
+                        f"free ({free_cpu}m, {free_mem}Mi) < required (50m, 192Mi)"
+                    )
+                    violations.append({"rule": 6, "object": f"pool/{p_name}", "detail": rejection_reason})
+                    exit_code = 1
+                    break
+
     result_obj = {
         "environment": args.environment,
         "measuredAllocatable": {
@@ -1692,8 +1975,8 @@ def main():
         },
         "projectCount": project_count,
         "calculatedPerProjectBudget": {
-            "cpuMillicores": int(round(slice_cpu)),
-            "memoryMib": int(round(slice_mem)),
+            "cpuMillicores": int(math.floor(slice_cpu)) if pools is not None else int(round(slice_cpu)),
+            "memoryMib": int(math.floor(slice_mem)) if pools is not None else int(round(slice_mem)),
             "strictQoS": True
         },
         "candidatePeakFootprint": {

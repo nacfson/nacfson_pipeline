@@ -48,6 +48,7 @@ patches:
         namespace: kube-system
       data:
         unmanaged-pod-watcher-interval: "0"
+        policy-cidr-match-mode: "nodes"
   # Preflight Rule 4: every container and initContainer declares requests and limits.
   # Total CNI + Hubble platform reservation: +225m CPU request, +1248Mi memory limit.
   - target:

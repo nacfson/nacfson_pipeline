@@ -1,6 +1,6 @@
 # Log Schema Contract
 
-Every hosted project (`proj-*`) uses this pattern. Project PN is the first example, not a special case. Git is the schema registry. Flux applies the collector ConfigMap. There is no schema-registry pod, and VictoriaLogs does not fetch a schema at runtime.
+Every hosted project (`proj-*`) uses this pattern. Project PN is the first example, not a special case. Git is the schema registry. Flux applies the collector ConfigMap. There is no schema-registry pod, and downstream sinks (`VictoriaLogs` on `local-k3s`, or replicated OCI Kafka `logs.proj.valid` / `logs.proj.quarantine` via WireGuard on `gke`) do not fetch a schema at runtime.
 
 Version 3 (2026-11) adds required service coordinates (`service.name`, `service.version`), HTTP semantic conventions (`http.*`, `url.path`), a strict 32-hex `trace_id`, an 8 KiB stack trace cap, quarantine routing for non-conforming lines, and manifest preflight enforcement. Field names follow the CNCF OpenTelemetry Logs Data Model and semantic conventions. The platform error detector reads these sections. It does not guess.
 
@@ -36,9 +36,9 @@ Fluent Bit adds these fields to every stored `proj-*` line. Stream fields are `k
 | `log.iostream` | containerd stream (`stdout` / `stderr`) | searchable field |
 | `observed_time` | containerd CRI ingestion timestamp (RFC 3339, nanoseconds) | event time |
 
-The Fluent Bit configuration in `deploy/platform/observability/fluent-bit/` is the applied copy. A manifest test must fail if those field names or the stream-field list drift from this table. A rename is a pull request to this file and the collector configuration together. Do not hot-load a second copy from a cluster CRD.
+The Fluent Bit configuration in `deploy/platform/observability/fluent-bit/` (with GKE's `[OUTPUT] kafka` overlay in `clusters/gke/observability/`) is the applied copy. On every node, `DaemonSet/fluent-bit` persists SQLite WAL offsets (`/state/tail.db`) and filesystem-backed output/emitter chunks (`/state/chunks`, capped at `192M + 64M = 256 MiB` per node) inside `hostPath: /var/lib/fluent-bit-state` (`type: DirectoryOrCreate`, Constitution Amendment `2.3.0`) instead of a single-node `ReadWriteOnce` PVC, guaranteeing zero log loss across pod restarts and multi-node scheduling. A manifest test must fail if those field names or the stream-field list drift from this table. A rename is a pull request to this file and the collector configuration together. Do not hot-load a second copy from a cluster CRD.
 
-In v3, platform fields use OpenTelemetry conventions, and valid JSON lines are parsed into fields at ingestion time with `msg` retained as the message body. Unparsed lines (crashes and nginx native error logs) set `msg` to the raw line. Non-conforming lines from v3 containers are routed to the quarantine tenant (`0:1`). During migration (FR-028), the detector continues to read legacy v2 envelope fields and maps legacy `kind` as `event.name` until every project container in Section 6 is migrated to v3 (`done`).
+In v3, platform fields use OpenTelemetry conventions, and valid JSON lines are parsed into fields at ingestion time with `msg` retained as the message body. Unparsed lines (crashes and nginx native error logs) set `msg` to the raw line. Non-conforming lines from v3 containers are routed to the quarantine stream (`ProjectID 1` in `VictoriaLogs` on `local-k3s`, or `logs.proj.quarantine` on `gke` with `rdkafka.request.required.acks -1`, `rdkafka.enable.idempotence true`, `Retry_Limit False`). During migration (FR-028), the detector continues to read legacy v2 envelope fields and maps legacy `kind` as `event.name` until every project container in Section 6 is migrated to v3 (`done`).
 
 ## 2. Line structure (project-owned, every line)
 

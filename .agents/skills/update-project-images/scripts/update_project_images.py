@@ -28,6 +28,10 @@ except ImportError:  # pragma: no cover - PyYAML is a repository dependency
     yaml = None
 
 DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}")
+GAR_HOST_RE = re.compile(r"^[a-z0-9-]+-docker\.pkg\.dev$")
+ALLOWED_REPO_RE = re.compile(
+    r"^(?:ghcr\.io/nacfson|[a-z0-9-]+-docker\.pkg\.dev/nacfson-pipeline/nacfson-public)/([a-z0-9._-]+)$"
+)
 PROJECT_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 ROLE_RE = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 SECRET_ENV_RE = re.compile(
@@ -141,9 +145,19 @@ def parse_link(link: str) -> LinkRef:
     if original.startswith("ghcr.io/"):
         return LinkRef(kind="image", original=link, image=original)
 
+    if "/" in original and GAR_HOST_RE.match(original.split("/", 1)[0].lower()):
+        host, rest = original.split("/", 1)
+        return LinkRef(kind="image", original=link, image=f"{host.lower()}/{rest}")
+
     parsed = urlparse(original)
-    if parsed.scheme in ("http", "https") and parsed.netloc.lower() == "ghcr.io":
-        return LinkRef(kind="image", original=link, image=original.split("://", 1)[1])
+    if parsed.scheme in ("http", "https") and (
+        parsed.netloc.lower() == "ghcr.io" or GAR_HOST_RE.match(parsed.netloc.lower())
+    ):
+        return LinkRef(
+            kind="image",
+            original=link,
+            image=f"{parsed.netloc.lower()}{parsed.path}",
+        )
 
     if parsed.scheme in ("http", "https") and parsed.netloc.lower() == "github.com":
         parts = [p for p in parsed.path.split("/") if p]
@@ -191,10 +205,19 @@ def parse_link(link: str) -> LinkRef:
             )
 
     raise UpdateError(
-        "unsupported link. Use a GHCR image reference, a GHCR package version "
-        "link with ?tag=, a GitHub Actions run link, a GitHub commit link, or "
-        "a bare sha256 digest."
+        "unsupported link. Use a GAR (<region>-docker.pkg.dev/nacfson-pipeline/"
+        "nacfson-public/<pkg>@sha256:...) or GHCR image reference, a GHCR package "
+        "version link with ?tag=, a GitHub Actions run link, a GitHub commit link, "
+        "or a bare sha256 digest."
     )
+
+
+def _same_allowed_package(repo_a: str, repo_b: str) -> bool:
+    if repo_a == repo_b:
+        return True
+    ma = ALLOWED_REPO_RE.fullmatch(repo_a)
+    mb = ALLOWED_REPO_RE.fullmatch(repo_b)
+    return bool(ma and mb and ma.group(1) == mb.group(1))
 
 
 def _image_parts(image: str) -> tuple[str, str]:
@@ -475,7 +498,7 @@ def resolve_link(
             digest = ""
         else:
             repo, tag, digest = ref, None, ""
-        if repo != target.old_repo:
+        if not _same_allowed_package(repo, target.old_repo):
             raise UpdateError(
                 f"image repository mismatch: link points to {repo}, but the "
                 f"{target.project}/{target.role} container currently uses "
@@ -884,13 +907,17 @@ def _scan_project_images(root: Path) -> list[dict[str, str]]:
 
 
 def _pins_table(
-    root: Path, digest_overrides: dict[tuple[str, str], str] | None = None
+    root: Path,
+    digest_overrides: dict[tuple[str, str], str] | None = None,
+    repo_overrides: dict[tuple[str, str], str] | None = None,
 ) -> str:
     rows = _scan_project_images(root)
     for row in rows:
         key = (row["deployment"], row["container"])
         if digest_overrides and key in digest_overrides:
             row["digest"] = digest_overrides[key]
+        if repo_overrides and key in repo_overrides:
+            row["repo"] = repo_overrides[key]
     lines = [
         '<div class="overflow-x-auto">',
         '  <table class="w-full text-left text-xs">',
@@ -948,6 +975,7 @@ def update_html(
     write: bool = True,
     warnings: list[str] | None = None,
     digest_overrides: dict[tuple[str, str], str] | None = None,
+    repo_overrides: dict[tuple[str, str], str] | None = None,
 ) -> bool:
     warnings = warnings if warnings is not None else []
     path = root / "docs" / "platform-architecture.html"
@@ -966,7 +994,15 @@ def update_html(
             (update.target.deployment, update.target.container): update.digest
             for update in updates
         }
-    table = _pins_table(root, digest_overrides)
+    if repo_overrides is None:
+        repo_overrides = {
+            (update.target.deployment, update.target.container): update.new_image.rsplit(
+                "@", 1
+            )[0]
+            for update in updates
+            if "@" in update.new_image
+        }
+    table = _pins_table(root, digest_overrides, repo_overrides)
     table = "\n".join("        " + line for line in table.splitlines())
     updated = pattern.sub(
         lambda _: f"{PINS_START}\n{table}\n        {PINS_END}", updated, count=1
@@ -1140,7 +1176,8 @@ def run_update(
                 )
             target.old_digest = resolve_digest_ref(target.old_image)
 
-        new_image = f"{target.old_repo}@{resolved.digest}"
+        target_repo = resolved.repo or target.old_repo
+        new_image = f"{target_repo}@{resolved.digest}"
         noop = target.old_image == new_image
         if noop or skip_validation:
             # `skip_validation` suppresses only the image inspection: the
@@ -1152,7 +1189,7 @@ def run_update(
             validation = None
         else:
             validation = validate_image(
-                target.old_repo,
+                target_repo,
                 resolved.digest,
                 target.container_port,
                 resolved.expected_revision,
@@ -1180,16 +1217,11 @@ def run_update(
     html_warnings: list[str] = []
     if html_updates:
         # Compute first so a missing pins block stops before any YAML is edited.
-        overrides = {
-            (update.target.deployment, update.target.container): update.digest
-            for update in html_updates
-        }
         html_changed = update_html(
             root,
             html_updates,
             write=False,
             warnings=html_warnings,
-            digest_overrides=overrides,
         )
         if not dry_run:
             for update in html_updates:

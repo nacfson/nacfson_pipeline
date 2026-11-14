@@ -17,6 +17,11 @@ spec:
     spec:
       serviceAccountName: fluent-bit
       automountServiceAccountToken: false
+      tolerations:
+        - key: cloud.google.com/gke-spot
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
       containers:
         - name: fluent-bit
           image: fluent/fluent-bit:4.2.8
@@ -49,6 +54,7 @@ spec:
               readOnly: true
             - name: state
               mountPath: /state
+              readOnly: false
             - name: tmp
               mountPath: /tmp
       volumes:
@@ -57,8 +63,9 @@ spec:
             path: /var/log/pods
             type: Directory
         - name: state
-          persistentVolumeClaim:
-            claimName: fluent-bit-state
+          hostPath:
+            path: /var/lib/fluent-bit-state
+            type: DirectoryOrCreate
         - name: config
           configMap:
             name: fluent-bit-config
