@@ -135,6 +135,47 @@ run_source_kubectl() {
   fi
 }
 
+archive_victorialogs() {
+  local archive_file="${ABS_BUNDLE_DIR}/victoria-logs-data.tar.gz"
+  if [[ -n "${SSH_HOST}" ]]; then
+    local pv node_path quoted_path
+    pv="$(run_source_kubectl get pvc -n observability data-victorialogs-0 -o 'jsonpath={.spec.volumeName}')"
+    if [[ -z "${pv}" ]]; then
+      echo "Error: failed to resolve PV for PVC observability/data-victorialogs-0." >&2
+      exit 1
+    fi
+
+    node_path="$(run_source_kubectl get pv "${pv}" -o 'jsonpath={.spec.hostPath.path}{.spec.local.path}')"
+    if [[ -z "${node_path}" || "${node_path}" != /* ]]; then
+      echo "Error: PV '${pv}' does not expose an absolute hostPath/local node path (got '${node_path}')." >&2
+      exit 1
+    fi
+
+    quoted_path="$(printf '%q' "${node_path}")"
+    # shellcheck disable=SC2029
+    if ! ssh "${SSH_HOST}" "sudo test -d ${quoted_path} && sudo du -sh ${quoted_path}"; then
+      echo "Error: VictoriaLogs PV directory '${node_path}' on '${SSH_HOST}' is missing or inaccessible." >&2
+      exit 1
+    fi
+
+    # shellcheck disable=SC2029
+    if ! ssh "${SSH_HOST}" "sudo tar --warning=no-file-changed -czf - -C ${quoted_path} . ; rc=\$?; [ \"\$rc\" -le 1 ]" > "${archive_file}"; then
+      echo "Error: failed to stream VictoriaLogs archive from '${SSH_HOST}:${node_path}'." >&2
+      exit 1
+    fi
+  else
+    if ! run_source_kubectl exec -n observability victorialogs-0 -- \
+      tar -czf - -C /victoria-logs-data . > "${archive_file}"; then
+      echo "Error: in-pod tar failed (the victoria-logs image ships no tar). Re-run export with --ssh <k3s-host> to archive the PV from the node." >&2
+      exit 1
+    fi
+  fi
+
+  local archive_size
+  archive_size="$(du -Lh "${archive_file}" | cut -f1)"
+  echo "✓ VictoriaLogs archive: ${archive_file} (${archive_size})"
+}
+
 verify_bundle() {
   echo "=== Verifying FullStateMigrationBundle in ${ABS_BUNDLE_DIR} ==="
   if [[ ! -d "${ABS_BUNDLE_DIR}" ]]; then
@@ -243,8 +284,7 @@ yaml.safe_dump_all(cleaned, sys.stdout, sort_keys=False)
 ' > "${ABS_BUNDLE_DIR}/edge-tls-secrets.yaml"
 
   echo "=== [4/5] Archiving VictoriaLogs History (victoria-logs-data.tar.gz) ==="
-  run_source_kubectl exec -n observability victorialogs-0 -- \
-    tar -czf - -C /victoria-logs-data . > "${ABS_BUNDLE_DIR}/victoria-logs-data.tar.gz"
+  archive_victorialogs
 
   echo "=== [5/5] Generating manifest.sha256 & Verifying Bundle ==="
   (
