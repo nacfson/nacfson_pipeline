@@ -256,8 +256,9 @@ with open(sys.argv[1], "r", encoding="utf-8") as fh:
 if not docs:
     raise SystemExit("edge-tls-secrets.yaml contains zero Secret documents")
 for d in docs:
-    if d.get("kind") != "Secret":
-        raise SystemExit(f"Unexpected kind in edge-tls-secrets.yaml: {d.get(\"kind\")}")
+    kind = d.get("kind")
+    if kind != "Secret":
+        raise SystemExit(f"Unexpected kind in edge-tls-secrets.yaml: {kind}")
 ' "${ABS_BUNDLE_DIR}/edge-tls-secrets.yaml"
 
   echo "PASS: All 6 migration artifacts, 0700 permissions, and SHA-256 digests verified."
