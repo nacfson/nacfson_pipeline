@@ -5,7 +5,7 @@
 `nacfson_pipeline` is a declarative, multi-tenant Kubernetes platform for running personal projects on modest compute resources (Oracle Cloud Always Free ARM64 VPS in `vps-k3s` and local Linux K3s in `local-k3s`, with portability to EKS/GKE).
 
 Core platform pillars:
-- **Continuous Pull-Based GitOps**: In-cluster FluxCD reconciles `deploy/` and `clusters/` in explicit dependency order (`cni` / `governance` → `vault` / `cert-manager` / `project-boundaries` → `vault-proxies` / `database` / `projects` → `identity` → `ingress` → `tls`).
+- **Continuous Pull-Based GitOps**: In-cluster FluxCD reconciles `deploy/` and `clusters/` in explicit dependency order (`cni` / `governance` → `vault` / `cert-manager` / `project-boundaries*` → `vault-proxies` / `database` / `projects` / `observability` → `identity` → `ingress` → `tls`).
 - **Workload Isolation & $1/n$ Budgeting**: Project namespaces enforce Kubernetes `Restricted` Pod Security, `ClusterIP`-only services, strict Guaranteed QoS (`requests == limits`), and deterministic $1/n$ compute slicing enforced by [`scripts/platform-preflight.py`](scripts/platform-preflight.py).
 - **Decoupled Project Door & Stdlib Auth Gateway**: Visitors reach projects directly through their own routes (`mode: none` or `mode: shared` in `sign-in.yaml`). Shared authentication is handled by a zero-dependency Go standard-library gateway (`gateway/`) and Keycloak Google OIDC brokering.
 - **Zero-Plaintext Internal Cluster Vault**: Backend credentials (DB passwords, OAuth secrets, signing keys) live exclusively inside self-hosted OpenBao (`deploy/platform/vault/`) and execute via in-cluster Vault proxies (`services/vault-proxies/`).
@@ -20,7 +20,7 @@ Always consult these top-level indexes before exploring or modifying the codebas
 | Document | Purpose |
 | :--- | :--- |
 | [`.specify/memory/constitution.md`](.specify/memory/constitution.md) | **Supreme Authority (v2.3.0)**: Core principles (I–VII), security constraints, quality gates, and amendments (`2.3.0` permits `DaemonSet/fluent-bit` `/var/log/pods` RO + `/var/lib/fluent-bit-state` RW in `observability` and `ServiceAccount/openbao` Workload Identity for Cloud KMS auto-unseal). |
-| [`docs/platform-architecture.html`](docs/platform-architecture.html) | **Canonical Interactive Architecture Handbook (Hook-Enforced)**: Visual topology, 8 end-to-end flows, CNI/eBPF packet simulator, Gateway allow-vs-block simulator, 13-layer Flux DAG, OSS catalog, $1/n$ budget calculator, and junior-engineer guide. |
+| [`docs/platform-architecture.html`](docs/platform-architecture.html) | **Canonical Interactive Architecture Handbook (Hook-Enforced)**: Visual topology, 8 end-to-end flows, CNI/eBPF packet simulator, Gateway allow-vs-block simulator, 14-layer Flux DAG, OSS catalog, $1/n$ budget calculator, and junior-engineer guide. |
 | [`contracts/README.md`](contracts/README.md) | **Canonical Contract Catalog (`CONTRACT_*.md`)**: Consolidated, preflight-enforced contracts for [`CONTRACT_DATABASE.md`](contracts/CONTRACT_DATABASE.md), [`CONTRACT_PROBES_READINESS.md`](contracts/CONTRACT_PROBES_READINESS.md), [`CONTRACT_AUTH_DOOR.md`](contracts/CONTRACT_AUTH_DOOR.md), [`CONTRACT_TLS_INGRESS.md`](contracts/CONTRACT_TLS_INGRESS.md), [`CONTRACT_ISOLATION_BUDGET.md`](contracts/CONTRACT_ISOLATION_BUDGET.md), and [`CONTRACT_LOG_SCHEMA.md`](contracts/CONTRACT_LOG_SCHEMA.md). |
 | [`INDEX.md`](INDEX.md) | **Master Repository & Doc Map**: Complete catalog of `contracts/`, `docs/`, `specs/001..012`, `deploy/`, `clusters/`, `gateway/`, `services/`, `scripts/`, and `tests/`. |
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | **System Topology & Data Flows**: Mermaid architecture diagrams, Flux GitOps layer DAG, TLS termination, auth routing, Vault proxy boundary, and probe roles. |
@@ -43,7 +43,7 @@ Before modifying code, manifests, or scripts, read the corresponding domain docu
   - [`specs/004-flux-gitops-reconciliation/contracts/platform-preflight.md`](specs/004-flux-gitops-reconciliation/contracts/platform-preflight.md)
   - [`specs/004-flux-gitops-reconciliation/contracts/manual-change-policy.md`](specs/004-flux-gitops-reconciliation/contracts/manual-change-policy.md)
 
-- **CNI Networking, Cilium eBPF Datapath, `CiliumNetworkPolicy`, or Hubble Observability (`deploy/platform/cni/`, `deploy/platform/vault/networkpolicy.yaml`, `scripts/open-hubble-ui.sh`)**:
+- **CNI Networking, Cilium eBPF Datapath, `CiliumNetworkPolicy`, or Hubble Observability (`deploy/platform/cni/`, `deploy/platform/vault/network-policy.yaml`, `scripts/open-hubble-ui.sh`)**:
   - [`specs/010-cilium-hubble-observability/spec.md`](specs/010-cilium-hubble-observability/spec.md)
   - [`specs/010-cilium-hubble-observability/contracts/`](specs/010-cilium-hubble-observability/contracts/) (`cni-layer-and-bootstrap.md`, `openbao-apiserver-egress.md`, `hubble-observability-and-tunnel.md`)
 
@@ -76,9 +76,16 @@ Before modifying code, manifests, or scripts, read the corresponding domain docu
   - [`docs/bootstrap-scope.md`](docs/bootstrap-scope.md)
   - [`specs/003-minimal-vm-bootstrap/contracts/bootstrap.md`](specs/003-minimal-vm-bootstrap/contracts/bootstrap.md)
 
-- **Hosted Tenant Workloads / Project PN (`deploy/projects/pn/`, `clusters/*/projects/proj-pn.yaml`), probes, or browser API CORS**:
+- **Platform Observability, Structured Log Contract, Fluent Bit & VictoriaLogs (`deploy/platform/observability/`, `scripts/open-victorialogs-ui.sh`, `scripts/open-observe.sh`)**:
+  - [`contracts/CONTRACT_LOG_SCHEMA.md`](contracts/CONTRACT_LOG_SCHEMA.md)
+  - [`specs/011-project-log-contract/spec.md`](specs/011-project-log-contract/spec.md)
+
+- **GKE Platform Migration & Portable Overlays (`specs/012-gke-platform-migration/`)**:
+  - [`specs/012-gke-platform-migration/spec.md`](specs/012-gke-platform-migration/spec.md)
+
+- **Hosted Tenant Workloads (`deploy/projects/{pn,health,blog}/`, `clusters/*/projects/`), probes, or browser API CORS**:
   - To update project image pins from GHCR, Actions, commit, or digest links, use the [`update-project-images`](.agents/skills/update-project-images/SKILL.md) skill; it validates the images and opens one PR per project.
-  - New images arrive as `image-bump` issues opened by [`.github/workflows/image-bump-request.yaml`](.github/workflows/image-bump-request.yaml); see [`docs/image-bump-dispatch.md`](docs/image-bump-dispatch.md). A cloud session decides each issue with the [`image-bump-decision`](.agents/skills/image-bump-decision/SKILL.md) skill: Allow opens one pin PR with `Closes #<issue>`, Disallow closes the issue.
+  - New images arrive as `image-bump` issues opened via [`scripts/image-bump-request.py`](scripts/image-bump-request.py); see [`docs/image-bump-dispatch.md`](docs/image-bump-dispatch.md). A cloud session decides each issue with the [`image-bump-decision`](.agents/skills/image-bump-decision/SKILL.md) skill: Allow opens one pin PR with `Closes #<issue>`, Disallow closes the issue.
   - [`DEPENDENCIES.md`](DEPENDENCIES.md) (§5 Hosted Tenant Project Contracts)
   - [`docs/project-auth-verification.md`](docs/project-auth-verification.md)
   - [`specs/006-separate-project-auth/contracts/`](specs/006-separate-project-auth/contracts/) (`project-door.md`, `sign-in-choice.md`, `session-return.md`)
@@ -116,9 +123,12 @@ python3 -m unittest discover tests/preflight
 # 3b. Agent session-start git fetch tests (throttle, fail-open, no working-tree changes)
 python3 -m unittest discover tests/hooks
 
-# 4. Full Kustomize render, kubeconform schema validation & preflight gate (local-k3s, gke & vps-k3s)
+# 3c. Observability log contract & skill tests
+python3 -m unittest discover tests/observability
+python3 -m unittest discover tests/skills
+
+# 4. Full Kustomize render, kubeconform schema validation & preflight gate (local-k3s & vps-k3s)
 ./scripts/render-validate.sh local-k3s
-./scripts/render-validate.sh gke
 ./scripts/render-validate.sh vps-k3s
 
 # 5. Canonical Architecture Handbook synchronization & invariant check

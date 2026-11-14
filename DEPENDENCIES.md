@@ -11,10 +11,11 @@ Per [Constitution Principle III](.specify/memory/constitution.md#L13-L14) and [S
 | Module | Path | Go Toolchain | Allowed External Modules | Published Image |
 | :--- | :--- | :--- | :--- | :--- |
 | `nacfson_pipeline/gateway` | [`gateway/go.mod`](gateway/go.mod) | `go 1.22` | **None** (`0` `require` directives) | `ghcr.io/nacfson/platform-auth-gateway` |
-| `nacfson_pipeline/services/vault-proxies` | [`services/vault-proxies/go.mod`](services/vault-proxies/go.mod) | `go 1.22` | **None** (`0` `require` directives) | `ghcr.io/nacfson/vault-db-proxy`, `ghcr.io/nacfson/vault-registry-proxy`, `ghcr.io/nacfson/vault-ai-proxy` |
+| `nacfson_pipeline/services/vault-proxies` | [`services/vault-proxies/go.mod`](services/vault-proxies/go.mod) | `go 1.22` | **None** (`0` `require` directives) | `ghcr.io/nacfson/vault-db-proxy`, `ghcr.io/nacfson/vault-registry-proxy`, `ghcr.io/nacfson/vault-ai-proxy`, `ghcr.io/nacfson/vault-notify-proxy` |
+| `nacfson_pipeline/services/error-pipeline` | [`services/error-pipeline/go.mod`](services/error-pipeline/go.mod) | `go 1.22` | **None** (`0` `require` directives) | `ghcr.io/nacfson/error-detector` |
 
 > [!IMPORTANT]
-> Never run `go get <third-party-pkg>` or introduce external gateway frameworks, OAuth2 Proxy, or Redis into [`gateway/`](gateway/) or [`services/vault-proxies/`](services/vault-proxies/).
+> Never run `go get <third-party-pkg>` or introduce external gateway frameworks, OAuth2 Proxy, or Redis into [`gateway/`](gateway/), [`services/vault-proxies/`](services/vault-proxies/), or [`services/error-pipeline/`](services/error-pipeline/).
 
 ---
 
@@ -61,7 +62,7 @@ Per [Constitution Principle I](.specify/memory/constitution.md#L6-L7), third-par
 | Environment | Node Allocatable | System Reserved | Platform Reservation (incl. Cilium + Hubble) | Capacity File |
 | :--- | :--- | :--- | :--- | :--- |
 | `vps-k3s` (Oracle ARM64) | `2000m` CPU / `10898 MiB` RAM | `200m` CPU / `512 MiB` RAM | `1395m` CPU / `5920 MiB` RAM (about `201m` / `1659 MiB` per-project slice for $n=3$) | [`clusters/vps-k3s/capacity.yaml`](clusters/vps-k3s/capacity.yaml) |
-| `local-k3s` | `4000m` CPU / `8192 MiB` RAM | `200m` CPU / `512 MiB` RAM | `1920m` CPU / `5312 MiB` RAM (`2080m` / `2880 MiB` per-project slice for $n=1$) | [`clusters/local-k3s/capacity.yaml`](clusters/local-k3s/capacity.yaml) |
+| `local-k3s` | `4000m` CPU / `8192 MiB` RAM | `200m` CPU / `512 MiB` RAM | `1920m` CPU / `5312 MiB` RAM (about `693m` / `960 MiB` per-project slice for $n=3$: `proj-pn`, `proj-health`, `proj-blog`) | [`clusters/local-k3s/capacity.yaml`](clusters/local-k3s/capacity.yaml) |
 
 The `vps-k3s` row is the `platformReservations` preflight reports for the 2026-10-31 node measurement. The `local-k3s` row is the last recorded reservation and excludes the unmeasured observability reservation (Fluent Bit and VictoriaLogs). Do not add that by hand or replace its `1920m` or `5312` until a live measurement is committed. Store sizing that does not depend on that measurement: 30-day retention, 8 GiB disk cap, 10Gi store PVC, 1Gi tail PVC `fluent-bit-state`, `proj-*` only, privileged namespace `observability`. VPS access is `scripts/open-observe.sh`. `local-k3s` access is `scripts/open-victorialogs-ui.sh`.
 
@@ -69,7 +70,7 @@ The `vps-k3s` row is the `platformReservations` preflight reports for the 2026-1
 
 ## 5. Hosted Tenant Project Contracts (`Project_PN` & `proj-<slug>`)
 
-`nacfson_pipeline` hosts tenant applications under [`deploy/projects/<project>/`](deploy/projects/pn/) with environment overlays in [`clusters/*/projects/proj-<project>.yaml`](clusters/vps-k3s/projects/proj-pn.yaml). Canonical cross-project contracts live in [`contracts/`](contracts/README.md):
+`nacfson_pipeline` hosts tenant applications (`proj-pn`, `proj-health`, `proj-blog`) under [`deploy/projects/`](deploy/projects/) with environment overlays in [`clusters/*/projects/`](clusters/vps-k3s/projects/kustomization.yaml). Canonical cross-project contracts live in [`contracts/`](contracts/README.md):
 - [`contracts/CONTRACT_DATABASE.md`](contracts/CONTRACT_DATABASE.md) — Standardized PostgreSQL naming (`proj_<slug>` / `user_<slug>`), `vault-db-proxy` wire protocol, and MySQL/NoSQL decision architecture.
 - [`contracts/CONTRACT_PROBES_READINESS.md`](contracts/CONTRACT_PROBES_READINESS.md) — Startup, readiness (`/readyz`), liveness (`/healthz`), DB-hop readiness, and browser CORS.
 - [`contracts/CONTRACT_AUTH_DOOR.md`](contracts/CONTRACT_AUTH_DOOR.md) — Direct project door, `signIn: none | shared`, and session confirmation.
@@ -81,7 +82,7 @@ The `vps-k3s` row is the `platformReservations` preflight reports for the 2026-1
 
 | Contract Area | Pipeline Manifest / Setting | Tenant Requirement (`Project_PN`) |
 | :--- | :--- | :--- |
-| **Images (Multi-Arch Digest Pinning)** | [`deploy/projects/pn/workloads/backend-deployment.yaml`](deploy/projects/pn/workloads/backend-deployment.yaml)<br/>[`deploy/projects/pn/workloads/frontend-deployment.yaml`](deploy/projects/pn/workloads/frontend-deployment.yaml) | Must publish `linux/amd64` + `linux/arm64` images to `ghcr.io/nacfson/project-pn-{backend,frontend}` and reference them by `@sha256:...` digest. |
+| **Images (Multi-Arch Digest Pinning)** | [`deploy/projects/pn/workloads/backend-deployment.yaml`](deploy/projects/pn/workloads/backend-deployment.yaml)<br/>[`deploy/projects/pn/workloads/frontend-deployment.yaml`](deploy/projects/pn/workloads/frontend-deployment.yaml) | Must publish `linux/amd64` + `linux/arm64` images to GHCR (`ghcr.io/nacfson/project-pn-{backend,frontend}`) or public GAR (`Constitution 2.3.0`) and reference them by `@sha256:...` digest. |
 | **Sign-In Mode** | [`deploy/projects/pn/sign-in.yaml`](deploy/projects/pn/sign-in.yaml) (`mode: shared`) | Project renders its own sign-in UI, initiates browser login via `https://auth.nacfson.cloud/oauth/start`, and verifies confirmed sessions via the gateway (`http://gateway.identity.svc.cluster.local:8080`). |
 | **Return Host Allowlist** | `PROJECT_RETURN_HOSTS` in [`clusters/*/layers.yaml`](clusters/vps-k3s/layers.yaml) (`identity` patch) | `pn.nacfson.cloud` (`vps-k3s`) / `pn.localhost` (`local-k3s`) must match the project's public hostname. |
 | **Edge TLS** | [`deploy/platform/tls/certificates.yaml`](deploy/platform/tls/certificates.yaml) (`pn-tls`) | Platform owns `pn-tls` in `platform` namespace. `proj-pn` [`ingress-route.yaml`](deploy/projects/pn/workloads/ingress-route.yaml) specifies `tls: {}` with no `secretName`. |
@@ -89,4 +90,4 @@ The `vps-k3s` row is the `platformReservations` preflight reports for the 2026-1
 | **Health Probes & Restart** | [`deploy/projects/pn/workloads/frontend-deployment.yaml`](deploy/projects/pn/workloads/frontend-deployment.yaml)<br/>[`deploy/projects/pn/workloads/backend-deployment.yaml`](deploy/projects/pn/workloads/backend-deployment.yaml)<br/>[`deploy/platform/vault-proxies/db-proxy.yaml`](deploy/platform/vault-proxies/db-proxy.yaml) | Frontend `startupProbe` (`/api/auth/language-options`) & `readinessProbe` (`/healthz`) check backend reachability, `livenessProbe` checks local `:80/`; Backend & `vault-db-proxy` expose `:8080/healthz` (liveness) and `:8080/readyz` (DB-hop readiness); project workloads set `restartPolicy: Always`. |
 | **Database Access** | [`deploy/projects/pn/boundary/`](deploy/projects/pn/boundary/) & `vault-db-proxy` | Connects via workload identity `project:pn:workload:backend` to `vault-db-proxy.vault.svc:5432/proj_pn`, bound to restricted role `user_pn` on database `proj_pn` ([`CONTRACT_DATABASE.md`](contracts/CONTRACT_DATABASE.md)). |
 | **Security Context & Ports** | [`deploy/projects/pn/boundary/namespace.yaml`](deploy/projects/pn/boundary/namespace.yaml) | Namespace enforces `restricted` PSS; containers run as UID `10001` (`runAsNonRoot: true`), drop `ALL` capabilities, `automountServiceAccountToken: false`; Services are `ClusterIP` (`:80` FE, `:8080` BE). |
-| **Logs** | [`contracts/CONTRACT_LOG_SCHEMA.md`](contracts/CONTRACT_LOG_SCHEMA.md) | Print only. `kind:"analytics"` on stdout. `kind:"admin"` on stderr. No `ADMIN_LOG_PATH` and no log PVC. Body schemas stay in Project PN. The next project uses the same contract and adds its own `kind` row. |
+| **Logs** | [`contracts/CONTRACT_LOG_SCHEMA.md`](contracts/CONTRACT_LOG_SCHEMA.md) | Print only (Contract v3 OpenTelemetry attributes with `event.name` replacing legacy `kind`). No `ADMIN_LOG_PATH` and no log PVC. All 5 project containers across `proj-pn`, `proj-health`, and `proj-blog` are registered. |

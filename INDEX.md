@@ -8,9 +8,9 @@ This file is the master navigation index for **`nacfson_pipeline`**. For AI agen
 
 | Tier | Document(s) | Role & Authority |
 | :--- | :--- | :--- |
-| **Tier 1: Supreme Governance** | [`.specify/memory/constitution.md`](.specify/memory/constitution.md) | **Supreme Authority (v2.2.1)**. Non-negotiable security, isolation, GitOps, TLS, probe, and $1/n$ resource invariants. Any conflicting manifest or code change MUST fail review. The observability reservation is not yet measured and must not be added by hand. |
+| **Tier 1: Supreme Governance** | [`.specify/memory/constitution.md`](.specify/memory/constitution.md) | **Supreme Authority (v2.3.0)**. Non-negotiable security, isolation, GitOps, TLS, probe, observability, and $1/n$ resource invariants. Any conflicting manifest or code change MUST fail review. |
 | **Tier 2: Canonical Contracts & System Portals** | [`contracts/README.md`](contracts/README.md) (`CONTRACT_*.md`), [`AGENTS.md`](AGENTS.md), [`CLAUDE.md`](CLAUDE.md), [`REVIEW.md`](REVIEW.md), [`INDEX.md`](INDEX.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), [`DEPENDENCIES.md`](DEPENDENCIES.md), [`README.md`](README.md), [`SPEC.md`](SPEC.md) | Canonical consolidated contracts ([`CONTRACT_DATABASE.md`](contracts/CONTRACT_DATABASE.md), [`CONTRACT_PROBES_READINESS.md`](contracts/CONTRACT_PROBES_READINESS.md), [`CONTRACT_AUTH_DOOR.md`](contracts/CONTRACT_AUTH_DOOR.md), [`CONTRACT_TLS_INGRESS.md`](contracts/CONTRACT_TLS_INGRESS.md), [`CONTRACT_ISOLATION_BUDGET.md`](contracts/CONTRACT_ISOLATION_BUDGET.md), [`CONTRACT_LOG_SCHEMA.md`](contracts/CONTRACT_LOG_SCHEMA.md)), agent router, code review rulebook, and system topology. |
-| **Tier 3: Feature Specifications** | [`specs/001-*` … `specs/009-*`](#3-feature-specifications-specs) | SpecKit packages (`spec.md`, `plan.md`, `tasks.md`, `data-model.md`, `contracts/`, `validation.md`) defining feature requirements and protocol contracts. |
+| **Tier 3: Feature Specifications** | [`specs/001-*` … `specs/012-*`](#3-feature-specifications-specs) | SpecKit packages (`spec.md`, `plan.md`, `tasks.md`, `data-model.md`, `contracts/`, `validation.md`) defining feature requirements and protocol contracts. |
 | **Tier 4: Operations & Deep-Dive Guides** | [`docs/`](#2-operational-guides--visual-references-docs) | Day-2 operational runbooks, subsystem deep dives, FAQs, and interactive HTML visualizers. |
 
 ---
@@ -37,7 +37,7 @@ This file is the master navigation index for **`nacfson_pipeline`**. For AI agen
 
 | File | Description |
 | :--- | :--- |
-| [`docs/platform-architecture.html`](docs/platform-architecture.html) | **Canonical Interactive Architecture Handbook (Hook-Synced)**: 8-tab interactive guide covering cluster topology, 8 end-to-end flows, CNI & eBPF packet path simulator, Gateway allow-vs-block decision simulator, 13-layer Flux GitOps DAG, 18-component OSS catalog, live $1/n$ resource budget calculator, and junior-engineer mental models + failure drills. |
+| [`docs/platform-architecture.html`](docs/platform-architecture.html) | **Canonical Interactive Architecture Handbook (Hook-Synced)**: 8-tab interactive guide covering cluster topology, 8 end-to-end flows, CNI & eBPF packet path simulator, Gateway allow-vs-block decision simulator, 14-layer Flux GitOps DAG, 18-component OSS catalog, live $1/n$ resource budget calculator, and junior-engineer mental models + failure drills. |
 | [`docs/ghcr-token-lifecycle.html`](docs/ghcr-token-lifecycle.html) | Interactive diagram of the zero-plaintext GHCR image pull token lifecycle via `registry-proxy` and OpenBao. |
 | [`docs/internal-login-variations.html`](docs/internal-login-variations.html) | Visual comparison of browser login, redirect, and session cookie flows across projects and the auth gateway. |
 | [`docs/internal-ai-gateway.html`](docs/internal-ai-gateway.html) | Interactive architecture guide and simulator for `vault-ai-proxy`, loopback (`127.0.0.1:8081`) direct RAM kill-switch access, Kubernetes pod identity verification, and GitOps verification gates. |
@@ -61,6 +61,8 @@ Each directory under `specs/` is a SpecKit feature package containing `spec.md` 
 | [`specs/008-platform-tls-termination/`](specs/008-platform-tls-termination/) | **Platform-Owned TLS Termination (Constitution 2.2.0)**: Centralizes all edge certificates and `TLSStore` in `platform`; forbids project-namespace TLS resources.<br/>Contracts: [`certificate-inventory.md`](specs/008-platform-tls-termination/contracts/certificate-inventory.md), [`project-route-tls.md`](specs/008-platform-tls-termination/contracts/project-route-tls.md), [`preflight-tls-rules.md`](specs/008-platform-tls-termination/contracts/preflight-tls-rules.md) |
 | [`specs/009-host-scoped-shared-auth/`](specs/009-host-scoped-shared-auth/) | **Host-Scoped Session Cookies & Shared Project Auth**: Direct Google OIDC redirect without intermediate Keycloak login UI, host-scoped cookies, and shared verification contract.<br/>Spec: [`spec.md`](specs/009-host-scoped-shared-auth/spec.md) |
 | [`specs/010-cilium-hubble-observability/`](specs/010-cilium-hubble-observability/) | **Cilium + Hubble CNI & Visual Platform Network Observability**: Git-vendored Cilium `v1.20.3` + Hubble Relay + Hubble UI `v0.13.6`, K3s Flannel replacement, OpenBao `CiliumNetworkPolicy` (`toEntities: ["kube-apiserver"]`), and private loopback tunnel (`scripts/open-hubble-ui.sh`).<br/>Contracts: [`cni-layer-and-bootstrap.md`](specs/010-cilium-hubble-observability/contracts/cni-layer-and-bootstrap.md), [`openbao-apiserver-egress.md`](specs/010-cilium-hubble-observability/contracts/openbao-apiserver-egress.md), [`hubble-observability-and-tunnel.md`](specs/010-cilium-hubble-observability/contracts/hubble-observability-and-tunnel.md) |
+| [`specs/011-project-log-contract/`](specs/011-project-log-contract/) | **Project Log Contract & Platform Observability**: Canonical structured log contract (`CONTRACT_LOG_SCHEMA.md` v3), Fluent Bit `4.2.8` DaemonSet (`proj-*` tailing), VictoriaLogs `v1.53.0` storage, and `error-detector` quarantine/alerting.<br/>Spec: [`spec.md`](specs/011-project-log-contract/spec.md) |
+| [`specs/012-gke-platform-migration/`](specs/012-gke-platform-migration/) | **GKE Platform Migration & Portability (Constitution 2.3.0)**: Multi-node GKE portability, Fluent Bit disk-backed tail state (`/var/lib/fluent-bit-state`), Cloud KMS OpenBao auto-unseal Workload Identity, and portable `NetworkPolicy` overlays.<br/>Spec: [`spec.md`](specs/012-gke-platform-migration/spec.md) |
 
 ---
 
@@ -74,24 +76,24 @@ Each directory under `specs/` is a SpecKit feature package containing `spec.md` 
 - [`bootstrap/tasks/reconciler.yml`](bootstrap/tasks/reconciler.yml) — FluxCD reconciler bootstrap on the cluster.
 
 ### `clusters/` — FluxCD Environment Entrypoints
-- [`clusters/local-k3s/`](clusters/local-k3s/) — Local Linux K3s environment (`capacity.yaml`, `layers.yaml`, `flux-system/`, `projects/proj-pn.yaml`).
-- [`clusters/vps-k3s/`](clusters/vps-k3s/) — Production Oracle Cloud ARM64 VPS environment (`capacity.yaml`, `layers.yaml`, `flux-system/`, `projects/proj-pn.yaml`).
+- [`clusters/local-k3s/`](clusters/local-k3s/) — Local Linux K3s environment (`capacity.yaml`, `layers.yaml`, `flux-system/`, `projects/{proj-pn,proj-health,proj-blog}.yaml`).
+- [`clusters/vps-k3s/`](clusters/vps-k3s/) — Production Oracle Cloud ARM64 VPS environment (`capacity.yaml`, `layers.yaml`, `flux-system/`, `projects/{proj-pn,proj-health,proj-blog}.yaml`).
 
 ### `deploy/` — Kubernetes Base Manifests
 - [`deploy/platform/cni/`](deploy/platform/cni/) — Upstream Cilium `v1.20.3` + Hubble Relay `v1.20.3` + Hubble UI `v0.13.6` manifest bundle (`upstream/cilium.yaml`) and Kustomization resource overlays (`kustomization.yaml`).
 - [`deploy/platform/governance/`](deploy/platform/governance/) — Namespace definitions (`platform`, `identity`, `vault`), default-deny NetworkPolicies, `ValidatingAdmissionPolicy` (`manual-change-policy.yaml`), break-glass & operator RBAC.
 - [`deploy/platform/vault/`](deploy/platform/vault/) — OpenBao StatefulSet, service, network policy (including `CiliumNetworkPolicy/openbao-apiserver-egress` and `openbao-backup-policy`), backup CronJob, and HCL policies.
-- [`deploy/platform/vault-proxies/`](deploy/platform/vault-proxies/) — In-cluster `db-proxy` and `registry-proxy` Deployments.
+- [`deploy/platform/vault-proxies/`](deploy/platform/vault-proxies/) — In-cluster `ai-proxy`, `db-proxy`, `notify-proxy`, and `registry-proxy` Deployments.
 - [`deploy/platform/database/`](deploy/platform/database/) — Shared PostgreSQL StatefulSet, PVC, init job, and backup CronJob.
 - [`deploy/platform/identity/`](deploy/platform/identity/) — Keycloak Deployment & realm config (`keycloak-realm-config.yaml`) and Go Auth Gateway Deployment (`gateway-deployment.yaml`).
 - [`deploy/platform/ingress/`](deploy/platform/ingress/) — Traefik `IngressRoute` allowlist (`ingress-allowlist.yaml`), HTTP-to-HTTPS redirect, and middlewares.
 - [`deploy/platform/cert-manager/`](deploy/platform/cert-manager/) — Upstream cert-manager `v1.21.2` manifest bundle.
 - [`deploy/platform/tls/`](deploy/platform/tls/) — Let's Encrypt `ClusterIssuer`s (`cluster-issuers.yaml`), platform `Certificate` inventory (`certificates.yaml`), and default Traefik `TLSStore` (`tls-store.yaml`).
-- [`deploy/platform/observability/`](deploy/platform/observability/) — Privileged namespace `observability`, Fluent Bit `4.2.8` DaemonSet (`proj-*` only, 1Gi tail PVC), VictoriaLogs `v1.53.0` ClusterIP store (10Gi PVC, 30 days, 8 GiB cap). The observability reservation is not yet measured and must not be added by hand.
-- [`deploy/projects/pn/`](deploy/projects/pn/) — Project PN tenant manifests:
-  - [`boundary/`](deploy/projects/pn/boundary/) — Namespace (`proj-pn` with Restricted PSS), `ResourceQuota`, `LimitRange`, RBAC, NetworkPolicy.
-  - [`sign-in.yaml`](deploy/projects/pn/sign-in.yaml) — Project sign-in mode declaration (`mode: shared`).
-  - [`workloads/`](deploy/projects/pn/workloads/) — Backend/frontend Deployments, Services, `IngressRoute`, and migration Job.
+- [`deploy/platform/observability/`](deploy/platform/observability/) — Privileged namespace `observability`, Fluent Bit `4.2.8` DaemonSet (`proj-*` only, 1Gi tail PVC), VictoriaLogs `v1.53.0` ClusterIP store (10Gi PVC, 30 days, 8 GiB cap), and `error-detector` Deployment (`error-detector.yaml`).
+- [`deploy/projects/`](deploy/projects/) — Hosted tenant project manifests (`pn/`, `health/`, `blog/`):
+  - `boundary/` — Namespace (`proj-*` with Restricted PSS), `ResourceQuota`, `LimitRange`, RBAC, NetworkPolicy.
+  - `sign-in.yaml` — Project sign-in mode declaration (`mode: shared` or `mode: none`).
+  - `workloads/` — Application Deployments, Services, `IngressRoute`, and Jobs.
 
 ### `gateway/` — Go Standard-Library Authentication Gateway
 - [`gateway/cmd/gateway/main.go`](gateway/cmd/gateway/main.go) — HTTP server entrypoint.
@@ -101,8 +103,14 @@ Each directory under `specs/` is a SpecKit feature package containing `spec.md` 
 - [`gateway/tests/`](gateway/tests/) — Contract and unit tests (`contract_test.go`, `handler_test.go`, `logout_test.go`, `revocation_contract_test.go`).
 
 ### `services/vault-proxies/` — Zero-Plaintext Vault Proxy Services
+- [`services/vault-proxies/cmd/ai-proxy/`](services/vault-proxies/cmd/ai-proxy/) — Internal AI gateway proxy (`vault-ai-proxy`) with OpenBao-backed credentials and loopback kill-switch.
 - [`services/vault-proxies/cmd/db-proxy/`](services/vault-proxies/cmd/db-proxy/) — PostgreSQL wire/query proxy authenticating via OpenBao without exposing DB credentials to project pods.
+- [`services/vault-proxies/cmd/notify-proxy/`](services/vault-proxies/cmd/notify-proxy/) — Outbound notification proxy authenticating via OpenBao without exposing webhook/SMTP secrets to pods.
 - [`services/vault-proxies/cmd/registry-proxy/`](services/vault-proxies/cmd/registry-proxy/) — OCI registry pull proxy injecting GHCR credentials from OpenBao.
+
+### `.github/workflows/` & `config/` — CI/CD & Policy Config
+- [`.github/workflows/`](.github/workflows/) — CI & automation workflows: `build-images.yaml`, `claude-review.yaml`, `gitops.yaml`, `lint.yaml`, `review-gate.yaml`, `secret-scan.yaml`.
+- [`config/image-pin-sources.json`](config/image-pin-sources.json) & [`config/review-policy.json`](config/review-policy.json) — Allowed image-pin source mappings and path-based review risk tiers.
 
 ### `scripts/` & `tests/` — Validation, Preflight & Operations Scripts
 - [`scripts/platform-preflight.py`](scripts/platform-preflight.py) — CI/pre-promotion static gate verifying $1/n$ resource budgets, QoS (`requests == limits`), Restricted PSS, door/sign-in contracts, database/readiness contracts, and platform-owned TLS rules.
@@ -110,14 +118,17 @@ Each directory under `specs/` is a SpecKit feature package containing `spec.md` 
 - [`scripts/check-arch-doc-sync.py`](scripts/check-arch-doc-sync.py) & [`scripts/universal-agent-hook.py`](scripts/universal-agent-hook.py) — Canonical architecture handbook (`docs/platform-architecture.html`) invariant verifier and universal multi-agent hook adapter (`.agents/hooks.json`, `.claude/settings.json`, `.codex/hooks.json`, `.omp/extensions/arch-doc-sync.ts`, `.opencode/plugins/arch-doc-sync.js`, `.grok/hooks.json`, `.cursor/hooks.json`, and `.githooks/pre-commit`).
 - [`scripts/agent-start-git-fetch.py`](scripts/agent-start-git-fetch.py) — Non-mutating `git fetch` at AI agent session start (throttled, fail-open, never touches the working tree); registered through `SessionStart` in the agent hook configs and the `.omp/extensions/git-fetch-session-start.ts` / `.opencode/plugins/git-fetch-session-start.js` adapters.
 - [`scripts/render-validate.sh`](scripts/render-validate.sh) & [`scripts/render-invariants.py`](scripts/render-invariants.py) — Kustomize rendering, `kubeconform` schema validation, and invariant checks across `local-k3s` and `vps-k3s`.
+- [`scripts/check-version-labels.py`](scripts/check-version-labels.py), [`scripts/image-bump-gate.py`](scripts/image-bump-gate.py), [`scripts/image-bump-request.py`](scripts/image-bump-request.py), [`scripts/image-pin.py`](scripts/image-pin.py) — Version-label validation and image-pin automation helpers.
+- [`scripts/ai-gateway-ctl.sh`](scripts/ai-gateway-ctl.sh), [`scripts/notify-ctl.sh`](scripts/notify-ctl.sh), [`scripts/open-ai-gateway-ui.sh`](scripts/open-ai-gateway-ui.sh), [`scripts/operator-kubeconfig.sh`](scripts/operator-kubeconfig.sh), [`scripts/sync-github-issues.py`](scripts/sync-github-issues.py) — Proxy control, loopback UI, operator kubeconfig, and issue-index helpers.
 - [`scripts/open-hubble-ui.sh`](scripts/open-hubble-ui.sh) — Private loopback port-forward tunnel (`http://127.0.0.1:12000`) and `--verify` 5-point live Cilium + Hubble verification helper.
 - [`scripts/open-victorialogs-ui.sh`](scripts/open-victorialogs-ui.sh) — Private loopback port-forward (`http://127.0.0.1:9428/select/vmui/`) and `--verify` for VictoriaLogs. Runbook section 15.
 - [`scripts/open-observe.sh`](scripts/open-observe.sh) — One workstation session for `ssh oracleCloud`: API forward on `127.0.0.1:16443`, then Hubble `127.0.0.1:12000` and VictoriaLogs `127.0.0.1:9428`.
 - [`scripts/db-migrate-dump.sh`](scripts/db-migrate-dump.sh) — Standardized, project-agnostic zero-plaintext PostgreSQL dump import (`--file`, `--mode full|data`) and export (`--export`) pipeline utility.
 - [`scripts/smoke-auth-chain.sh`](scripts/smoke-auth-chain.sh) — End-to-end smoke test for the sign-in redirect and auth routing chain.
-- [`scripts/vault-*.sh`](scripts/) — `vault-init.sh`, `vault-seed-inventory.sh`, `vault-reconcile.sh`, `vault-rotate.sh`, `vault-configure-k8s-auth.sh`, `vault-set-google-oauth.sh`.
+- [`scripts/vault-*.sh`](scripts/) — `vault-init.sh`, `vault-seed-inventory.sh`, `vault-reconcile.sh`, `vault-rotate.sh`, `vault-configure-k8s-auth.sh`, `vault-set-google-oauth.sh`, `vault-reset-unseal-key.sh`.
 - [`scripts/verify-*.sh`](scripts/) — Live cluster verification suites: `verify-platform.sh`, `verify-isolation.sh`, `verify-identity.sh`, `verify-persistence.sh`, `verify-revocation.sh`, `verify-backup.sh`, `verify-tls.sh`.
-- [`tests/preflight/test_platform_preflight.py`](tests/preflight/test_platform_preflight.py) — Unit test suite and YAML fixtures (`tests/preflight/fixtures/`) for `platform-preflight.py`.
+- [`tests/preflight/`](tests/preflight/) — Unit test suite (`test_platform_preflight.py`, contract tests) and YAML fixtures (`tests/preflight/fixtures/`) for `platform-preflight.py`.
+- [`tests/observability/`](tests/observability/), [`tests/skills/`](tests/skills/), [`tests/issues/`](tests/issues/) — Unit tests for log-contract schema/manifests/Lua filters, image-pin/bump skills, and issue-index automation.
 - [`tests/review_cycle/`](tests/review_cycle/) & [`tests/review-evals/`](tests/review-evals/) — Unit tests and `must-flag` / `must-pass` regression eval corpus for `scripts/review-cycle.py` and multi-agent review governance.
 - [`tests/hooks/`](tests/hooks/) — Unit tests for the agent session-start remote refresh (`agent-start-git-fetch.py`) and universal hook `SessionStart` adapters.
 - [`tests/vault/`](tests/vault/) — Integration and disaster recovery drills for OpenBao and Vault proxies.
