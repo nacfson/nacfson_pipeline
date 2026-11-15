@@ -12,6 +12,9 @@ import re
 import sys
 import yaml
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gke_edge  # noqa: E402  (shared edge rules, Spec 015)
+
 # Validation status enums
 STATUS_PASSED = "PASSED"
 STATUS_REJECTED_NO_MEASUREMENT = "REJECTED_NO_MEASUREMENT"
@@ -1310,6 +1313,7 @@ def check_log_contract(project_docs, platform_docs, environment="test-env", repo
     return violations
 
 
+
 def get_pod_spec_and_meta(doc):
     kind = doc.get("kind", "")
     spec = doc.get("spec", {})
@@ -1512,18 +1516,23 @@ def main():
             else:
                 platform_docs.append(doc)
 
-        # Rule 2: Isolation in project namespaces + GKE zero-LB & Spot placement contracts
+        # Rule 2: Isolation in project namespaces + GKE single L4 LoadBalancer & Spot placement contracts
+        # (specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md §4)
         if args.environment == "gke" or pools is not None:
             for doc in candidate_docs:
                 if doc.get("kind") == "Service":
                     svc_type = (doc.get("spec") or {}).get("type", "ClusterIP")
-                    if svc_type == "LoadBalancer":
+                    if svc_type == "LoadBalancer" and not gke_edge.is_allowed_edge_lb(doc):
                         svc_ns = (doc.get("metadata") or {}).get("namespace", "")
                         svc_name = (doc.get("metadata") or {}).get("name", "")
                         violations.append({
                             "rule": 2,
                             "object": f"{svc_ns}/Service/{svc_name}",
-                            "detail": f"Service type LoadBalancer prohibited in {args.environment} (zero-LB Traefik hostPort contract)",
+                            "detail": (
+                                f"Service type LoadBalancer prohibited in {args.environment}: only platform/traefik with "
+                                f"loadBalancerClass {gke_edge.LB_CLASS}, externalTrafficPolicy Local and a non-empty "
+                                f"{gke_edge.LB_ADDRESS_ANNOTATION} annotation is allowed (single L4 edge contract)"
+                            ),
                         })
 
         if pools is not None:

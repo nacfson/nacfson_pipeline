@@ -1,0 +1,22 @@
+{
+  "project_id": "nacfson-pipeline",
+  "region": "asia-northeast3",
+  "zone": "asia-northeast3-a",
+  "cluster_name": "nacfson-gke",
+  "workload_pool": "nacfson-pipeline.svc.id.goog",
+  "network": {
+    "vpc": "nacfson-gke",
+    "subnet": "nacfson-gke-asia-northeast3",
+    "nodes_cidr": "10.20.0.0/22",
+    "pods_cidr": "10.24.0.0/17",
+    "services_cidr": "10.28.0.0/22"
+  },
+  "node_pools": [
+    {"name": "ondemand-core", "machine_type": "e2-medium", "node_count": 1, "spot": false, "taints": []},
+    {"name": "spot-controllers", "machine_type": "e2-small", "node_count": 1, "spot": true,
+     "taints": ["cloud.google.com/gke-spot=true:NoSchedule"]}
+  ],
+  "kms": {"key_ring": "nacfson-vault", "crypto_key": "openbao-unseal", "gsa_account_id": "openbao-kms", "ksa": "vault/openbao"},
+  "registry": {"repository_id": "nacfson-public", "cleanup_source": "deploy/gcp/gar-cleanup-policy.json"},
+  "ingress": {"address_name": "gke-ingress-ip"}
+}

@@ -6,9 +6,16 @@ metadata:
   labels:
     app.kubernetes.io/name: traefik
     app.kubernetes.io/part-of: platform
+  annotations:
+    # Reserved regional address owned by infra/gcp/gke (referenced by name, not IP).
+    networking.gke.io/load-balancer-ip-addresses: gke-ingress-ip
 spec:
-  # ClusterIP only: public traffic enters via hostPort 80/443 on ondemand-core static IP (zero GCP LoadBalancer).
-  type: ClusterIP
+  # The only LoadBalancer on gke: a GKE-managed L4 pass-through load balancer. TLS stays at Traefik.
+  # Contract: specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md
+  type: LoadBalancer
+  loadBalancerClass: networking.gke.io/l4-regional-external
+  # Keep visitor IPs; only the node running Traefik passes the load balancer health check.
+  externalTrafficPolicy: Local
   ports:
     - name: web
       port: 80

@@ -83,3 +83,40 @@ jobs:
             echo "Skipping Lua log contract tests: test suite not present in this commit"
           fi
 
+
+  # Spec 015: Terraform in infra/gcp is checked offline. No Google credentials, no secrets, no apply.
+  terraform-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Read pinned Terraform version
+        id: tfver
+        run: echo "version=$(cat infra/gcp/.terraform-version)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v4.0.1
+        with:
+          terraform_version: ${{ steps.tfver.outputs.version }}
+          terraform_wrapper: false
+
+      - name: Format, init (no backend) and validate each root
+        run: |
+          for root in bootstrap project gke; do
+            echo "::group::infra/gcp/${root}"
+            terraform -chdir="infra/gcp/${root}" fmt -check -recursive
+            terraform -chdir="infra/gcp/${root}" init -backend=false -lockfile=readonly -input=false
+            terraform -chdir="infra/gcp/${root}" validate
+            echo "::endgroup::"
+          done
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Cross-check shared values with clusters/gke
+        run: |
+          pip install -r scripts/requirements-preflight.txt
+          python3 scripts/check-gcp-shared-values.py

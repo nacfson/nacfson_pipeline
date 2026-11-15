@@ -61,11 +61,11 @@
         <div>
           <div class="flex flex-wrap items-center gap-2">
             <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-white">nacfson_pipeline Architecture &amp; Junior Engineer Handbook</h1>
-            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">Constitution v2.3.0</span>
+            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">Constitution v2.3.1</span>
             <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Specs 001–012</span>
             <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">Hook-Synced</span>
           </div>
-          <p class="text-xs text-slate-400 mt-0.5">Interactive topology across Zonal GKE Design 1 (<code class="text-cyan-300">clusters/gke/</code> in <code class="text-cyan-300">nacfson-pipeline</code> / <code class="text-cyan-300">asia-northeast3-a</code>: <code class="text-cyan-300">1 × e2-medium</code> On-Demand + <code class="text-cyan-300">1 × e2-small</code> Spot, Traefik <code class="text-cyan-300">v3.3.4</code> <code class="text-cyan-300">hostPort: 80/443</code>, zero paid GCP LoadBalancer) and lockstep <code class="text-cyan-300">local-k3s</code>, portable <code class="text-cyan-300">networking.k8s.io/v1</code> NetworkPolicy simulator, Gateway allow-vs-block auth tester, 8 lifecycle flows, Flux 14-layer DAG, 1/n budget &amp; junior mental models. Log envelope v3 (OpenTelemetry JSON lines in <code class="text-cyan-300">contracts/CONTRACT_LOG_SCHEMA.md</code>) is tailed from <code class="text-cyan-300">proj-*</code> by Fluent Bit (<code class="text-cyan-300">fluent/fluent-bit:4.2.8</code>) with per-node crash-resilient state on <code class="text-cyan-300">/var/lib/fluent-bit-state</code> (<code class="text-cyan-300">256M</code> cap, Amendment 2.3.0), shipping to VictoriaLogs (<code class="text-cyan-300">v1.53.0</code>) on <code class="text-cyan-300">local-k3s</code> and OCI Kafka (<code class="text-cyan-300">10.200.0.11..13:9092</code>) on GKE.</p>
+          <p class="text-xs text-slate-400 mt-0.5">Interactive topology across Zonal GKE Design 1 (<code class="text-cyan-300">clusters/gke/</code> in <code class="text-cyan-300">nacfson-pipeline</code> / <code class="text-cyan-300">asia-northeast3-a</code>: <code class="text-cyan-300">1 × e2-medium</code> On-Demand + <code class="text-cyan-300">1 × e2-small</code> Spot, Traefik <code class="text-cyan-300">v3.3.4</code> behind a single GKE L4 pass-through LoadBalancer on <code class="text-cyan-300">gke-ingress-ip</code>, Spec 015) and lockstep <code class="text-cyan-300">local-k3s</code>, portable <code class="text-cyan-300">networking.k8s.io/v1</code> NetworkPolicy simulator, Gateway allow-vs-block auth tester, 8 lifecycle flows, Flux 14-layer DAG, 1/n budget &amp; junior mental models. Log envelope v3 (OpenTelemetry JSON lines in <code class="text-cyan-300">contracts/CONTRACT_LOG_SCHEMA.md</code>) is tailed from <code class="text-cyan-300">proj-*</code> by Fluent Bit (<code class="text-cyan-300">fluent/fluent-bit:4.2.8</code>) with per-node crash-resilient state on <code class="text-cyan-300">/var/lib/fluent-bit-state</code> (<code class="text-cyan-300">256M</code> cap, Amendment 2.3.0), shipping to VictoriaLogs (<code class="text-cyan-300">v1.53.0</code>) on <code class="text-cyan-300">local-k3s</code> and OCI Kafka (<code class="text-cyan-300">10.200.0.11..13:9092</code>) on GKE.</p>
         </div>
       </div>
 
@@ -286,8 +286,8 @@
               <rect class="main-rect" width="225" height="62" rx="10" fill="#0c192c" stroke="#38bdf8" stroke-width="2" />
               <text x="14" y="23" font-size="14">🚦</text>
               <text x="36" y="23" fill="#f8fafc" font-size="11.5" font-weight="700">Traefik v3.3.4 (:80/:443)</text>
-              <text x="14" y="40" fill="#7dd3fc" font-size="9.5" font-family="'JetBrains Mono'">GKE hostPort 80/443 · ClusterIP</text>
-              <text x="14" y="53" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">Zero GCP LB · SNI · Strip Headers</text>
+              <text x="14" y="40" fill="#7dd3fc" font-size="9.5" font-family="'JetBrains Mono'">GKE L4 LB → Traefik :443</text>
+              <text x="14" y="53" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">TLS at Traefik · SNI · Strip Headers</text>
             </g>
 
             <!-- 6. TLSStore & Certificates -->
@@ -853,7 +853,7 @@
             <g class="node-box" onclick="selectDagLayer('traefik')" transform="translate(570, 342)">
               <rect class="main-rect" width="135" height="54" rx="10" fill="#0c192c" stroke="#38bdf8" stroke-width="1.8" stroke-dasharray="4 2" />
               <text x="67" y="22" text-anchor="middle" fill="#f8fafc" font-size="11" font-weight="700">4b. traefik (GKE)</text>
-              <text x="67" y="39" text-anchor="middle" fill="#7dd3fc" font-size="8.5" font-family="'JetBrains Mono'">hostPort 80/443</text>
+              <text x="67" y="39" text-anchor="middle" fill="#7dd3fc" font-size="8.5" font-family="'JetBrains Mono'">L4 LB 80/443</text>
             </g>
 
             <!-- Layer 5: ingress -->
@@ -1131,7 +1131,14 @@
                 <span class="font-mono text-xs font-bold text-cyan-300">Spec 012 — GKE Platform Portability &amp; Full-State Cutover</span>
                 <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/012-gke-platform-migration</span>
               </div>
-              <p class="text-xs text-slate-400 mt-1">Adds declarative <code class="text-cyan-300">clusters/gke/</code> Design 1 overlay in GCP project <code class="text-cyan-300">nacfson-pipeline</code> (<code class="text-cyan-300">asia-northeast3-a</code> Seoul, <code class="text-cyan-300">1 × e2-medium</code> On-Demand <code class="text-cyan-300">ondemand-core</code> + <code class="text-cyan-300">1 × e2-small</code> Spot <code class="text-cyan-300">spot-controllers</code> with <code class="text-cyan-300">--logging=NONE --monitoring=NONE</code>, <code class="text-cyan-300">303m / 418Mi</code> per-project <code class="text-cyan-300">1/n</code> slice, Traefik <code class="text-cyan-300">v3.3.4</code> <code class="text-cyan-300">hostPort: 80/443</code> with zero GCP LoadBalancer, keeping <code class="text-cyan-300">keycloak</code> <code class="text-cyan-300">832Mi</code> + all live projects/PVCs 24/7 on On-Demand and offloading only <code class="text-cyan-300">cert-manager</code> + <code class="text-cyan-300">flux-system</code> to Spot) alongside cloud-agnostic <code class="text-cyan-300">clusters/local-k3s/</code>, Cloud Build + public <code class="text-cyan-300">GAR</code> (<code class="text-cyan-300">asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public</code>) <code class="text-cyan-300">@sha256</code> pulls retiring <code class="text-cyan-300">vault-registry-proxy</code>, portable <code class="text-cyan-300">networking.k8s.io/v1</code> <code class="text-cyan-300">NetworkPolicy</code> rules, Fluent Bit <code class="text-cyan-300">/var/lib/fluent-bit-state</code> (<code class="text-cyan-300">256M</code> cap) + <code class="text-cyan-300">[OUTPUT] kafka</code>, Constitution Amendment <code class="text-cyan-300">2.3.0</code>, and <code class="text-cyan-300">scripts/cutover-bundle.sh</code> full-state restore + <code class="text-cyan-300">gcpckms</code> auto-unseal (<code class="text-cyan-300">T001</code>–<code class="text-cyan-300">T035</code> in <code class="text-cyan-300">tasks.md</code>).</p>
+              <p class="text-xs text-slate-400 mt-1">Adds declarative <code class="text-cyan-300">clusters/gke/</code> Design 1 overlay in GCP project <code class="text-cyan-300">nacfson-pipeline</code> (<code class="text-cyan-300">asia-northeast3-a</code> Seoul, <code class="text-cyan-300">1 × e2-medium</code> On-Demand <code class="text-cyan-300">ondemand-core</code> + <code class="text-cyan-300">1 × e2-small</code> Spot <code class="text-cyan-300">spot-controllers</code> with <code class="text-cyan-300">--logging=NONE --monitoring=NONE</code>, <code class="text-cyan-300">303m / 418Mi</code> per-project <code class="text-cyan-300">1/n</code> slice, Traefik <code class="text-cyan-300">v3.3.4</code> (edge later moved to a single L4 LoadBalancer by Spec 015), keeping <code class="text-cyan-300">keycloak</code> <code class="text-cyan-300">832Mi</code> + all live projects/PVCs 24/7 on On-Demand and offloading only <code class="text-cyan-300">cert-manager</code> + <code class="text-cyan-300">flux-system</code> to Spot) alongside cloud-agnostic <code class="text-cyan-300">clusters/local-k3s/</code>, Cloud Build + public <code class="text-cyan-300">GAR</code> (<code class="text-cyan-300">asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public</code>) <code class="text-cyan-300">@sha256</code> pulls retiring <code class="text-cyan-300">vault-registry-proxy</code>, portable <code class="text-cyan-300">networking.k8s.io/v1</code> <code class="text-cyan-300">NetworkPolicy</code> rules, Fluent Bit <code class="text-cyan-300">/var/lib/fluent-bit-state</code> (<code class="text-cyan-300">256M</code> cap) + <code class="text-cyan-300">[OUTPUT] kafka</code>, Constitution Amendment <code class="text-cyan-300">2.3.0</code>, and <code class="text-cyan-300">scripts/cutover-bundle.sh</code> full-state restore + <code class="text-cyan-300">gcpckms</code> auto-unseal (<code class="text-cyan-300">T001</code>–<code class="text-cyan-300">T035</code> in <code class="text-cyan-300">tasks.md</code>).</p>
+            </div>
+            <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
+              <div class="flex justify-between items-center">
+                <span class="font-mono text-xs font-bold text-teal-300">Spec 015 — GKE Infrastructure as Code (Terraform) · Planned</span>
+                <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/015-gke-terraform-infra</span>
+              </div>
+              <p class="text-xs text-slate-400 mt-1">Replaces the one-off creation commands in Spec 012 Gate 4 step 2 with reviewed Terraform definitions under <code class="text-teal-300">infra/gcp/</code>. They create the zonal cluster, the <code class="text-teal-300">ondemand-core</code> and <code class="text-teal-300">spot-controllers</code> pools (Spot taint matching <code class="text-teal-300">clusters/gke/capacity.yaml</code>), the static ingress IPv4 held by a regional pass-through (L4) GCP load balancer that forwards TCP 80/443 to Traefik on <code class="text-teal-300">ondemand-core</code> (TLS still terminates at Traefik; this reverses Spec 012's zero-LoadBalancer design for GKE, about $18/mo) and the Terraform-owned web firewall rule (GKE's own load balancer rule is turned off), the <code class="text-teal-300">nacfson-vault/openbao-unseal</code> KMS key with the <code class="text-teal-300">openbao-kms</code> Workload Identity binding for <code class="text-teal-300">vault/openbao</code>, and the public <code class="text-teal-300">nacfson-public</code> registry. State is kept in a private GCS bucket, and the operator runs apply from Cloud Shell. CI only validates, with no cloud credentials. Terraform stops at an empty cluster, and FluxCD owns everything inside it (Principle I). A "ready for restore" checkpoint then hands over to the Spec 012 bundle restore, which runs from the control center. An offline check fails the build if names shared with <code class="text-teal-300">clusters/gke/</code> drift. No cloud resources are created until Spec 012 Gates 1–3 pass. (Numbers 013 and 014 are reserved for the Kafka and Flink specs.)</p>
             </div>
           </div>
         </div>
@@ -1265,16 +1272,16 @@
       },
       'traefik': {
         badge: 'Edge Ingress Controller (Spec 008 & 012)',
-        title: 'Traefik v3.3.4 (GKE hostPort :80/:443 | K3s Bundled)',
+        title: 'Traefik v3.3.4 (GKE L4 LoadBalancer :80/:443 | K3s Bundled)',
         ns: 'platform (GKE) / kube-system (K3s)',
         image: 'traefik:v3.3.4 (non-root UID 65532)',
         oss: 'Traefik Proxy (MIT License)',
         res: 'GKE: 30m/64Mi req -> 200m/96Mi lim (ondemand-core)',
-        desc: 'Single cluster entry point. On GKE, binds hostPort 80/443 directly on ondemand-core static IP (Service type: ClusterIP, zero paid GCP LoadBalancer). Terminates TLS via TLSStore platform/default and strips forged headers.',
+        desc: 'Single cluster entry point. On GKE, Service platform/traefik is the only LoadBalancer: a GKE regional L4 pass-through load balancer on the reserved address gke-ingress-ip (externalTrafficPolicy Local, about $18/month). Traefik runs on ondemand-core without hostPort. Terminates TLS via TLSStore platform/default and strips forged headers.',
         bullets: [
           '➔ Port 80 (:8000 containerPort) redirects HTTP to HTTPS except ACME HTTP-01 solver paths.',
           '➔ Blocks /admin, /realms/master, and port 9000 on Keycloak by omission (returns 404).',
-          '➔ Recreate rollout strategy prevents hostPort 80/443 bind collisions on single On-Demand node.',
+          '➔ Recreate rollout strategy keeps rollouts within the 1/n reservation (no surge).',
           '➔ GKE probes hit /ping on the dedicated ping entrypoint (:8082, --ping.entrypoint=ping).',
           '➔ GKE ClusterRole traefik-ingress-controller reads Secrets cluster-wide (read-only): Traefik providers watch Secrets in every namespace.'
         ],
@@ -1759,7 +1766,7 @@
           to: 'K3s Service | GKE Zonal Standard (asia-northeast3-a)',
           proto: '--flannel-backend=none (K3s) | --enable-dataplane-v2 --logging=NONE --monitoring=NONE (GKE)',
           desc: 'Local dev installs K3s v1.35.9+k3s1 with Flannel/kube-router disabled so Cilium owns CNI. Production GKE runs 1 × e2-medium On-Demand (ondemand-core) + 1 × e2-small Spot (spot-controllers) in nacfson-pipeline with Dataplane V2 and Workload Identity.',
-          code: `# GKE Design 1 (Spec 012): zero control-plane fee, zero GCP LoadBalancer\nondemand-core:    1 × e2-medium (940m / 2972Mi allocatable, static IP :80/:443)\nspot-controllers: 1 × e2-small  (940m / 1436Mi allocatable, tainted gke-spot)`,
+          code: `# GKE Design 1 (Spec 012) + Spec 015 edge: zero control-plane fee, one L4 LoadBalancer\nondemand-core:    1 × e2-medium (940m / 2972Mi allocatable, runs Traefik behind the L4 LB)\nspot-controllers: 1 × e2-small  (940m / 1436Mi allocatable, tainted gke-spot)`,
           guard: 'Both local-k3s and gke enforce identical standard networking.k8s.io/v1 NetworkPolicy manifests.'
         },
         {
@@ -1790,7 +1797,7 @@
           from: 'Developer / PR',
           to: 'GitHub Actions (gitops.yaml)',
           proto: 'scripts/render-validate.sh {local-k3s,gke,vps-k3s} & render-invariants.py',
-          desc: 'Every pull request renders the Kustomize layers across local-k3s, gke, and vps-k3s, validates schemas with kubeconform, and enforces structural invariants (postBuild restricted to ingress AUTH_HOST, zero Service LoadBalancer/NodePort, Traefik hostPort 80/443 only).',
+          desc: 'Every pull request renders the Kustomize layers across local-k3s, gke, and vps-k3s, validates schemas with kubeconform, and enforces structural invariants (postBuild restricted to ingress AUTH_HOST, no NodePort, exactly one LoadBalancer = platform/traefik L4 pass-through, no Traefik hostPort).',
           code: `./scripts/render-validate.sh local-k3s\n./scripts/render-validate.sh gke\n./scripts/render-validate.sh vps-k3s`,
           guard: 'Prevents Flux variable substitution leaks and blocks paid cloud LoadBalancers offline before merge.'
         },
@@ -2175,12 +2182,12 @@
         }
       },
       'traefik': {
-        title: '4b. traefik (GKE Non-Root hostPort 80/443 Edge Ingress)',
+        title: '4b. traefik (GKE Non-Root Edge Ingress behind L4 LoadBalancer)',
         path: './deploy/platform/traefik',
         deps: 'governance (GKE only; bundled in K3s)',
-        desc: 'Deploys Traefik v3.3.4 CRDs, RBAC, ClusterIP Service, and non-root Deployment (UID 65532, drop ALL, Recreate strategy) binding hostPort 80/443 on GKE ondemand-core static IP with zero paid GCP LoadBalancer.',
+        desc: 'Deploys Traefik v3.3.4 CRDs, RBAC, ClusterIP Service, and non-root Deployment (UID 65532, drop ALL, Recreate strategy) on GKE ondemand-core, exposed by a single regional L4 pass-through LoadBalancer Service on the reserved address gke-ingress-ip (Spec 015).',
         yaml: {
-          'gke': `dependsOn: [governance]\npath: ./deploy/platform/traefik\nresources: crds.yaml, rbac.yaml, deployment.yaml (30m/64Mi -> 200m/96Mi, hostPort 80/443), service.yaml (ClusterIP)`,
+          'gke': `dependsOn: [governance]\npath: ./deploy/platform/traefik\nresources: crds.yaml, rbac.yaml, deployment.yaml (30m/64Mi -> 200m/96Mi, no hostPort), service.yaml (LoadBalancer, l4-regional-external, ETP Local)`,
           'vps-k3s': `# Omitted on vps-k3s: K3s bundles Traefik in kube-system.`,
           'local-k3s': `# Omitted on local-k3s: K3s bundles Traefik in kube-system.`
         }
@@ -2320,7 +2327,7 @@
         license: 'MIT License',
         role: 'Edge Ingress Controller & SNI Termination',
         where: 'deploy/platform/traefik/* & deploy/platform/ingress/*',
-        details: 'On GKE, non-root Traefik v3.3.4 (:8000->hostPort 80, :8443->hostPort 443, Service ClusterIP) terminates TLS on ondemand-core with zero GCP LoadBalancer cost; K3s uses bundled Traefik.'
+        details: 'On GKE, a regional L4 pass-through LoadBalancer (80->:8000, 443->:8443) forwards to non-root Traefik v3.3.4 on ondemand-core, which terminates TLS (about $18/month, Spec 015); K3s uses bundled Traefik.'
       },
       {
         cat: 'oss',
@@ -2868,9 +2875,9 @@
       },
       {
         icon: '🚦',
-        name: 'Traefik v3.3.4 (hostPort 80/443) + TLSStore',
+        name: 'Traefik v3.3.4 (behind L4 LoadBalancer) + TLSStore',
         analogy: 'Front Desk Receptionist & SSL Notary',
-        plain: 'On GKE, Traefik binds hostPort 80/443 directly on the On-Demand node static IP (zero paid GCP LoadBalancer). cert-manager renews Let\'s Encrypt certs in namespace platform behind TLSStore default.',
+        plain: 'On GKE, one Google L4 load balancer passes encrypted traffic straight to Traefik on the On-Demand node; Google never decrypts it. cert-manager renews Let\'s Encrypt certs in namespace platform behind TLSStore default.',
         file: 'deploy/platform/traefik/ & deploy/platform/tls/'
       },
       {

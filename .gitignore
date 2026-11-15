@@ -71,3 +71,14 @@ cutover-bundle*/
 *.dump.gz
 edge-tls-secrets.yaml
 victoria-logs-data.tar.gz
+
+# Terraform (Spec 015): state, plans and variable files stay out of Git.
+# .terraform.lock.hcl and infra/gcp/shared-values.json ARE committed.
+*.tfstate
+*.tfstate.*
+*.tfplan
+**/.terraform/
+.terraform.tfstate.lock.info
+terraform.tfvars
+*.auto.tfvars
+crash.log

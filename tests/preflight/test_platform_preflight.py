@@ -832,7 +832,7 @@ spec:
         self.assertIn("spot", data2.get("rejectionReason", "").lower())
 
     def test_30_ondemand_backup_headroom_and_loadbalancer_rejected_on_gke(self):
-        """ondemand-core must retain >= 50m CPU and >= 192 MiB memory headroom, and Service type LoadBalancer is rejected."""
+        """ondemand-core must retain >= 50m CPU and >= 192 MiB memory headroom, and a project LoadBalancer is rejected (Spec 015 keeps only platform/traefik)."""
         with open(os.path.join(BASE_DIR, "clusters", "gke", "capacity.yaml"), encoding="utf-8") as fh:
             gke_cap = fh.read()
 
@@ -862,21 +862,83 @@ spec:
         self.assertEqual(rc, 1)
         self.assertIn("headroom", data.get("rejectionReason", "").lower())
 
-        lb_svc = """
+        project_lb = """
 apiVersion: v1
 kind: Service
 metadata:
-  name: traefik
-  namespace: platform
+  name: blog-web
+  namespace: proj-blog
 spec:
   type: LoadBalancer
   ports:
     - port: 443
       targetPort: 8443
 """
-        rc_lb, data_lb = self._run_with_custom_capacity(lb_svc, gke_cap)
+        rc_lb, data_lb = self._run_with_custom_capacity(project_lb, gke_cap)
         self.assertEqual(rc_lb, 1)
-        self.assertIn("LoadBalancer", data_lb.get("rejectionReason", ""))
+        self.assertTrue(self._lb_violations(data_lb), data_lb)
+
+    # --- Spec 015: single L4 pass-through LoadBalancer (contracts/traefik-l4-edge.md §4) ---
+
+    TRAEFIK_L4_SVC = """
+apiVersion: v1
+kind: Service
+metadata:
+  name: {name}
+  namespace: platform
+  annotations:
+{annotations}
+spec:
+  type: LoadBalancer
+{class_line}
+  externalTrafficPolicy: {policy}
+  ports:
+    - {{name: web, port: 80, targetPort: 8000, protocol: TCP}}
+    - {{name: websecure, port: 443, targetPort: 8443, protocol: TCP}}
+  selector:
+    app.kubernetes.io/name: traefik
+"""
+
+    def _traefik_svc(self, name="traefik", policy="Local",
+                     class_line="  loadBalancerClass: networking.gke.io/l4-regional-external",
+                     annotations="    networking.gke.io/load-balancer-ip-addresses: gke-ingress-ip"):
+        return self.TRAEFIK_L4_SVC.format(name=name, policy=policy, class_line=class_line,
+                                          annotations=annotations or "    example.com/none: \"\"")
+
+    @staticmethod
+    def _lb_violations(data):
+        return [v for v in data.get("violations", []) if "LoadBalancer" in v.get("detail", "")]
+
+    def _gke_cap(self):
+        with open(os.path.join(BASE_DIR, "clusters", "gke", "capacity.yaml"), encoding="utf-8") as fh:
+            return fh.read()
+
+    def test_30a_traefik_l4_loadbalancer_allowed_on_gke(self):
+        _, data = self._run_with_custom_capacity(self._traefik_svc(), self._gke_cap())
+        self.assertEqual(self._lb_violations(data), [], data)
+
+    def test_30b_second_platform_loadbalancer_rejected(self):
+        both = self._traefik_svc() + "---" + self._traefik_svc(name="traefik-extra")
+        rc, data = self._run_with_custom_capacity(both, self._gke_cap())
+        self.assertEqual(rc, 1)
+        self.assertEqual([v["object"] for v in self._lb_violations(data)], ["platform/Service/traefik-extra"])
+
+    def test_30c_traefik_wrong_or_missing_class_rejected(self):
+        for class_line in ("", "  loadBalancerClass: networking.gke.io/l4-regional-internal"):
+            with self.subTest(class_line=class_line):
+                rc, data = self._run_with_custom_capacity(self._traefik_svc(class_line=class_line), self._gke_cap())
+                self.assertEqual(rc, 1)
+                self.assertTrue(self._lb_violations(data), data)
+
+    def test_30d_traefik_cluster_traffic_policy_rejected(self):
+        rc, data = self._run_with_custom_capacity(self._traefik_svc(policy="Cluster"), self._gke_cap())
+        self.assertEqual(rc, 1)
+        self.assertTrue(self._lb_violations(data), data)
+
+    def test_30e_traefik_without_address_annotation_rejected(self):
+        rc, data = self._run_with_custom_capacity(self._traefik_svc(annotations=None), self._gke_cap())
+        self.assertEqual(rc, 1)
+        self.assertTrue(self._lb_violations(data), data)
 
     def test_31_gar_digest_accepted_and_mutable_project_tag_rejected(self):
         """Project workloads accept public GAR @sha256 digests and reject mutable tags or foreign GAR projects."""

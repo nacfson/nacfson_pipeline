@@ -66,11 +66,18 @@ pools:
 
 ---
 
-## 3. Zero-LoadBalancer Edge Ingress Contract (`deploy/platform/traefik/`)
+## 3. Single L4 Pass-Through LoadBalancer Edge (`deploy/platform/traefik/`)
 
-1. `Deployment/traefik` runs in namespace `platform` (`replicas: 1`, `strategy.type: Recreate`, `runAsNonRoot: true`, `runAsUser: 65532`, `automountServiceAccountToken: true` for CRD watch only, `capabilities.drop: ["ALL"]`, `resources: {requests: {cpu: 30m, memory: 64Mi}, limits: {cpu: 200m, memory: 96Mi}}`).
-2. Container `traefik` (`traefik:v3.3.4`) binds `--entrypoints.web.address=:8000` (`hostPort: 80`) and `--entrypoints.websecure.address=:8443` (`hostPort: 443`) and pins `nodeSelector: {"cloud.google.com/gke-provisioning": "standard"}`.
-3. `Service/traefik` in namespace `platform` MUST use `type: ClusterIP` (preflight rejects `Service` `type: LoadBalancer` in `clusters/gke/` to prevent accidental \$18/mo forwarding rules).
+**Changed by Spec 015 (2026-11-14).** The earlier zero-LoadBalancer edge (Traefik `hostPort: 80/443` on the
+`ondemand-core` node's static IP) is replaced by exactly one GKE-managed regional L4 pass-through load
+balancer, created from `Service/platform/traefik` (`type: LoadBalancer`,
+`loadBalancerClass: networking.gke.io/l4-regional-external`, `externalTrafficPolicy: Local`) on the reserved
+address `gke-ingress-ip` owned by `infra/gcp/gke`. Traefik no longer declares `hostPort`, keeps
+`strategy: Recreate` and the `cloud.google.com/gke-provisioning: standard` node selector, and still
+terminates TLS. Project Services stay `ClusterIP`; preflight still rejects project `NodePort` and `LoadBalancer`.
+
+Full contract, render invariant and preflight rule:
+[`specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md`](../../015-gke-terraform-infra/contracts/traefik-l4-edge.md).
 
 ---
 

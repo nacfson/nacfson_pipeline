@@ -27,7 +27,7 @@ Per [Constitution Principle I](.specify/memory/constitution.md), third-party ima
 | :--- | :--- | :--- |
 | **Kubernetes (GKE Standard)** | Zonal Standard (`nacfson-pipeline`, `asia-northeast3-a`, `1 × e2-medium` On-Demand + `1 × e2-small` Spot, `--logging=NONE --monitoring=NONE`) | [`clusters/gke/capacity.yaml`](clusters/gke/capacity.yaml), [`clusters/gke/layers.yaml`](clusters/gke/layers.yaml) |
 | **Kubernetes (K3s)** | `v1.35.9+k3s1` (Traefik bundled on `local-k3s` / legacy `vps-k3s`) | [`bootstrap/bootstrap.yml`](bootstrap/bootstrap.yml) (`accepted_k3s_versions`) |
-| **Traefik Edge Ingress (GKE)** | `traefik:v3.3.4` (`hostPort: 80/443`, `Service` `type: ClusterIP`, non-root `UID 65532`) | [`deploy/platform/traefik/deployment.yaml`](deploy/platform/traefik/deployment.yaml) |
+| **Traefik Edge Ingress (GKE)** | `traefik:v3.3.4` (behind one GKE L4 pass-through `LoadBalancer` Service, no `hostPort`, non-root `UID 65532`) | [`deploy/platform/traefik/deployment.yaml`](deploy/platform/traefik/deployment.yaml) |
 | **FluxCD CLI / Distribution** | `2.9.5` | [`.github/workflows/gitops.yaml`](.github/workflows/gitops.yaml), [`clusters/*/flux-system/`](clusters/gke/flux-system/gotk-components.yaml) |
 | **Flux Source Controller** | `ghcr.io/fluxcd/source-controller:v1.9.5` | [`clusters/*/flux-system/gotk-components.yaml`](clusters/gke/flux-system/gotk-components.yaml) |
 | **Flux Kustomize Controller** | `ghcr.io/fluxcd/kustomize-controller:v1.9.5` | [`clusters/*/flux-system/gotk-components.yaml`](clusters/gke/flux-system/gotk-components.yaml) |

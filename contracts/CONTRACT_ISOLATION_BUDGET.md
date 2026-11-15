@@ -19,7 +19,7 @@ Every project namespace (`deploy/projects/<slug>/boundary/`) and workload (`depl
    - `automountServiceAccountToken: false` is mandatory on all project pods.
 4. **Allowed Project Manifest Kinds & Services**:
    - Project layers may render only `Deployment`, `Service`, `ConfigMap`, and `IngressRoute` (enforced by Invariant 6 in [`scripts/render-invariants.py`](../scripts/render-invariants.py)).
-   - All project `Service` objects MUST be `type: ClusterIP` (and on `gke`, `Service` `type: LoadBalancer` is rejected cluster-wide in favor of `Traefik` `hostPort: 80/443`). `NodePort`, `LoadBalancer`, `hostNetwork`, `hostPID`, `hostIPC`, and `hostPath` volumes are strictly rejected in project namespaces. Under Constitution Amendment `2.3.0`, only `DaemonSet/fluent-bit` in platform namespace `observability` may mount `/var/log/pods` (`readOnly: true`) and `/var/lib/fluent-bit-state` (`readOnly: false`, `DirectoryOrCreate`, capped at `256 MiB`/node).
+   - All project `Service` objects MUST be `type: ClusterIP` (and on `gke`, the only `LoadBalancer` allowed cluster-wide is the platform edge `platform/traefik` with `loadBalancerClass: networking.gke.io/l4-regional-external`, `externalTrafficPolicy: Local` and the reserved-address annotation; Spec 015, `specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md`). `NodePort`, `LoadBalancer`, `hostNetwork`, `hostPID`, `hostIPC`, and `hostPath` volumes are strictly rejected in project namespaces. Under Constitution Amendment `2.3.0`, only `DaemonSet/fluent-bit` in platform namespace `observability` may mount `/var/log/pods` (`readOnly: true`) and `/var/lib/fluent-bit-state` (`readOnly: false`, `DirectoryOrCreate`, capped at `256 MiB`/node).
 
 ---
 
