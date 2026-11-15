@@ -2,7 +2,7 @@
 
 ## 1. Project Context
 
-`nacfson_pipeline` is a declarative, multi-tenant Kubernetes platform for running personal projects on modest compute resources (Oracle Cloud Always Free ARM64 VPS in `vps-k3s` and local Linux K3s in `local-k3s`, with portability to EKS/GKE).
+`nacfson_pipeline` is a declarative, multi-tenant Kubernetes platform for running personal projects on modest compute resources (zonal GKE Standard in `gke` and local Linux K3s in `local-k3s`, with transitional `vps-k3s` and portability to EKS).
 
 Core platform pillars:
 - **Continuous Pull-Based GitOps**: In-cluster FluxCD reconciles `deploy/` and `clusters/` in explicit dependency order (`cni` / `governance` → `vault` / `cert-manager` / `project-boundaries*` → `vault-proxies` / `database` / `projects` / `observability` → `identity` → `ingress` → `tls`).
@@ -67,7 +67,7 @@ Before modifying code, manifests, or scripts, read the corresponding domain docu
   - [`specs/002-internal-cluster-vault/spec.md`](specs/002-internal-cluster-vault/spec.md) & [`contracts/`](specs/002-internal-cluster-vault/contracts/)
   - [`specs/005-post-vault-automation/spec.md`](specs/005-post-vault-automation/spec.md)
 
-- **FluxCD GitOps reconciliation layers (`clusters/local-k3s/`, `clusters/vps-k3s/`), drift recovery, or break-glass operations**:
+- **FluxCD GitOps reconciliation layers (`clusters/gke/`, `clusters/local-k3s/`, `clusters/vps-k3s/`), drift recovery, or break-glass operations**:
   - [`docs/operations-runbook.md`](docs/operations-runbook.md)
   - [`specs/004-flux-gitops-reconciliation/contracts/reconciliation-layers.md`](specs/004-flux-gitops-reconciliation/contracts/reconciliation-layers.md)
   - [`specs/004-flux-gitops-reconciliation/contracts/operations.md`](specs/004-flux-gitops-reconciliation/contracts/operations.md)
@@ -127,7 +127,8 @@ python3 -m unittest discover tests/hooks
 python3 -m unittest discover tests/observability
 python3 -m unittest discover tests/skills
 
-# 4. Full Kustomize render, kubeconform schema validation & preflight gate (local-k3s & vps-k3s)
+# 4. Full Kustomize render, kubeconform schema validation & preflight gate (gke, local-k3s & vps-k3s)
+./scripts/render-validate.sh gke
 ./scripts/render-validate.sh local-k3s
 ./scripts/render-validate.sh vps-k3s
 
