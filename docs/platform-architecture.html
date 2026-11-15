@@ -61,7 +61,7 @@
         <div>
           <div class="flex flex-wrap items-center gap-2">
             <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-white">nacfson_pipeline Architecture &amp; Junior Engineer Handbook</h1>
-            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">Constitution v2.4.0</span>
+            <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/30">Constitution v2.4.1</span>
             <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Specs 001–012</span>
             <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">Hook-Synced</span>
           </div>
@@ -1138,7 +1138,7 @@
                 <span class="font-mono text-xs font-bold text-teal-300">Spec 015 — GKE Infrastructure as Code (Terraform) · Planned</span>
                 <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/015-gke-terraform-infra</span>
               </div>
-              <p class="text-xs text-slate-400 mt-1">Replaces the one-off creation commands in Spec 012 Gate 4 step 2 with reviewed Terraform definitions under <code class="text-teal-300">infra/gcp/</code>. They create the zonal cluster, the <code class="text-teal-300">ondemand-core</code> and <code class="text-teal-300">spot-controllers</code> pools (Spot taint matching <code class="text-teal-300">clusters/gke/capacity.yaml</code>), the static ingress IPv4 held by a regional pass-through (L4) GCP load balancer that forwards TCP 80/443 to Traefik on <code class="text-teal-300">ondemand-core</code> (TLS still terminates at Traefik; this reverses Spec 012's zero-LoadBalancer design for GKE, about $18/mo) and the Terraform-owned web firewall rule (GKE's own load balancer rule is turned off), the <code class="text-teal-300">nacfson-vault/openbao-unseal</code> KMS key with the <code class="text-teal-300">openbao-kms</code> Workload Identity binding for <code class="text-teal-300">vault/openbao</code>, and the public <code class="text-teal-300">nacfson-public</code> registry. State is kept in a private GCS bucket, and the operator runs apply from Cloud Shell. CI only validates, with no cloud credentials. Terraform stops at an empty cluster, and FluxCD owns everything inside it (Principle I). A "ready for restore" checkpoint then hands over to the Spec 012 bundle restore, which runs from the control center. An offline check fails the build if names shared with <code class="text-teal-300">clusters/gke/</code> drift. No cloud resources are created until Spec 012 Gates 1–3 pass. (Numbers 013 and 014 are reserved for the Kafka and Flink specs.)</p>
+              <p class="text-xs text-slate-400 mt-1">Replaces the one-off creation commands in Spec 012 Gate 4 step 2 with reviewed Terraform definitions under <code class="text-teal-300">infra/gcp/</code>. They create the zonal cluster, the <code class="text-teal-300">ondemand-core</code> and <code class="text-teal-300">spot-controllers</code> pools (Spot taint matching <code class="text-teal-300">clusters/gke/capacity.yaml</code>), the static ingress IPv4 held by a regional pass-through (L4) GCP load balancer that forwards TCP 80/443 to Traefik on <code class="text-teal-300">ondemand-core</code> (TLS still terminates at Traefik; this reverses Spec 012's zero-LoadBalancer design for GKE, about $18/mo) and the Terraform-owned web firewall rule (GKE's own load balancer rule is turned off), the <code class="text-teal-300">nacfson-vault/openbao-unseal</code> KMS key with the <code class="text-teal-300">openbao-kms</code> Workload Identity binding for <code class="text-teal-300">vault/openbao</code>, and the public <code class="text-teal-300">nacfson-public</code> registry. State is kept in a private GCS bucket, and the operator runs apply from Cloud Shell or their own PC (<code class="text-teal-300">docs/runbooks/gke-deploy.md</code>). The project step turns on 9 Google APIs, including Cloud Resource Manager, which a new project needs enabled once by hand because Terraform reads the project number while planning. CI only validates, with no cloud credentials. Terraform stops at an empty cluster, and FluxCD owns everything inside it (Principle I). A "ready for restore" checkpoint then hands over to the Spec 012 bundle restore, which runs from the control center. An offline check fails the build if names shared with <code class="text-teal-300">clusters/gke/</code> drift. Later Terraform changes are applied by hand; automating apply (a GitHub Actions pipeline or Flux&#39;s Tofu Controller) is deferred (research R14, Clarification <code class="text-teal-300">2.4.1</code>). No cloud resources are created until Spec 012 Gates 1–3 pass. (Numbers 013 and 014 are reserved for the Kafka and Flink specs.)</p>
             </div>
           </div>
         </div>
@@ -2077,7 +2077,7 @@
         deps: 'None (Root)',
         desc: 'Establishes core namespaces (identity, platform, governance), base NetworkPolicies, break-glass RBAC, operator access, and the ValidatingAdmissionPolicies that block manual kubectl changes while allowlisting GKE control-plane principals and CRD suffixes.',
         yaml: {
-          'gke': `dependsOn: [] (Root Layer)\nresources:\n  - namespaces.yaml, base-network-policy.yaml, openbao-rbac.yaml\n  - manual-change-policy.yaml (allowlists system:gke-common-webhooks,\n    system:gcp-controller-manager, system:addon-manager, system:cluster-autoscaler,\n    system:serviceaccount:gke-managed-*, and *.gke.io / *.cloud.google.com CRDs)`,
+          'gke': `dependsOn: [] (Root Layer)\nresources:\n  - namespaces.yaml, base-network-policy.yaml, openbao-rbac.yaml\n  - manual-change-policy.yaml (allowlists system:gke-common-webhooks,\n    system:gcp-controller-manager, system:addon-manager, system:cluster-autoscaler,\n    system:serviceaccount:gke-managed-*, system:l7-lb-controller-neg for\n    servicenetworkendpointgroups only, and *.gke.io / *.cloud.google.com CRDs)`,
           'vps-k3s': `resources:\n  - namespaces.yaml (identity, platform, governance)\n  - base-network-policy.yaml & manual-change-policy.yaml\n  - break-glass-rbac.yaml, operator-access.yaml & openbao-rbac.yaml`,
           'local-k3s': `resources:\n  - Identical governance manifests shared with clusters/gke/`
         }
@@ -2099,7 +2099,7 @@
         deps: 'governance (plus cni on K3s)',
         desc: 'Deploys OpenBao 2.0.0 StatefulSet in namespace vault, 7 HCL policies (registry-proxy retired), portable NetworkPolicy, and daily Raft snapshot CronJob. On GKE, enables Cloud KMS (gcpckms) auto-unseal via Workload Identity.',
         yaml: {
-          'gke': `dependsOn: [governance]\npatches:\n  - ServiceAccount/openbao: iam.gke.io/gcp-service-account=openbao-kms@nacfson-pipeline.iam.gserviceaccount.com\n  - StatefulSet/openbao: seal "gcpckms" (project=nacfson-pipeline, region=asia-northeast3)\n  - NetworkPolicy/openbao-ingress-policy: +169.254.169.254/32:80,988 & 199.36.153.8/30:443 (0.0.0.0/0 forbidden)`,
+          'gke': `dependsOn: [governance]\nwait: false  # unused backup PVC stays Pending on standard-rwo; gate on openbao only\nhealthChecks: [StatefulSet/openbao]\npatches:\n  - ServiceAccount/openbao: iam.gke.io/gcp-service-account=openbao-kms@nacfson-pipeline.iam.gserviceaccount.com\n  - StatefulSet/openbao: seal "gcpckms" (project=nacfson-pipeline, region=asia-northeast3)\n  - NetworkPolicy/openbao-ingress-policy: +169.254.169.254/32:80,988 & 199.36.153.8/30:443 (0.0.0.0/0 forbidden)`,
           'vps-k3s': `dependsOn: [cni, governance]\nhealthChecks:\n  - kind: StatefulSet, name: openbao, namespace: vault\npolicies: db-proxy, ai-proxy, notify-proxy, gateway-transit, keycloak-broker, postgres-*, raft-snapshot, operator-admin`,
           'local-k3s': `dependsOn: [cni, governance]\nhealthChecks:\n  - kind: StatefulSet, name: openbao, namespace: vault`
         }
@@ -2154,7 +2154,7 @@
         deps: 'vault',
         desc: 'Deploys PostgreSQL 16.8-alpine StatefulSet on ondemand-core (10Gi RWO PVC), postgres-init-job (keycloak, proj_pn, proj_health), and daily backup CronJob.',
         yaml: {
-          'gke': `dependsOn: [vault]\npatches:\n  - StatefulSet/postgres: 75m/256Mi req -> 250m/256Mi lim (ondemand-core)\n  - CronJob/postgres-daily-backup: 25m/128Mi req`,
+          'gke': `dependsOn: [vault]\nwait: false\nhealthChecks: [StatefulSet/postgres, Job/postgres-init-job]\npatches:\n  - StatefulSet/postgres: 50m/256Mi req -> 250m/256Mi lim (ondemand-core)\n  - CronJob/postgres-daily-backup: 25m/128Mi req`,
           'vps-k3s': `dependsOn: [vault]\nhealthChecks: [StatefulSet/postgres]\nresources: postgres-statefulset.yaml, postgres-init-job.yaml, backup-cronjob.yaml`,
           'local-k3s': `dependsOn: [vault]\nhealthChecks: [StatefulSet/postgres]`
         }
@@ -2220,7 +2220,7 @@
         deps: 'governance (plus cni on K3s)',
         desc: 'Deploys Fluent Bit 4.2.8 DaemonSet with per-node hostPath /var/lib/fluent-bit-state (SQLite WAL tail.db + 256 MiB filesystem chunk cap). On local-k3s/vps-k3s outputs to VictoriaLogs + error-detector; on GKE deletes VictoriaLogs, pauses error-detector at replicas: 0 (until Spec 014), and streams to OCI Kafka (10.200.0.11..13:9092).',
         yaml: {
-          'gke': `dependsOn: [governance]\npath: ./clusters/gke/observability\nhealthChecks: [DaemonSet/fluent-bit]\n# Deletes VictoriaLogs, sets error-detector replicas: 0, outputs to Kafka logs.proj.{valid,quarantine}`,
+          'gke': `dependsOn: [governance]\npath: ./clusters/gke/observability\nwait: false  # only the listed health check gates Ready\nhealthChecks: [DaemonSet/fluent-bit]\n# Deletes VictoriaLogs, sets error-detector replicas: 0, outputs to Kafka logs.proj.{valid,quarantine}`,
           'vps-k3s': `dependsOn: [cni, governance]\npath: ./deploy/platform/observability\nhealthChecks: [DaemonSet/fluent-bit, StatefulSet/victorialogs, Deployment/error-detector]`,
           'local-k3s': `dependsOn: [cni, governance]\npath: ./deploy/platform/observability\nhealthChecks: [DaemonSet/fluent-bit, StatefulSet/victorialogs, Deployment/error-detector]`
         }

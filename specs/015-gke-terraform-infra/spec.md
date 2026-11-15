@@ -29,7 +29,7 @@ This feature puts every Google Cloud resource the GKE environment needs into ver
 The end-to-end order is:
 
 1. Terraform creates the cloud resources (this feature).
-2. `flux bootstrap` points the cluster at `clusters/gke/`.
+2. Installing Flux from `clusters/gke/flux-system/` (`kubectl apply --server-side -k`, no GitHub token) points the cluster at `clusters/gke/`.
 3. Flux deploys every platform and project workload. Services that need OpenBao wait until step 4.
 4. On cutover day, writes on `vps-k3s` stop, a fresh bundle is exported and restored from the control center, and GKE is tested by address.
 5. The Cloudflare DNS records are switched (Spec 012).
@@ -106,9 +106,9 @@ After the cluster exists and Flux has deployed the platform, the operator can ru
 
 **Why this priority**: The cluster on its own serves nobody. Moving the data is the reason it exists, and a missing prerequisite discovered mid-cutover means extra downtime.
 
-**Independent Test**: After the "ready for Flux" checkpoint and `flux bootstrap`, the runbook's "ready for restore" checks pass:
+**Independent Test**: After the "ready for Flux" checkpoint and the Flux installation, the runbook's "ready for restore" checks pass:
 - the unseal key and its trust binding exist
-- `openbao-0`, `postgres-0` and `keycloak` are running on `ondemand-core`
+- `openbao-0` is running on `ondemand-core`; `postgres-0` and `keycloak` are not yet deployed, because the database layer depends on vault
 - OpenBao reports uninitialized rather than failing to start
 - the control-center VM can reach the cluster API
 
@@ -133,7 +133,7 @@ After the cluster exists and Flux has deployed the platform, the operator can ru
 - **Names that cannot be reused**: key rings and keys can never be deleted in Google Cloud. A typo in their names is permanent, so they are cross-checked offline before the first create.
 - **Budget**: the project's existing $1 budget alert (from the control-center setup) would fire on day one, because the planned nodes cost about $39 per month.
 - **Stale or lost bundle**: the control center keeps bundle secrets in RAM, so they are lost if its VM stops or reboots, and a bundle exported before cutover day misses later writes on `vps-k3s`. The runbook's "ready for restore" checkpoint requires a fresh export taken in the same sitting as the restore.
-- **Restore starts before the platform is up**: if the restore starts while `postgres-0` or `keycloak` are still starting, it fails partway. The checkpoint requires them running first, and the restore can be re-run because DNS has not moved.
+- **Restore starts before the platform is up**: `postgres-0` and `keycloak` cannot start until the restore unseals OpenBao, because the database layer depends on vault. The restore MUST wait for `postgres-0` after OpenBao is restored and before loading database dumps; it can be re-run because DNS has not moved.
 
 ## Requirements *(mandatory)*
 
@@ -199,11 +199,11 @@ After the cluster exists and Flux has deployed the platform, the operator can ru
 
 **Hand-off to the cutover** (Clarifications, session 2026-11-14)
 
-- **FR-023**: The unseal key, its identity and the trust binding (FR-008) MUST exist before `flux bootstrap`. The runbook MUST order the steps so that this holds.
+- **FR-023**: The unseal key, its identity and the trust binding (FR-008) MUST exist before the Flux installation. The runbook MUST order the steps so that this holds.
 - **FR-024**: The runbook MUST define a "ready for restore" checkpoint:
   - Flux is bootstrapped
   - `openbao-0` reports uninitialized
-  - `postgres-0` and `keycloak` are running on `ondemand-core`
+  - the database and identity layers wait for vault (they start after the restore)
   - the cluster API is reachable from the control-center VM
 
   It MUST then hand over to the Spec 012 restore procedure without repeating it.
@@ -230,7 +230,7 @@ After the cluster exists and Flux has deployed the platform, the operator can ru
 - **SC-005**: Zero credentials, key files or state files appear in Git history, as verified by the existing secret scan.
 - **SC-006**: The steady-state monthly cost of the created resources stays at or below $80. This covers about $39 for the nodes, about $18 for the load balancer, plus disks, the address and data processing. The budget alert notifies before that amount is exceeded.
 - **SC-007**: In a rehearsal, the removal procedure leaves zero billable compute, load balancer, address or firewall resources within 20 minutes. The unseal key and the stored state remain, and `vps-k3s` serves every hostname throughout.
-- **SC-008**: In a rehearsal, the "ready for restore" checkpoint passes within 30 minutes of `flux bootstrap`, with zero manual cloud changes.
+- **SC-008**: In a rehearsal, the "ready for restore" checkpoint passes within 30 minutes of the Flux installation, with zero manual cloud changes.
 
 ## Assumptions
 

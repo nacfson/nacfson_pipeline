@@ -51,6 +51,15 @@ spec:
   # targetNamespace: FORBIDDEN on project layers (R8)
 ```
 
+**GKE exception (Spec 015):** on `clusters/gke/`, the `vault`, `database` and `observability` layers use
+`wait: false` and gate Ready only on their `healthChecks` (`StatefulSet/openbao`; `StatefulSet/postgres` and
+`Job/postgres-init-job`; `DaemonSet/fluent-bit`). With `wait: true`, Flux checks every object and ignores
+`healthChecks`. GKE's default storage class `standard-rwo` binds a volume only when a pod first uses it, so
+claims used only by daily backup CronJobs (`openbao-backup-pvc`, `postgres-backup-pvc`) or by a deployment
+scaled to 0 on GKE (`error-detector-state`) stay Pending, and the layer never turns Ready on a fresh cluster.
+`local-k3s` and `vps-k3s` keep `wait: true`. Do not switch the GKE layers back without solving that.
+
+
 Project layer objects MUST NOT be in `layers.yaml` ([R18](../research.md#r18-first-install-ordering-for-project-layers)). Each one lives in its project namespace, which `project-boundaries` creates, so it is declared under `clusters/<env>/projects/` and applied by the `projects` layer after that namespace and its `pn-reconciler` exist. `clusters/<env>/projects/kustomization.yaml` lists one file per project.
 
 ## 2. Source and root (per environment)

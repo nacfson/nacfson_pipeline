@@ -6,6 +6,7 @@ This runbook creates, changes, hands off and removes the Google Cloud resources 
 - **Spec**: [`specs/015-gke-terraform-infra/`](../../specs/015-gke-terraform-infra/spec.md)
 - **Code**: [`infra/gcp/`](../../infra/gcp/) (three folders, applied in order: `bootstrap` → `project` → `gke`)
 - **Where to run it**: Google Cloud Shell, signed in as the operator account. Nothing here runs from CI.
+- **Short version**: [`gke-deploy.md`](gke-deploy.md) runs the same steps from your own PC, compactly.
 
 > **Do not start Part 1 until Spec 012 Gates 1–3 have passed.** Until then, no cloud resource
 > may be created (FR-016). Everything in `infra/gcp/` can be checked offline without credentials;
@@ -90,12 +91,16 @@ bucket, so losing it is harmless (re-import with the command above).
 ```bash
 export TF_VAR_billing_account="$(gcloud billing projects describe nacfson-pipeline --format='value(billingAccountName)' | sed 's|billingAccounts/||')"
 echo "$TF_VAR_billing_account"      # looks like 0X0X0X-0X0X0X-0X0X0X; never commit it
+gcloud services enable cloudresourcemanager.googleapis.com --project nacfson-pipeline
 terraform -chdir=infra/gcp/project init
 terraform -chdir=infra/gcp/project plan -out=project.tfplan
 terraform -chdir=infra/gcp/project apply project.tfplan
 ```
 
-**Success:** 8 APIs enabled and one budget created; output `budget_name`.
+**Success:** 9 APIs enabled and one budget created; output `budget_name`.
+
+The `gcloud services enable` line is needed once on a new project: Terraform reads the project number
+through the Cloud Resource Manager API while it plans, before it can turn any API on itself.
 **If it fails with "billing account permission denied":** your account needs *Billing Account
 Costs Manager* (or *Billing Account Administrator*) on the billing account. Ask in the console under Billing → Account management.
 **If it fails with "API has not been used / is disabled":** wait two minutes after the API step and run `plan`/`apply` again.
@@ -163,6 +168,10 @@ OpenBao needs to reach the API to check Kubernetes service-account tokens.
 
 Every change goes through Git first. Nobody edits resources in the console.
 
+The operator applies by hand after each merge. Automating apply (a CI pipeline or Flux's Tofu
+Controller) is an open decision: see [Spec 015 research R14](../../specs/015-gke-terraform-infra/research.md)
+and constitution Clarification 2.4.1. Neither may be added without a constitution amendment.
+
 1. Edit a `.tf` file (or `infra/gcp/shared-values.json`) on a branch.
 2. Open a PR. CI runs `terraform-validate` (format, init without a backend, validate) and
    `check-gcp-shared-values.py`. CI has no Google credentials and never applies anything.
@@ -208,11 +217,17 @@ Then run `plan` and check that it shows no unexpected changes.
 ### 3.1 Order
 
 Terraform apply comes **first**: the KMS key and the Workload Identity binding must exist before
-OpenBao starts, or its `gcpckms` seal fails. Then bootstrap Flux (Spec 012):
+OpenBao starts, or its `gcpckms` seal fails. Then install Flux from the manifests in Git (Spec 012). No GitHub token is needed: the repository is
+public and Flux reads it over HTTPS with no credential. Do not use `flux bootstrap github`; it stores a
+GitHub key in the cluster and pushes to `main`, which Principle I and render Invariant 2 forbid:
 
 ```bash
-export GITHUB_TOKEN=...   # a short-lived token with repo access; do not save it
-flux bootstrap github --owner=nacfson --repository=nacfson_pipeline --branch=main --path=clusters/gke --personal
+kubectl config use-context gke_nacfson-pipeline_asia-northeast3-a_nacfson-gke
+kubectl apply --server-side -f clusters/gke/flux-system/gotk-components.yaml
+kubectl wait --for=condition=Established crd --all --timeout=120s
+kubectl apply --server-side -k clusters/gke/flux-system
+kubectl -n flux-system rollout status deployment/source-controller --timeout=300s
+kubectl -n flux-system rollout status deployment/kustomize-controller --timeout=300s
 ```
 
 From here Flux creates everything inside the cluster, including `Service/platform/traefik` of type
@@ -223,7 +238,7 @@ From here Flux creates everything inside the cluster, including `Service/platfor
 
 ```bash
 flux get kustomizations
-kubectl -n vault exec openbao-0 -- bao status -format=json | grep -E '"initialized"|"type"'
+kubectl -n vault exec openbao-0 -- env VAULT_ADDR=http://127.0.0.1:8200 bao status -format=json | grep -E '"initialized"|"type"'
 kubectl get pods -A -o wide | grep -E 'openbao-0|postgres-0|keycloak'
 kubectl get svc -n platform traefik
 IP=$(terraform -chdir=infra/gcp/gke output -raw ingress_ip)
@@ -232,12 +247,18 @@ curl -sk --resolve auth.nacfson.cloud:443:$IP https://auth.nacfson.cloud/ -o /de
 
 **Success:**
 
-- every Flux kustomization `Ready True`
+- Flux kustomizations `Ready True` except vault and the layers that depend on it (database, vault-proxies, identity, ingress, tls) wait until the restore: OpenBao is empty, so its readiness check fails (HTTP 501) until the restore fills and unseals it
 - OpenBao seal type `gcpckms` and `"initialized": false` (empty, waiting for the restore), not crash-looping
-- `postgres-0` and `keycloak` running on the `ondemand-core` node
+- the database and identity layers are not applied yet: they depend on vault, so `postgres-0` and
+  `keycloak` start only after the restore unseals OpenBao
 - `traefik` `EXTERNAL-IP` equals `ingress_ip`
-- `curl` prints an HTTP status code (any code). That proves internet → load balancer → Traefik → TLS
-  works before DNS moves.
+- `curl` prints an HTTP status code (any code). That proves internet → load balancer → Traefik before
+  DNS moves. Traefik answers with its default certificate until the restore brings up the tls layer.
+
+**Known gap (fix before Gate 4):** `scripts/cutover-bundle.sh restore` loads the database dumps right after
+the OpenBao restore and does not wait for `postgres-0`, which on a fresh GKE cluster only starts once the
+vault layer is Ready. Until the script waits for it, run
+`kubectl -n identity rollout status statefulset/postgres --timeout=600s` before its database step.
 
 **If `EXTERNAL-IP` is set but `curl` times out:** the web firewall rule is Terraform's, not GKE's. Check it with `gcloud compute firewall-rules describe nacfson-gke-allow-web` (TCP 80/443 to `ingress_ip`) and run `terraform -chdir=infra/gcp/gke plan` for drift.
 **If `EXTERNAL-IP` stays `<pending>`:** `kubectl describe svc -n platform traefik` shows the reason in

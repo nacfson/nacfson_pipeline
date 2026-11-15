@@ -51,7 +51,7 @@ Evidence was gathered locally with the Flux CLI 2.9.5 that is already installed 
   | `projects` | `clusters/<env>/projects` | project-boundaries |
   | `proj-pn` (in ns `proj-pn`) | `deploy/projects/pn/workloads` | project-boundaries, ingress, vault-proxies |
 
-  All layers use `wait: true`, `prune: true`, `interval: 5m`, `retryInterval: 1m`, `timeout: 5m`, except `projects`, which uses `wait: false` (R18).
+  All layers use `wait: true`, `prune: true`, `interval: 5m`, `retryInterval: 1m`, `timeout: 5m`, except `projects`, which uses `wait: false` (R18). On `clusters/gke/`, `vault`, `database` and `observability` also use `wait: false` with explicit `healthChecks`; see the GKE exception in [`contracts/reconciliation-layers.md`](contracts/reconciliation-layers.md).
 - **Rationale**:
   - `wait: true` uses kstatus readiness for every object (Deployments available, StatefulSets ready, Jobs complete), so a dependent starts only on real health (FR-004).
   - `vault-proxies` is split from `vault` because the proxy images (`:latest`) are currently unpublished. In one layer they would hold the vault layer not-ready forever and block database and identity.

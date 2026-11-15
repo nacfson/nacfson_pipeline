@@ -167,4 +167,22 @@ The log collector in the platform namespace `observability` may mount `/var/log/
 
 **Maintainer approval**: Requested by the repository maintainer on 2026-11-15. Merging this amendment's pull request records formal approval of version 2.4.0.
 
-**Version**: 2.4.0 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-11-15
+## Clarification 2.4.1
+
+**Rationale**: Principle I governs how changes reach a cluster. It does not say how cloud infrastructure outside the cluster (the cluster itself, node pools, network, KMS keys, registries, budgets) is changed. Feature `015-gke-terraform-infra` defines that infrastructure as Terraform in Git and has the named operator run `plan` and `apply` by hand; CI only validates and holds no cloud credentials. Whether later changes should be applied automatically, by a CI pipeline or by an in-cluster controller reconciled by FluxCD, is an open decision the repository maintainer deferred until GKE is running.
+
+**Clarified rule**: Cloud infrastructure MUST be declared in Git and changed only through a merged pull request. Until an amendment adopts an automated path, only the named operator of Principle III applies those changes, from a reviewed saved plan. An automated apply path (a CI identity or an in-cluster controller holding cloud administrator rights) MUST NOT be introduced without an amendment that defines its identity, scope, approval step, and the repositories, branches, and environments it accepts. The open options are recorded in `specs/015-gke-terraform-infra/research.md` (R14).
+
+**Why a clarification (PATCH)**: it changes no current practice. Feature `015-gke-terraform-infra` already requires the operator to apply from a saved plan and CI to hold no cloud credentials (FR-017, research R10). The clarification records that practice at constitution level so that relaxing it later is an explicit MINOR or MAJOR amendment.
+
+**Impact**:
+
+- Security: Unchanged. It states the current practice and blocks an unreviewed automated apply path.
+- Resource quota: Unchanged.
+- Portability: Unchanged.
+
+**Migration**: None.
+
+**Maintainer approval**: Requested by the repository maintainer on 2026-11-15. Merging this clarification's pull request records approval.
+
+**Version**: 2.4.1 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-11-15

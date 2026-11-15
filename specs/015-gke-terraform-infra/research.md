@@ -198,9 +198,9 @@ The control center's read-only `gke.yaml` (server plus CA, with a `user: {}` pla
 **Decision**:
 
 1. **Quota preflight.** `gcloud compute regions describe asia-northeast3 --format=...` checks that `CPUS` limit minus usage is at least 6, and the address quota. It stops if not.
-2. **Spec 012 API endpoint check.** `kubectl get endpoints kubernetes -n default`. The endpoint is public (FR-025), so the address the pods see may be public. If it is, the `/32` is added to `openbao-ingress-policy` in `clusters/gke/layers.yaml` before `flux bootstrap`.
+2. **Spec 012 API endpoint check.** `kubectl get endpoints kubernetes -n default`. The endpoint is public (FR-025), so the address the pods see may be public. If it is, the `/32` is added to `openbao-ingress-policy` in `clusters/gke/layers.yaml` before Flux installation.
 3. **"ready for Flux".** Two nodes with the expected labels and taint, plus the address reserved and outputs present.
-4. **"ready for restore".** Flux Ready, `openbao-0` running and `bao status` reporting uninitialized, `postgres-0` and `keycloak` running on `ondemand-core`, the `traefik` Service showing the reserved IP as its external IP, and the load balancer health check healthy.
+4. **"ready for restore".** Flux Ready, `openbao-0` running and `bao status` reporting uninitialized, the database and identity layers waiting for vault, the `traefik` Service showing the reserved IP as its external IP, and the load balancer health check healthy.
 
 **Rationale**: every checkpoint the spec asks for is a concrete command with an expected result (FR-020, FR-024).
 
@@ -224,3 +224,29 @@ The VPC's only internet opening is the Terraform-owned web rule (TCP 80/443 to t
 - **The ranges fit existing policies.** They sit inside `10.0.0.0/8`, which the platform's NetworkPolicies already treat as private (RFC1918 rules and the OpenBao API-server allowance).
 
 **Alternatives considered**: the default network with Private Google Access switched on by hand (no single owner, and keeps the open SSH rule); Cloud NAT with private nodes (about $1/month plus per-GB charges, and more parts for no requirement in the spec).
+
+---
+
+## R14. Applying later Terraform changes (DEFERRED)
+
+**Status**: deferred by the repository maintainer on 2026-11-15. Decide after GKE is running and the
+Spec 012 cutover is done. Until then the operator runs `plan` and `apply` by hand after each merge
+(R10, R11, [`docs/runbooks/gke-deploy.md`](../../docs/runbooks/gke-deploy.md)).
+
+**Question**: after the first, manual creation, how should Terraform changes such as node count or
+machine size reach Google Cloud?
+
+| Option | How it works | Main cost |
+|---|---|---|
+| **A. GitHub Actions pipeline** (leading candidate) | PR runs fmt, validate, tflint, a security scan, `plan` and a cost estimate, posted as a PR comment. Merge to `main` runs `apply` after the operator approves a protected GitHub Environment. A daily `plan -detailed-exitcode` opens an issue on drift. | CI gets a Google identity through keyless Workload Identity Federation, restricted to this repository, `main` and that environment. Fork PRs must never receive it. Push-based. |
+| **B. Tofu Controller (Flux)** | Flux reconciles `Terraform` objects in-cluster; plans wait for `approvePlan` in Git; drift detected on each interval. Scope limited to node pools. | The controller would change the cluster it runs on (production setups use a separate management cluster); the cluster holds an identity able to rebuild itself; a runner pod needs about 300–500 MiB on small nodes; project is v0.x and community-maintained. |
+| **C. Keep manual apply** | Current state. | Depends on one workstation's credentials; no approval record beyond the merged PR. |
+
+**What the decision needs**:
+
+- a new spec (CI apply contradicts R10 and FR-017 of this feature)
+- a constitution amendment: today only the named operator changes cloud infrastructure
+  (Clarification 2.4.1)
+- in either automated option, the state bucket and the CI or controller identity stay a one-time
+  manual bootstrap; Terraform state carries over unchanged, so nothing created by hand is lost
+- node autoscaling is a separate decision: preflight's 1/n budget assumes a fixed node count

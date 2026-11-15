@@ -1,6 +1,6 @@
 # nacfson_pipeline: Personal Project Platform
 
-[![Constitution](https://img.shields.io/badge/governance-constitution%20v2.4.0-blue.svg)](.specify/memory/constitution.md)
+[![Constitution](https://img.shields.io/badge/governance-constitution%20v2.4.1-blue.svg)](.specify/memory/constitution.md)
 [![Specs](https://img.shields.io/badge/specs-001--015-success.svg)](specs/)
 [![Security Profile](https://img.shields.io/badge/pod--security-restricted-green.svg)](.specify/memory/constitution.md)
 [![Secrets Model](https://img.shields.io/badge/secrets-zero--plaintext%20vault-critical.svg)](specs/002-internal-cluster-vault/spec.md)
@@ -306,13 +306,11 @@ The table below maps constitutional requirements to contracts, code modules, and
 Follow this deployment progression when provisioning the GKE environment or a local K3s verification cluster:
 
 ### Step 1: Provision GKE Infrastructure via Terraform (Spec 015) or Local K3s via Ansible (Spec 003)
-On GKE, apply the three Terraform roots in order from Google Cloud Shell (`bootstrap/` -> `project/` -> `gke/`, see [`docs/runbooks/gke-terraform.md`](docs/runbooks/gke-terraform.md)), then bootstrap FluxCD against `clusters/gke/`:
+On GKE, apply the three Terraform roots in order (`bootstrap/` -> `project/` -> `gke/`) from Cloud Shell or your own PC, following [`docs/runbooks/gke-deploy.md`](docs/runbooks/gke-deploy.md) (short) or [`docs/runbooks/gke-terraform.md`](docs/runbooks/gke-terraform.md) (full). Then install FluxCD from the manifests in Git. No GitHub token is needed: the repository is public and Flux reads it over HTTPS with no credential. Do not use `flux bootstrap github`, which stores a repository key in the cluster and pushes to `main` (Principle I):
 ```bash
-flux bootstrap github \
-  --owner=nacfson \
-  --repository=nacfson_pipeline \
-  --branch=main \
-  --path=clusters/gke
+kubectl apply --server-side -f clusters/gke/flux-system/gotk-components.yaml
+kubectl wait --for=condition=Established crd --all --timeout=120s
+kubectl apply --server-side -k clusters/gke/flux-system
 ```
 
 For local Linux K3s verification (`local-k3s`), run the Ansible bootstrap playbook:

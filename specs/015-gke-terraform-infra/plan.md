@@ -39,7 +39,7 @@ Web traffic enters through a single regional **L4 pass-through load balancer** t
 
 **Performance Goals**:
 - operator reaches "ready for Flux" in under 60 minutes (SC-001)
-- "ready for restore" within 30 minutes of `flux bootstrap` (SC-008)
+- "ready for restore" within 30 minutes of the Flux installation (SC-008)
 - CI validation in under 5 minutes (SC-004)
 
 **Constraints**:
@@ -67,7 +67,7 @@ Evaluated against `.specify/memory/constitution.md` v2.3.1.
 
 | Principle / Gate | Assessment | Result |
 |---|---|---|
-| **I. Declarative GitOps** | Cloud resources around the cluster are reviewed through PRs and applied from a saved plan (FR-013). Everything in the cluster, including the Traefik `LoadBalancer` Service, stays Flux-reconciled. `flux bootstrap` is the one-time step Spec 012 already defines. Terraform never runs `kubectl apply`. | PASS |
+| **I. Declarative GitOps** | Cloud resources around the cluster are reviewed through PRs and applied from a saved plan (FR-013). Everything in the cluster, including the Traefik `LoadBalancer` Service, stays Flux-reconciled. The Flux installation is the one-time step Spec 012 already defines. Terraform never runs `kubectl apply`. | PASS |
 | **II. Workload Isolation & Restricted PSS** | The only `LoadBalancer` Service is `platform/traefik`. The preflight rule rejecting `NodePort` and `LoadBalancer` in project namespaces is unchanged, and new tests pin that. Removing Traefik's `hostPort` reduces host-level exposure. | PASS |
 | **III. Defense-in-Depth Identity** | The load balancer forwards only TCP 80/443 to Traefik, whose routing allowlist (no `/admin/`, no management ports) is unchanged. The cluster API is public but needs Google IAM and then RBAC (FR-025, a user decision). This is "private, authenticated cluster access" as defined by Constitution v2.3.1 (Clarification 2.3.1, finding D1): never through public ingress, one strongly authenticated operator, then RBAC. The operator's Google account uses 2-step verification (spec Assumptions). | PASS |
 | **IV. Bounded Resources & 1/n** | No new pods: the load balancer is a cloud resource. Traefik's requests and limits and the `Recreate` strategy are unchanged, so the platform reservation and 1/n slice in `clusters/gke/capacity.yaml` are unchanged. The node surge fits the 6-vCPU quota (R6). | PASS |
