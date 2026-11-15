@@ -347,7 +347,7 @@
               <rect class="main-rect" width="270" height="66" rx="10" fill="#1e1b4b" stroke="#a855f7" stroke-width="2" />
               <text x="14" y="22" font-size="14">🪪</text>
               <text x="36" y="22" fill="#f8fafc" font-size="11.5" font-weight="700">Keycloak IdP v24.0.5 (:8080)</text>
-              <text x="14" y="39" fill="#d8b4fe" font-size="9.5" font-family="'JetBrains Mono'">persistent-user-sessions · Google JIT</text>
+              <text x="14" y="39" fill="#d8b4fe" font-size="9.5" font-family="'JetBrains Mono'">PostgreSQL realm · Google JIT</text>
               <text x="14" y="53" fill="#94a3b8" font-size="9" font-family="'JetBrains Mono'">GKE ondemand-core 832Mi · /admin blocked</text>
             </g>
 
@@ -1376,12 +1376,12 @@
       },
       'keycloak': {
         badge: 'Identity Provider & Broker (Spec 001 & 012)',
-        title: 'Keycloak v24.0.5 (:8080, Persistent User Sessions)',
+        title: 'Keycloak v24.0.5 (:8080, Google OIDC Broker)',
         ns: 'identity',
         image: 'quay.io/keycloak/keycloak:24.0.5',
         oss: 'CNCF Keycloak (Apache-2.0)',
         res: 'GKE: 100m/832Mi (ondemand-core) · K3s: 100m/1536Mi',
-        desc: 'Central OIDC identity provider for the platform realm with --features=persistent-user-sessions enabled so active logins persist in PostgreSQL across pod restarts and Gate 4 cutover.',
+        desc: 'Central OIDC identity provider for the platform realm backed by PostgreSQL (persistent-user-sessions deferred until Keycloak 25+ upgrade so 24.0.5 boots cleanly at Gate 4).',
         bullets: [
           '➔ InitContainer fetches DB credentials and Google OAuth broker secret from OpenBao into memory.',
           '➔ Realm import declares google jit first broker login (AUTH-01); /admin & :9000 stay internal.',
@@ -2171,10 +2171,10 @@
         }
       },
       'identity': {
-        title: '4. identity (Keycloak DB-Persisted Sessions & Go Auth Gateway)',
+        title: '4. identity (Keycloak OIDC Broker & Go Auth Gateway)',
         path: './deploy/platform/identity',
         deps: 'database',
-        desc: 'Deploys Keycloak 24.0.5 (--features=persistent-user-sessions) and the pure-stdlib Go Auth Gateway in namespace identity on ondemand-core.',
+        desc: 'Deploys Keycloak 24.0.5 (--vault=file) and the pure-stdlib Go Auth Gateway in namespace identity on ondemand-core.',
         yaml: {
           'gke': `dependsOn: [database]\npatches:\n  - Deployment/keycloak: 100m/832Mi req -> 500m/832Mi lim (-XX:MaxRAMPercentage=65.0)\n  - Deployment/gateway:  25m/64Mi req, COOKIE_DOMAIN=".nacfson.cloud",\n    PROJECT_RETURN_HOSTS="pn.nacfson.cloud,health.nacfson.cloud,blog.nacfson.cloud"`,
           'vps-k3s': `dependsOn: [database]\npatches: COOKIE_DOMAIN=".nacfson.cloud", KEYCLOAK_PUBLIC_URL="https://auth.nacfson.cloud/realms/platform"`,
@@ -2309,7 +2309,7 @@
         license: 'Apache-2.0 (CNCF)',
         role: 'OIDC Identity Provider & Google Broker',
         where: 'deploy/platform/identity/keycloak-deployment.yaml',
-        details: 'Manages the platform realm with --features=persistent-user-sessions (DB-backed sessions in PostgreSQL across restarts), brokers Google OAuth 2.0 JIT login (AUTH-01), and runs 24/7 on GKE ondemand-core (832Mi).'
+        details: 'Manages the platform realm in PostgreSQL (--vault=file; persistent-user-sessions deferred until Keycloak 25+), brokers Google OAuth 2.0 JIT login (AUTH-01), and runs 24/7 on GKE ondemand-core (832Mi).'
       },
       {
         cat: 'oss',
@@ -2882,9 +2882,9 @@
       },
       {
         icon: '🛂',
-        name: 'Go Auth Gateway + Keycloak (DB Sessions)',
+        name: 'Go Auth Gateway + Keycloak (Google Broker)',
         analogy: 'Passport Control & Google Visa Broker',
-        plain: 'Visitors enter project doors freely (mode: shared). Sign-in jumps straight to Google OAuth via Keycloak (kc_idp_hint=google), with --features=persistent-user-sessions keeping active logins safe in PostgreSQL.',
+        plain: 'Visitors enter project doors freely (mode: shared). Sign-in jumps straight to Google OAuth via Keycloak (kc_idp_hint=google), backed by PostgreSQL realm storage.',
         file: 'gateway/ & deploy/platform/identity/'
       },
       {

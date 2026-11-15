@@ -198,7 +198,7 @@ The contracted values live in [`contracts/CONTRACT_AUTH_DOOR.md`](../contracts/C
    where name='platform';"
    ```
    If step 1 listed a non-zero client-level `clientSession*` or `client.session.*` value, remove it too. The contract forbids those overrides.
-3. Restart Keycloak so it reloads the realm from the database: `kubectl --as=break-glass:<operator-id> --as-group=platform:break-glass rollout restart deployment/keycloak -n identity`. With Spec 012's `--features=persistent-user-sessions` flag enabled on `Deployment/keycloak`, active user and client sessions are persisted in `postgres-0` (`keycloak` DB) and survive Keycloak pod restarts and GKE weekly node upgrades without forcing interactive re-login.
+3. Restart Keycloak so it reloads the realm from the database: `kubectl --as=break-glass:<operator-id> --as-group=platform:break-glass rollout restart deployment/keycloak -n identity`.
 4. Rerun step 1 and confirm `300 | 1800 | 36000 | f` and no client-level rows.
 
 ---
