@@ -6,19 +6,29 @@ VAULT_NS="vault"
 VAULT_POD="openbao-0"
 GATE_FLAG_FILE="/var/lib/openbao/data/RESTORATION_SAFETY_GATE"
 CONFIRM_FLAG="${1:-}"
+BAO_ADDR="http://127.0.0.1:8200"
+
+status_field() {
+  python3 -c 'import json,sys
+try:
+    v = json.loads(sys.argv[2]).get(sys.argv[1])
+except ValueError:
+    v = None
+print(str(v).lower() if isinstance(v, bool) else "")' "$1" "$2"
+}
 
 echo "=================================================================="
 echo "OPENBAO POST-RESTORE RECONCILIATION SAFETY GATE (FR-014)"
 echo "=================================================================="
 
-if [ "${VAULT_MOCK_MODE:-false}" = "true" ] || ! kubectl --request-timeout=1s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
+if [ "${VAULT_MOCK_MODE:-false}" = "true" ]; then
   echo "[Mode: Simulated / Local Drill]"
   IS_SEALED="false"
   IS_INITIALIZED="true"
 else
-  STATUS_JSON=$(kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- bao status -format=json 2>/dev/null || true)
-  IS_SEALED=$(echo "${STATUS_JSON}" | grep -o '"sealed":[^,]*' | cut -d: -f2 | tr -d ' ' || echo "true")
-  IS_INITIALIZED=$(echo "${STATUS_JSON}" | grep -o '"initialized":[^,]*' | cut -d: -f2 | tr -d ' ' || echo "false")
+  STATUS_JSON=$(kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="${BAO_ADDR}" bao status -format=json 2>/dev/null || true)
+  IS_INITIALIZED=$(status_field initialized "${STATUS_JSON}")
+  IS_SEALED=$(status_field sealed "${STATUS_JSON}")
 fi
 
 echo "=== [1/4] Checking Vault Engine Health & Seal Status ==="
@@ -54,9 +64,9 @@ echo "5. Verifying Raft snapshot metadata integrity... OK"
 echo "PASS: All 11 platform and workload credentials reconciled successfully."
 
 echo "=== [4/4] Lifting Safety Gate & Resuming Operational Execution ==="
-if [ "${VAULT_MOCK_MODE:-false}" != "true" ] && kubectl --request-timeout=1s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
+if [ "${VAULT_MOCK_MODE:-false}" != "true" ]; then
   kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- rm -f "${GATE_FLAG_FILE}" 2>/dev/null || true
-  kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_TOKEN="${VAULT_TOKEN:-root}" \
+  kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="${BAO_ADDR}" VAULT_TOKEN="${VAULT_TOKEN:-root}" \
     bao write sys/audit-hash/file input="SAFETY_GATE_LIFTED_BY_OPERATOR" 2>/dev/null || true
 fi
 
