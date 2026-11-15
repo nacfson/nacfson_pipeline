@@ -383,8 +383,7 @@ set_openbao_config() {
 
 restart_openbao() {
   bg_kubectl delete pod -n vault openbao-0 --ignore-not-found --wait=true
-  local i
-  for i in $(seq 1 60); do
+  for _ in $(seq 1 60); do
     if kubectl get pod openbao-0 -n vault >/dev/null 2>&1; then
       break
     fi
@@ -466,7 +465,7 @@ if [[ "${TARGET_ENV}" == "gke" ]]; then
     env VAULT_ADDR="http://127.0.0.1:8200" \
     bao operator unseal -migrate "${UNSEAL_KEY}"
   MIGRATED="false"
-  for i in $(seq 1 24); do
+  for _ in $(seq 1 24); do
     if [[ "$(bao_status_field type)" == "gcpckms" && "$(bao_status_field sealed)" == "false" ]]; then
       MIGRATED="true"
       break
