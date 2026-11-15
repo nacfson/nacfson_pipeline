@@ -398,6 +398,27 @@ bao_status_field() {
   python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); v=d.get(sys.argv[1]); print(str(v).lower() if isinstance(v,bool) else (v or ""))' "$1" <<< "${json}"
 }
 
+bao_on_kms() {
+  local json
+  json="$(kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao status -format=json 2>/dev/null || true)"
+  python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); sys.exit(0 if d.get("recovery_seal") is True and d.get("sealed") is False and not d.get("migration") else 1)' <<< "${json}"
+}
+
+RESTORE_MARKER_CM="cutover-restore-state"
+BUNDLE_SHA="$(sha256sum "${ABS_BUNDLE_DIR}/manifest.sha256" | cut -d' ' -f1)"
+
+restored_bundle_sha() {
+  kubectl get configmap "${RESTORE_MARKER_CM}" -n vault -o jsonpath='{.data.bundle-sha256}' 2>/dev/null || true
+}
+
+record_restored_bundle() {
+  local manifest
+  manifest="$(mktemp)"
+  kubectl create configmap "${RESTORE_MARKER_CM}" -n vault --from-literal=bundle-sha256="${BUNDLE_SHA}" --dry-run=client -o yaml > "${manifest}"
+  bg_kubectl apply -f "${manifest}"
+  rm -f "${manifest}"
+}
+
 if [[ -z "${VAULT_TOKEN:-}" ]]; then
   read -r -s -p "Enter OpenBao Root Token (valid inside snapshot): " VAULT_TOKEN
   echo ""
@@ -417,6 +438,16 @@ if [[ "${TARGET_ENV}" == "gke" ]]; then
   SHAMIR_HCL="$(python3 -c 'import re,sys; print(re.sub(r"\n?seal \"[^\"]+\" \{.*?\n\}\n?", "\n", sys.stdin.read(), flags=re.S).strip())' <<< "${KMS_HCL}")"
 fi
 
+RESUME_AFTER_KMS="false"
+if [[ "${TARGET_ENV}" == "gke" ]] && bao_on_kms; then
+  PREVIOUS_BUNDLE_SHA="$(restored_bundle_sha)"
+  if [[ -n "${PREVIOUS_BUNDLE_SHA}" && "${PREVIOUS_BUNDLE_SHA}" != "${BUNDLE_SHA}" ]]; then
+    echo "Error: openbao-0 already runs on Cloud KMS with data from another bundle (manifest ${PREVIOUS_BUNDLE_SHA}); refusing to overwrite it." >&2
+    exit 1
+  fi
+  RESUME_AFTER_KMS="true"
+fi
+
 echo "=== [1/7] Pre-Seeding Platform Edge TLS & ACME Account Secrets ==="
 bg_kubectl apply -f "${ABS_BUNDLE_DIR}/edge-tls-secrets.yaml"
 
@@ -424,61 +455,68 @@ echo "=== [2/7] Suspending Flux 'vault' and 'identity' Layers ==="
 set_layer_suspend vault true
 set_layer_suspend identity true
 
-if [[ "${TARGET_ENV}" == "gke" ]]; then
-  echo "Switching openbao-config to the live config without its seal stanza (Shamir) for the Shamir-sealed snapshot..."
-  set_openbao_config "${SHAMIR_HCL}"
-  restart_openbao
-fi
+if [[ "${RESUME_AFTER_KMS}" == "true" ]]; then
+  echo "=== [3/7] Skipped: openbao-0 already holds this bundle's snapshot ==="
+  echo "=== [4/7] Skipped: openbao-0 already runs on Cloud KMS auto-unseal ==="
+  record_restored_bundle
+else
+  if [[ "${TARGET_ENV}" == "gke" ]]; then
+    echo "Switching openbao-config to the live config without its seal stanza (Shamir) for the Shamir-sealed snapshot..."
+    set_openbao_config "${SHAMIR_HCL}"
+    restart_openbao
+  fi
 
-echo "=== [3/7] Restoring openbao.snap ==="
-BAO_INITIALIZED="$(bao_status_field initialized)"
-BAO_SEALED="$(bao_status_field sealed)"
+  echo "=== [3/7] Restoring openbao.snap ==="
+  BAO_INITIALIZED="$(bao_status_field initialized)"
+  BAO_SEALED="$(bao_status_field sealed)"
 
-RESTORE_AUTH_TOKEN="${VAULT_TOKEN}"
-if [[ "${BAO_INITIALIZED}" != "true" ]]; then
-  echo "Target openbao-0 is uninitialized; performing ephemeral 1-share bootstrap init/unseal for raft snapshot restore..."
-  INIT_JSON="$(kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator init -key-shares=1 -key-threshold=1 -format=json)"
-  TEMP_UNSEAL_KEY="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["unseal_keys_b64"][0])' <<< "${INIT_JSON}")"
-  RESTORE_AUTH_TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["root_token"])' <<< "${INIT_JSON}")"
-  kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator unseal "${TEMP_UNSEAL_KEY}" >/dev/null
-  unset INIT_JSON TEMP_UNSEAL_KEY
-elif [[ "${BAO_SEALED}" == "true" ]]; then
-  kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator unseal "${UNSEAL_KEY}" >/dev/null
-fi
+  RESTORE_AUTH_TOKEN="${VAULT_TOKEN}"
+  if [[ "${BAO_INITIALIZED}" != "true" ]]; then
+    echo "Target openbao-0 is uninitialized; performing ephemeral 1-share bootstrap init/unseal for raft snapshot restore..."
+    INIT_JSON="$(kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator init -key-shares=1 -key-threshold=1 -format=json)"
+    TEMP_UNSEAL_KEY="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["unseal_keys_b64"][0])' <<< "${INIT_JSON}")"
+    RESTORE_AUTH_TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["root_token"])' <<< "${INIT_JSON}")"
+    kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator unseal "${TEMP_UNSEAL_KEY}" >/dev/null
+    unset INIT_JSON TEMP_UNSEAL_KEY
+  elif [[ "${BAO_SEALED}" == "true" ]]; then
+    kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator unseal "${UNSEAL_KEY}" >/dev/null
+  fi
 
-kubectl exec -i -n vault openbao-0 -- tee /tmp/openbao.snap >/dev/null < "${ABS_BUNDLE_DIR}/openbao.snap"
-kubectl exec -n vault openbao-0 -- \
-  env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${RESTORE_AUTH_TOKEN}" \
-  bao operator raft snapshot restore -force /tmp/openbao.snap
-kubectl exec -n vault openbao-0 -- rm -f /tmp/openbao.snap
-unset RESTORE_AUTH_TOKEN
+  kubectl exec -i -n vault openbao-0 -- tee /tmp/openbao.snap >/dev/null < "${ABS_BUNDLE_DIR}/openbao.snap"
+  kubectl exec -n vault openbao-0 -- \
+    env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${RESTORE_AUTH_TOKEN}" \
+    bao operator raft snapshot restore -force /tmp/openbao.snap
+  kubectl exec -n vault openbao-0 -- rm -f /tmp/openbao.snap
+  unset RESTORE_AUTH_TOKEN
 
-kubectl exec -n vault openbao-0 -- \
-  env VAULT_ADDR="http://127.0.0.1:8200" \
-  bao operator unseal "${UNSEAL_KEY}" >/dev/null
-
-if [[ "${TARGET_ENV}" == "gke" ]]; then
-  echo "=== [4/7] Migrating openbao-0 from Shamir to Cloud KMS (gcpckms) ==="
-  set_openbao_config "${KMS_HCL}"
-  restart_openbao
   kubectl exec -n vault openbao-0 -- \
     env VAULT_ADDR="http://127.0.0.1:8200" \
-    bao operator unseal -migrate "${UNSEAL_KEY}"
-  MIGRATED="false"
-  for _ in $(seq 1 24); do
-    if [[ "$(bao_status_field type)" == "gcpckms" && "$(bao_status_field sealed)" == "false" ]]; then
-      MIGRATED="true"
-      break
+    bao operator unseal "${UNSEAL_KEY}" >/dev/null
+
+  if [[ "${TARGET_ENV}" == "gke" ]]; then
+    echo "=== [4/7] Migrating openbao-0 from Shamir to Cloud KMS (gcpckms) ==="
+    set_openbao_config "${KMS_HCL}"
+    restart_openbao
+    kubectl exec -n vault openbao-0 -- \
+      env VAULT_ADDR="http://127.0.0.1:8200" \
+      bao operator unseal -migrate "${UNSEAL_KEY}"
+    MIGRATED="false"
+    for _ in $(seq 1 24); do
+      if bao_on_kms; then
+        MIGRATED="true"
+        break
+      fi
+      sleep "${POLL_SECONDS}"
+    done
+    if [[ "${MIGRATED}" != "true" ]]; then
+      echo "Error: openbao-0 is not unsealed on gcpckms after migration; Flux 'vault' and 'identity' stay suspended for break-glass recovery." >&2
+      exit 1
     fi
-    sleep "${POLL_SECONDS}"
-  done
-  if [[ "${MIGRATED}" != "true" ]]; then
-    echo "Error: openbao-0 is not unsealed on gcpckms after migration; Flux 'vault' and 'identity' stay suspended for break-glass recovery." >&2
-    exit 1
+    echo "PASS: openbao-0 runs on unattended Cloud KMS auto-unseal (nacfson-pipeline / asia-northeast3)."
+    record_restored_bundle
+  else
+    echo "=== [4/7] Keeping Shamir seal on local-k3s ==="
   fi
-  echo "PASS: openbao-0 runs on unattended Cloud KMS auto-unseal (nacfson-pipeline / asia-northeast3)."
-else
-  echo "=== [4/7] Keeping Shamir seal on local-k3s ==="
 fi
 
 echo "Re-binding OpenBao Kubernetes auth to '${TARGET_ENV}'..."

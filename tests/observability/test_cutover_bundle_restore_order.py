@@ -52,7 +52,7 @@ case "$joined" in
     ;;
   *"bao status -format=json"*)
     if [[ -f "$STATE/migrated" ]]; then
-      echo '{"type":"gcpckms","initialized":true,"sealed":false}'
+      echo '{"type":"shamir","initialized":true,"sealed":false,"migration":false,"recovery_seal":true}'
     elif [[ -f "$STATE/initialized" ]]; then
       echo '{"type":"shamir","initialized":true,"sealed":true}'
       exit 2
@@ -70,6 +70,19 @@ case "$joined" in
     ;;
   "exec -i -n vault openbao-0 -- tee /tmp/openbao.snap")
     cat > /dev/null
+    ;;
+  "get configmap cutover-restore-state -n vault -o jsonpath="*)
+    [[ -f "$STATE/marker" ]] && cat "$STATE/marker"
+    ;;
+  "create configmap cutover-restore-state "*)
+    for a in "${args[@]}"; do
+      [[ "$a" == --from-literal=bundle-sha256=* ]] && printf 'bundle-sha256: %s\n' "${a#--from-literal=bundle-sha256=}"
+    done
+    ;;
+  "apply -f "*)
+    if grep -q '^bundle-sha256: ' "${args[-1]}" 2>/dev/null; then
+      sed -n 's/^bundle-sha256: //p' "${args[-1]}" | tr -d '\n' > "$STATE/marker"
+    fi
     ;;
 esac
 exit 0
@@ -89,7 +102,7 @@ def _write_executable(path, body):
 
 def _gz_bytes(text):
     buf = io.BytesIO()
-    with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
+    with gzip.GzipFile(fileobj=buf, mode="wb", mtime=0) as gz:
         gz.write(text.encode())
     return buf.getvalue()
 
@@ -105,12 +118,15 @@ def _make_bundle(bundle_dir):
         "edge-tls-secrets.yaml": b"apiVersion: v1\nkind: Secret\nmetadata:\n  name: auth-tls\n  namespace: platform\n",
     }
     tar_buf = io.BytesIO()
-    with tarfile.open(fileobj=tar_buf, mode="w:gz") as tar:
+    with tarfile.open(fileobj=tar_buf, mode="w") as tar:
         info = tarfile.TarInfo("logs.txt")
         data = b"log"
         info.size = len(data)
         tar.addfile(info, io.BytesIO(data))
-    files["victoria-logs-data.tar.gz"] = tar_buf.getvalue()
+    gz_buf = io.BytesIO()
+    with gzip.GzipFile(fileobj=gz_buf, mode="wb", mtime=0) as gz:
+        gz.write(tar_buf.getvalue())
+    files["victoria-logs-data.tar.gz"] = gz_buf.getvalue()
     lines = []
     for name, data in files.items():
         with open(os.path.join(bundle_dir, name), "wb") as fh:
@@ -121,7 +137,7 @@ def _make_bundle(bundle_dir):
 
 
 class CutoverRestoreOrderTest(unittest.TestCase):
-    def _run_restore(self, target, extra_args=()):
+    def _run_restore(self, target, extra_args=(), on_kms=False, marker=None):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         repo = os.path.join(tmp, "repo")
@@ -132,6 +148,11 @@ class CutoverRestoreOrderTest(unittest.TestCase):
         os.makedirs(state)
         with open(os.path.join(state, "live.hcl"), "w", encoding="utf-8") as fh:
             fh.write(LIVE_HCL)
+        if on_kms:
+            open(os.path.join(state, "migrated"), "w").close()
+        if marker is not None:
+            with open(os.path.join(state, "marker"), "w", encoding="utf-8") as fh:
+                fh.write(marker)
         for helper in ("db-migrate-dump.sh", "vault-configure-k8s-auth.sh", "vault-reconcile.sh"):
             _write_executable(os.path.join(scripts, helper), HELPER_STUB.replace("__STATE__", state))
         bin_dir = os.path.join(tmp, "bin")
@@ -155,6 +176,10 @@ class CutoverRestoreOrderTest(unittest.TestCase):
         calls = open(calls_path, encoding="utf-8").read().splitlines() if os.path.exists(calls_path) else []
         patches_path = os.path.join(state, "cm-patches.log")
         patches = open(patches_path, encoding="utf-8").read().splitlines() if os.path.exists(patches_path) else []
+        marker_path = os.path.join(state, "marker")
+        self.marker = open(marker_path, encoding="utf-8").read() if os.path.exists(marker_path) else None
+        with open(os.path.join(bundle, "manifest.sha256"), "rb") as fh:
+            self.bundle_sha = hashlib.sha256(fh.read()).hexdigest()
         return result, calls, patches
 
     @staticmethod
@@ -202,6 +227,35 @@ class CutoverRestoreOrderTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("--no-migrate-kms", result.stderr)
         self.assertFalse(any("suspend" in c for c in calls), calls)
+
+    def test_gke_migration_is_detected_from_the_recovery_seal(self):
+        result, _, _ = self._run_restore("gke")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("PASS: openbao-0 runs on unattended Cloud KMS auto-unseal", result.stdout)
+        self.assertEqual(self.marker, self.bundle_sha)
+
+    def test_gke_rerun_after_migration_resumes_without_touching_openbao(self):
+        result, calls, patches = self._run_restore("gke", on_kms=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("[4/7] Skipped", result.stdout)
+        self.assertEqual(patches, [])
+        self.assertFalse(any("raft snapshot restore" in c or "unseal" in c or "delete pod" in c for c in calls), calls)
+        self.assertLess(self._index(calls, "vault-configure-k8s-auth.sh"), self._index(calls, "db-migrate-dump.sh --keycloak"))
+        self.assertEqual(self.marker, self.bundle_sha)
+
+    def test_gke_rerun_with_the_same_bundle_marker_resumes(self):
+        self._run_restore("gke")
+        same = self.bundle_sha
+        result, calls, _ = self._run_restore("gke", on_kms=True, marker=same)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(any("raft snapshot restore" in c for c in calls), calls)
+
+    def test_gke_refuses_to_resume_onto_data_from_another_bundle(self):
+        result, calls, patches = self._run_restore("gke", on_kms=True, marker="0" * 64)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("another bundle", result.stderr)
+        self.assertEqual(patches, [])
+        self.assertFalse(any("suspend" in c or "apply -f" in c for c in calls), calls)
 
     def test_local_k3s_restore_does_not_touch_seal_config(self):
         result, calls, patches = self._run_restore("local-k3s")
