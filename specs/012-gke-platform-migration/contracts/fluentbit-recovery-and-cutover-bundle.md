@@ -62,12 +62,18 @@ When `--keycloak` is passed, `TARGET_DB="keycloak"` and `TARGET_ROLE="${KEYCLOAK
 ./scripts/cutover-bundle.sh restore --bundle-dir "$HOME/.nacfson-cutover/20261110" --target local-k3s|gke [--migrate-kms|--no-migrate-kms]
 ```
 
-### 2.3 Mandatory Restore & KMS Seal-Migration Sequence (`restore --target gke --migrate-kms`)
+### 2.3 Mandatory Restore & KMS Seal-Migration Sequence (`restore --target gke`)
 
-1. Verify `manifest.sha256` across all 6 artifacts (`openbao.snap`, `keycloak.dump.gz`, `proj_pn.dump.gz`, `proj_health.dump.gz`, `edge-tls-secrets.yaml`, `victoria-logs-data.tar.gz`); abort immediately on any mismatch.
-2. Pre-seed `edge-tls-secrets.yaml` into namespaces `platform` and `cert-manager` (`--as=system:admin --as-group=platform:break-glass` or GKE break-glass RBAC).
-3. Run `flux suspend kustomization vault`, boot `openbao-0` (`serviceAccountName: openbao`, annotated `iam.gke.io/gcp-service-account: openbao-kms@nacfson-pipeline.iam.gserviceaccount.com`) with Shamir-only `openbao-config`, restore `openbao.snap`, unseal, and **immediately execute** `scripts/vault-configure-k8s-auth.sh` + `scripts/vault-reconcile.sh --confirm` so OpenBao replaces the old K3s API server CA/JWT with GKE's `kube-root-ca.crt` and token reviewer JWT.
-4. Restore `keycloak.dump.gz`, `proj_pn.dump.gz`, and `proj_health.dump.gz` into `postgres-0` and restart `Deployment/keycloak` (`--features=persistent-user-sessions`).
-5. Run `./scripts/smoke-auth-chain.sh` against Node 1's static IP via `--resolve` before flipping DNS `A` records.
-6. Run `flux resume kustomization vault` to reconcile the `seal "gcpckms"` config overlay on `openbao-0` and execute `bao operator unseal -migrate` so subsequent GKE node upgrades unseal `openbao-0` unattended via Workload Identity.
-7. Within the same Gate 4 window once DNS flips and `smoke-auth-chain.sh` passes publicly, shrink/recreate `vps-k3s` into OCI Kafka Broker VM 1 and retire `clusters/vps-k3s/`.
+On a fresh GKE cluster `postgres-0` and Keycloak do not exist until the `vault` layer is Ready, because `database` depends on `vault` and `identity` on `database`. The restore therefore finishes OpenBao (including the seal migration) before it lets Flux start the database, and holds Keycloak back until the databases are loaded:
+
+1. Verify `manifest.sha256` across all 6 artifacts (`openbao.snap`, `keycloak.dump.gz`, `proj_pn.dump.gz`, `proj_health.dump.gz`, `edge-tls-secrets.yaml`, `victoria-logs-data.tar.gz`); abort immediately on any mismatch. `--target gke` always migrates to Cloud KMS; `--no-migrate-kms` is rejected because Flux applies the `gcpckms` config from Git.
+2. Read the live `ConfigMap/openbao-config` that Flux applied from Git (it MUST contain `seal "gcpckms"`). The temporary Shamir config is that same file with only the `seal` stanza removed, so the storage path (`/var/lib/openbao/data`, the mounted disk) and addresses never differ from Git.
+3. Pre-seed `edge-tls-secrets.yaml`, then suspend the Flux `vault` and `identity` Kustomizations (break-glass impersonation).
+4. Apply the Shamir config, restart `openbao-0`, initialize if empty, restore `openbao.snap`, and unseal with the snapshot's unseal key.
+5. Re-apply the live `gcpckms` config, restart `openbao-0`, run `bao operator unseal -migrate`, and confirm `type=gcpckms` and `sealed=false`. On failure the script stops with both layers still suspended for break-glass recovery.
+6. Run `scripts/vault-configure-k8s-auth.sh` + `scripts/vault-reconcile.sh --confirm` so OpenBao trusts GKE's API server CA and token reviewer JWT.
+7. Resume `vault` and wait until the `vault` and `database` Kustomizations are Ready (`database` gates on `StatefulSet/postgres` and `Job/postgres-init-job`) and `postgres-0` is rolled out.
+8. Restore `keycloak.dump.gz`, `proj_pn.dump.gz`, and `proj_health.dump.gz` into `postgres-0`.
+9. Resume `identity`, wait for it to be Ready, and confirm `Deployment/keycloak` is rolled out on the restored data.
+10. Run `./scripts/smoke-auth-chain.sh` with `curl --resolve <host>:443:<ingress_ip>` before flipping DNS `A` records.
+11. Within the same Gate 4 window once DNS flips and `smoke-auth-chain.sh` passes publicly, shrink/recreate `vps-k3s` into OCI Kafka Broker VM 1 and retire `clusters/vps-k3s/`.
