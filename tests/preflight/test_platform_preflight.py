@@ -807,10 +807,10 @@ spec:
           image: asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public/platform-auth-gateway@sha256:2222222222222222222222222222222222222222222222222222222222222222
           resources:
             requests:
-              cpu: 710m
+              cpu: 1010m
               memory: 64Mi
             limits:
-              cpu: 710m
+              cpu: 1010m
               memory: 64Mi
 """
         rc, data = self._run_with_custom_capacity(exhausted_ondemand, gke_cap)

@@ -47,7 +47,7 @@ The operator, who has not deployed cloud infrastructure before, follows the runb
 **Acceptance Scenarios**:
 
 1. **Given** an empty `nacfson-pipeline` project with billing enabled and Spec 012 Gates 1–3 passed, **When** the operator runs the runbook's create steps, **Then** a zonal cluster in `asia-northeast3-a` exists with the settings in Spec 012 Gate 4 step 2: logging off, monitoring off, the advanced dataplane, and workload pool `nacfson-pipeline.svc.id.goog`.
-2. **Given** the created cluster, **When** the operator lists nodes, **Then** there is exactly one `ondemand-core` node (e2-medium) without taints and one `spot-controllers` node (e2-small, Spot) carrying `cloud.google.com/gke-spot=true:NoSchedule`, matching `clusters/gke/capacity.yaml`.
+2. **Given** the created cluster, **When** the operator lists nodes, **Then** there is exactly one `ondemand-core` node (e2-standard-2) without taints and one `spot-controllers` node (e2-small, Spot) carrying `cloud.google.com/gke-spot=true:NoSchedule`, matching `clusters/gke/capacity.yaml`.
 3. **Given** the created resources, **When** OpenBao later starts on the cluster with the `gcpckms` seal in `clusters/gke/layers.yaml`, **Then** it can use the key `openbao-unseal` in key ring `nacfson-vault` through the Kubernetes service account `vault/openbao`, with no key file or Kubernetes Secret.
 4. **Given** the created registry, **When** an anonymous client pulls an image by digest from `asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public`, **Then** the pull succeeds without credentials, and the registry applies the same cleanup rules as `deploy/gcp/gar-cleanup-policy.json`.
 5. **Given** the operator reaches the runbook's final checkpoint, **When** they read its output, **Then** they have the public IPv4 address to use for the DNS switch, and the exact command to connect to the cluster.
@@ -150,7 +150,7 @@ After the cluster exists and Flux has deployed the platform, the operator can ru
 - **FR-004**: The definitions MUST turn on the cloud services the environment needs, and MUST NOT turn them off when resources are removed.
 - **FR-005**: The definitions MUST create a zonal cluster in project `nacfson-pipeline`, zone `asia-northeast3-a`. It MUST have built-in logging and monitoring off, the advanced dataplane that enforces standard NetworkPolicy, and workload identity pool `nacfson-pipeline.svc.id.goog`.
 - **FR-006**: The definitions MUST create the two node pools in `clusters/gke/capacity.yaml`:
-  - `ondemand-core`: 1 × e2-medium, no taints
+  - `ondemand-core`: 1 × e2-standard-2, no taints
   - `spot-controllers`: 1 × e2-small Spot, taint `cloud.google.com/gke-spot=true:NoSchedule`
 
   Nodes MUST run under a dedicated least-privilege node identity, not the project's default compute identity.
@@ -174,7 +174,7 @@ After the cluster exists and Flux has deployed the platform, the operator can ru
 - **FR-012**: The cluster, the unseal key and the registry MUST refuse destruction unless their protection is first removed through a reviewed change.
 - **FR-013**: Every apply MUST be preceded by a saved preview, and the apply MUST execute exactly that preview.
 - **FR-014**: Applying MUST be done by the operator from Cloud Shell, signed in as themselves. CI MUST NOT hold Google Cloud credentials for this feature (Clarifications, session 2026-11-14).
-- **FR-015**: A budget alert MUST exist for the project at a level that does not fire under the planned steady-state cost. The default is $80 per month; it notifies at 50%, 90% and 100%. These definitions own it. The runbook tells the operator to remove or raise the control center's $1 alert by hand, so that only one alert covers the project (FR-002).
+- **FR-015**: A budget alert MUST exist for the project at a level that does not fire under the planned steady-state cost. The default is $110 per month (raised from $80 on 2026-11-15 when `ondemand-core` moved to e2-standard-2, see Spec 012 research R1); it notifies at 50%, 90% and 100%. These definitions own it. The runbook tells the operator to remove or raise the control center's $1 alert by hand, so that only one alert covers the project (FR-002).
 - **FR-016**: No step in this feature may create or change cloud resources until Spec 012 Gates 1–3 have passed. Writing, reviewing and validating the definitions offline is allowed at any time.
 
 **Validation**
@@ -228,7 +228,7 @@ After the cluster exists and Flux has deployed the platform, the operator can ru
 - **SC-003**: Immediately after a successful create, a second preview reports zero changes.
 - **SC-004**: Every pull request touching `infra/gcp/` receives an automated validity result within 5 minutes, without cloud credentials.
 - **SC-005**: Zero credentials, key files or state files appear in Git history, as verified by the existing secret scan.
-- **SC-006**: The steady-state monthly cost of the created resources stays at or below $80. This covers about $39 for the nodes, about $18 for the load balancer, plus disks, the address and data processing. The budget alert notifies before that amount is exceeded.
+- **SC-006**: The steady-state monthly cost of the created resources stays at or below $110. This covers about $70 for the nodes, about $18 for the load balancer, plus disks, the address and data processing. The budget alert notifies before that amount is exceeded.
 - **SC-007**: In a rehearsal, the removal procedure leaves zero billable compute, load balancer, address or firewall resources within 20 minutes. The unseal key and the stored state remain, and `vps-k3s` serves every hostname throughout.
 - **SC-008**: In a rehearsal, the "ready for restore" checkpoint passes within 30 minutes of the Flux installation, with zero manual cloud changes.
 

@@ -17,8 +17,8 @@ Declares measured Kubernetes node allocatable capacity, system reservations, nod
 | `nodeName` | `string` | Conditional | Primary node or cluster identifier (`gke-zonal-standard`). |
 | `observedAt` | `string` (RFC3339) | Yes | Timestamp of capacity measurement or official GKE machine spec calculation. |
 | `nodeCount` | `integer` | No (default `1`) | Total worker nodes (`2` for `clusters/gke/capacity.yaml`). Multiplies `DaemonSet` CPU/memory reservations. |
-| `allocatable.cpuMillicores` | `integer` | Yes | Sum of `node.status.allocatable.cpu` across all pools (`1880` on GKE: `940 + 940`). Must be `> 0`. |
-| `allocatable.memoryMib` | `integer` | Yes | Sum of `node.status.allocatable.memory` across all pools (`4408` on GKE: `2972 + 1436`). Must be `> 0`. |
+| `allocatable.cpuMillicores` | `integer` | Yes | Sum of `node.status.allocatable.cpu` across all pools (`2870` on GKE: `1930 + 940`). Must be `> 0`. |
+| `allocatable.memoryMib` | `integer` | Yes | Sum of `node.status.allocatable.memory` across all pools (`7158` on GKE: `5800 + 1358`). Must be `> 0`. |
 | `systemReserved.cpuMillicores` | `integer` | Yes | Aggregate `kube-system` / CNI / Workload Identity CPU reservation (`350` on GKE). Must be `> 0`. |
 | `systemReserved.memoryMib` | `integer` | Yes | Aggregate `kube-system` memory reservation (`576` on GKE with `--logging=NONE --monitoring=NONE`). Must be `> 0`. |
 | `pools` | `list<NodePoolAllocation>` | No | Optional heterogeneous node pools (`ondemand-core`, `spot-controllers`). When present, `sum(pool.allocatable) == allocatable` and `len(pools) == nodeCount` (for 1-node-per-pool topologies). |
@@ -34,11 +34,11 @@ Models an individual GKE node pool so `platform-preflight.py` verifies both per-
 | Field | Type | Required | Description / Constraints |
 | :--- | :--- | :--- | :--- |
 | `name` | `string` | Yes | Pool identifier (`ondemand-core`, `spot-controllers`). |
-| `machineType` | `string` | Yes | GCE machine type (`e2-medium`, `e2-small`). |
+| `machineType` | `string` | Yes | GCE machine type (`e2-standard-2`, `e2-small`). |
 | `nodeCount` | `integer` | Yes | Nodes in this pool (`1` each in Design 1). |
 | `provisioning` | `enum(standard, spot)` | Yes | `standard` (On-Demand) or `spot` (GKE Spot VM). |
-| `allocatable.cpuMillicores` | `integer` | Yes | `940` (`e2-medium`) / `940` (`e2-small`). |
-| `allocatable.memoryMib` | `integer` | Yes | `2972` (`e2-medium`) / `1436` (`e2-small`). |
+| `allocatable.cpuMillicores` | `integer` | Yes | `1930` (`e2-standard-2`) / `940` (`e2-small`). |
+| `allocatable.memoryMib` | `integer` | Yes | `5800` (`e2-standard-2`, conservative until re-measured) / `1358` (`e2-small`). |
 | `systemReserved.cpuMillicores` | `integer` | Yes | `kube-system` pods on this node (`200` on `ondemand-core`, `150` on `spot-controllers`). |
 | `systemReserved.memoryMib` | `integer` | Yes | `kube-system` memory on this node (`320` on `ondemand-core`, `256` on `spot-controllers`). |
 | `labels` | `map<string,string>` | Yes | Node labels matched by `nodeSelector` (e.g., `cloud.google.com/gke-spot: "true"` or `cloud.google.com/gke-provisioning: "spot"`). |

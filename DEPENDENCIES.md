@@ -25,7 +25,7 @@ Per [Constitution Principle I](.specify/memory/constitution.md), third-party ima
 
 | Component | Pinned Version / Image | Where Declared |
 | :--- | :--- | :--- |
-| **Kubernetes (GKE Standard)** | Zonal Standard (`nacfson-pipeline`, `asia-northeast3-a`, `1 × e2-medium` On-Demand + `1 × e2-small` Spot, `--logging=NONE --monitoring=NONE`) | [`clusters/gke/capacity.yaml`](clusters/gke/capacity.yaml), [`clusters/gke/layers.yaml`](clusters/gke/layers.yaml) |
+| **Kubernetes (GKE Standard)** | Zonal Standard (`nacfson-pipeline`, `asia-northeast3-a`, `1 × e2-standard-2` On-Demand + `1 × e2-small` Spot, `--logging=NONE --monitoring=NONE`) | [`clusters/gke/capacity.yaml`](clusters/gke/capacity.yaml), [`clusters/gke/layers.yaml`](clusters/gke/layers.yaml) |
 | **Kubernetes (K3s)** | `v1.35.9+k3s1` (Traefik bundled on `local-k3s` / legacy `vps-k3s`) | [`bootstrap/bootstrap.yml`](bootstrap/bootstrap.yml) (`accepted_k3s_versions`) |
 | **Traefik Edge Ingress (GKE)** | `traefik:v3.3.4` (behind one GKE L4 pass-through `LoadBalancer` Service, no `hostPort`, non-root `UID 65532`) | [`deploy/platform/traefik/deployment.yaml`](deploy/platform/traefik/deployment.yaml) |
 | **FluxCD CLI / Distribution** | `2.9.5` | [`.github/workflows/gitops.yaml`](.github/workflows/gitops.yaml), [`clusters/*/flux-system/`](clusters/gke/flux-system/gotk-components.yaml) |
@@ -65,7 +65,7 @@ Per [Constitution Principle I](.specify/memory/constitution.md), third-party ima
 
 | Environment | Node Allocatable | System Reserved | Platform Reservation (Exact Preflight Output) | Per-Project $1/n$ Slice ($n = 3$) | Capacity File |
 | :--- | :--- | :--- | :--- | :--- | :--- |
-| **`gke`** (`1 × e2-medium` On-Demand + `1 × e2-small` Spot, `nodeCount: 2`) | `1880m` CPU / `4408 MiB` RAM (`940m/2972Mi` + `940m/1436Mi`) | `350m` CPU / `576 MiB` RAM (`200m/320Mi` + `150m/256Mi`) | **`970m` CPU / `3152 MiB` RAM** (`2×` `fluent-bit` DaemonSet, pre-reserved `error-detector` `25m/64Mi` slot, `keycloak` `832Mi`, `Traefik` `30m/96Mi`) | **`303m` CPU / `418 MiB` RAM** (`proj-pn` `150m/384Mi`, `proj-health` `150m/320Mi`, `proj-blog` `50m/128Mi`) | [`clusters/gke/capacity.yaml`](clusters/gke/capacity.yaml) |
+| **`gke`** (`1 × e2-standard-2` On-Demand + `1 × e2-small` Spot, `nodeCount: 2`) | `2870m` CPU / `7158 MiB` RAM (`1930m/5800Mi` + `940m/1358Mi`) | `1280m` CPU / `2136 MiB` RAM (`880m/1400Mi` + `150m/256Mi`) | **`970m` CPU / `3152 MiB` RAM** (`2×` `fluent-bit` DaemonSet, pre-reserved `error-detector` `25m/64Mi` slot, `keycloak` `832Mi`, `Traefik` `30m/96Mi`) | **`323m` CPU / `815 MiB` RAM** (`proj-pn` `150m/384Mi`, `proj-health` `150m/320Mi`, `proj-blog` `50m/128Mi`) | [`clusters/gke/capacity.yaml`](clusters/gke/capacity.yaml) |
 | **`local-k3s`** (`nodeCount: 1`) | `4000m` CPU / `8192 MiB` RAM | `200m` CPU / `512 MiB` RAM | **`1370m` CPU / `5856 MiB` RAM** | **`877m` CPU / `779 MiB` RAM** | [`clusters/local-k3s/capacity.yaml`](clusters/local-k3s/capacity.yaml) |
 | **`vps-k3s`** *(transitional until Gate 4 cutover)* | `2000m` CPU / `10898 MiB` RAM | `200m` CPU / `512 MiB` RAM | **`1370m` CPU / `5856 MiB` RAM** (`-25m / -64Mi` from pre-Spec-012 `1395m / 5920 MiB` after retiring `vault-registry-proxy`) | **`210m` CPU / `1681 MiB` RAM** | [`clusters/vps-k3s/capacity.yaml`](clusters/vps-k3s/capacity.yaml) |
 

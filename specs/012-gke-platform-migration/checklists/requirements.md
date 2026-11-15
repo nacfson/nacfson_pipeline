@@ -27,4 +27,4 @@
 
 ## Notes
 
-- All 5 clarifications (`FR-001`/`FR-008` Design 1 hybrid `1 × e2-medium` On-Demand + `1 × e2-small` Spot VMs with `--logging=NONE --monitoring=NONE`, `hostPort: 80/443`, `keycloak` 24/7 on On-Demand with persistent DB sessions, and `gcpckms` auto-unseal; `FR-004` Cloud Build + public GAR; `FR-005` cloud-agnostic `NetworkPolicy` + `local-k3s` parity; `FR-006` day-1 VictoriaLogs removal + Kafka output; and `FR-011` immediate Gate 4 repurposing of `vps-k3s` into Broker VM 1) are resolved and encoded into `spec.md`. Ready for `/speckit-plan`.
+- All 5 clarifications (`FR-001`/`FR-008` Design 1 hybrid `1 × e2-standard-2` On-Demand + `1 × e2-small` Spot VMs with `--logging=NONE --monitoring=NONE`, `hostPort: 80/443`, `keycloak` 24/7 on On-Demand with persistent DB sessions, and `gcpckms` auto-unseal; `FR-004` Cloud Build + public GAR; `FR-005` cloud-agnostic `NetworkPolicy` + `local-k3s` parity; `FR-006` day-1 VictoriaLogs removal + Kafka output; and `FR-011` immediate Gate 4 repurposing of `vps-k3s` into Broker VM 1) are resolved and encoded into `spec.md`. Ready for `/speckit-plan`.

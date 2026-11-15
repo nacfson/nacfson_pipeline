@@ -85,12 +85,12 @@ terraform -chdir=infra/gcp/bootstrap plan -out=bootstrap.tfplan
 terraform -chdir=infra/gcp/bootstrap apply bootstrap.tfplan
 ```
 
-**4b. APIs and the $80 budget**
+**4b. APIs and the $110 budget**
 
 Turns on the Google services the cluster needs and adds a **budget alert**. The budget is **not a
-spending limit**: Google emails you at $40, $72 and $80 of spending in a month, and charges keep going
-past $80. Charges go to the card on the billing account linked to the project, once a month. Expected
-cost is about **$65/month** (servers ~$39, load balancer ~$18, disks and traffic ~$8), starting at 4c.
+spending limit**: Google emails you at $55, $99 and $110 of spending in a month, and charges keep going
+past $110. Charges go to the card on the billing account linked to the project, once a month. Expected
+cost is about **$96/month** (servers ~$70, load balancer ~$18, disks and traffic ~$8), starting at 4c.
 Current spending: console → Billing → Reports.
 
 ```bash
@@ -224,8 +224,8 @@ Clarification 2.4.1.
 3. After merge: `terraform -chdir=infra/gcp/gke plan -out=change.tfplan`. The plan should show `~`
    (change) on the node pool, never `-/+` on the cluster. Then `apply change.tfplan`.
    Nodes are replaced one at a time, so the site stays up.
-4. Check step 3's quota first (each extra `e2-medium` needs 2 CPUs) and expect roughly
-   +$25–30/month per extra `e2-medium`.
+4. Check step 3's quota first (each extra `e2-standard-2` needs 2 CPUs) and expect roughly
+   +$60/month per extra `e2-standard-2`.
 
 **More copies or more memory for a service** (Flux, no Terraform)
 

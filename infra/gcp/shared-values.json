@@ -12,7 +12,7 @@
     "services_cidr": "10.28.0.0/22"
   },
   "node_pools": [
-    {"name": "ondemand-core", "machine_type": "e2-medium", "node_count": 1, "spot": false, "taints": []},
+    {"name": "ondemand-core", "machine_type": "e2-standard-2", "node_count": 1, "spot": false, "taints": []},
     {"name": "spot-controllers", "machine_type": "e2-small", "node_count": 1, "spot": true,
      "taints": ["cloud.google.com/gke-spot=true:NoSchedule"]}
   ],

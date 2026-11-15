@@ -33,7 +33,7 @@
 - [X] T004 Create `infra/gcp/shared-values.json` with exactly the content in `contracts/shared-values.md` § File:
   - project `nacfson-pipeline`, region `asia-northeast3`, zone `asia-northeast3-a`, cluster `nacfson-gke`, workload pool `nacfson-pipeline.svc.id.goog`
   - network `nacfson-gke` / `nacfson-gke-asia-northeast3` with `10.20.0.0/22`, `10.24.0.0/17`, `10.28.0.0/22`
-  - pools `ondemand-core` (e2-medium, 1, spot false, no taints) and `spot-controllers` (e2-small, 1, spot true, taint `cloud.google.com/gke-spot=true:NoSchedule`)
+  - pools `ondemand-core` (e2-standard-2, 1, spot false, no taints) and `spot-controllers` (e2-small, 1, spot true, taint `cloud.google.com/gke-spot=true:NoSchedule`)
   - kms `nacfson-vault` / `openbao-unseal` / `openbao-kms` / `vault/openbao`
   - registry `nacfson-public` with `cleanup_source` `deploy/gcp/gar-cleanup-policy.json`
   - ingress `gke-ingress-ip`

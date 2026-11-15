@@ -12,25 +12,25 @@
 ```yaml
 environment: gke
 nodeName: gke-zonal-standard
-observedAt: "2026-11-10T00:00:00Z"
+observedAt: "2026-11-15T00:00:00Z"
 nodeCount: 2
 allocatable:
-  cpuMillicores: 1880
-  memoryMib: 4408
+  cpuMillicores: 2870
+  memoryMib: 7158
 systemReserved:
-  cpuMillicores: 350
-  memoryMib: 576
+  cpuMillicores: 1280
+  memoryMib: 2136
 pools:
   - name: ondemand-core
-    machineType: e2-medium
+    machineType: e2-standard-2
     nodeCount: 1
     provisioning: standard
     allocatable:
-      cpuMillicores: 940
-      memoryMib: 2972
+      cpuMillicores: 1930
+      memoryMib: 5800
     systemReserved:
-      cpuMillicores: 200
-      memoryMib: 320
+      cpuMillicores: 880
+      memoryMib: 1400
     labels:
       kubernetes.io/os: "linux"
       cloud.google.com/gke-provisioning: "standard"
@@ -41,10 +41,10 @@ pools:
     provisioning: spot
     allocatable:
       cpuMillicores: 940
-      memoryMib: 1436
+      memoryMib: 1358
     systemReserved:
-      cpuMillicores: 150
-      memoryMib: 256
+      cpuMillicores: 400
+      memoryMib: 736
     labels:
       kubernetes.io/os: "linux"
       cloud.google.com/gke-spot: "true"
@@ -62,7 +62,7 @@ pools:
 3. **Spot Workload Allowlist**: Only PVC-free background controller `Deployment`s (`cert-manager`, `cert-manager-cainjector`, `cert-manager-webhook` in `cert-manager`, and `source-controller`, `kustomize-controller` in `flux-system`) MAY carry `nodeSelector: {"cloud.google.com/gke-spot": "true"}` and the `cloud.google.com/gke-spot=true:NoSchedule` toleration.
 4. **Zero `RWO` PVC or Live Auth/Tenant Pods on Spot**: Preflight MUST reject any manifest in `clusters/gke/` that schedules `proj-*` workloads, `keycloak`, `gateway`, `traefik`, `openbao`, `postgres`, `error-detector`, or any workload mounting a `PersistentVolumeClaim` onto a `provisioning: spot` pool.
 5. **Per-Pool Schedulability**: Steady-state CPU `requests` and memory `requests`/`limits` assigned to each pool MUST NOT exceed `pool.allocatable - pool.systemReserved`, and `ondemand-core` MUST retain `>= 50m` `requests.cpu` and `>= 192 MiB` `requests.memory` headroom for concurrent `00:00 UTC` backup `CronJob`s (`postgres-daily-backup` `128Mi` + `openbao-daily-snapshot` `64Mi`).
-6. **Cluster-Wide $1/n$ Slice**: `applicationCapacity = allocatable - platformReservations` divided across `project_count = 3` MUST yield `slice_cpu >= 150m` and `slice_mem >= 384Mi` (`(303m, 418Mi)` under Design 1 with `platformReservations = (970m, 3152Mi)`).
+6. **Cluster-Wide $1/n$ Slice**: `applicationCapacity = allocatable - platformReservations` divided across `project_count = 3` MUST yield `slice_cpu >= 150m` and `slice_mem >= 384Mi` (`(323m, 815Mi)` under Design 1 with `platformReservations = (1900m, 4712Mi)`, measured 2026-11-15).
 
 ---
 
