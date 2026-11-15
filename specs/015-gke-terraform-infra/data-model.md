@@ -80,7 +80,7 @@ state-ready ──────── project apply ───────▶ proj
                                               │ gke apply (US1)
                                               ▼
                                        ready-for-flux  ◀── checkpoint 1 (FR-020)
-                                              │ flux bootstrap (Spec 012)
+                                              │ Flux install (Spec 012)
                                               ▼
                                        ready-for-restore ◀── checkpoint 2 (FR-024)
                                               │ control-center restore + DNS switch (Spec 012)

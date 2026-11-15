@@ -21,7 +21,7 @@ This is the binding shape of `deploy/platform/governance/manual-change-policy.ya
 
 GET, LIST, WATCH and CONNECT (`exec`, `attach`, `port-forward`, `proxy`) are never matched.
 
-## 3. Allow rule (identical in both policies)
+## 3. Allow rule (both policies unless a row says otherwise)
 
 A request is **allowed** if any of these is true; otherwise it is denied:
 
@@ -35,6 +35,7 @@ A request is **allowed** if any of these is true; otherwise it is denied:
 | 6 | `resource == pods`, no subresource, `operation == DELETE` | Restart by deleting a pod (Story 7.5) |
 | 7 | `resource == pods`, `subResource == eviction` | Node drain |
 | 8 | `resource == serviceaccounts`, `subResource == token` | Short-lived token for the read-only kubeconfig (R14). Creates no stored object. |
+| 9 | `gitops-managed-namespaces` only: `username == system:l7-lb-controller-neg`, group `networking.gke.io`, `resource == servicenetworkendpointgroups` | GKE only: the NEG controller records the load balancer's endpoint group for `platform/traefik` ([Spec 012 placement contract §4](../../012-gke-platform-migration/contracts/gke-capacity-and-placement.md)) |
 
 | Setting | Value |
 |---|---|

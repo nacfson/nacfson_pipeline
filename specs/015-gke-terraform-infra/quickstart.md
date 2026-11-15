@@ -65,23 +65,24 @@ Then change a label on a node pool by hand in the console and run `plan` again. 
 
 ## Scenario 4: Ready for restore (User Story 5, FR-023/024)
 
-After `flux bootstrap github … --path=clusters/gke` (Spec 012):
+After installing Flux from `clusters/gke/flux-system/` with `kubectl apply --server-side -k` (runbook Part 3.1; no GitHub token, no `flux bootstrap`):
 
 ```bash
 flux get kustomizations
-kubectl -n vault exec openbao-0 -- bao status -format=json | grep -E '"initialized"|"type"'
+kubectl -n vault exec openbao-0 -- env VAULT_ADDR=http://127.0.0.1:8200 bao status -format=json | grep -E '"initialized"|"type"'
 kubectl get pods -A -o wide | grep -E 'openbao-0|postgres-0|keycloak'
 kubectl get svc -n platform traefik
 ```
 
 **Expected:**
-- all Flux layers Ready
+- all Flux layers Ready except vault and the layers that depend on it (database, vault-proxies, identity, ingress, tls) wait until the restore: OpenBao is empty, so its readiness check fails (HTTP 501) until the restore fills and unseals it
 - OpenBao running with seal type `gcpckms` and `initialized: false`; it must not be crash-looping on a missing key
-- `postgres-0` and `keycloak` running on the `ondemand-core` node
+- the database and identity layers are not applied yet: they depend on vault, so `postgres-0` and
+  `keycloak` start only after the restore unseals OpenBao
 - the `traefik` `EXTERNAL-IP` equals `ingress_ip`
-- `curl -sk --resolve auth.nacfson.cloud:443:<ingress_ip> https://auth.nacfson.cloud/ -o /dev/null -w '%{http_code}'` returns an HTTP status (any code), which proves load balancer → Traefik → TLS works before DNS moves
+- `curl -sk --resolve auth.nacfson.cloud:443:<ingress_ip> https://auth.nacfson.cloud/ -o /dev/null -w '%{http_code}'` returns an HTTP status (any code), which proves load balancer → Traefik works before DNS moves (Traefik serves its default certificate until the restore brings up the tls layer)
 
-**SC-008:** reached within 30 minutes of `flux bootstrap`, with no manual cloud changes. The control-center restore (Spec 012) may start from here.
+**SC-008:** reached within 30 minutes of installing Flux, with no manual cloud changes. The control-center restore (Spec 012) may start from here.
 
 ## Scenario 5: Node replacement keeps the address (FR-007)
 

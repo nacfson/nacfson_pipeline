@@ -2,7 +2,7 @@
 
 This document summarizes the runtime topology, GitOps reconciliation layers, security boundaries, and request flows of **`nacfson_pipeline`**.
 
-For supreme governance rules, read [`.specify/memory/constitution.md`](.specify/memory/constitution.md) (`v2.4.0`). For deep-dive subsystem docs, see [`INDEX.md`](INDEX.md).
+For supreme governance rules, read [`.specify/memory/constitution.md`](.specify/memory/constitution.md) (`v2.4.1`). For deep-dive subsystem docs, see [`INDEX.md`](INDEX.md).
 
 ---
 

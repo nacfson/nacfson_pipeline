@@ -23,6 +23,9 @@ spec:
         request.userInfo.username.startsWith('system:serviceaccount:gke-managed-') ||
         request.userInfo.username.startsWith('system:node:') ||
         request.userInfo.username in ['system:kube-controller-manager', 'system:kube-scheduler', 'system:apiserver', 'system:k3s-controller', 'k3s-cloud-controller-manager', 'system:gke-common-webhooks', 'system:gcp-controller-manager', 'system:addon-manager', 'system:cluster-autoscaler'] ||
+        (request.userInfo.username == 'system:l7-lb-controller-neg' &&
+          request.resource.group == 'networking.gke.io' &&
+          request.resource.resource == 'servicenetworkendpointgroups') ||
         (request.userInfo.username.startsWith('system:serviceaccount:cert-manager:') &&
           request.namespace in ['platform', 'cert-manager'] &&
           request.resource.group in ['', 'cert-manager.io', 'acme.cert-manager.io', 'networking.k8s.io', 'events.k8s.io'] &&

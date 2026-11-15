@@ -1,6 +1,6 @@
 # nacfson_pipeline: Personal Project Platform
 
-[![Constitution](https://img.shields.io/badge/governance-constitution%20v2.4.0-blue.svg)](.specify/memory/constitution.md)
+[![Constitution](https://img.shields.io/badge/governance-constitution%20v2.4.1-blue.svg)](.specify/memory/constitution.md)
 [![Specs](https://img.shields.io/badge/specs-001--012-success.svg)](specs/)
 [![Security Profile](https://img.shields.io/badge/pod--security-restricted-green.svg)](.specify/memory/constitution.md)
 [![Secrets Model](https://img.shields.io/badge/secrets-zero--plaintext%20vault-critical.svg)](specs/002-internal-cluster-vault/spec.md)

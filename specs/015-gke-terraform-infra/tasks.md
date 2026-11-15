@@ -56,7 +56,7 @@
   - `uniform_bucket_level_access = true`, `public_access_prevention = "enforced"`, `versioning { enabled = true }`
   - lifecycle rule deleting noncurrent versions beyond 10 (`num_newer_versions = 10`, `with_state = "ARCHIVED"`), `lifecycle { prevent_destroy = true }`
   - output `state_bucket`
-- [X] T009 [P] [US1] Create `infra/gcp/project/apis.tf`: `google_project_service` with `for_each` over `container`, `compute`, `cloudkms`, `artifactregistry`, `cloudbuild`, `iam`, `iamcredentials` and `billingbudgets` (`.googleapis.com`), each with `disable_on_destroy = false` (FR-004)
+- [X] T009 [P] [US1] Create `infra/gcp/project/apis.tf`: `google_project_service` with `for_each` over `container`, `compute`, `cloudkms`, `artifactregistry`, `cloudbuild`, `iam`, `iamcredentials`, `billingbudgets` and `cloudresourcemanager` (`.googleapis.com`), each with `disable_on_destroy = false` (FR-004)
 - [X] T010 [P] [US1] Create the project budget files:
   - `infra/gcp/project/variables.tf`: `variable "billing_account"`, type string, no default. Its description says to set it with `TF_VAR_billing_account` in Cloud Shell and never commit it.
   - `infra/gcp/project/budget.tf`: `google_billing_budget` scoped to `projects/<project number>` (from the `google_project` data source), amount 80 USD, `threshold_rules` at 0.5, 0.9 and 1.0 of `CURRENT_SPEND`, depending on the billingbudgets service (FR-015, R9)
@@ -167,7 +167,7 @@
 - [X] T029 [US5] Run `./scripts/render-validate.sh gke`, `./scripts/render-validate.sh local-k3s` and `./scripts/render-validate.sh vps-k3s`. Confirm gke passes and the other two are unchanged (the Traefik layer is GKE-only). Also confirm with `grep` that no `NetworkPolicy` in `deploy/` or `clusters/gke/` selects `app.kubernetes.io/name: traefik` in `platform` and would drop traffic from internet source IPs.
 - [X] T030 [US5] Rewrite `specs/012-gke-platform-migration/contracts/gke-capacity-and-placement.md` §3, "Zero-LoadBalancer Edge Ingress Contract". Replace it with a short "Single L4 pass-through LoadBalancer" section that states the change and links to `specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md` (FR-022).
 - [X] T031 [US5] Write `docs/runbooks/gke-terraform.md`, part 3, "Hand-off to Flux and the restore" (FR-023, FR-024, FR-025):
-  - **Ordering:** Terraform apply (KMS key and WI binding exist) **before** `flux bootstrap github --owner=nacfson --repository=nacfson_pipeline --branch=main --path=clusters/gke --personal`.
+  - **Ordering:** Terraform apply (KMS key and WI binding exist) **before** Flux is installed with `kubectl apply --server-side -k clusters/gke/flux-system` (no GitHub token; `flux bootstrap github` would store a repository key in the cluster, which Principle I forbids).
   - **Checkpoint "ready for restore":** the commands and expected results from quickstart Scenario 4, including Traefik `EXTERNAL-IP` = `terraform output ingress_ip` and the `curl --resolve` check.
   - **Control-center kubeconfigs:** how to build the read-only `gke.yaml` (server and CA from outputs, with a `user: {}` placeholder) and the temporary inline admin kubeconfig (endpoint + CA + `gcloud auth print-access-token`).
   - **Hand-off:** a pointer to the Spec 012 restore, run from the control center with a fresh export.
@@ -241,7 +241,7 @@
 
 - [ ] T041 GATED. Run `specs/015-gke-terraform-infra/quickstart.md` Scenario 2 (preflight, bootstrap, project, gke) and the "ready for Flux" checkpoint. Record the elapsed time against SC-001 (under 60 minutes).
 - [ ] T042 GATED. Run `specs/015-gke-terraform-infra/quickstart.md` Scenario 3 (zero-change plan, then manual drift detected, then reverted). Record against SC-003.
-- [ ] T043 GATED. Run `flux bootstrap` and `specs/015-gke-terraform-infra/quickstart.md` Scenario 4 ("ready for restore"). Record against SC-008 (under 30 minutes, no manual cloud changes).
+- [ ] T043 GATED. Install Flux from `clusters/gke/flux-system/` (runbook Part 3.1) and run `specs/015-gke-terraform-infra/quickstart.md` Scenario 4 ("ready for restore"). Record against SC-008 (under 30 minutes, no manual cloud changes).
 - [ ] T044 GATED. Rehearse `specs/015-gke-terraform-infra/quickstart.md` Scenario 5 (node replacement keeps the address) and Scenario 6 (removal), then recreate. Record against SC-007.
 - [ ] T045 GATED. After a month of running, record in `docs/runbooks/gke-terraform.md` (Cost section) that billing shows about $65 or less and that the $80 budget alert exists (SC-006).
 
