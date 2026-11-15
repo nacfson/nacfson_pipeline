@@ -255,10 +255,9 @@ curl -sk --resolve auth.nacfson.cloud:443:$IP https://auth.nacfson.cloud/ -o /de
 - `curl` prints an HTTP status code (any code). That proves internet → load balancer → Traefik before
   DNS moves. Traefik answers with its default certificate until the restore brings up the tls layer.
 
-**Known gap (fix before Gate 4):** `scripts/cutover-bundle.sh restore` loads the database dumps right after
-the OpenBao restore and does not wait for `postgres-0`, which on a fresh GKE cluster only starts once the
-vault layer is Ready. Until the script waits for it, run
-`kubectl -n identity rollout status statefulset/postgres --timeout=600s` before its database step.
+The restore (`scripts/cutover-bundle.sh restore --target gke`, run from the control center) restores and
+migrates OpenBao first, then lets Flux start Postgres, loads the databases, and only then starts Keycloak
+([Spec 012 contract §2.3](../../specs/012-gke-platform-migration/contracts/fluentbit-recovery-and-cutover-bundle.md)).
 
 **If `EXTERNAL-IP` is set but `curl` times out:** the web firewall rule is Terraform's, not GKE's. Check it with `gcloud compute firewall-rules describe nacfson-gke-allow-web` (TCP 80/443 to `ingress_ip`) and run `terraform -chdir=infra/gcp/gke plan` for drift.
 **If `EXTERNAL-IP` stays `<pending>`:** `kubectl describe svc -n platform traefik` shows the reason in

@@ -411,9 +411,11 @@ Execute only after Gate 2 and Gate 3 pass:
    `restore --target gke --migrate-kms` automatically:
    - Verifies `manifest.sha256` across all 6 artifacts.
    - Pre-seeds `edge-tls-secrets.yaml` (`auth-tls`, `pn-tls`, `health-tls`, `blog-tls`, and Let's Encrypt ACME account key) so GKE serves valid TLS immediately without Let's Encrypt rate-limit risk.
-   - Suspends `Kustomization/vault`, boots `openbao-0` with Shamir config, restores `openbao.snap`, unseals, and runs `scripts/vault-configure-k8s-auth.sh` + `scripts/vault-reconcile.sh --confirm` to replace K3s's CA/JWT with GKE's `ConfigMap/kube-root-ca.crt`.
-   - Restores `keycloak.dump.gz`, `proj_pn.dump.gz`, and `proj_health.dump.gz` into `postgres-0` and restarts `Deployment/keycloak`.
-   - Resumes `Kustomization/vault` to reconcile the `seal "gcpckms"` config overlay and runs `bao operator unseal -migrate` so subsequent GKE node upgrades auto-unseal `openbao-0` via Workload Identity.
+   - Suspends `Kustomization/vault` and `Kustomization/identity`, boots `openbao-0` with the live Git config minus its `seal` stanza (Shamir), restores `openbao.snap` and unseals.
+   - Re-applies the live `seal "gcpckms"` config and runs `bao operator unseal -migrate`, so GKE node upgrades auto-unseal `openbao-0` via Workload Identity.
+   - Runs `scripts/vault-configure-k8s-auth.sh` + `scripts/vault-reconcile.sh --confirm` to replace K3s's CA/JWT with GKE's `ConfigMap/kube-root-ca.crt`.
+   - Resumes `vault`, waits for the `database` layer and `postgres-0`, then restores `keycloak.dump.gz`, `proj_pn.dump.gz` and `proj_health.dump.gz`.
+   - Resumes `identity`, so Keycloak starts on the restored database. Full order: [Spec 012 contract §2.3](../specs/012-gke-platform-migration/contracts/fluentbit-recovery-and-cutover-bundle.md).
 4. **Pre-DNS `--resolve` verification & Cloudflare/DNS cutover**:
    - Run `./scripts/smoke-auth-chain.sh` using `curl --resolve <host>:443:<NODE1_STATIC_IP>` across `auth.nacfson.cloud`, `pn.nacfson.cloud`, `health.nacfson.cloud`, and `blog.nacfson.cloud`; verify zero TLS warnings and intact OIDC sessions (`SC-004`).
    - Update DNS `A` records to `<NODE1_STATIC_IP>` and re-run `./scripts/smoke-auth-chain.sh` against live public DNS.

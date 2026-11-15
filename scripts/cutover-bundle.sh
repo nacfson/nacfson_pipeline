@@ -324,6 +324,22 @@ if [[ "${TARGET_ENV}" != "local-k3s" && "${TARGET_ENV}" != "gke" ]]; then
   exit 1
 fi
 
+if [[ "${MIGRATE_KMS}" == "auto" ]]; then
+  if [[ "${TARGET_ENV}" == "gke" ]]; then
+    MIGRATE_KMS="true"
+  else
+    MIGRATE_KMS="false"
+  fi
+fi
+if [[ "${TARGET_ENV}" == "gke" && "${MIGRATE_KMS}" != "true" ]]; then
+  echo "Error: --no-migrate-kms is not supported for --target gke: Flux applies the gcpckms seal config from Git, so OpenBao must finish on the Cloud KMS seal." >&2
+  exit 1
+fi
+if [[ "${TARGET_ENV}" == "local-k3s" && "${MIGRATE_KMS}" == "true" ]]; then
+  echo "Error: --migrate-kms applies only to --target gke." >&2
+  exit 1
+fi
+
 verify_bundle
 
 if [[ "${DRY_RUN}" == "true" ]]; then
@@ -343,40 +359,46 @@ bg_kubectl() {
   kubectl --as=break-glass:cutover --as-group=platform:break-glass "$@" 2>/dev/null || kubectl "$@"
 }
 
-echo "=== [1/6] Pre-Seeding Platform Edge TLS & ACME Account Secrets ==="
-bg_kubectl apply -f "${ABS_BUNDLE_DIR}/edge-tls-secrets.yaml"
+POLL_SECONDS="${CUTOVER_POLL_SECONDS:-5}"
+LAYER_TIMEOUT="${CUTOVER_LAYER_TIMEOUT:-15m}"
 
-echo "=== [2/6] Suspending Flux 'vault' Layer for Shamir-First Raft Snapshot Restore ==="
-bg_kubectl patch kustomization vault -n flux-system --type=merge -p '{"spec":{"suspend":true}}'
+set_layer_suspend() {
+  bg_kubectl patch kustomization "$1" -n flux-system --type=merge -p "{\"spec\":{\"suspend\":$2}}"
+}
 
-if [[ "${TARGET_ENV}" == "gke" ]]; then
-  echo "Ensuring temporary Shamir listener config on openbao-config before restoring Shamir-sealed snapshot..."
-  cat <<'EOF' | bg_kubectl apply -f -
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: openbao-config
-  namespace: vault
-data:
-  openbao.hcl: |
-    ui = false
-    storage "raft" {
-      path = "/var/lib/openbao/data"
-      node_id = "openbao-0"
-    }
-    listener "tcp" {
-      address = "0.0.0.0:8200"
-      cluster_address = "0.0.0.0:8201"
-      tls_disable = 1
-    }
-    api_addr = "http://openbao-service.vault.svc:8200"
-    cluster_addr = "http://openbao-0.openbao-internal.vault.svc:8201"
-EOF
-  bg_kubectl delete pod -n vault openbao-0 --ignore-not-found
+request_layer_reconcile() {
+  bg_kubectl annotate kustomization "$1" -n flux-system --overwrite "reconcile.fluxcd.io/requestedAt=$(date -u +%Y%m%dT%H%M%SZ)"
+}
+
+wait_layer_ready() {
+  echo "Waiting for Flux layer '$1' to become Ready (timeout ${LAYER_TIMEOUT})..."
+  kubectl wait "kustomization/$1" -n flux-system --for=condition=Ready "--timeout=${LAYER_TIMEOUT}"
+}
+
+set_openbao_config() {
+  local payload
+  payload="$(python3 -c 'import json,sys; print(json.dumps({"data": {"openbao.hcl": sys.stdin.read()}}))' <<< "$1")"
+  bg_kubectl patch configmap openbao-config -n vault --type=merge -p "${payload}"
+}
+
+restart_openbao() {
+  bg_kubectl delete pod -n vault openbao-0 --ignore-not-found --wait=true
+  local i
+  for i in $(seq 1 60); do
+    if kubectl get pod openbao-0 -n vault >/dev/null 2>&1; then
+      break
+    fi
+    sleep "${POLL_SECONDS}"
+  done
   kubectl wait --for=jsonpath='{.status.phase}'=Running pod/openbao-0 -n vault --timeout=180s
-fi
+}
 
-echo "=== [3/6] Restoring openbao.snap & Re-Binding Kubernetes Auth to '${TARGET_ENV}' ==="
+bao_status_field() {
+  local json
+  json="$(kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao status -format=json 2>/dev/null || true)"
+  python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); v=d.get(sys.argv[1]); print(str(v).lower() if isinstance(v,bool) else (v or ""))' "$1" <<< "${json}"
+}
+
 if [[ -z "${VAULT_TOKEN:-}" ]]; then
   read -r -s -p "Enter OpenBao Root Token (valid inside snapshot): " VAULT_TOKEN
   echo ""
@@ -386,9 +408,32 @@ if [[ -z "${UNSEAL_KEY:-}" ]]; then
   echo ""
 fi
 
-BAO_STATUS_JSON="$(kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao status -format=json 2>/dev/null || true)"
-BAO_INITIALIZED="$(python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print("true" if d.get("initialized") else "false")' <<< "${BAO_STATUS_JSON}")"
-BAO_SEALED="$(python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print("true" if d.get("sealed", True) else "false")' <<< "${BAO_STATUS_JSON}")"
+KMS_HCL=""
+if [[ "${TARGET_ENV}" == "gke" ]]; then
+  KMS_HCL="$(kubectl get configmap openbao-config -n vault -o jsonpath='{.data.openbao\.hcl}')"
+  if ! grep -q 'seal "gcpckms"' <<< "${KMS_HCL}"; then
+    echo "Error: live vault/openbao-config has no seal \"gcpckms\" stanza; refusing to restore onto gke." >&2
+    exit 1
+  fi
+  SHAMIR_HCL="$(python3 -c 'import re,sys; print(re.sub(r"\n?seal \"[^\"]+\" \{.*?\n\}\n?", "\n", sys.stdin.read(), flags=re.S).strip())' <<< "${KMS_HCL}")"
+fi
+
+echo "=== [1/7] Pre-Seeding Platform Edge TLS & ACME Account Secrets ==="
+bg_kubectl apply -f "${ABS_BUNDLE_DIR}/edge-tls-secrets.yaml"
+
+echo "=== [2/7] Suspending Flux 'vault' and 'identity' Layers ==="
+set_layer_suspend vault true
+set_layer_suspend identity true
+
+if [[ "${TARGET_ENV}" == "gke" ]]; then
+  echo "Switching openbao-config to the live config without its seal stanza (Shamir) for the Shamir-sealed snapshot..."
+  set_openbao_config "${SHAMIR_HCL}"
+  restart_openbao
+fi
+
+echo "=== [3/7] Restoring openbao.snap ==="
+BAO_INITIALIZED="$(bao_status_field initialized)"
+BAO_SEALED="$(bao_status_field sealed)"
 
 RESTORE_AUTH_TOKEN="${VAULT_TOKEN}"
 if [[ "${BAO_INITIALIZED}" != "true" ]]; then
@@ -413,75 +458,61 @@ kubectl exec -n vault openbao-0 -- \
   env VAULT_ADDR="http://127.0.0.1:8200" \
   bao operator unseal "${UNSEAL_KEY}" >/dev/null
 
+if [[ "${TARGET_ENV}" == "gke" ]]; then
+  echo "=== [4/7] Migrating openbao-0 from Shamir to Cloud KMS (gcpckms) ==="
+  set_openbao_config "${KMS_HCL}"
+  restart_openbao
+  kubectl exec -n vault openbao-0 -- \
+    env VAULT_ADDR="http://127.0.0.1:8200" \
+    bao operator unseal -migrate "${UNSEAL_KEY}"
+  MIGRATED="false"
+  for i in $(seq 1 24); do
+    if [[ "$(bao_status_field type)" == "gcpckms" && "$(bao_status_field sealed)" == "false" ]]; then
+      MIGRATED="true"
+      break
+    fi
+    sleep "${POLL_SECONDS}"
+  done
+  if [[ "${MIGRATED}" != "true" ]]; then
+    echo "Error: openbao-0 is not unsealed on gcpckms after migration; Flux 'vault' and 'identity' stay suspended for break-glass recovery." >&2
+    exit 1
+  fi
+  echo "PASS: openbao-0 runs on unattended Cloud KMS auto-unseal (nacfson-pipeline / asia-northeast3)."
+else
+  echo "=== [4/7] Keeping Shamir seal on local-k3s ==="
+fi
+
+echo "Re-binding OpenBao Kubernetes auth to '${TARGET_ENV}'..."
 ALLOW_SSH_FALLBACK=false VAULT_TOKEN="${VAULT_TOKEN}" "${SCRIPT_DIR}/vault-configure-k8s-auth.sh"
 VAULT_TOKEN="${VAULT_TOKEN}" "${SCRIPT_DIR}/vault-reconcile.sh" --confirm
 
-echo "=== [4/6] Restoring PostgreSQL Databases (keycloak, proj_pn, proj_health) ==="
+echo "=== [5/7] Resuming Flux 'vault' and Waiting for PostgreSQL ==="
+set_layer_suspend vault false
+request_layer_reconcile vault
+wait_layer_ready vault
+request_layer_reconcile database
+wait_layer_ready database
+kubectl rollout status statefulset/postgres -n identity --timeout=600s
+
+echo "=== [6/7] Restoring PostgreSQL Databases (keycloak, proj_pn, proj_health) ==="
 "${SCRIPT_DIR}/db-migrate-dump.sh" --keycloak --file "${ABS_BUNDLE_DIR}/keycloak.dump.gz" --yes
 "${SCRIPT_DIR}/db-migrate-dump.sh" --project pn --file "${ABS_BUNDLE_DIR}/proj_pn.dump.gz" --yes
 "${SCRIPT_DIR}/db-migrate-dump.sh" --project health --file "${ABS_BUNDLE_DIR}/proj_health.dump.gz" --yes
 
-bg_kubectl rollout restart deployment/keycloak -n identity
+echo "=== [7/7] Resuming Flux 'identity' (Keycloak starts on the restored database) ==="
+set_layer_suspend identity false
+request_layer_reconcile identity
+if kubectl get deployment keycloak -n identity >/dev/null 2>&1; then
+  bg_kubectl rollout restart deployment/keycloak -n identity
+fi
+wait_layer_ready identity
 kubectl rollout status deployment/keycloak -n identity --timeout=300s
 
 if [[ "${TARGET_ENV}" == "local-k3s" ]]; then
-  echo "=== [5/6] Restoring VictoriaLogs History onto local-k3s ==="
+  echo "Restoring VictoriaLogs history onto local-k3s..."
   restore_victorialogs_local_k3s
 else
-  echo "=== [5/6] Skipping in-cluster VictoriaLogs restore on GKE (logs stream to OCI Kafka; archive preserved for Spec 014) ==="
-fi
-
-echo "=== [6/6] Resuming Flux 'vault' Reconciliation ==="
-bg_kubectl patch kustomization vault -n flux-system --type=merge -p '{"spec":{"suspend":false}}'
-
-if [[ "${MIGRATE_KMS}" == "auto" ]]; then
-  if [[ "${TARGET_ENV}" == "gke" ]]; then
-    MIGRATE_KMS="true"
-  else
-    MIGRATE_KMS="false"
-  fi
-fi
-
-if [[ "${TARGET_ENV}" == "gke" && "${MIGRATE_KMS}" == "true" ]]; then
-  echo "=== Executing Shamir -> Cloud KMS (gcpckms) Seal Migration ==="
-  bg_kubectl apply -f - <<'EOF'
-apiVersion: v1
-kind: ConfigMap
-metadata:
-  name: openbao-config
-  namespace: vault
-data:
-  openbao.hcl: |
-    ui = false
-    disable_mlock = true
-
-    storage "raft" {
-      path    = "/openbao/data"
-      node_id = "openbao-0"
-    }
-
-    seal "gcpckms" {
-      project     = "nacfson-pipeline"
-      region      = "asia-northeast3"
-      key_ring    = "nacfson-vault"
-      crypto_key  = "openbao-unseal"
-    }
-
-    listener "tcp" {
-      address     = "0.0.0.0:8200"
-      tls_disable = 1
-    }
-
-    api_addr     = "http://openbao.vault.svc.cluster.local:8200"
-    cluster_addr = "http://openbao-0.openbao-internal.vault.svc.cluster.local:8201"
-EOF
-  flux reconcile kustomization vault --as=system:admin --as-group=platform:break-glass --with-source || true
-  bg_kubectl delete pod -n vault openbao-0 --ignore-not-found
-  kubectl wait --for=jsonpath='{.status.phase}'=Running pod/openbao-0 -n vault --timeout=180s
-  kubectl exec -n vault openbao-0 -- \
-    env VAULT_ADDR="http://127.0.0.1:8200" \
-    bao operator unseal -migrate "${UNSEAL_KEY}"
-  echo "PASS: openbao-0 migrated to unattended Cloud KMS auto-unseal (nacfson-pipeline / asia-northeast3)."
+  echo "Skipping in-cluster VictoriaLogs restore on GKE (logs stream to OCI Kafka; archive preserved for Spec 014)."
 fi
 
 unset VAULT_TOKEN UNSEAL_KEY

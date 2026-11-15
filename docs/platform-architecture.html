@@ -1785,7 +1785,7 @@
           from: 'Operator Break-Glass CLI',
           to: 'OpenBao (ns: vault) & PostgreSQL (ns: identity)',
           proto: 'cutover-bundle.sh export | verify | restore -> gcpckms migrate',
-          desc: 'On local-k3s, vault-init.sh/vault-unseal.sh unseals OpenBao with Shamir keys. For GKE Gate 4 cutover, cutover-bundle.sh verifies SHA-256 checksums, suspends Flux vault, restores the Raft snapshot + keycloak/proj_pn/proj_health DBs + TLS secrets, re-binds K8s SA auth, and migrates OpenBao to Cloud KMS (gcpckms) auto-unseal.',
+          desc: 'On local-k3s, vault-init.sh/vault-unseal.sh unseals OpenBao with Shamir keys. For GKE Gate 4 cutover, cutover-bundle.sh verifies SHA-256 checksums, pre-seeds TLS secrets, suspends Flux vault and identity, restores the Raft snapshot under the live config minus its seal stanza, migrates OpenBao to Cloud KMS (gcpckms) auto-unseal, re-binds K8s SA auth, resumes vault and waits for the database layer, loads the keycloak/proj_pn/proj_health DBs, then resumes identity so Keycloak starts on restored data.',
           code: `./scripts/cutover-bundle.sh verify --bundle-dir "$BUNDLE_DIR"\n./scripts/cutover-bundle.sh restore --target gke --migrate-kms --bundle-dir "$BUNDLE_DIR"`,
           guard: 'Bundle lives strictly outside Git (chmod 0700); GKE Workload Identity uses zero static GCP key files.'
         }
