@@ -39,7 +39,7 @@ func TestLine(t *testing.T) {
 		{`2026/10/29 09:00:00 [warn] 1#1: low`, "", NotError, ""},
 		{`2026/10/29 09:00:00 [info] 1#1: hi`, "", NotError, ""},
 		{`2026/10/29 09:00:00 [debug] 1#1: hi`, "", NotError, ""},
-		{`level=error msg=x`, "", Plain, ""}, // logfmt is not a contract format
+		{`level=error msg=x`, "", Plain, ""},
 		{`  panic: indented is not a signature`, "", Plain, ""},
 		{`{broken json`, "", Plain, ""},
 		{`{"level":"error","msg":"x"} trailing`, "", Plain, ""},
@@ -125,7 +125,7 @@ func TestNginxMsg(t *testing.T) {
 
 func TestOversizeLineTruncated(t *testing.T) {
 	const limit = 64 << 10
-	big := strings.Repeat("é", 1<<20) // 2 MiB of two-byte runes
+	big := strings.Repeat("é", 1<<20)
 	line := fmt.Sprintf(`{"level":"error","msg":%q,"exception.message":%q,"exception.stacktrace":%q}`, big, big, big)
 	ev, kind := Line(line)
 	if kind != Error {
@@ -253,7 +253,7 @@ func TestAssemblerFlushesAfterMaxAge(t *testing.T) {
 	a := NewAssembler(200, 2*time.Second)
 	a.Feed(rec("a", "app", "panic: boom", 0))
 	a.Feed(rec("a", "app", "line", time.Second))
-	// last appended line is at +1s; now-maxAge must be >= +1s to flush.
+
 	if got := a.Flush(t0.Add(2 * time.Second)); len(got) != 0 {
 		t.Fatalf("flushed too early: %+v", got)
 	}

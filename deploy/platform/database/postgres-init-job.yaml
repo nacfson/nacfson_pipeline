@@ -85,9 +85,6 @@ spec:
       containers:
         - name: init-db
           image: postgres:16.8-alpine
-          # Short-lived psql bootstrap: request 25m so the Job can schedule next to postgres-0
-          # on the 2-OCPU vps-k3s node (it previously took the CPU postgres-0 needed and
-          # deadlocked waiting for it). Limit stays 100m.
           resources:
             requests:
               cpu: 25m
@@ -133,7 +130,6 @@ spec:
                 BACKUP_DB_PASSWORD=$(cat /var/run/secrets/database/backup_password)
               fi
 
-              # Direct Vault fallback if token present
               if [ -z "${PGPASSWORD:-}" ] && [ -n "${VAULT_TOKEN:-}" ]; then
                 PGPASSWORD=$(wget -qO- --header="X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/kv/data/database/postgres-admin | grep -o '"password":"[^"]*"' | cut -d'"' -f4)
                 KEYCLOAK_DB_PASSWORD=$(wget -qO- --header="X-Vault-Token: ${VAULT_TOKEN}" ${VAULT_ADDR}/v1/kv/data/database/keycloak-user | grep -o '"password":"[^"]*"' | cut -d'"' -f4)
@@ -179,10 +175,6 @@ spec:
                 GRANT CONNECT ON DATABASE keycloak TO backup_role;
               EOSQL
 
-              # Standardized Multi-Project Database & Role Provisioning (proj_<slug> / user_<slug>)
-              # NOTE: heredoc terminators (EOSQL) MUST start at the script's base indent. `<<-` only
-              # strips TABs and YAML indents with spaces, so an indented EOSQL inside this loop is
-              # never matched and the shell fails with "unexpected end of file (expecting done)".
               for SLUG in $(echo "${PROJECT_SLUGS:-pn}" | tr ',' ' '); do
                 DB_NAME="proj_${SLUG}"
                 ROLE_NAME="user_${SLUG}"
@@ -237,7 +229,6 @@ spec:
                 \$\$;
               EOSQL
 
-              # Clear secrets from memory immediately upon completion
               unset PGPASSWORD KEYCLOAK_DB_PASSWORD PROJ_PN_DB_PASSWORD BACKUP_DB_PASSWORD
               echo "Database and role provisioning completed successfully."
           volumeMounts:

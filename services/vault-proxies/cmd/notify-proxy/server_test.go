@@ -347,8 +347,7 @@ func TestStatusNeverLeaksURL(t *testing.T) {
 }
 
 func TestStartupSelfTestPassesAndProbes(t *testing.T) {
-	// Resolver deliberately returns a GRANTED identity for every IP: the
-	// self-test must still prove an ungranted caller is refused.
+
 	p, _, s := newTestProxy(t, "observability", "error-detector")
 	for _, path := range []string{"/startupz", "/readyz", "/healthz"} {
 		rec := httptest.NewRecorder()

@@ -1,9 +1,5 @@
 ---
-# All edge certificates live in namespace platform and are served through
-# TLSStore platform/default (tls-store.yaml). Projects never hold TLS objects.
-# Flux patches index 0 of spec.dnsNames and spec.issuerRef.name per environment.
 
-# Served through TLSStore platform/default
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -13,7 +9,6 @@ metadata:
     app.kubernetes.io/part-of: platform
 spec:
   secretName: auth-tls
-  # renew when 30 days remain (FR-006), independent of CA lifetime
   renewBefore: 720h
   dnsNames:
     - auth.example.com
@@ -26,7 +21,6 @@ spec:
     size: 256
     rotationPolicy: Always
 ---
-# Served through TLSStore platform/default
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -36,7 +30,6 @@ metadata:
     app.kubernetes.io/part-of: platform
 spec:
   secretName: pn-tls
-  # renew when 30 days remain (FR-006), independent of CA lifetime
   renewBefore: 720h
   dnsNames:
     - pn.example.com
@@ -49,7 +42,6 @@ spec:
     size: 256
     rotationPolicy: Always
 ---
-# Served through TLSStore platform/default
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -59,7 +51,6 @@ metadata:
     app.kubernetes.io/part-of: platform
 spec:
   secretName: health-tls
-  # renew when 30 days remain (FR-006), independent of CA lifetime
   renewBefore: 720h
   dnsNames:
     - health.example.com
@@ -72,7 +63,6 @@ spec:
     size: 256
     rotationPolicy: Always
 ---
-# Served through TLSStore platform/default
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -82,7 +72,6 @@ metadata:
     app.kubernetes.io/part-of: platform
 spec:
   secretName: blog-tls
-  # renew when 30 days remain (FR-006), independent of CA lifetime
   renewBefore: 720h
   dnsNames:
     - blog.example.com

@@ -1,10 +1,3 @@
-"""Tests for scripts/image-pin.py: request checks, run markers, dedupe, supersede.
-
-The dedupe rules are security-relevant, not just cosmetic. A run's own marker is
-the only thing that may suppress another request, and only when that run's
-`validate` actually succeeded. See the step-1 plan, Review Focus 1 and 2.
-"""
-
 import importlib.util
 import json
 import subprocess
@@ -23,7 +16,6 @@ def load_module():
     if spec is None or spec.loader is None:
         raise RuntimeError(f"cannot load {MODULE_PATH}")
     module = importlib.util.module_from_spec(spec)
-    # Register before exec: @dataclass resolves annotations through sys.modules.
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
@@ -39,7 +31,6 @@ T1 = T0 + timedelta(hours=1)
 
 
 class RequestValidationTests(unittest.TestCase):
-    """The allowlist rules, moved unchanged from image-bump-request.py."""
 
     def test_canonicalizes_a_valid_dispatch(self):
         request = mod.validate_request(
@@ -51,7 +42,6 @@ class RequestValidationTests(unittest.TestCase):
         self.assertEqual(request.roles, ["web"])
 
     def test_hand_run_without_run_url_passes(self):
-        """A manual dispatch has no source run to point at."""
         request = mod.validate_request(
             mod.Request(project="blog", source_repo="", sha=SHA_A, roles=["web"], run_url=None),
             SOURCES,
@@ -98,7 +88,6 @@ class RequestValidationTests(unittest.TestCase):
                     source_repo="",
                     sha=SHA_A,
                     roles=["web"],
-                    # right shape, wrong repository: must not be accepted
                     run_url="https://github.com/nacfson/blog-web/actions/runs/1",
                 ),
                 SOURCES,
@@ -121,15 +110,8 @@ class RequestValidationTests(unittest.TestCase):
 
 
 class MarkerTests(unittest.TestCase):
-    """A marker is what a run writes about itself; it round-trips through a file."""
 
     def test_missing_conclusion_is_not_success(self):
-        """Regression: a marker without a conclusion must not suppress anything.
-
-        A run that dies before writing its marker, or any refactor that drops
-        the key, produced a marker that counted as successful and hid real
-        requests for 30 days.
-        """
         data = {
             "project": "blog",
             "sha": SHA_A,
@@ -178,23 +160,14 @@ class MarkerTests(unittest.TestCase):
 
 
 class DuplicateTests(unittest.TestCase):
-    """Is a request already covered by a live run?"""
 
     def test_decoy_failed_run_does_not_suppress(self):
-        """Review Focus 1: a failed run's marker must never count as live.
-
-        A token holder can dispatch any project/sha/roles. If a failed run's
-        marker suppressed the next legitimate request, the operator would never
-        see a message and never learn why. The run is still listed by the API,
-        so the guard is the conclusion, not the status.
-        """
         live = [
             mod.Marker("blog", SHA_A, ["web"], 1, "queued", T0, conclusion="failure"),
         ]
         self.assertFalse(mod.is_duplicate(mod.Request("blog", "", SHA_A, ["web"]), live))
 
     def test_queued_run_is_live(self):
-        """A run is `queued` until validate finishes, and still counts."""
         live = [mod.Marker("blog", SHA_A, ["web"], 2, "queued", T0, conclusion="success")]
         self.assertTrue(mod.is_duplicate(mod.Request("blog", "", SHA_A, ["web"]), live))
 
@@ -203,7 +176,6 @@ class DuplicateTests(unittest.TestCase):
         self.assertTrue(mod.is_duplicate(mod.Request("blog", "", SHA_A, ["web"]), live))
 
     def test_in_progress_run_is_live(self):
-        """An approved run leaves `waiting`; it is still covering these roles."""
         live = [mod.Marker("blog", SHA_A, ["web"], 4, "in_progress", T0, conclusion="success")]
         self.assertTrue(mod.is_duplicate(mod.Request("blog", "", SHA_A, ["web"]), live))
 
@@ -216,7 +188,6 @@ class DuplicateTests(unittest.TestCase):
         self.assertFalse(mod.is_duplicate(mod.Request("blog", "", SHA_A, ["web"]), live))
 
     def test_partial_role_coverage_is_not_a_duplicate(self):
-        """A backend-only request must not swallow a backend+frontend one."""
         live = [mod.Marker("pn", SHA_A, ["backend"], 7, "waiting", T0, conclusion="success")]
         self.assertFalse(
             mod.is_duplicate(mod.Request("pn", "", SHA_A, ["backend", "frontend"]), live)
@@ -232,14 +203,8 @@ class DuplicateTests(unittest.TestCase):
 
 
 class ReplacedTests(unittest.TestCase):
-    """Has a newer request superseded this one?"""
 
     def test_approved_newer_request_still_replaces(self):
-        """Review Focus 2: approval moves a run to in_progress, off `waiting`.
-
-        If `in_progress` were excluded, approving the newer message first would
-        let the older approved run proceed and open a second PR.
-        """
         live = [
             mod.Marker("pn", SHA_B, ["backend", "frontend"], 20, "in_progress", T1, conclusion="success"),
         ]
@@ -258,7 +223,6 @@ class ReplacedTests(unittest.TestCase):
         self.assertFalse(mod.is_replaced(mod.Request("pn", "", SHA_A, ["backend"]), live, requested_at=T0))
 
     def test_newer_request_without_our_roles_does_not_replace(self):
-        """A frontend-only build must not cancel a waiting backend request."""
         live = [mod.Marker("pn", SHA_B, ["frontend"], 24, "waiting", T1, conclusion="success")]
         self.assertFalse(mod.is_replaced(mod.Request("pn", "", SHA_A, ["backend"]), live, requested_at=T0))
 
@@ -273,12 +237,6 @@ class ReplacedTests(unittest.TestCase):
         self.assertFalse(mod.is_replaced(mod.Request("pn", "", SHA_A, ["backend"]), live, requested_at=T0))
 
     def test_compares_against_request_time_not_now(self):
-        """Regression: comparing markers to "now" inverted the answer.
-
-        An old request (created T0) and a newer marker (created T1) must mean
-        "replaced", regardless of when the comparison runs. Using wall-clock
-        now made the marker look older than the request.
-        """
         live = [mod.Marker("pn", SHA_B, ["backend"], 27, "waiting", T1, conclusion="success")]
         self.assertTrue(
             mod.is_replaced(
@@ -289,21 +247,13 @@ class ReplacedTests(unittest.TestCase):
         )
 
     def test_marker_older_than_request_does_not_replace(self):
-        """The mirror case: a marker predating the request must not replace it."""
         live = [mod.Marker("pn", SHA_B, ["backend"], 28, "waiting", T0, conclusion="success")]
         self.assertFalse(mod.is_replaced(mod.Request("pn", "", SHA_A, ["backend"]), live, requested_at=T1))
 
 
 class SelfExclusionTests(unittest.TestCase):
-    """A run must never treat its own marker as a reason to stop."""
 
     def test_run_does_not_replace_itself(self):
-        """Regression: marker write time is minutes after run creation.
-
-        Without excluding the evaluating run, an older request compared its own
-        marker (written after it started) to its own creation time and declared
-        itself `replaced`, silently doing nothing.
-        """
         own = mod.Marker("pn", SHA_A, ["backend"], 42, "waiting", T1)
         self.assertFalse(
             mod.is_replaced(
@@ -332,15 +282,8 @@ class SelfExclusionTests(unittest.TestCase):
 
 
 class CanonicalMarkerTests(unittest.TestCase):
-    """The CLI records the same identity that check-request computes."""
 
     def test_write_marker_canonicalizes_project_and_default_roles(self):
-        """Regression: write-marker bypassed validation.
-
-        It stored the raw `--project` and an empty role set, so a marker never
-        matched the canonical request identity and dedupe silently matched
-        nothing for the default-roles case.
-        """
         import io
         from contextlib import redirect_stdout
 
@@ -384,11 +327,6 @@ class CanonicalMarkerTests(unittest.TestCase):
 
 
 class DiffCheckTests(unittest.TestCase):
-    """§9: the changed set must be exactly the approved digests and nothing else.
-
-    This is what makes skipping CI's PR workflows safe, so every reject case here
-    is a way a pin PR could smuggle in a change the operator never approved.
-    """
 
     OLD = "sha256:" + "1" * 64
     NEW = "sha256:" + "2" * 64
@@ -471,17 +409,14 @@ class DiffCheckTests(unittest.TestCase):
             approved if approved is not None else self.approved(),
         )
 
-    # --- accept -------------------------------------------------------------
 
     def test_accepts_a_real_pin_diff(self):
-        """The shape of commit a52a27f: one image line, one handbook digest."""
         violations = self.check(
             {self.YAML_PATH: self.yaml_diff(), self.HTML_PATH: self.html_diff()}
         )
         self.assertEqual(violations, [])
 
     def test_accepts_when_the_handbook_did_not_change(self):
-        """html_changed False is legitimate: no row or short token matched."""
         violations = self.check(
             {self.YAML_PATH: self.yaml_diff()},
             summary=self.summary(html_changed=False),
@@ -489,7 +424,6 @@ class DiffCheckTests(unittest.TestCase):
         self.assertEqual(violations, [])
 
     def test_accepts_a_two_role_request_where_one_role_is_noop(self):
-        """Only the changed role's path may appear; the noop role writes nothing."""
         summary = self.summary()
         summary["images"].append(
             {
@@ -508,7 +442,6 @@ class DiffCheckTests(unittest.TestCase):
         self.assertEqual(violations, [])
 
     def test_the_noop_role_path_is_not_required_in_the_diff(self):
-        """The converse: reporting the noop role's path is an error."""
         summary = self.summary()
         summary["images"].append(
             {
@@ -530,7 +463,6 @@ class DiffCheckTests(unittest.TestCase):
         )
         self.assertTrue(violations, "a noop role must not produce a file change")
 
-    # --- reject -------------------------------------------------------------
 
     def test_accepts_pin_diff_with_version_label_change(self):
         diff = self.yaml_diff_with_version("v1.4.2", "v1.5.0")
@@ -613,7 +545,6 @@ class DiffCheckTests(unittest.TestCase):
         self.assertTrue(violations)
 
     def test_rejects_a_missing_handbook_change_when_the_helper_rewrote_it(self):
-        """html_changed True but the file is absent from the diff."""
         violations = self.check({self.YAML_PATH: self.yaml_diff()})
         self.assertTrue(violations)
 
@@ -626,21 +557,13 @@ class DiffCheckTests(unittest.TestCase):
         violations = self.check({self.YAML_PATH: doubled})
         self.assertTrue(violations)
 
-    # --- the parser's own trust boundary ------------------------------------
 
     def test_rejects_a_real_diff_whose_content_starts_with_plus_plus(self):
-        """Regression: the `+++` header skip also swallowed `++` content.
-
-        git renders a content line beginning `+` as `++...`, so a naive
-        startswith("+++") skip dropped it. An injected line like
-        `++hostNetwork: true` then rode along with a clean-looking pin.
-        """
         injected = self.yaml_diff() + "+++hostNetwork: true\n"
         violations = self.check({self.YAML_PATH: injected})
         self.assertTrue(violations, "a content line beginning '++' must not be skipped")
 
     def test_rejects_a_real_diff_whose_content_starts_with_minus_minus(self):
-        """The mirror case: removing a `--` line renders as `----`."""
         removed = self.yaml_diff() + "----removed-separator\n"
         violations = self.check({self.YAML_PATH: removed})
         self.assertTrue(violations)
@@ -664,7 +587,6 @@ class DiffCheckTests(unittest.TestCase):
         self.assertTrue(violations)
 
     def test_rejects_an_empty_handbook_diff_when_html_changed(self):
-        """Regression: html_changed True with no handbook hunk validated as clean."""
         violations = self.check({self.YAML_PATH: self.yaml_diff(), self.HTML_PATH: ""})
         self.assertTrue(violations)
 
@@ -678,10 +600,8 @@ class DiffCheckTests(unittest.TestCase):
         self.assertTrue(violations)
 
     def test_rejects_digest_rows_swapped_between_repositories(self):
-        """Regression: any approved digest was accepted anywhere in the handbook."""
         other_repo = "ghcr.io/nacfson/project-pn-frontend"
         other_new = "sha256:" + "4" * 64
-        # A row for blog-web rewritten with the digest approved for pn-frontend.
         row = '<tr><td>proj-blog</td><td>blog-web</td><td>ghcr.io/nacfson/blog-web</td><td>'
         violations = self.check(
             {self.YAML_PATH: self.yaml_diff(), self.HTML_PATH: self.html_diff(new=other_new, row=row)},
@@ -690,11 +610,6 @@ class DiffCheckTests(unittest.TestCase):
         self.assertTrue(violations, "a digest approved for another repo must be rejected")
 
     def test_accepts_a_short_badge_rewrite(self):
-        """Regression: the short-token test compared bare hex to a prefixed string.
-
-        It was always False, so every pn pin touching a `Pinned @sha256:` badge
-        failed its own gate and no PR could ever open.
-        """
         short_old = "sha256:" + self.OLD.split(":")[1][:8]
         short_new = "sha256:" + self.NEW.split(":")[1][:8]
         html = (
@@ -718,18 +633,12 @@ class DiffCheckTests(unittest.TestCase):
         self.assertTrue(violations)
 
     def test_rejects_a_traversal_path(self):
-        """Regression: startswith() accepted `.../workloads/../../pn/...`."""
         evil = "deploy/projects/blog/workloads/../../pn/workloads/x.yaml"
         violations = self.check({evil: self.yaml_diff().replace(self.YAML_PATH, evil)})
         self.assertTrue(violations)
 
 
 class RealDiffTests(unittest.TestCase):
-    """Run the checker against git's own output, not hand-written fixtures.
-
-    Hand-written fixtures can agree with a bug in the parser. Commit a52a27f is a
-    real pin commit, so its diff is the ground truth for what must be accepted.
-    """
 
     PIN_COMMIT = "a52a27f"
     YAML = "deploy/projects/blog/workloads/deployment.yaml"
@@ -806,7 +715,6 @@ class RealDiffTests(unittest.TestCase):
 
 
 class RenderTests(unittest.TestCase):
-    """§7.3 message titles and the PR body, including private-image redaction."""
 
     RUN_ID = 41194135849
 
@@ -854,7 +762,6 @@ class RenderTests(unittest.TestCase):
             ],
         }
 
-    # --- message ------------------------------------------------------------
 
     def test_allowed_mentions_is_empty(self):
         message = mod.render_message(self.req(), self.summary(), pin_run_id=self.RUN_ID)
@@ -866,7 +773,6 @@ class RenderTests(unittest.TestCase):
             message["review_url"],
             f"https://github.com/nacfson/nacfson_pipeline/actions/runs/{self.RUN_ID}",
         )
-        # The source build run may appear as context, but must not be the button.
         self.assertNotIn(f"actions/runs/{self.RUN_ID}", self.summary()["images"][0]["source"])
 
     def test_outcome_titles_cover_every_row_of_the_spec_table(self):
@@ -886,7 +792,6 @@ class RenderTests(unittest.TestCase):
         with self.assertRaises(KeyError):
             mod.outcome_title("something-new")
 
-    # --- pr body ------------------------------------------------------------
 
     def test_pr_body_has_the_digest_table(self):
         body = mod.render_pr_body(self.req(), self.summary(), {}, self.RUN_ID)
@@ -898,11 +803,6 @@ class RenderTests(unittest.TestCase):
         self.assertIn("did not run", body.lower())
 
     def test_private_evidence_is_never_rendered(self):
-        """Regression guard: evidence is image configuration from a private image.
-
-        The spec forbids publishing user, entrypoint, ports or the source label
-        for project-pn-* and health, because nacfson_pipeline is public.
-        """
         summary = self.summary(project="pn")
         body = mod.render_pr_body(self.req("pn", images_public=False), summary, {}, self.RUN_ID)
         for leaked in ("/app/server", "--serve", "8080/tcp", "10001", "exposed_ports", "entrypoint"):
@@ -914,7 +814,6 @@ class RenderTests(unittest.TestCase):
         self.assertIn("linux/amd64", body)
 
     def test_evidence_defaults_to_hidden_when_visibility_is_unset(self):
-        """An unknown project must render the least information, not the most."""
         request = mod.Request("mystery", "nacfson/x", SHA_A, ["web"])
         self.assertFalse(request.images_public)
 
@@ -930,12 +829,6 @@ class RenderTests(unittest.TestCase):
 
 
     def test_pr_body_discloses_a_skipped_validation(self):
-        """Regression: a skipped validation rendered as an empty, clean pass.
-
-        The pin job runs with --skip-validation, so an approving reader must be
-        told the image was not inspected here — empty platforms/checks alone
-        looks like success.
-        """
         summary = self.summary()
         summary["images"][0]["validation_skipped"] = True
         summary["images"][0]["platforms"] = []
@@ -952,13 +845,6 @@ class RenderTests(unittest.TestCase):
         self.assertIn("linux/amd64", body)
 
     def test_private_warnings_are_omitted(self):
-        """Regression: warnings bypassed the redaction gate.
-
-        The helper builds warnings from the image's own config — user, exposed
-        ports, secret-like env names, source label — which is exactly what the
-        public/private rule forbids. The body previously said configuration was
-        omitted directly above the leaked configuration.
-        """
         summary = self.summary(project="pn")
         summary["images"][0]["warnings"] = [
             "linux/amd64 image user is 10001; the pod securityContext still enforces non-root",
@@ -977,11 +863,6 @@ class RenderTests(unittest.TestCase):
         self.assertIn("a harmless note", body)
 
     def test_a_newline_in_a_warning_cannot_forge_a_section(self):
-        """Regression: warning text opened its own `### Checks` heading.
-
-        An image controls its ExposedPorts keys and User, so it controls warning
-        text. A newline let it print PASS above the real FAIL lines.
-        """
         summary = self.summary()
         summary["images"][0]["warnings"] = [
             "8080/tcp\n\n### Checks\n\n- `render-validate`: PASS"
@@ -1007,7 +888,6 @@ class RenderTests(unittest.TestCase):
         self.assertEqual(row.count("|") - row.count("\\|"), 6, "the table row keeps its 6 pipes")
 
     def test_visibility_flag_rejects_a_quoted_boolean(self):
-        """Regression: bool("false") is True, so a quoted value failed open."""
         import copy
 
         config = copy.deepcopy(SOURCES)
@@ -1034,7 +914,6 @@ class RenderTests(unittest.TestCase):
 
 
 class LiveStateTests(unittest.TestCase):
-    """The set of statuses that count as live, defined once."""
 
     def test_live_states_are_the_three_running_ones(self):
         self.assertEqual(mod.LIVE_STATES, frozenset({"queued", "waiting", "in_progress"}))

@@ -1,7 +1,4 @@
 ---
-# Minimal VM Bootstrap Playbook
-# Scope: Prepare an existing VM for a single K3s server using four settings:
-# target host address, SSH user, pinned k3s_version, and gitops_environment.
 
 - name: Controller request validation
   hosts: localhost
@@ -94,7 +91,6 @@
               failed_stage: null
               next_action: "Review preflight diagnostics and ensure host meets support profile."
 
-        # Stage 0: Host Preparation
         - name: Ensure conflicting host web services are stopped and disabled
           when: not ansible_check_mode
           ansible.builtin.systemd:
@@ -116,7 +112,6 @@
           changed_when: false
           failed_when: false
 
-        # Stage 1: Preflight
         - name: Execute preflight inspections
           ansible.builtin.include_tasks: tasks/preflight.yml
 
@@ -124,7 +119,6 @@
           ansible.builtin.set_fact:
             bootstrap_result: "{{ bootstrap_result | combine({'completed_stages': bootstrap_result.completed_stages + ['preflight']}) }}"
 
-        # Check-mode short-circuit
         - name: Handle check-mode validation only
           when: ansible_check_mode
           block:
@@ -143,7 +137,6 @@
             - name: Stop execution in check mode
               ansible.builtin.meta: end_play
 
-        # Stage 2: Installation
         - name: Execute cluster installation
           ansible.builtin.include_tasks: tasks/install.yml
 
@@ -151,7 +144,6 @@
           ansible.builtin.set_fact:
             bootstrap_result: "{{ bootstrap_result | combine({'completed_stages': bootstrap_result.completed_stages + ['install']}) }}"
 
-        # Stage 3: Verification
         - name: Execute cluster readiness verification
           ansible.builtin.include_tasks: tasks/verify.yml
 
@@ -159,11 +151,9 @@
           ansible.builtin.set_fact:
             bootstrap_result: "{{ bootstrap_result | combine({'completed_stages': bootstrap_result.completed_stages + ['verify']}) }}"
 
-        # Stage 4: Reconciler
         - name: Execute reconciler installation and verification
           ansible.builtin.include_tasks: tasks/reconciler.yml
 
-        # Final Success
         - name: Finalize successful bootstrap result
           ansible.builtin.set_fact:
             bootstrap_result: "{{ bootstrap_result | combine({

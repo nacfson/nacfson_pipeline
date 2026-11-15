@@ -1,16 +1,4 @@
 #!/usr/bin/env python3
-"""
-Config-as-code checks for platform session lifetimes (GitHub issue #93).
-
-The realm import used to set no lifespans, so the live realm ran on undeclared
-Keycloak 24 defaults. The values are now declared and contracted. The SSO idle
-timeout is 30 minutes by design (2026-11-02, matching the live realm): a visitor
-who makes no protected API call for 30 minutes is signed out.
-
-This test locks the realm JSON to the values in
-contracts/CONTRACT_AUTH_DOOR.md §5. Startup import skips an existing realm, so
-the live realm is updated separately (docs/operations-runbook.md §7).
-"""
 
 from __future__ import annotations
 
@@ -74,7 +62,6 @@ class TestKeycloakSessionLifetimes(unittest.TestCase):
                 self.assertRegex(body, rf"`{key}`\s*\|\s*`{re.escape(expected)}`")
 
     def test_contract_names_gateway_refresh_leeway(self):
-        """The §5 table row must match the gateway constant (2026-11-02 token-expiry race)."""
         with open(AUTH_CONTRACT, "r", encoding="utf-8") as f:
             body = f.read().split("## 5. Session Lifetimes", 1)[1]
         oidc = os.path.join(BASE_DIR, "gateway", "internal", "keycloak", "oidc.go")

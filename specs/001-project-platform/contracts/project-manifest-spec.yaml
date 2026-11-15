@@ -1,6 +1,3 @@
-# Schema Contract: Project Onboarding Declaration
-# Defines the required declarative structure for any project hosted on the platform.
-
 $schema: "http://json-schema.org/draft-07/schema#"
 title: ProjectManifestDeclaration
 type: object

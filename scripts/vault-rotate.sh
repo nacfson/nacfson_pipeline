@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# OpenBao Vault Credential Rotation & Revocation CLI Helper
-# Strictly adheres to specs/002-internal-cluster-vault/spec.md (FR-020, SC-004)
-# ==============================================================================
 
 set -euo pipefail
 
@@ -13,7 +9,6 @@ DB_PROXY_ADDR="http://127.0.0.1:8080"
 KUBE_EXEC="${KUBE_EXEC:-kubectl}"
 
 if ! ${KUBE_EXEC} --request-timeout=1s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
-  # VAULT_NS and VAULT_POD exist on this machine and must expand before ssh.
   # shellcheck disable=SC2029
   if ssh oracleCloud "sudo k3s kubectl get pod -n ${VAULT_NS} ${VAULT_POD}" >/dev/null 2>&1; then
     KUBE_EXEC="ssh oracleCloud sudo k3s kubectl"
@@ -90,7 +85,6 @@ case "$COMMAND" in
     fi
 
     if [ -z "${CRED_VALUE}" ]; then
-      # Generate random cryptographic secret if none provided
       CRED_VALUE=$(openssl rand -hex 32)
       echo "Generated high-entropy synthetic secret."
     fi
@@ -159,7 +153,6 @@ case "$COMMAND" in
       exit 1
     fi
     echo "=== Immediately revoking operation grant for subject '${CRED_VALUE}' ==="
-    # Trigger per-operation revocation in DB Proxy
     REVOKE_RESP=$(curl -s -X POST "${DB_PROXY_ADDR}/admin/revoke?sub=${CRED_VALUE}" || echo '{"status":"REVOKED"}')
     echo "Revocation Response: ${REVOKE_RESP}"
     echo "SUCCESS: Grant revoked. Active sessions dropped immediately per FR-020."

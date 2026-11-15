@@ -1,23 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# cutover-bundle.sh
-# FullStateMigrationBundle Orchestrator (Export | Verify | Restore)
-# Governing Contract: specs/012-gke-platform-migration/contracts/fluentbit-recovery-and-cutover-bundle.md
-#
-# Enforces:
-#   - Out-of-git chmod 0700 staging directory (refuses paths inside repo root)
-#   - 6 mandatory artifacts + manifest.sha256 checksum verification:
-#       1. openbao.snap
-#       2. keycloak.dump.gz
-#       3. proj_pn.dump.gz
-#       4. proj_health.dump.gz
-#       5. edge-tls-secrets.yaml
-#       6. victoria-logs-data.tar.gz
-#   - Shamir-first OpenBao Raft restore (`flux suspend kustomization vault`),
-#     immediate cross-cluster Kubernetes auth re-binding (`vault-configure-k8s-auth.sh`
-#     + `vault-reconcile.sh --confirm`), PostgreSQL + Keycloak session restore,
-#     and Gate 4 `gcpckms` (`nacfson-pipeline` / `asia-northeast3`) seal migration.
-# ==============================================================================
 
 set -euo pipefail
 
@@ -111,7 +92,6 @@ if [[ -z "${BUNDLE_DIR}" ]]; then
   exit 1
 fi
 
-# Resolve canonical bundle path and strictly forbid staging inside the Git working tree before creating any directory
 ABS_BUNDLE_DIR="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "${BUNDLE_DIR}")"
 ABS_REPO_ROOT="$(cd "${REPO_ROOT}" && pwd -P)"
 
@@ -339,9 +319,6 @@ if [[ "${SUBCOMMAND}" == "verify" ]]; then
   exit 0
 fi
 
-# ==============================================================================
-# RESTORE MODE
-# ==============================================================================
 if [[ "${TARGET_ENV}" != "local-k3s" && "${TARGET_ENV}" != "gke" ]]; then
   echo "Error: --target must be 'local-k3s' or 'gke' (got '${TARGET_ENV}')." >&2
   exit 1
@@ -409,7 +386,6 @@ if [[ -z "${UNSEAL_KEY:-}" ]]; then
   echo ""
 fi
 
-# Ensure openbao-0 is initialized and unsealed before invoking 'raft snapshot restore -force'
 BAO_STATUS_JSON="$(kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao status -format=json 2>/dev/null || true)"
 BAO_INITIALIZED="$(python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print("true" if d.get("initialized") else "false")' <<< "${BAO_STATUS_JSON}")"
 BAO_SEALED="$(python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); print("true" if d.get("sealed", True) else "false")' <<< "${BAO_STATUS_JSON}")"
@@ -433,7 +409,6 @@ kubectl exec -n vault openbao-0 -- \
 kubectl exec -n vault openbao-0 -- rm -f /tmp/openbao.snap
 unset RESTORE_AUTH_TOKEN
 
-# Unseal openbao-0 using the restored snapshot's Shamir key
 kubectl exec -n vault openbao-0 -- \
   env VAULT_ADDR="http://127.0.0.1:8200" \
   bao operator unseal "${UNSEAL_KEY}" >/dev/null

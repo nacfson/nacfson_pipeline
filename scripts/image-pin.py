@@ -1,21 +1,4 @@
 #!/usr/bin/env python3
-"""Request checks, run markers, dedupe and supersede for the image pin flow.
-
-Run by `.github/workflows/image-pin.yaml`. This script owns every decision the
-workflow makes about *whether* to act; the image resolution and the YAML edits
-stay in the `update-project-images` helper.
-
-Design notes that matter:
-
-* Request identity is never derived from `run-name`. A workflow's display name
-  is composed from dispatch inputs, so the requester authors it. Dedupe and
-  supersede read a marker that each `validate` run writes about itself, and
-  only when that run concluded successfully. See the design spec §7, §12.
-* "Live" means queued, waiting or in_progress. A run is `queued` from dispatch
-  until its validate job finishes, so two dispatches seconds apart both see no
-  `waiting` run. And approval moves a run out of `waiting` into `in_progress`,
-  so a newer approved request must still count as newer.
-"""
 
 from __future__ import annotations
 
@@ -33,12 +16,11 @@ SOURCES_PATH = REPO_ROOT / "config" / "image-pin-sources.json"
 SHA_RE = re.compile(r"[0-9a-f]{40}")
 DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}")
 
-# A run in any of these states still covers the roles it claims.
 LIVE_STATES = frozenset({"queued", "waiting", "in_progress"})
 
 
 class RequestError(RuntimeError):
-    """The dispatch cannot become a request; the CLI exits with status 2."""
+    pass
 
 
 @dataclass
@@ -48,8 +30,6 @@ class Request:
     sha: str
     roles: list[str] = field(default_factory=list)
     run_url: str | None = None
-    # Whether the project's images are publicly readable. Defaults to False so
-    # an unset value renders the least information, never the most.
     images_public: bool = False
 
     def commit_url(self) -> str:
@@ -58,13 +38,6 @@ class Request:
 
 @dataclass(frozen=True)
 class Marker:
-    """What a validate run records about itself, for other runs to read.
-
-    `status` and `conclusion` are deliberately separate. `status` says whether
-    the run is still live; `conclusion` says whether its validate job actually
-    succeeded. Only a marker with `conclusion == "success"` may suppress or
-    replace another request, so a failed decoy run cannot hide a real one.
-    """
 
     project: str
     sha: str
@@ -103,15 +76,11 @@ class Marker:
             run_id=int(data["run_id"]),
             status=str(data["status"]),
             created_at=parse_time(created),
-            # A missing conclusion is untrusted, not successful. Defaulting it
-            # to "success" let a marker from a run that died early suppress a
-            # real request, which is the exact hole this design closes.
             conclusion=str(data.get("conclusion", "")),
         )
 
 
 def parse_time(value: str) -> datetime:
-    """Parse an ISO-8601 timestamp, accepting a trailing Z."""
     text = value.strip()
     if text.endswith("Z"):
         text = text[:-1] + "+00:00"
@@ -136,11 +105,6 @@ def _roles(value) -> list[str]:
 
 
 def validate_request(request: Request, sources: dict) -> Request:
-    """Check the hint against the allowlist and return it in canonical form.
-
-    `run_url` is optional: a hand-run has no source run to point at, and the
-    original rule only format-checks it when present.
-    """
     projects = sources.get("projects") or {}
     entry = projects.get(request.project)
     if entry is None:
@@ -149,7 +113,6 @@ def validate_request(request: Request, sources: dict) -> Request:
             f"allowed: {', '.join(sorted(projects)) or 'none'}"
         )
     source_repo = entry["source_repo"]
-    # workflow_dispatch runs omit source_repo and take it from the allowlist.
     if request.source_repo and request.source_repo.lower() != source_repo.lower():
         raise RequestError(
             f"source repository {request.source_repo!r} is not allowed for "
@@ -166,7 +129,6 @@ def validate_request(request: Request, sources: dict) -> Request:
             f"allowed: {', '.join(allowed_roles)}"
         )
     run_url = request.run_url
-    # run_url is rendered as a link, so allow nothing but a run (attempt) URL.
     run_re = rf"https://github\.com/{re.escape(source_repo)}/actions/runs/\d+(/attempts/\d+)?"
     if run_url and not re.fullmatch(run_re, run_url, re.IGNORECASE):
         raise RequestError(f"run_url is not a run of {source_repo}: {run_url!r}")
@@ -181,12 +143,6 @@ def validate_request(request: Request, sources: dict) -> Request:
 
 
 def _bool_flag(value, field_name: str, project: str) -> bool:
-    """Read a security-relevant boolean from config without truthiness coercion.
-
-    `bool("false")` is True, so a quoted value in the JSON would flip a private
-    project into publishing image configuration. Anything that is not a real
-    JSON boolean is an error, not a default.
-    """
     if value is None:
         return False
     if not isinstance(value, bool):
@@ -203,11 +159,6 @@ def write_marker(marker: Marker, path: Path) -> None:
 
 
 def read_marker(path: Path) -> Marker | None:
-    """Return the marker, or None when absent or unusable.
-
-    A corrupt or missing marker must never suppress a legitimate request, so
-    every failure reads as "no marker".
-    """
     try:
         raw = Path(path).read_text(encoding="utf-8")
         data = json.loads(raw)
@@ -222,15 +173,6 @@ def read_marker(path: Path) -> Marker | None:
 
 
 def _usable(markers: list[Marker]) -> list[Marker]:
-    """Markers that may decide anything for another run.
-
-    Two independent conditions, and conflating them was a bug:
-    * the run is still live (`LIVE_STATES`), and
-    * that same run's validate concluded successfully (`conclusion`).
-
-    A run whose validate failed must never suppress or replace another
-    request, even though the runs API keeps listing it for 30 days.
-    """
     return [
         marker
         for marker in markers
@@ -244,12 +186,6 @@ def is_duplicate(
     *,
     own_run_id: int | None = None,
 ) -> bool:
-    """Is an earlier live request already covering these project/commit/roles?
-
-    `own_run_id` excludes the evaluating run's own marker. Without it, a run
-    that wrote its marker and then re-checked would treat itself as a duplicate
-    and stop, so a legitimate request would silently do nothing.
-    """
     wanted = set(request.roles)
     for marker in _usable(live):
         if own_run_id is not None and marker.run_id == own_run_id:
@@ -270,21 +206,6 @@ def is_replaced(
     requested_at: datetime,
     own_run_id: int | None = None,
 ) -> bool:
-    """Is a live request newer than this one, covering all of its roles?
-
-    Three traps, each of which produced a wrong answer:
-
-    * The evaluating run must not see itself. Its own marker is written minutes
-      after the run was created, so comparing marker time to request time made a
-      run declare itself `replaced` and quietly do nothing.
-    * The comparison is marker creation vs this request's creation, not vs
-      wall-clock now. Comparing to `now` inverted the answer for old requests.
-    * `own_run_id` is the reliable way to exclude self; creation times come from
-      different runners and cannot be ordered by equality.
-
-    "Newer" is by creation time rather than run id, because ids are not a
-    reliable ordering across queued and re-run requests.
-    """
     wanted = set(request.roles)
     for marker in _usable(live):
         if own_run_id is not None and marker.run_id == own_run_id:
@@ -305,15 +226,10 @@ def run_gh(args: list[str]) -> str:
     return result.stdout
 
 
-# ---------------------------------------------------------------------------
-# Rendering (spec §7.3, §8)
-# ---------------------------------------------------------------------------
 
 PIN_REPO = "nacfson/nacfson_pipeline"
 PIN_RUN_URL = f"https://github.com/{PIN_REPO}/actions/runs"
 
-# Every row of the §7.3 table. Keeping this as a dict rather than an if-chain
-# means an unknown outcome raises instead of quietly rendering a blank message.
 OUTCOME_TITLES = {
     "pr_open": "PR open",
     "rejected": "Rejected",
@@ -329,7 +245,6 @@ def outcome_title(outcome: str) -> str:
 
 
 def _short_digest(image: dict) -> str:
-    """The 8-hex form used in messages: enough to tell two digests apart."""
     digest = str(image.get("digest") or "")
     return digest.split(":", 1)[1][:8] if ":" in digest else digest[:8]
 
@@ -340,12 +255,6 @@ def render_message(
     *,
     pin_run_id: int | None = None,
 ) -> dict:
-    """The Discord payload for a new request.
-
-    The review button points at the *pin run*, which is the only page that can
-    approve the gate. Pointing it at the source project's build run would look
-    right and approve nothing.
-    """
     lines = [f"New images ready: proj-{request.project}"]
     changed = [image for image in summary.get("images", []) if not image.get("noop")]
     width = max((len(str(image["role"])) for image in changed), default=0)
@@ -364,18 +273,11 @@ def render_message(
 
 
 def _md_cell(value: object) -> str:
-    """Make a string safe inside a markdown table cell."""
     text = " ".join(str(value).split())
     return text.replace("|", "\\|").replace("`", "'")
 
 
 def _md_line(value: object, limit: int = 300) -> str:
-    """Make a string safe as a single markdown line.
-
-    Newlines are the dangerous part: they let a value open its own heading, so
-    warning text from an image could forge a `### Checks` section above the
-    real one. Collapsing whitespace is the fix; truncation bounds the damage.
-    """
     text = " ".join(str(value).split())
     if len(text) > limit:
         text = text[:limit] + "…"
@@ -383,12 +285,8 @@ def _md_line(value: object, limit: int = 300) -> str:
 
 
 def _evidence_rows(image: dict, include_evidence: bool) -> list[str]:
-    """Per-platform lines. Image configuration only when the image is public."""
     rows = []
     if image.get("validation_skipped"):
-        # Say so plainly. Empty platforms/checks would otherwise read as a clean
-        # pass, and a reader approving the PR deserves to know the image was
-        # never inspected in this job.
         rows.append(
             "- **not inspected in this job** — validation ran in the earlier "
             "`validate` run that the operator approved"
@@ -425,12 +323,6 @@ def render_pr_body(
     checks: dict[str, str],
     pin_run_id: int | None = None,
 ) -> str:
-    """The PR description.
-
-    `request.images_public` decides whether image configuration is included.
-    It is False unless the allowlist says otherwise, so an unset or unknown
-    project renders the least information rather than the most.
-    """
     include_evidence = bool(request.images_public)
     lines = [
         f"Pins `proj-{request.project}` to the digests approved in "
@@ -457,11 +349,6 @@ def render_pr_body(
             continue
         lines.append(f"**{_md_cell(image['role'])}** `{_md_cell(image.get('digest'))}`")
         lines += _evidence_rows(image, include_evidence)
-        # Warnings are omitted for private images. They are not a fixed
-        # vocabulary: the helper builds them from the image's own config —
-        # `image user is 10001`, `ExposedPorts declares [...]`,
-        # `secret-like env DATABASE_URL`, the source label — which is exactly
-        # the data the public/private rule forbids publishing.
         if include_evidence:
             for warning in image.get("warnings") or []:
                 lines.append(f"- warning: {_md_line(warning)}")
@@ -493,15 +380,10 @@ def render_pr_body(
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Diff check (spec §9)
-# ---------------------------------------------------------------------------
 
 YAML_PREFIX = "deploy/projects/"
 YAML_SUFFIX = "/workloads/"
 HANDBOOK_PATH = "docs/platform-architecture.html"
-# A full digest, and the 8-hex short form the handbook uses in `Pinned @sha256:`
-# badges. The short form is only ever compared, never approved.
 FULL_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{64}")
 SHORT_DIGEST_RE = re.compile(r"sha256:[0-9a-f]{8}(?![0-9a-f])")
 IMAGE_LINE_RE = re.compile(r"^(\s*)image:\s*(\S+)\s*$")
@@ -512,14 +394,13 @@ VERSION_VAL_RE = re.compile(r"^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$")
 
 
 class _DiffError(Exception):
-    """Raised inside a per-file check; collected into the violation list."""
+    pass
 
 
 @dataclass(frozen=True)
 class _DiffLine:
-    """One content line of a unified diff, with its marker stripped."""
 
-    sign: str  # "+" or "-"
+    sign: str
     body: str
     hunk: int
 
@@ -529,17 +410,6 @@ BINARY_MARKER = "Binary files "
 
 
 def _parse_diff(diff_text: str, path: str) -> list[_DiffLine]:
-    """Parse a unified diff into content lines, strictly.
-
-    A naive `startswith("+++")` skip-list is wrong: a *content* line whose text
-    begins with `+` renders as `+++...`, so it was dropped and an arbitrary
-    change could ride along with a legitimate pin. Instead this tracks the hunk
-    header state and decides by position: the first line of a hunk is a content
-    line, and `---`/`+++` are only file headers *before* any hunk.
-
-    Anything unrecognised is an error rather than a skip, because a diff this
-    parser cannot read is a diff it must not approve.
-    """
     lines = diff_text.splitlines()
     content: list[_DiffLine] = []
     hunk = -1
@@ -552,7 +422,6 @@ def _parse_diff(diff_text: str, path: str) -> list[_DiffLine]:
         if line.startswith(BINARY_MARKER):
             raise _DiffError(f"{path}: binary diff is not a pin")
         if line.startswith("--- ") and hunk < 0:
-            # File header. The +++ line must follow.
             if index + 1 >= len(lines) or not lines[index + 1].startswith("+++ "):
                 raise _DiffError(f"{path}: malformed diff header")
             index += 2
@@ -567,7 +436,6 @@ def _parse_diff(diff_text: str, path: str) -> list[_DiffLine]:
         if hunk < 0:
             raise _DiffError(f"{path}: content before the first hunk: {line[:80]!r}")
         if line.startswith("\\"):
-            # "\ No newline at end of file"
             index += 1
             continue
         if not line:
@@ -582,7 +450,6 @@ def _parse_diff(diff_text: str, path: str) -> list[_DiffLine]:
 
 
 def _require_prefix(prefix: str) -> tuple[str, ...]:
-    """Reject any path segment that could escape the directory it claims."""
     return tuple(prefix.strip("/").split("/"))
 
 
@@ -591,7 +458,6 @@ def _segments(path: str) -> list[str]:
 
 
 def _is_under(path: str, prefix: str) -> bool:
-    """True only if `path` is inside `prefix`, with no traversal segments."""
     if ".." in _segments(path):
         return False
     wanted = _segments(prefix)
@@ -600,7 +466,6 @@ def _is_under(path: str, prefix: str) -> bool:
 
 
 def _check_yaml_file(path: str, diff_text: str, project: str, approved: dict[str, str]) -> str:
-    """Validate one workload file's diff; return the digest it pins."""
     expected_prefix = f"{YAML_PREFIX}{project}{YAML_SUFFIX}"
     if not _is_under(path, expected_prefix):
         raise _DiffError(f"{path}: not under {expected_prefix}")
@@ -686,15 +551,6 @@ def _check_yaml_file(path: str, diff_text: str, project: str, approved: dict[str
 
 
 def _check_handbook(diff_text: str, approved: dict[str, str]) -> None:
-    """Every handbook difference must map an old digest to an approved new one.
-
-    Two independent guarantees, because checking only that the new digest is
-    somewhere in the approved set lets rows swap digests:
-
-      1. the line, with digest tokens blanked, is otherwise unchanged; and
-      2. the old digest on that line is one the pin is replacing with the new
-         digest on that same line.
-    """
     if not diff_text.strip():
         raise _DiffError(f"{HANDBOOK_PATH}: html_changed was reported but the diff is empty")
 
@@ -721,25 +577,20 @@ def _check_handbook(diff_text: str, approved: dict[str, str]) -> None:
         old_short = SHORT_DIGEST_RE.findall(old_line)
         new_short = SHORT_DIGEST_RE.findall(new_line)
 
-        # 1. Nothing but digest tokens may differ.
         if _blank(old_line, old_full + old_short) != _blank(new_line, new_full + new_short):
             raise _DiffError(
                 f"{HANDBOOK_PATH}: a change is not a digest swap: {new_line.strip()[:80]!r}"
             )
 
-        # 2. Each new digest must be the replacement for an old one present on
-        #    the same line. A line may carry several rows, so compare sets.
         if len(old_full) != len(new_full):
             raise _DiffError(
                 f"{HANDBOOK_PATH}: digest count changed "
                 f"({len(old_full)} -> {len(new_full)})"
             )
         if old_full:
-            # Full digests: the repository is on the same line, so require the
-            # approved (repo, digest) pair to be an exact repin of an old digest.
             for new_digest in new_full:
                 if new_digest in old_full:
-                    continue  # an unchanged digest elsewhere in the same row
+                    continue
                 if not any(
                     digest == new_digest and repo in new_line
                     for repo, digest in approved_pairs
@@ -751,9 +602,6 @@ def _check_handbook(diff_text: str, approved: dict[str, str]) -> None:
             if set(new_full) == set(old_full) and old_line != new_line:
                 raise _DiffError(f"{HANDBOOK_PATH}: a digest line changed without a repin")
 
-        # Short badges are 8-hex prefixes of a full digest. They must be the
-        # prefix of an approved digest, compared against the same field the
-        # approved refs carry (`sha256:<hex>`), not against bare hex.
         for new_token in new_short:
             hex_part = new_token.split(":", 1)[1]
             if not any(
@@ -764,8 +612,6 @@ def _check_handbook(diff_text: str, approved: dict[str, str]) -> None:
         for old_token, new_token in zip(old_short, new_short):
             if old_token == new_token:
                 continue
-            # The badge must still be the prefix of the digest that row pins,
-            # so a badge cannot be repointed at a different role's image.
             if not any(
                 approved_digest.split(":", 1)[1].startswith(new_token.split(":", 1)[1])
                 for _, approved_digest in approved_pairs
@@ -780,21 +626,6 @@ def _blank(text: str, tokens: list[str]) -> str:
 
 
 def diff_check(changed: dict[str, str], summary: dict, approved: dict[str, str]) -> list[str]:
-    """Validate the pin diff. Returns violations; empty means it passed.
-
-    `changed` maps path -> unified diff text for every modified file.
-    `summary` is the helper's summary dict.
-    `approved` maps role -> `repo@sha256:<64-hex>` that the operator approved.
-
-    Rules, in the order they are checked:
-      1. The file set equals the paths the helper actually wrote (roles whose
-         image changed), plus the handbook when the helper rewrote it.
-      2. Every workload path is under this project's workloads directory.
-      3. Each workload file has exactly one removed and one added `image:` line,
-         same repository, same indentation, new digest approved, and optionally
-         at most one updated `app.kubernetes.io/version` line.
-      4. Every handbook difference maps an old digest to an approved new one.
-    """
     project = summary["project"]
     violations: list[str] = []
 
@@ -842,7 +673,6 @@ def request_from_env(project: str, sha: str, roles: str, run_url: str | None) ->
 
 
 def _markers_from_json(text: str) -> list[Marker]:
-    """Read a list of marker objects, skipping anything unusable."""
     try:
         data = json.loads(text or "[]")
     except ValueError:
@@ -861,7 +691,7 @@ def _markers_from_json(text: str) -> list[Marker]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser = argparse.ArgumentParser(description='Request checks, run markers, dedupe and supersede for the image pin flow.')
     parser.add_argument("--root", type=Path, default=REPO_ROOT)
     parser.add_argument("--sources", type=Path, default=SOURCES_PATH)
     sub = parser.add_subparsers(dest="command", required=True)
@@ -953,12 +783,6 @@ def main(argv: list[str] | None = None) -> int:
         sources = load_sources(args.sources)
 
         if args.command == "write-marker":
-            # Canonicalize through the same validation as every other verb, and
-            # reject what the allowlist rejects. Writing the raw inputs made the
-            # marker's identity differ from the request identity (case, and an
-            # empty --roles meaning "every role"), so dedupe silently matched
-            # nothing. A request that was rejected never gets a marker, so its
-            # failure stays visible.
             canonical = validate_request(
                 request_from_env(args.project, args.sha, args.roles, None), sources
             )
@@ -985,8 +809,6 @@ def main(argv: list[str] | None = None) -> int:
             for path in sorted(base.rglob("*")):
                 if path.is_file():
                     rel = path.relative_to(base).as_posix()
-                    # The dir name encodes the repository path with '/' kept as
-                    # directories, so the relative path is the repo path.
                     changed[rel] = path.read_text(encoding="utf-8")
             violations = diff_check(changed, summary, approved)
             if args.json:

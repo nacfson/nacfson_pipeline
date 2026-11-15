@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# Internal AI Gateway (vault-ai-proxy) Operator CLI & Zero-Token Key Manager
-# Signals the loopback Kill Switch (127.0.0.1:8081) and manages kv/ai/* secrets.
-# ==============================================================================
 
 set -euo pipefail
 
@@ -119,7 +115,6 @@ case "${CMD}" in
       echo "Error: Gemini API key cannot be empty." >&2
       exit 1
     fi
-    # Primary path: send over loopback tunnel via stdin to vault-ai-proxy (never exposing key in process argv)
     if ${KUBE_EXEC} -n "${VAULT_NS}" get "${AI_PROXY_DEPLOY}" >/dev/null 2>&1; then
       if printf '{"api_key":"%s"}' "${GEMINI_KEY}" | with_loopback_tunnel 8081 POST "/admin/set-key" 1; then
         echo "SUCCESS: Gemini API key saved to OpenBao (kv/ai/gemini-api-key) and hot-reloaded in vault-ai-proxy RAM!"

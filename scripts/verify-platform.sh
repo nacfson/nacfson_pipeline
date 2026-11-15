@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# verify-platform.sh
-# Master End-to-End Verification Suite for Personal Project Platform.
-# Executes all scenarios defined in specs/001-project-platform/quickstart.md
-# ==============================================================================
 
 set -euo pipefail
 
@@ -37,7 +32,6 @@ echo "Target Date: $(date -u)"
 echo "Repository:  $REPO_ROOT"
 echo "################################################################################"
 
-# Scenario 1: Capacity Discovery & Deterministic 1/n Budget
 run_suite "Scenario 1: Capacity Discovery & 1/n Resource Budgeting" \
   "python3 -m unittest discover '$REPO_ROOT/tests/preflight' && \
    python3 '$REPO_ROOT/scripts/platform-preflight.py' --environment test-env \
@@ -45,11 +39,9 @@ run_suite "Scenario 1: Capacity Discovery & 1/n Resource Budgeting" \
      --baseline '$REPO_ROOT/tests/preflight/fixtures/valid_baseline.yaml' \
      --capacity '$REPO_ROOT/tests/preflight/fixtures/valid_capacity.yaml'"
 
-# Scenario 2 & 3: Workload Sandboxing & NetworkPolicy Isolation
 run_suite "Scenarios 2 & 3: Restricted PSA Sandboxing & Network Isolation" \
   "bash '$REPO_ROOT/scripts/verify-isolation.sh'"
 
-# Scenario 4: Session confirmation. A project door does not use forward-auth.
 run_suite "Scenario 4: Go Authentication Gateway Contracts & Header Sanitization" \
   "if grep -q 'forward-auth' '$REPO_ROOT/deploy/projects/pn/workloads/ingress-route.yaml'; then \
      echo 'Project door must not name forward-auth' >&2; exit 1; \
@@ -61,24 +53,19 @@ run_suite "Scenario 4: Go Authentication Gateway Contracts & Header Sanitization
      (cd '$REPO_ROOT/gateway' && go test -v -run 'TestForwardAuth|TestHeader|TestAuthenticated|TestSessionReturn|TestConfirmation' ./tests); \
    fi"
 
-# Scenario 5: Synchronous Online Session Revocation & CSRF
 run_suite "Scenario 5: Instant Cross-Project Session Revocation & CSRF Protection" \
   "bash '$REPO_ROOT/scripts/verify-revocation.sh'"
 
-# Scenario 6: Database Persistence & Cross-Database Isolation
 run_suite "Scenario 6a: PostgreSQL Data Persistence & Catalog Isolation" \
   "bash '$REPO_ROOT/scripts/verify-persistence.sh'"
 
-# Scenario 6b: Disaster Recovery Backup & Restore Capability (FR-018, SC-008)
 run_suite "Scenario 6b: Disaster Recovery Backup & Automated Restore" \
   "bash '$REPO_ROOT/scripts/verify-backup.sh'"
 
-# Declarative Reconciliation & Layer Validation
 run_suite "Cross-Cutting: Declarative GitOps Layer Validation" \
   "bash '$REPO_ROOT/scripts/render-validate.sh' local-k3s >/dev/null && \
    bash '$REPO_ROOT/scripts/render-validate.sh' vps-k3s >/dev/null"
 
-# Scenario 7: Automated Post-Vault Workload Orchestration (Spec 005)
 run_suite "Scenario 7: Post-Vault Workload Secret Ingestion & PSA Compliance (Spec 005)" \
   "grep -q 'name: secret-fetcher' '$REPO_ROOT/deploy/platform/database/postgres-statefulset.yaml' && \
    grep -q 'name: secret-fetcher' '$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml' && \
@@ -88,7 +75,6 @@ run_suite "Scenario 7: Post-Vault Workload Secret Ingestion & PSA Compliance (Sp
    grep -q 'serviceAccountName: keycloak' '$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml' && \
    grep -q 'auth/kubernetes/config' '$REPO_ROOT/scripts/vault-configure-k8s-auth.sh'"
 
-# Scenario 8: Automated Declarative Realm Import & Vault Secret Resolution
 run_suite "Scenario 8: Declarative Identity Realm Auto-Import & Vault Integration" \
   "bash '$REPO_ROOT/scripts/verify-identity.sh'"
 

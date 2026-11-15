@@ -65,7 +65,6 @@ class TestNotifyGatewayPreflightContract(unittest.TestCase):
         self.assertEqual(self._check(self.platform_docs), [])
 
     def test_service_exposing_8081_rejected(self):
-        # The admin listener must never be reachable through the Service.
         docs = copy.deepcopy(self.platform_docs)
         svc = _by_kind_name(docs, "Service", "notify-gateway")
         svc["spec"]["ports"].append(

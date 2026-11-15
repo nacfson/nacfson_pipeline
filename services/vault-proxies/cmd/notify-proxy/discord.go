@@ -20,7 +20,7 @@ const (
 	colorFatal = 0x8E44AD
 	colorInfo  = 0x3498DB
 
-	maxInlineBody    = 4000 // longer bodies move to an attachment
+	maxInlineBody    = 4000
 	truncatedBodyLen = 3900
 	truncationSuffix = "\n… (full text attached)"
 	bodyFileName     = "body.md"
@@ -31,7 +31,6 @@ const (
 	maxResponseBytes = 64 << 10
 )
 
-// sleep is replaced in tests so retry waits run instantly.
 var sleep = time.Sleep
 
 type discordEmbedField struct {
@@ -62,8 +61,6 @@ func severityColor(s string) int {
 	}
 }
 
-// RenderDiscord turns a Notification into a Discord webhook request body. It
-// returns plain JSON, or multipart/form-data when files must be attached.
 func RenderDiscord(n Notification) ([]byte, string, error) {
 	embed := discordEmbed{Title: n.Title, Description: n.Body, Color: severityColor(n.Severity)}
 	for _, f := range n.Fields {
@@ -122,9 +119,6 @@ var quoteEscaper = strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\r", "", "\n", "")
 
 func escapeQuotes(s string) string { return quoteEscaper.Replace(s) }
 
-// SendDiscord posts n to the webhook. It retries 429 (waiting retry_after, at
-// most 3 tries) and 5xx (1s, 2s, 4s backoff), and fails fast on other errors.
-// Errors never contain the webhook URL, which is a secret.
 func SendDiscord(ctx context.Context, client *http.Client, webhookURL string, n Notification) error {
 	payload, contentType, err := RenderDiscord(n)
 	if err != nil {
@@ -168,7 +162,7 @@ func postOnce(ctx context.Context, client *http.Client, webhookURL string, paylo
 	req.Header.Set("Content-Type", contentType)
 	resp, err := client.Do(req)
 	if err != nil {
-		// *url.Error embeds the request URL; unwrap so the secret stays out of logs.
+
 		var ue *url.Error
 		if errors.As(err, &ue) {
 			err = ue.Err

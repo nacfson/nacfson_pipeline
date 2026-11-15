@@ -1,5 +1,3 @@
-"""Unit tests for VictoriaLogs archiving in scripts/cutover-bundle.sh."""
-
 from __future__ import annotations
 
 import os

@@ -43,8 +43,6 @@ patches:
       kind: NetworkPolicy
       metadata:
         name: victorialogs-ingress
-  # Pause error-detector at replicas: 0 until Spec 014 switches it from VictoriaLogs HTTP tailing
-  # to consuming Kafka topic logs.proj.errors (PVC/error-detector-state and 25m/64Mi slot stay pre-reserved).
   - target:
       kind: Deployment
       name: error-detector
@@ -55,7 +53,6 @@ patches:
         name: error-detector
       spec:
         replicas: 0
-  # Replace VictoriaLogs pod egress with WireGuard OCI Kafka broker CIDRs (10.200.0.11..13:9092).
   - target:
       kind: NetworkPolicy
       name: fluent-bit-egress

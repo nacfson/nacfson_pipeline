@@ -1,10 +1,8 @@
 locals {
-  # Cleanup rules come from the same file Spec 012 uses (contracts/shared-values.md check 7).
   gar_cleanup = jsondecode(file("${path.module}/../../../${local.shared.registry.cleanup_source}"))
   gar_actions = { Delete = "DELETE", Keep = "KEEP" }
 }
 
-# Public Docker registry that Cloud Build publishes to (research R8).
 resource "google_artifact_registry_repository" "public" {
   repository_id = local.shared.registry.repository_id
   location      = local.shared.region
@@ -40,7 +38,6 @@ resource "google_artifact_registry_repository" "public" {
   }
 }
 
-# Anonymous pulls, so no cluster needs an image pull secret (Constitution Amendment 2.3.0).
 resource "google_artifact_registry_repository_iam_member" "public_read" {
   repository = google_artifact_registry_repository.public.name
   location   = google_artifact_registry_repository.public.location

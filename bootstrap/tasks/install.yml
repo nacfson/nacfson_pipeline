@@ -1,6 +1,4 @@
 ---
-# Install tasks: Fetch verified release artifacts, render unit, write receipt, enable/start service
-# Scope: Only mutates host when classified as fresh or compatible-stopped.
 
 - name: Set current stage tracking to install
   ansible.builtin.set_fact:
@@ -132,7 +130,6 @@
         state: absent
       when: not skip_artifact_install
 
-# Service activation (for fresh or stopped managed-compatible host)
 - name: Reload systemd daemon
   ansible.builtin.systemd:
     daemon_reload: true
@@ -157,7 +154,6 @@
   async: 60
   poll: 2
 
-# Provision non-root operator kubeconfig for local diagnostics
 - name: Wait for /etc/rancher/k3s/k3s.yaml to be created
   ansible.builtin.wait_for:
     path: /etc/rancher/k3s/k3s.yaml
@@ -202,7 +198,6 @@
     mode: "0600"
   when: legacy_conf_stat.stat.exists | default(false)
 
-# Stage and apply Git-committed Cilium + Hubble CNI bundle before verification & Flux
 - name: Ensure bootstrap CNI manifest directory exists
   ansible.builtin.file:
     path: "/var/lib/nacfson-bootstrap/cni"

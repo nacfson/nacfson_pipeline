@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# Vault Database Query Proxy Verification Drill
-# Validates SC-005, SC-009, and FR-020:
-# 1. Healthz probe responsiveness
-# 2. Rejection of unauthenticated or malformed caller tokens (SQLSTATE 28000)
-# 3. Rejection of unauthorized target database queries (SQLSTATE 42501)
-# 4. Absence of database passwords in caller environment
-# ==============================================================================
 
 set -euo pipefail
 
@@ -29,7 +21,6 @@ fi
 
 echo "=== [Test] Vault Database Query Proxy ==="
 
-# 1. Health check
 echo "[1/3] Testing DB proxy healthz endpoint..."
 HEALTH=$(curl -fsSL "http://${DB_PROXY_HOST}:${HEALTH_PORT}/healthz")
 if [ "${HEALTH}" != "OK" ]; then
@@ -38,7 +29,6 @@ if [ "${HEALTH}" != "OK" ]; then
 fi
 echo "✓ PASS: DB Proxy health endpoint responsive."
 
-# 2. Assert rejection on invalid or empty caller token
 echo "[2/3] Asserting rejection on invalid caller token (SQLSTATE 28000)..."
 if command -v psql >/dev/null 2>&1; then
   export PGPASSWORD="invalid-expired-jwt-token"
@@ -52,7 +42,6 @@ else
   echo "Note: psql CLI not installed locally; wire protocol validation verified via unit tests."
 fi
 
-# 3. Assert rejection on forbidden target database (e.g. keycloak_db)
 echo "[3/3] Asserting target isolation constraint (SQLSTATE 42501)..."
 if command -v psql >/dev/null 2>&1; then
   export PGPASSWORD="project:pn:workload:backend"

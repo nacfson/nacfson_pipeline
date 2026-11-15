@@ -1,6 +1,3 @@
-# OpenBao Policy: Go Authentication Gateway
-# Least-privilege read access to gateway secrets & transit signing.
-
 path "kv/data/gateway/*" {
   capabilities = ["read"]
 }

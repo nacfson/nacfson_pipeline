@@ -1,8 +1,3 @@
-"""Manifest tests for deploy/platform/observability.
-
-`render()` is the shared helper Task 3 tests import.
-"""
-
 from __future__ import annotations
 
 import fnmatch
@@ -24,7 +19,6 @@ from kustomize_render import kustomize_build
 
 
 def render(kdir: str = OBSERVABILITY_DIR) -> list[dict]:
-    """Render an observability kustomize directory and return documents."""
     out = kustomize_build(kdir)
     docs = [doc for doc in yaml.safe_load_all(out) if doc]
     return docs
@@ -152,7 +146,6 @@ class TestVictoriaLogsStore(unittest.TestCase):
         ingress = selected[0]["spec"]["ingress"]
         self.assertEqual(len(ingress), 1)
         sources = ingress[0]["from"]
-        # fluent-bit writes the lines; error-detector tails them back out.
         self.assertEqual(len(sources), 2)
         self.assertEqual(
             [s["podSelector"]["matchLabels"]["app.kubernetes.io/name"] for s in sources],
@@ -329,7 +322,6 @@ class TestFluentBitCollector(unittest.TestCase):
         self.assertRegex(conf, r"Retry_Limit\s+5\b")
         self.assertIn("Log_Level warn", conf)
 
-        # Output blocks check: exactly two http outputs for main (ProjectID 0, 192M) and quarantine (ProjectID 1, 64M)
         output_blocks = re.findall(r"\[OUTPUT\][\s\S]*?(?=\n\s*\[|$)", conf)
         self.assertEqual(len(output_blocks), 2, "expected exactly two http outputs (main and quarantine)")
         main_out = [b for b in output_blocks if re.search(r"Match\s+proj\.\*", b) and "ProjectID 0" in b]
@@ -342,39 +334,32 @@ class TestFluentBitCollector(unittest.TestCase):
             self.assertIn("AccountID 0", b)
             self.assertIn(expected_uri, b)
 
-        # Filter order invariants (T018, T051, collector-pipeline.md)
         filter_blocks = re.findall(r"\[FILTER\][\s\S]*?(?=\n\s*\[|$)", conf)
-        # 1st filter: multiline
         self.assertIn("Name multiline", filter_blocks[0])
         self.assertIn("multiline.parser go, python, java", filter_blocks[0])
         self.assertIn("buffer on", filter_blocks[0])
         self.assertIn("emitter_storage.type filesystem", filter_blocks[0])
 
-        # Filters before rewrite_tag must match proj.*
         for fb in filter_blocks[:-1]:
             if "Name modify" in fb and "Remove _route" in fb:
                 continue
             self.assertIn("Match proj.*", fb, f"filter must match proj.*: {fb}")
 
-        # Final modify filter matches * to strip _route from both main and quarantine
         last_filter = filter_blocks[-1]
         self.assertIn("Name modify", last_filter)
         self.assertIn("Match *", last_filter)
         self.assertIn("Remove _route", last_filter)
 
-        # rewrite_tag filter
         rewrite_blocks = [b for b in filter_blocks if "Name rewrite_tag" in b]
         self.assertEqual(len(rewrite_blocks), 1)
         self.assertIn("Rule $_route ^quarantine$ quarantine.$TAG false", rewrite_blocks[0])
         self.assertIn("Emitter_Storage.type filesystem", rewrite_blocks[0])
 
-        # Lua filter comes after JSON parser filter
         json_idx = next(i for i, b in enumerate(filter_blocks) if "Parser json" in b)
         lua_idx = next(i for i, b in enumerate(filter_blocks) if "Name lua" in b)
         self.assertLess(json_idx, lua_idx, "Lua filter must come after JSON parser filter")
         self.assertIn("Preserve_Key On", filter_blocks[json_idx])
 
-        # No grep or throttle filter
         for fb in filter_blocks:
             self.assertNotIn("Name grep", fb)
             self.assertNotIn("Name throttle", fb)
@@ -455,7 +440,6 @@ class TestFluentBitCollector(unittest.TestCase):
             os.remove(path)
         data = json.loads(res.stdout) if res.stdout.strip() else {}
         self.assertEqual(data.get("validationStatus"), "PASSED", data.get("rejectionReason"))
-        # fluent-bit + victorialogs + error-detector (50m/64Mi).
         self.assertEqual(data.get("platformReservations", {}).get("cpuMillicores"), 350)
         self.assertEqual(data.get("platformReservations", {}).get("memoryMib"), 1024)
 
@@ -470,7 +454,6 @@ class TestFluentBitCollector(unittest.TestCase):
         record_fields = {name for name, _src, _role in rows}
         stream_fields = {name for name, _src, role in rows if role.strip() == "stream"}
 
-        # Platform fields must match contract §1 table
         expected_platform_fields = {
             "k8s.namespace.name",
             "k8s.pod.name",
@@ -482,17 +465,14 @@ class TestFluentBitCollector(unittest.TestCase):
         }
         self.assertEqual(record_fields, expected_platform_fields)
 
-        # Stream fields in output URI
         uri = _conf_value(conf, "URI")
         stream_match = re.search(r"_stream_fields=([^&]+)", uri)
         rendered_stream = set(stream_match.group(1).split(",")) if stream_match else set()
         self.assertEqual(stream_fields, rendered_stream)
 
-        # Check that log_contract.lua sets every platform field
         for field in record_fields:
             self.assertIn(f'record["{field}"]', lua, f"log_contract.lua must set {field}")
 
-        # Message and time field flags in URI
         self.assertIn("_msg_field=msg", uri)
         self.assertIn("_time_field=_time", uri)
 
@@ -615,13 +595,6 @@ class TestLayerWiring(unittest.TestCase):
         self.assertIn("observability", values)
 
 class TestErrorDetector(unittest.TestCase):
-    """Contracts for Deployment/error-detector (WS1 Task 13).
-
-    The detector is the only workload that both reads the whole project log
-    stream and can post to Discord, so its blast radius is what these tests
-    bound: no host access, no API token, guaranteed-QoS so it cannot be evicted
-    mid-flush, and egress that reaches exactly three places.
-    """
 
     @classmethod
     def setUpClass(cls):
@@ -666,7 +639,6 @@ class TestErrorDetector(unittest.TestCase):
             for peer in rule.get("to") or []
         ]
 
-        # DNS is the one peer that may be selected by namespace label alone.
         dns = [
             p
             for p in peers
@@ -687,8 +659,6 @@ class TestErrorDetector(unittest.TestCase):
             pod = (peer.get("podSelector") or {}).get("matchLabels", {}).get(
                 "app.kubernetes.io/name"
             )
-            # An empty namespaceSelector means the pod's own namespace, which is
-            # observability; anything else must name its namespace explicitly.
             names.add(f"{ns or 'observability'}/{pod}")
 
         self.assertEqual(

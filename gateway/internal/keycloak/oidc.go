@@ -12,7 +12,6 @@ import (
 	"time"
 )
 
-// TokenResponse represents OAuth2/OIDC token response from Keycloak.
 type TokenResponse struct {
 	AccessToken      string `json:"access_token"`
 	ExpiresIn        int    `json:"expires_in"`
@@ -24,13 +23,11 @@ type TokenResponse struct {
 	Scope            string `json:"scope"`
 }
 
-// SessionValidator defines interface for checking session status against Keycloak.
 type SessionValidator interface {
 	ValidateSession(sessionID string) (bool, error)
 	ExchangeTokenForProject(refreshToken, targetAudience string) (*TokenResponse, error)
 }
 
-// Client implements Keycloak OIDC interactions using standard library only.
 type Client struct {
 	IssuerURL    string
 	AdminURL     string
@@ -39,7 +36,6 @@ type Client struct {
 	HTTPClient   *http.Client
 }
 
-// NewClient creates a new Keycloak client.
 func NewClient(issuerURL, adminURL, clientID, clientSecret string) *Client {
 	return &Client{
 		IssuerURL:    strings.TrimSuffix(issuerURL, "/"),
@@ -52,7 +48,6 @@ func NewClient(issuerURL, adminURL, clientID, clientSecret string) *Client {
 	}
 }
 
-// GeneratePKCE creates a cryptographic code_verifier and code_challenge.
 func GeneratePKCE() (verifier string, challenge string, err error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
@@ -64,7 +59,6 @@ func GeneratePKCE() (verifier string, challenge string, err error) {
 	return verifier, challenge, nil
 }
 
-// ExchangeCode exchanges an authorization code with Keycloak for tokens using PKCE verifier.
 func (c *Client) ExchangeCode(code, codeVerifier, redirectURI string) (*TokenResponse, error) {
 	tokenURL := fmt.Sprintf("%s/protocol/openid-connect/token", c.IssuerURL)
 
@@ -101,12 +95,11 @@ func (c *Client) ExchangeCode(code, codeVerifier, redirectURI string) (*TokenRes
 	return &tr, nil
 }
 
-// ValidateSession verifies whether an OAuth token or user session remains active in Keycloak.
 func (c *Client) ValidateSession(tokenOrSessionID string) (bool, error) {
 	if tokenOrSessionID == "" {
 		return false, nil
 	}
-	// Query Keycloak realm OIDC token introspection endpoint
+
 	checkURL := fmt.Sprintf("%s/realms/platform/protocol/openid-connect/token/introspect", c.AdminURL)
 	data := url.Values{}
 	data.Set("client_id", c.ClientID)
@@ -140,20 +133,8 @@ func (c *Client) ValidateSession(tokenOrSessionID string) (bool, error) {
 	return res.Active, nil
 }
 
-// AccessTokenRefreshLeeway is how close to its exp claim an access token may be before the gateway
-// refreshes it instead of handing it to a project.
-//
-// Keycloak introspection reports a token active while now <= exp. A project that checks now >= exp,
-// or that reads the token a moment after the gateway confirmed it, rejects a token the gateway just
-// confirmed. That race signed visitors out mid-use once per access-token lifetime.
 const AccessTokenRefreshLeeway = 30 * time.Second
 
-// ValidateAndRefresh verifies the OAuth access token against Keycloak introspection and, if expired,
-// attempts to transparently refresh it using the session's refresh token while the Keycloak session remains active.
-// A token within AccessTokenRefreshLeeway of expiry is refreshed first, so a refreshed token has at least
-// that much life left when the project receives it. If that early refresh fails (for example Keycloak
-// is briefly unreachable), the current token is introspected once and, if still active, confirmed as-is;
-// that fallback keeps the pre-leeway behavior rather than signing the visitor out on a transient error.
 func (c *Client) ValidateAndRefresh(sessionID, accessToken, refreshToken, targetAudience string) (bool, *TokenResponse, error) {
 	triedRefresh := false
 	if refreshToken != "" && accessTokenExpiresWithin(accessToken, AccessTokenRefreshLeeway, time.Now()) {
@@ -162,7 +143,7 @@ func (c *Client) ValidateAndRefresh(sessionID, accessToken, refreshToken, target
 		if refreshErr == nil && refreshed != nil && refreshed.AccessToken != "" {
 			return true, refreshed, nil
 		}
-		// Fall through: a still-valid token stays usable when the early refresh fails.
+
 	}
 
 	tokenToCheck := accessToken
@@ -186,10 +167,6 @@ func (c *Client) ValidateAndRefresh(sessionID, accessToken, refreshToken, target
 	return true, refreshed, nil
 }
 
-// accessTokenExpiresWithin reports whether the JWT's exp claim falls within leeway of now.
-// The token comes from the gateway's own sealed session handle, so its payload is read without
-// verifying the signature. A token without a readable exp claim returns false and keeps the
-// introspection-first path.
 func accessTokenExpiresWithin(token string, leeway time.Duration, now time.Time) bool {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
@@ -208,7 +185,6 @@ func accessTokenExpiresWithin(token string, leeway time.Duration, now time.Time)
 	return time.Unix(claims.Exp, 0).Sub(now) < leeway
 }
 
-// ExchangeTokenForProject requests an audience-scoped project access token using refresh flow.
 func (c *Client) ExchangeTokenForProject(refreshToken, targetAudience string) (*TokenResponse, error) {
 	tokenURL := fmt.Sprintf("%s/protocol/openid-connect/token", c.IssuerURL)
 

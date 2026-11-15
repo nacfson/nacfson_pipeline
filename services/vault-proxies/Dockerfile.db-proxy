@@ -1,6 +1,3 @@
-# Multi-stage Dockerfile for Database Query Proxy
-# Supports both linux/amd64 and linux/arm64 architectures
-
 FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
 
 ARG TARGETOS
@@ -12,13 +9,11 @@ COPY go.mod ./
 COPY cmd/ cmd/
 COPY internal/ internal/
 
-# Build statically linked binary
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -ldflags="-w -s" \
     -o /bin/vault-db-proxy \
     ./cmd/db-proxy
 
-# Production runtime image: unprivileged non-root distroless
 FROM gcr.io/distroless/static:nonroot
 
 WORKDIR /

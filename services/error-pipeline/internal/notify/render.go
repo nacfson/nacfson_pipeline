@@ -12,37 +12,17 @@ import (
 	"nacfson_pipeline/services/error-pipeline/internal/redact"
 )
 
-// investigatorSkip is the wording the design fixes for a failed handoff.
 const investigatorSkip = "AI debug skipped: investigator unavailable"
 
 const (
-	// maxTitleRunes and maxFieldRunes are the proxy's Validate limits
-	// (services/vault-proxies/cmd/notify-proxy/notification.go). Those limits
-	// count runes, not bytes. A violation is a permanent 400 for the message at
-	// the head of the retry queue, which blocks every notification behind it,
-	// so no render path may return a longer title or field value.
 	maxTitleRunes = 256
 	maxFieldRunes = 1024
 
-	// ellipsis ends a value that clamping shortened. It is one rune, so it
-	// costs exactly one of the budget and can never be split.
 	ellipsis = "…"
 
-	// maxSkipFingerprints bounds how many fingerprints the batch skip notice
-	// names. A project-supplied error.fingerprint may be far longer than the 16
-	// hex characters of a derived one, so the name list is clamped to
-	// maxFieldRunes by finalize; this cap keeps it from being a list of one.
 	maxSkipFingerprints = 133
 )
 
-// RenderNew renders the alert for a group that matched a NotifyNew action: an
-// immediate first alert, or a recurrence after the cooldown expired.
-//
-// SinceLastAlert is the only recurrence signal a Group carries, because the
-// tracker sets it for a recurrence and leaves it at zero on a fresh cycle. A
-// recurrence with no occurrences during the cooldown therefore renders as a
-// first alert. Callers that hold the Action itself use RenderNewAction, which
-// reads the explicit Recurred flag instead.
 func RenderNew(g group.Group) Notification {
 	return RenderNewAction(group.Action{
 		Type:     group.NotifyNew,
@@ -51,10 +31,6 @@ func RenderNew(g group.Group) Notification {
 	})
 }
 
-// RenderNewAction renders the NotifyNew alert for a. The title decides from
-// a.Recurred, so a recurrence whose cooldown expired without a single
-// occurrence still reads as a recurrence, and the count clause appears only
-// when there is a count to report.
 func RenderNewAction(a group.Action) Notification {
 	g := a.Group
 	title := "New error in " + location(g)
@@ -81,8 +57,6 @@ func RenderNewAction(a group.Action) Notification {
 	return finalize(out)
 }
 
-// RenderOverflow renders the single message that reports the notifications the
-// burst cap refused: n of them, in the window that began at since.
 func RenderOverflow(n int, since time.Time) Notification {
 	since = since.UTC()
 	stamp := since.Format(time.RFC3339)
@@ -100,8 +74,6 @@ func RenderOverflow(n int, since time.Time) Notification {
 	return finalize(out)
 }
 
-// RenderInvestigatorUnavailable renders the notice that a group could not be
-// handed to the error investigator.
 func RenderInvestigatorUnavailable(g group.Group) Notification {
 	var out Notification
 	out.Title = "AI debug skipped in " + location(g)
@@ -116,15 +88,6 @@ func RenderInvestigatorUnavailable(g group.Group) Notification {
 	return finalize(out)
 }
 
-// RenderInvestigatorUnavailableBatch renders the one notice that stands for a
-// batch of groups that never reached the investigator. It names up to
-// maxSkipFingerprints of them and states the count, so it covers all of them
-// whether or not each is named.
-//
-// The count is in the body whatever happens to the name list, because a field
-// value is clamped: without the count a truncated list would read as the whole
-// truth. RenderInvestigatorUnavailable is used for a single group instead, so a
-// shutdown that leaves a few groups unposted still says where each one was.
 func RenderInvestigatorUnavailableBatch(batch []group.Group) Notification {
 	names := make([]string, 0, min(len(batch), maxSkipFingerprints))
 	for _, g := range batch {
@@ -147,8 +110,6 @@ func RenderInvestigatorUnavailableBatch(batch []group.Group) Notification {
 	return finalize(out)
 }
 
-// RenderQuarantineAlert renders an immediate alert for non-conforming lines
-// sent to the quarantine area (tenant 0:1) from a v3 container (FR-025, Q1).
 func RenderQuarantineAlert(project, container string, count int, firstLine string, observed time.Time) Notification {
 	title := fmt.Sprintf("Quarantined log in %s/%s", project, container)
 	if count > 1 {
@@ -169,9 +130,6 @@ func RenderQuarantineAlert(project, container string, count int, firstLine strin
 	return finalize(out)
 }
 
-// RenderRedactionMarkerAlert renders an immediate, unthrottled alert when a
-// stored line carries a redaction marker, showing a secret was printed (FR-025).
-// It names the project, container, release, and marker kind, never leaking the secret value.
 func RenderRedactionMarkerAlert(project, container, release, kind string, observed time.Time) Notification {
 	title := fmt.Sprintf("Secret redacted in %s/%s", project, container)
 	if release != "" {
@@ -193,8 +151,6 @@ func RenderRedactionMarkerAlert(project, container, release, kind string, observ
 	return finalize(out)
 }
 
-// RenderViolationDigest renders the daily summary of contract violations
-// grouped by project, container, and violation kind (FR-025).
 func RenderViolationDigest(violations map[string]map[string]int, since, until time.Time) Notification {
 	var out Notification
 	out.Title = "Daily log contract violation digest"
@@ -232,11 +188,6 @@ func RenderViolationDigest(violations map[string]map[string]int, since, until ti
 	return finalize(out)
 }
 
-// finalize makes a rendered notification acceptable to the proxy: the title
-// and every field value are redacted and then clamped to their rune limit.
-// Every render path returns through here, so no path can forget a cap. A field
-// can be huge before this point: classify caps Event.Fingerprint at 64 KiB and
-// the tracker does not cap the Pods it collected.
 func finalize(n Notification) Notification {
 	n.Title = clamp(n.Title, maxTitleRunes)
 	for i := range n.Fields {
@@ -245,10 +196,6 @@ func finalize(n Notification) Notification {
 	return n
 }
 
-// clamp redacts s and shortens it to at most max runes, ending in an ellipsis
-// when it had to cut. It works on runes, never bytes, so it cannot split a
-// multi-byte character. Redaction runs first, so the returned prefix is
-// redacted as well and a secret cannot survive half-truncated.
 func clamp(s string, max int) string {
 	s = redact.String(s)
 	if max <= 0 {
@@ -260,8 +207,6 @@ func clamp(s string, max int) string {
 	return headRunes(s, max-utf8.RuneCountInString(ellipsis)) + ellipsis
 }
 
-// headRunes returns the first n runes of s. It stops as soon as it has them,
-// so a long s costs one pass of n runes and no copy.
 func headRunes(s string, n int) string {
 	count := 0
 	for i := range s {
@@ -273,13 +218,10 @@ func headRunes(s string, n int) string {
 	return s
 }
 
-// location is the "<project>/<container>" tail of a title. Redaction happens
-// in finalize, after the two parts are joined.
 func location(g group.Group) string {
 	return g.Project + "/" + g.Container
 }
 
-// severityOf maps a contract level onto a notification severity.
 func severityOf(ev classify.Event) string {
 	if ev.Level == "fatal" {
 		return SeverityFatal
@@ -287,8 +229,6 @@ func severityOf(ev classify.Event) string {
 	return SeverityError
 }
 
-// logLines is the exception line, the raw samples and the stack trace, in that
-// order, each redacted and with blank entries dropped.
 func logLines(ev classify.Event, samples []string) []string {
 	lines := make([]string, 0, len(samples)+2)
 	if l := exceptionLine(ev); l != "" {
@@ -305,8 +245,6 @@ func logLines(ev classify.Event, samples []string) []string {
 	return lines
 }
 
-// exceptionLine is "type: message", or whichever of the two exists, falling
-// back to the raw message of a line that has neither.
 func exceptionLine(ev classify.Event) string {
 	typ := redact.String(strings.TrimSpace(ev.ExceptionType))
 	msg := redact.String(strings.TrimSpace(ev.ExceptionMessage))
@@ -321,8 +259,6 @@ func exceptionLine(ev classify.Event) string {
 	return redact.String(strings.TrimSpace(ev.Msg))
 }
 
-// fenced wraps lines in a markdown code block. The fence is lengthened when the
-// content itself contains one, so a log line cannot end the block early.
 func fenced(lines []string) string {
 	if len(lines) == 0 {
 		return ""

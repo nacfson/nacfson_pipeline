@@ -12,7 +12,6 @@ spec:
     - Egress
   ingress: []
   egress:
-    # Allow CoreDNS / kube-dns egress for internal cluster name resolution
     - to:
         - namespaceSelector:
             matchLabels:

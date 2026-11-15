@@ -1,18 +1,3 @@
-# Declarative Google Cloud Build multi-architecture (linux/amd64,linux/arm64)
-# OCI manifest-list pipeline for public Google Artifact Registry (GAR).
-#
-# Target Registry (Spec 012 / Constitution v2.3.0):
-#   asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public/<image>@sha256:...
-#
-# Modes:
-#   1. Default (_TENANT_IMAGE == ""): builds and pushes all first-party platform images
-#      (platform-auth-gateway, vault-db-proxy, vault-ai-proxy, vault-notify-proxy,
-#       error-detector, logcheck) as linux/amd64,linux/arm64 manifest lists.
-#   2. Tenant single-image mode (_TENANT_IMAGE != ""): builds and pushes a hosted
-#      tenant image (e.g. project-pn-backend, project-pn-frontend,
-#      project-health-backend, project-health-frontend, project-blog-web) with
-#      matching org.opencontainers.image.version label for Gate 1b conformance.
-
 substitutions:
   _GAR_REGION: asia-northeast3
   _GAR_REPO: nacfson-public

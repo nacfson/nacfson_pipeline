@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Unit tests for the update-project-images skill helper."""
 
 from __future__ import annotations
 
@@ -295,7 +294,6 @@ class TestHtmlUpdate(TempRepo):
         self.assertIn("proj-health", html)
         self.assertIn("project-pn-backend", html)
         self.assertIn("health-frontend", html)
-        # A different workload sharing the old digest must not be rewritten.
         other_block = html.split("'pn-other':", 1)[1].split("},", 1)[0]
         self.assertIn("84af4c4c...", other_block)
 
@@ -1096,13 +1094,6 @@ class TestUpdateFlow(TempRepo):
 
 
 class TestSkipValidation(TempRepo):
-    """`--skip-validation` suppresses image inspection, and nothing more.
-
-    The flag exists so the pin job can apply digests the operator already
-    approved without inspecting the image a second time. Its failure direction
-    matters: it must never become a way to pin an image that does not exist, or
-    to skip the digest-existence check, and it must never be on by default.
-    """
 
     def _run(self, skip, *, digest=NEW_DIGEST):
         return mod.run_update(
@@ -1116,12 +1107,6 @@ class TestSkipValidation(TempRepo):
         )
 
     def test_flag_is_off_by_default(self):
-        """A caller that does not ask must get full validation.
-
-        Regression: this test used to pass `skip_validation=False` explicitly, so
-        flipping the signature default kept every test green — while the live
-        validate caller (`image-bump-request.py`) omits the kwarg entirely.
-        """
         with mock.patch.object(
             mod, "resolve_digest_ref", return_value=NEW_DIGEST
         ), mock.patch.object(
@@ -1138,7 +1123,6 @@ class TestSkipValidation(TempRepo):
         self.assertTrue(validate.called, "omitting the kwarg must still validate")
 
     def test_summary_marks_a_skipped_validation(self):
-        """Regression: `skipped` looked identical to `validated and clean`."""
         with mock.patch.object(
             mod, "resolve_digest_ref", return_value=NEW_DIGEST
         ), mock.patch.object(mod, "validate_image"):
@@ -1155,7 +1139,6 @@ class TestSkipValidation(TempRepo):
         self.assertFalse(validated["validation_skipped"])
 
     def test_a_noop_role_is_not_marked_skipped(self):
-        """A noop needed no work; calling it 'skipped' would be misleading."""
         with mock.patch.object(
             mod, "resolve_digest_ref", return_value=FRONTEND_OLD.split("@", 1)[1]
         ), mock.patch.object(mod, "validate_image"):
@@ -1171,7 +1154,6 @@ class TestSkipValidation(TempRepo):
         self.assertFalse(row["validation_skipped"])
 
     def test_strict_cannot_be_combined_with_skip_validation(self):
-        """Regression: it exited 0 while validating nothing."""
         code = mod.main(
             [
                 "--project", "pn",
@@ -1205,11 +1187,6 @@ class TestSkipValidation(TempRepo):
         self.assertEqual(row["checks"], {})
 
     def test_flag_still_confirms_the_digest_exists(self):
-        """Suppressing inspection must not suppress the existence check.
-
-        An image deleted while the request waited has to stop the run, or the
-        PR would pin a digest that cannot be pulled.
-        """
         with mock.patch.object(
             mod, "resolve_digest_ref", return_value=NEW_DIGEST
         ) as resolve, mock.patch.object(mod, "validate_image"):
@@ -1217,7 +1194,6 @@ class TestSkipValidation(TempRepo):
         self.assertTrue(resolve.called, "the digest must still be resolved from GHCR")
 
     def test_flag_does_not_hide_a_missing_digest(self):
-        """A digest the registry cannot resolve fails even with the flag."""
         with mock.patch.object(
             mod,
             "resolve_digest_ref",
@@ -1227,7 +1203,6 @@ class TestSkipValidation(TempRepo):
                 self._run(True)
 
     def test_flag_does_not_allow_a_repository_change(self):
-        """The repo-equality guard is independent of validation and must stay on."""
         with mock.patch.object(mod, "validate_image"), mock.patch.object(
             mod, "resolve_digest_ref", return_value=NEW_DIGEST
         ):
@@ -1292,4 +1267,3 @@ class TestSkipValidation(TempRepo):
 
 if __name__ == "__main__":
     unittest.main()
-

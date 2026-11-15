@@ -1,17 +1,4 @@
 #!/usr/bin/env python3
-"""
-check-arch-doc-sync.py — Canonical Architecture Handbook Synchronization Gate.
-
-Enforces two invariants:
-1. Content Freshness: docs/platform-architecture.html must reference the live
-   Constitution version, all spec numbers (001..N), all Flux Kustomization
-   layers in clusters/vps-k3s/layers.yaml, all 8 interactive learning tabs,
-   and current platform resource budget reservations.
-2. Co-Update Rule: When architecture-affecting files (deploy/, clusters/,
-   gateway/, services/, bootstrap/, contracts/, specs/, constitution.md,
-   platform-preflight.py, render-invariants.py) are modified in Git,
-   docs/platform-architecture.html MUST also be updated.
-"""
 
 from __future__ import annotations
 
@@ -106,7 +93,6 @@ def check_static_invariants() -> list[str]:
 
     html = HTML_PATH.read_text(encoding="utf-8")
 
-    # 1. Constitution version check
     version = get_constitution_version()
     if version and f"v{version}" not in html:
         errors.append(
@@ -114,14 +100,12 @@ def check_static_invariants() -> list[str]:
             f"(from .specify/memory/constitution.md)."
         )
 
-    # 2. All Spec numbers check
     for spec_num in get_spec_numbers():
         if f"Spec {spec_num}" not in html and f"Specs 001–{spec_num}" not in html:
             errors.append(
                 f"{HTML_REL_PATH} does not reference 'Spec {spec_num}' from specs/{spec_num}-*."
             )
 
-    # 3. All Flux Kustomization layers check
     for layer in get_flux_layer_names():
         if f"'{layer}'" not in html and f"selectDagLayer('{layer}')" not in html:
             errors.append(
@@ -129,17 +113,14 @@ def check_static_invariants() -> list[str]:
                 f"(defined in clusters/vps-k3s/layers.yaml)."
             )
 
-    # 4. Required interactive tabs
     for tab_marker in REQUIRED_TABS:
         if tab_marker not in html:
             errors.append(f"{HTML_REL_PATH} is missing required interactive tab {tab_marker}.")
 
-    # 5. Required end-to-end flows
     for flow_key in REQUIRED_FLOW_KEYS:
         if flow_key not in html:
             errors.append(f"{HTML_REL_PATH} FLOWS object is missing flow '{flow_key}'.")
 
-    # 6. Live budget constants check (1395m CPU, 5920 MiB platform reservation including vault-ai-proxy, vault-notify-proxy and error-detector)
     if "1395" not in html or "5920" not in html:
         errors.append(
             f"{HTML_REL_PATH} budget calculator does not match platform reservation "

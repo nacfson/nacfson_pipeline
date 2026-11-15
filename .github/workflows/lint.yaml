@@ -84,7 +84,6 @@ jobs:
           fi
 
 
-  # Spec 015: Terraform in infra/gcp is checked offline. No Google credentials, no secrets, no apply.
   terraform-validate:
     runs-on: ubuntu-latest
     steps:

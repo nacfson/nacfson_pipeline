@@ -1,13 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# Notify Gateway (vault-notify-proxy) Operator CLI
-#
-# Seeds the Discord webhook URLs the notify proxy posts with, and reports which
-# channels are configured. The proxy's admin listener binds to the pod's own
-# loopback, so this reaches it through a port-forward and never exposes it to
-# the cluster. The URL is read with `read -rs`, so it never enters argv, the
-# shell history, or the process table.
-# ==============================================================================
 
 set -euo pipefail
 
@@ -113,8 +104,6 @@ case "${CMD}" in
         exit 1
         ;;
     esac
-    # The URL travels over the loopback tunnel on stdin, never in argv, so it
-    # is absent from ps, the shell history, and the port-forward log.
     printf '{"url":"%s"}' "${WEBHOOK_URL}" | with_loopback_tunnel 8081 POST "/admin/set-webhook?channel=${CHANNEL}" 1
     rc=$?
     unset WEBHOOK_URL

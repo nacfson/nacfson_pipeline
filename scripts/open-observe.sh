@@ -1,12 +1,4 @@
 #!/usr/bin/env bash
-# Open Hubble UI and VictoriaLogs through one workstation session.
-#
-# SSH forwards only the VPS Kubernetes API. kubectl then port-forwards the
-# ClusterIP UIs. Do not SSH-forward 12000 or 9428: nothing listens for those
-# services on the VPS loopback, and those binds collide with kubectl.
-#
-# Usage:
-#   ./scripts/open-observe.sh
 
 set -euo pipefail
 

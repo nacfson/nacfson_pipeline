@@ -6,8 +6,6 @@ metadata:
   labels:
     app.kubernetes.io/name: error-detector
     app.kubernetes.io/part-of: platform-observability
-# Explicit, and mirrored on the pod: the detector needs no API access, and
-# saying so twice is what keeps a later edit from adding one by accident.
 automountServiceAccountToken: false
 ---
 apiVersion: v1
@@ -34,8 +32,6 @@ metadata:
     app.kubernetes.io/name: error-detector
     app.kubernetes.io/part-of: platform-observability
 spec:
-  # The state PVC is ReadWriteOnce and holds the cursor: two replicas would each
-  # tail the same stream from their own cursor and double every alert.
   replicas: 1
   strategy:
     type: Recreate
@@ -50,8 +46,6 @@ spec:
     spec:
       restartPolicy: Always
       serviceAccountName: error-detector
-      # The detector talks to VictoriaLogs and the notify proxy over the network
-      # and needs no Kubernetes API access at all, so it gets no token.
       automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
@@ -62,7 +56,6 @@ spec:
           type: RuntimeDefault
       containers:
         - name: error-detector
-          # Pinned by digest, published by build-images.yaml.
           image: ghcr.io/nacfson/error-detector@sha256:d8cc66fdcb31dd11a14fe7b5cec7b2bbb4f963d34aa72ea278c12feee2994895
           imagePullPolicy: IfNotPresent
           ports:
@@ -76,15 +69,10 @@ spec:
               value: "http://victorialogs.observability.svc:9428"
             - name: NOTIFY_URL
               value: "http://notify-gateway.vault.svc:8080"
-            # Workstream 3 has not landed. Empty disables the handoff, so a
-            # closed group is alerted and saved, never handed to a service that
-            # is not there.
             - name: INVESTIGATOR_URL
               value: ""
             - name: STATE_PATH
               value: "/state/detector.json"
-          # requests == limits gives Guaranteed QoS: the detector must not be
-          # evicted while it holds an unwritten cursor and a queued skip notice.
           resources:
             requests:
               cpu: 50m
@@ -101,8 +89,6 @@ spec:
           volumeMounts:
             - name: state
               mountPath: /state
-          # /readyz checks VictoriaLogs reachability and that a tail is live, and
-          # can wait 10 s on the VLogs probe, so it needs a timeout above that.
           startupProbe:
             httpGet:
               path: /startupz

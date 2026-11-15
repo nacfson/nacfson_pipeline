@@ -1,6 +1,3 @@
--- Standalone Lua runner for log_contract.lua
--- Tests T017, T029, T049, T050
-
 local script_path = "deploy/platform/observability/fluent-bit/log_contract.lua"
 
 local f = io.open(script_path, "r")
@@ -12,9 +9,6 @@ f:close()
 
 dofile(script_path)
 
--- Verify that the live legacy-containers.txt file parses as empty after the v3
--- cutover, then seed synthetic entries on the cached table for unit tests that
--- exercise the legacy routing branch.
 local live_legacy = load_legacy_containers()
 if next(live_legacy) ~= nil then
     error("expected live legacy-containers.txt to have no active entries after v3 cutover", 2)
@@ -34,7 +28,6 @@ local function assert_true(cond, msg)
     end
 end
 
--- Helper to decode vectors.json
 local function load_vectors()
     local path = "services/error-pipeline/internal/redact/testdata/vectors.json"
     local fh = assert(io.open(path, "r"), "cannot open " .. path)
@@ -69,7 +62,6 @@ end
 
 print("[INFO] Running Lua log_contract tests...")
 
--- Test 1: T017 Platform fields set from path keys and NODE_NAME
 do
     local ts = { sec = 1793782810, nsec = 125481302 }
     local record = {
@@ -102,14 +94,13 @@ do
     print("  [PASS] Test 1: Platform fields extracted and temporary keys removed")
 end
 
--- Test 2: T017 msg falls back to log for non-JSON lines (legacy container)
 do
     local ts = { sec = 1793782810, nsec = 0 }
     local record = {
         ns = "proj-pn",
         pod = "backend-1",
         uid = "u-1",
-        container = "backend", -- in legacy-containers.txt
+        container = "backend",
         log = "plain log line message",
     }
     local code, out_ts, out_rec = process("proj.test", ts, record)
@@ -119,10 +110,8 @@ do
     print("  [PASS] Test 2: msg falls back to log on main path")
 end
 
--- Test 3: T017 _time selection within +-5m vs skew > 5m
 do
-    local ts = { sec = 1793782810, nsec = 0 } -- CRI time
-    -- Case A: valid time within 10 seconds of CRI
+    local ts = { sec = 1793782810, nsec = 0 }
     local rec_ok = {
         ns = "proj-other",
         pod = "p1",
@@ -138,7 +127,6 @@ do
     assert_eq(code_ok, 1, "return code 1 for new timestamp")
     assert_eq(out_rec_ok["time"], nil, "project time deleted when accepted as _time")
 
-    -- Case B: skewed time (10 minutes away)
     local rec_skew = {
         ns = "proj-other",
         pod = "p1",
@@ -153,10 +141,9 @@ do
     local code_skew, out_ts_skew, out_rec_skew = process("proj.test", ts, rec_skew)
     assert_eq(code_skew, 2, "return code 2 keeps CRI timestamp")
     assert_eq(out_rec_skew["time"], "2026-11-04T09:10:10Z", "project time kept when rejected for _time")
-    -- Case C: missing or invalid timezone
     local rec_bad_tz = {
         ns = "proj-other", pod = "p1", uid = "u1", container = "c1",
-        time = "2026-11-04T09:00:15", -- missing timezone
+        time = "2026-11-04T09:00:15",
         level = "info", msg = "bad tz",
         ["service.name"] = "test", ["service.version"] = "v1.0.0"
     }
@@ -166,10 +153,8 @@ do
     print("  [PASS] Test 3: _time selection and time skew fallback")
 end
 
--- Test 4: T017 FR-018c Truncation of stack traces and panics > 8 KiB
 do
     local ts = { sec = 1793782810, nsec = 0 }
-    -- Build 20 KiB trace
     local lines = { "goroutine 1 [running]:", "main.fail()" }
     while #table.concat(lines, "\n") < 20480 do
         table.insert(lines, "\t/app/main.go:42 +0x123")
@@ -196,12 +181,10 @@ do
     local marker = trunc:match("…%[truncated (%d+) bytes%]")
     assert_true(marker ~= nil, "has truncated marker")
     local cut_bytes = tonumber(marker)
-    -- Verify cut position + cut_bytes == original length
     local cut_slice = trunc:sub(1, trunc:find("\n…%[truncated") - 1)
     assert_true(#cut_slice <= 8192, "slice within 8192 bytes")
     assert_eq(#cut_slice + cut_bytes, big_len, "byte count calculation exact")
 
-    -- Trace of exactly 8192 bytes unchanged
     local exact_trace = string.rep("x", 8191) .. "\n"
     assert_eq(#exact_trace, 8192)
     local rec_exact = {
@@ -221,7 +204,6 @@ do
     print("  [PASS] Test 4: 8 KiB truncation of stacktrace and exact byte preservation")
 end
 
--- Test 5: T029 Forged record: reserved keys stripped before platform assignment
 do
     local ts = { sec = 1793782810, nsec = 100 }
     local forged = {
@@ -234,7 +216,6 @@ do
         msg = "forged identity attempt",
         ["service.name"] = "test",
         ["service.version"] = "v1.0.0",
-        -- Forged fields
         ["k8s.namespace.name"] = "proj-fake",
         ["k8s.pod.name"] = "fake-pod",
         ["k8s.pod.uid"] = "fake-uid",
@@ -267,10 +248,8 @@ do
     print("  [PASS] Test 5: Forged reserved fields stripped and replaced with platform truth")
 end
 
--- Test 6: T049 Routing cases (quarantine vs main)
 do
     local ts = { sec = 1793782810, nsec = 0 }
-    -- text-v3 -> quarantine
     local rec_text = {
         ns = "proj-api", pod = "p1", uid = "u1", container = "api",
         log = "plain text log line from v3 container"
@@ -280,7 +259,6 @@ do
     assert_eq(q1["_route"], "quarantine", "text-v3 routed to quarantine")
     assert_eq(q1["msg"], "plain text log line from v3 container", "quarantine msg is raw text")
     assert_eq(q1["k8s.namespace.name"], "proj-api")
-    -- Assert exact keys in quarantine record: msg, 5 k8s, log.iostream, observed_time, _route
     local q_keys = {}
     for k, _ in pairs(q1) do table.insert(q_keys, k) end
     table.sort(q_keys)
@@ -291,7 +269,6 @@ do
     table.sort(expected_q_keys)
     assert_eq(table.concat(q_keys, ","), table.concat(expected_q_keys, ","), "exact quarantine keys")
 
-    -- missing-version -> quarantine
     local rec_no_ver = {
         ns = "proj-api", pod = "p1", uid = "u1", container = "api",
         log = '{"time":"2026-11-04T09:00:10Z","level":"info","msg":"test","service.name":"api"}',
@@ -302,7 +279,6 @@ do
     assert_eq(q2["level"], nil, "parsed keys stripped from quarantine record")
     assert_eq(q2["service.name"], nil, "service.name stripped from quarantine record")
 
-    -- grouped Go panic -> main
     local rec_panic = {
         ns = "proj-api", pod = "p1", uid = "u1", container = "api",
         log = "panic: runtime error: invalid memory address or nil pointer dereference\ngoroutine 1 [running]:\nmain.main()"
@@ -310,7 +286,6 @@ do
     local c3, _, m3 = process("proj.test", ts, rec_panic)
     assert_eq(m3["_route"], "main", "grouped panic routed to main")
 
-    -- nginx native error -> main
     local rec_nginx = {
         ns = "proj-web", pod = "p1", uid = "u1", container = "web",
         log = "2026/11/04 09:00:10 [error] 123#456: *1 open() failed (2: No such file or directory)"
@@ -318,15 +293,13 @@ do
     local c4, _, m4 = process("proj.test", ts, rec_nginx)
     assert_eq(m4["_route"], "main", "nginx error routed to main")
 
-    -- legacy container -> main
     local rec_legacy = {
-        ns = "proj-blog", pod = "p1", uid = "u1", container = "blog-web", -- in legacy-containers.txt
+        ns = "proj-blog", pod = "p1", uid = "u1", container = "blog-web",
         log = "plain text legacy log"
     }
     local c5, _, m5 = process("proj.test", ts, rec_legacy)
     assert_eq(m5["_route"], "main", "legacy container routed to main")
 
-    -- conforming JSON -> main
     local rec_conf = {
         ns = "proj-api", pod = "p1", uid = "u1", container = "api",
         time = "2026-11-04T09:00:10Z", level = "info", msg = "ok",
@@ -335,7 +308,6 @@ do
     local c6, _, m6 = process("proj.test", ts, rec_conf)
     assert_eq(m6["_route"], "main", "conforming line routed to main")
 
-    -- secret in quarantine plain text is redacted
     local rec_sec = {
         ns = "proj-api", pod = "p1", uid = "u1", container = "api",
         log = "user failed Bearer eyJhbGciOiJIUzI1NiJ9.e30.sig"
@@ -347,12 +319,10 @@ do
     print("  [PASS] Test 6: Routing and quarantine record format verification")
 end
 
--- Test 7: T050 Redaction parity with vectors.json
 do
     local vectors = load_vectors()
     assert_true(#vectors >= 19, "loaded all test vectors")
 
-    -- Check all 5 kinds exist in PATTERNS
     local expected_kinds = { "bearer", "google-key", "jwt", "secret-field", "sk-key" }
     for _, kind in ipairs(expected_kinds) do
         assert_true(PATTERNS[kind] ~= nil, "PATTERNS table has kind: " .. kind)

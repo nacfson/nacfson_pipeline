@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# rollback-change.sh — Fast rollback helper & review circuit-breaker incident recorder.
-#
-# Usage:
-#   ./scripts/rollback-change.sh --dry-run <commit-ref>
-#   ./scripts/rollback-change.sh <commit-ref>
 
 set -euo pipefail
 

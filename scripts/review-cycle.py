@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""
-review-cycle.py — Core Verification, Risk Classification, Receipt & Gate Engine.
-
-Implements the deterministic verification and receipt engine for nacfson_pipeline
-using Python 3.12 standard library only.
-"""
 
 from __future__ import annotations
 

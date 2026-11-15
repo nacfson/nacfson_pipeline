@@ -1,11 +1,4 @@
 #!/usr/bin/env python3
-"""Offline cross-check between infra/gcp/shared-values.json and the repo files that repeat its values.
-
-Spec 015 (specs/015-gke-terraform-infra/contracts/shared-values.md), FR-018, SC-002.
-Runs without cloud credentials. Needs Python 3 and PyYAML.
-
-Exit codes: 0 all checks pass, 1 one or more mismatches, 2 a source file is missing or unparseable.
-"""
 
 import argparse
 import ipaddress
@@ -28,12 +21,11 @@ TRAEFIK_SERVICE = "deploy/platform/traefik/service.yaml"
 REGISTRY_TF = "infra/gcp/gke/registry.tf"
 INFRA_DIR = "infra/gcp"
 
-# backend blocks cannot read files or locals, so their literals are exempt from check 9.
 CHECK9_EXEMPT = {"backend.tf"}
 
 
 class SourceError(Exception):
-    """A source file is missing or unparseable (exit 2)."""
+    pass
 
 
 class Checker:
@@ -41,7 +33,6 @@ class Checker:
         self.root = root
         self.failures: list[dict] = []
 
-    # --- loading ----------------------------------------------------------------------------
 
     def path(self, rel: str) -> Path:
         p = self.root / rel
@@ -67,7 +58,6 @@ class Checker:
     def fail(self, check_id: int, field: str, infra, repo, source: str):
         self.failures.append({"id": check_id, "field": field, "infra": infra, "repo": repo, "source": source})
 
-    # --- checks -----------------------------------------------------------------------------
 
     def run(self) -> None:
         s = self.json(SHARED)
@@ -120,8 +110,6 @@ class Checker:
                     field = key if key in ("project", "region") else f"kms.{key}"
                     self.fail(3, field, want, found.get(key), LAYERS)
 
-        # Check 4: only OpenBao's ServiceAccount (kms.ksa) must name the OpenBao GSA; other
-        # Workload Identity users in layers.yaml may name their own accounts.
         want_gsa = f'{s["kms"]["gsa_account_id"]}@{s["project_id"]}.iam.gserviceaccount.com'
         annotations = self.ksa_gsa_annotations(s["kms"]["ksa"])
         if not annotations:
@@ -131,7 +119,6 @@ class Checker:
                 self.fail(4, "kms.gsa_account_id", want_gsa, got, LAYERS)
 
     def ksa_gsa_annotations(self, ksa: str) -> list:
-        """Workload Identity annotations that layers.yaml patches onto ServiceAccount <namespace>/<name>."""
         namespace, _, name = ksa.partition("/")
         found = []
         for doc in self.yaml_docs(LAYERS):
@@ -257,7 +244,6 @@ def _string_leaves(value):
 
 
 def strip_hcl_comments(text: str) -> str:
-    """Remove HCL line comments (# and //) and /* */ blocks, keeping string contents."""
     out, i, in_str = [], 0, False
     while i < len(text):
         ch = text[i]
@@ -287,7 +273,6 @@ def strip_hcl_comments(text: str) -> str:
 
 
 def _string_literals(text: str):
-    """Whole contents of each double-quoted string (exact matches only, never substrings)."""
     return re.findall(r'"((?:[^"\\]|\\.)*)"', text)
 
 

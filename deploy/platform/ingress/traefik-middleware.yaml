@@ -28,7 +28,6 @@ spec:
       X-User-Issuer: ""
       Authorization: ""
 ---
-# Permanent HTTP -> HTTPS redirect. Used by IngressRoute platform/http-to-https.
 apiVersion: traefik.io/v1alpha1
 kind: Middleware
 metadata:

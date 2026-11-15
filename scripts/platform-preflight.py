@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-Platform Preflight Check (SPEC.md DEPLOY-04, contracts/platform-preflight.md).
-Validates candidate renders against capacity, isolation, QoS, memory freeze, and project budget.
-"""
 
 import argparse
 import json
@@ -15,7 +11,6 @@ import yaml
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import gke_edge  # noqa: E402  (shared edge rules, Spec 015)
 
-# Validation status enums
 STATUS_PASSED = "PASSED"
 STATUS_REJECTED_NO_MEASUREMENT = "REJECTED_NO_MEASUREMENT"
 STATUS_REJECTED_ISOLATION = "REJECTED_ISOLATION"
@@ -48,7 +43,6 @@ def parse_memory_mib(val):
         return float(val_str[:-2]) * 1024.0
     if val_str.endswith("Ti"):
         return float(val_str[:-2]) * 1024.0 * 1024.0
-    # plain bytes
     return float(val_str) / (1024.0 * 1024.0)
 
 
@@ -67,7 +61,6 @@ def load_yaml_docs(file_path):
 
 
 def sign_in_choice(docs):
-    """Return (choice, error). Absent means none."""
     choice = None
     for doc in docs:
         if not isinstance(doc, dict):
@@ -163,11 +156,6 @@ def _gateway_or_signin_egress(rule):
 
 
 def check_project_doors(projects_dict):
-    """Reject a candidate door that does not match the project's internal network.
-
-    A rejection does not rewrite the last accepted door. This check only reads
-    the candidate and reports it.
-    """
     violations = []
     kept = "; last accepted door is not replaced"
     for proj_id, docs in sorted(projects_dict.items()):
@@ -280,7 +268,6 @@ WORLD_DETAIL = "translation egress must not allow unrestricted world or 0.0.0.0/
 
 
 def _validate_portable_https_egress(policy_doc, expected_app_name, obj_label):
-    """Validate PortableEgressPolicy invariants on a networking.k8s.io/v1 NetworkPolicy."""
     violations = []
 
     def add(detail):
@@ -304,7 +291,6 @@ def _validate_portable_https_egress(policy_doc, expected_app_name, obj_label):
             add(f"{obj_label} egress rule must not omit 'to' peers")
             continue
 
-        # Check kube-dns rule
         for peer in peers:
             ns_labels = ((peer or {}).get("namespaceSelector") or {}).get("matchLabels") or {}
             pod_labels = ((peer or {}).get("podSelector") or {}).get("matchLabels") or {}
@@ -316,7 +302,6 @@ def _validate_portable_https_egress(policy_doc, expected_app_name, obj_label):
                 if port_set and port_set.issubset({("UDP", 53), ("TCP", 53)}):
                     has_kube_dns = True
 
-        # Check ipBlock 0.0.0.0/0 rule
         for peer in peers:
             ip_block = (peer or {}).get("ipBlock")
             if not isinstance(ip_block, dict):
@@ -347,11 +332,6 @@ def _validate_portable_https_egress(policy_doc, expected_app_name, obj_label):
 
 
 def check_translation_egress(docs):
-    """Enforce PortableEgressPolicy on Project PN translation egress (networking.k8s.io/v1 NetworkPolicy).
-
-    Returns [] when NetworkPolicy/project-pn-isolation is absent so fixture
-    renders that do not include the boundary stay valid.
-    """
     violations = []
     isolation = None
     policy = None
@@ -404,7 +384,6 @@ def check_translation_egress(docs):
 
 
 def check_database_and_readiness_contract(projects_dict, platform_docs):
-    """Enforce CONTRACT_DATABASE.md and CONTRACT_PROBES_READINESS.md on database-backed workloads."""
     violations = []
     for proj_id, docs in sorted(projects_dict.items()):
         slug = proj_id[len("proj-"):].replace("-", "_") if proj_id.startswith("proj-") else proj_id.replace("-", "_")
@@ -426,7 +405,6 @@ def check_database_and_readiness_contract(projects_dict, platform_docs):
                 if not (db_keys & set(env_map.keys())):
                     continue
 
-                # 1. Verify zero-plaintext proxy routing and tenant scope
                 db_host = env_map.get("DB_HOST", "")
                 if db_host and db_host != "vault-db-proxy.vault.svc":
                     violations.append({
@@ -463,7 +441,6 @@ def check_database_and_readiness_contract(projects_dict, platform_docs):
                             ),
                         })
 
-                # 2. Verify Readiness (/readyz) vs Liveness (/healthz) Probe Separation
                 readiness = c.get("readinessProbe")
                 liveness = c.get("livenessProbe")
                 r_path = ((readiness or {}).get("httpGet") or {}).get("path")
@@ -487,7 +464,6 @@ def check_database_and_readiness_contract(projects_dict, platform_docs):
                         ),
                     })
 
-    # Verify vault-db-proxy platform readinessProbe (/readyz) and livenessProbe (/healthz)
     for doc in platform_docs:
         if not isinstance(doc, dict) or doc.get("kind") != "Deployment":
             continue
@@ -516,7 +492,6 @@ def check_database_and_readiness_contract(projects_dict, platform_docs):
 
 
 def _image_pinned_by_digest(image):
-    """Report whether image is pinned as name@sha256:<64 hex>, never a tag."""
     if not isinstance(image, str):
         return False
     _, sep, digest = image.partition("@sha256:")
@@ -528,7 +503,6 @@ def _image_pinned_by_digest(image):
 
 
 def check_placeholder_image_digests(docs):
-    """Reject all-zero image digests: no image can exist at one, so it never pulls."""
     violations = []
     for doc in docs:
         pod_spec, _ = get_pod_spec_and_meta(doc)
@@ -547,15 +521,6 @@ def check_placeholder_image_digests(docs):
 
 
 def check_notify_gateway_contract(platform_docs):
-    """Enforce the notify gateway contract: loopback-only admin, portable HTTPS egress.
-
-    The proxy is the one component that holds a live Discord webhook URL, so its
-    blast radius is the point of this rule: the admin listener that seeds those
-    URLs must be unreachable from any pod, and egress must block RFC1918 and
-    cloud metadata / Workload Identity CIDRs. A tag rather than a digest is
-    rejected because a silent rebuild would change what #errors posts with and
-    no manifest would show it.
-    """
     violations = []
 
     def fail(obj, detail):
@@ -665,10 +630,8 @@ def check_notify_gateway_contract(platform_docs):
 
 
 def check_ai_gateway_contract(projects_dict, platform_docs):
-    """Enforce Internal AI Gateway (vault-ai-proxy) isolation, loopback admin, portable NetworkPolicy, and three-probe contract."""
     violations = []
 
-    # 1. Project containers must never hold *API_KEY* or call generativelanguage.googleapis.com directly
     for proj_id, docs in sorted(projects_dict.items()):
         for doc in docs:
             pod_spec, _ = get_pod_spec_and_meta(doc)
@@ -695,7 +658,6 @@ def check_ai_gateway_contract(projects_dict, platform_docs):
                             "detail": f"ENRICH_PRIMARY_BASE_URL must route through http://ai-gateway.vault.svc:8080/v1, got {eval_str!r}",
                         })
 
-    # 2. Check Service/ai-gateway, Deployment/vault-ai-proxy, NetworkPolicy/ai-proxy-policy, and NetworkPolicy/openbao-ingress-policy
     found_netpol = False
     for doc in platform_docs:
         if not isinstance(doc, dict):
@@ -810,10 +772,6 @@ def check_ai_gateway_contract(projects_dict, platform_docs):
                 "detail": "missing NetworkPolicy/ai-proxy-policy in vault namespace",
             })
 
-    # 3. Enforce Constitution Amendments 2.2.1 & 2.3.0 on observability namespace:
-    #    Only DaemonSet/fluent-bit may declare hostPath (/var/log/pods readOnly: true
-    #    and /var/lib/fluent-bit-state readOnly: false DirectoryOrCreate),
-    #    and privileged: true is strictly rejected so it can never access OpenBao PVs.
     for doc in platform_docs:
         if not isinstance(doc, dict):
             continue
@@ -881,13 +839,11 @@ def check_ai_gateway_contract(projects_dict, platform_docs):
 
 
 def check_edge_tls(project_docs, platform_docs):
-    """Enforce edge TLS rules TLS-1 through TLS-6 (contracts/preflight-tls-rules.md)."""
     violations = []
     kept = "; last accepted door is not replaced"
 
     all_docs = platform_docs + project_docs
 
-    # Gather platform certificates and default TLSStore to compute covered_hosts
     platform_certs = []
     for doc in platform_docs:
         if not isinstance(doc, dict):
@@ -933,7 +889,6 @@ def check_edge_tls(project_docs, platform_docs):
                 for dns in (c.get("spec") or {}).get("dnsNames") or []:
                     covered_hosts.add(str(dns).strip().lower())
 
-    # TLS-1: Project kinds Certificate, CertificateRequest, Issuer, Order, Challenge, TLSStore, TLSOption, Secret kubernetes.io/tls
     tls_kinds = {"Certificate", "CertificateRequest", "Issuer", "Order", "Challenge", "TLSStore", "TLSOption"}
     for doc in project_docs:
         if not isinstance(doc, dict):
@@ -957,7 +912,6 @@ def check_edge_tls(project_docs, platform_docs):
                 "detail": f"TLS objects are platform-owned; Secret is not allowed in project namespace {ns}" + kept,
             })
 
-    # TLS-2, TLS-3, TLS-4, TLS-5: Project IngressRoute checks
     for doc in project_docs:
         if not isinstance(doc, dict):
             continue
@@ -970,7 +924,6 @@ def check_edge_tls(project_docs, platform_docs):
         obj = f"{ns}/IngressRoute/{name}"
         spec = doc.get("spec") or {}
 
-        # TLS-2: project IngressRoute whose spec.tls is missing or has any key
         tls_field = spec.get("tls")
         if "tls" not in spec or not isinstance(tls_field, dict) or len(tls_field) > 0:
             violations.append({
@@ -979,7 +932,6 @@ def check_edge_tls(project_docs, platform_docs):
                 "detail": "route must declare tls: {} and let the platform select the certificate" + kept,
             })
 
-        # TLS-3: spec.entryPoints != ["websecure"]
         entry_points = spec.get("entryPoints")
         if entry_points != ["websecure"]:
             violations.append({
@@ -988,7 +940,6 @@ def check_edge_tls(project_docs, platform_docs):
                 "detail": "project route entry point must be websecure only" + kept,
             })
 
-        # TLS-4 & TLS-5: route match and covered_hosts
         for route in spec.get("routes") or []:
             match_expr = route.get("match", "")
             has_forbidden = any(token in match_expr for token in ("HostRegexp", "HostSNI", "HostHeader"))
@@ -1015,7 +966,6 @@ def check_edge_tls(project_docs, platform_docs):
                             "detail": f"hostname {h} has no platform certificate; add it to deploy/platform/tls first" + kept,
                         })
 
-    # TLS-2 (platform): websecure IngressRoutes in platform must also declare tls: {}
     for doc in platform_docs:
         if not isinstance(doc, dict) or doc.get("kind") != "IngressRoute":
             continue
@@ -1036,8 +986,6 @@ def check_edge_tls(project_docs, platform_docs):
                 "detail": "route must declare tls: {} and let the platform select the certificate",
             })
 
-    # TLS-6: Certificate inventory invariants (Platform render)
-    # Check stores outside platform or multiple defaults
     for s in all_stores:
         s_ns = s.get("metadata", {}).get("namespace", "")
         if not s_ns:
@@ -1080,7 +1028,6 @@ def check_edge_tls(project_docs, platform_docs):
                     "detail": f"certificate inventory: listed secretName '{s_name}' has no matching Certificate in platform",
                 })
 
-    # Check hostname duplicate across platform certificates
     host_to_certs = {}
     for c in platform_certs:
         c_name = (c.get("metadata") or {}).get("name", "")
@@ -1095,7 +1042,6 @@ def check_edge_tls(project_docs, platform_docs):
                 "detail": f"certificate inventory: hostname '{host}' appears in multiple certificates: {', '.join(c_names)}",
             })
 
-    # Check edge Certificate outside platform (in platform namespaces other than platform)
     for doc in all_docs:
         if not isinstance(doc, dict):
             continue
@@ -1116,15 +1062,13 @@ def check_edge_tls(project_docs, platform_docs):
 
 
 def check_log_contract(project_docs, platform_docs, environment="test-env", repo_root=None):
-    """Enforce CONTRACT_LOG_SCHEMA.md Gate 1 rules on project workloads (SPEC 011)."""
     if repo_root is None:
         repo_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
     violations = []
 
-    # 1. Parse migration table from CONTRACT_LOG_SCHEMA.md §6
     contract_path = os.path.join(repo_root, "contracts", "CONTRACT_LOG_SCHEMA.md")
-    migration_rows = {}  # (project, container) -> status
+    migration_rows = {}
     if os.path.exists(contract_path):
         with open(contract_path, encoding="utf-8") as f:
             content = f.read()
@@ -1136,8 +1080,6 @@ def check_log_contract(project_docs, platform_docs, environment="test-env", repo
                 if line.startswith("|") and not line.startswith("|-"):
                     parts = [p.strip() for p in line.strip("|").split("|")]
                     if len(parts) >= 3 and parts[0] != "Project" and not parts[0].startswith("-"):
-                        # Either: `proj-pn` backend | format | pending
-                        # Or: `proj-pn` | backend | format | pending
                         status = parts[-1].strip()
                         m = re.match(r"`?(proj-[a-zA-Z0-9_-]+)`?\s+([a-zA-Z0-9_-]+)", parts[0])
                         if m:
@@ -1149,7 +1091,6 @@ def check_log_contract(project_docs, platform_docs, environment="test-env", repo
                             cont = parts[1].strip("`")
                             migration_rows[(proj, cont)] = status
 
-    # 2. Parse legacy-containers.txt from fluent-bit-config ConfigMap in platform_docs
     fluent_bit_cm = None
     for doc in platform_docs:
         if isinstance(doc, dict) and doc.get("kind") == "ConfigMap":
@@ -1169,7 +1110,6 @@ def check_log_contract(project_docs, platform_docs, environment="test-env", repo
 
     actual_legacy_set = set()
 
-    # 3. Check project workloads
     for doc in project_docs:
         if not isinstance(doc, dict):
             continue
@@ -1192,7 +1132,6 @@ def check_log_contract(project_docs, platform_docs, environment="test-env", repo
         annotations = (pod_meta or {}).get("annotations", {}) or {}
         labels = (pod_meta or {}).get("labels", {}) or {}
 
-        # Rule: log-version-label
         version_label = labels.get("app.kubernetes.io/version")
         version_regex = r"^v\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$"
         if not version_label or not re.match(version_regex, str(version_label)) or version_label == "v0.0.0":
@@ -1209,7 +1148,6 @@ def check_log_contract(project_docs, platform_docs, environment="test-env", repo
             c_name = c.get("name", "")
             c_obj = f"{obj_name}:{c_name}"
 
-            # Rule: log-declaration-missing
             ann_key = f"logs.nacfson.cloud/{c_name}"
             decl = annotations.get(ann_key)
             if decl not in ("v3/json", "v3/nginx", "v2/legacy"):
@@ -1222,7 +1160,6 @@ def check_log_contract(project_docs, platform_docs, environment="test-env", repo
             if decl == "v2/legacy":
                 actual_legacy_set.add(f"{ns}/{c_name}")
 
-            # Rule: log-migration-row-missing & log-migration-regressed
             migration_projects = {p for (p, _) in migration_rows.keys()}
             if ns in migration_projects:
                 mig_status = migration_rows.get((ns, c_name))
@@ -1239,7 +1176,6 @@ def check_log_contract(project_docs, platform_docs, environment="test-env", repo
                         "detail": f"Container {c_obj} is marked 'done' in §6 but declared 'v2/legacy'",
                     })
 
-            # Rule: log-file-output
             for env_var in c.get("env", []) or []:
                 if not isinstance(env_var, dict):
                     continue
@@ -1273,7 +1209,6 @@ def check_log_contract(project_docs, platform_docs, environment="test-env", repo
                         "detail": f"Container {c_obj} defines non-json --log-format: {arg_str}",
                     })
 
-            # Rule: log-volume-undeclared & log-data-reason-missing
             data_paths_key = f"logs.nacfson.cloud/{c_name}.data-paths"
             data_reason_key = f"logs.nacfson.cloud/{c_name}.data-reason"
             data_paths_str = str(annotations.get(data_paths_key) or "").strip()
@@ -1300,7 +1235,6 @@ def check_log_contract(project_docs, platform_docs, environment="test-env", repo
                         "detail": f"Container {c_obj} mounts undeclared log volume at {m_path}",
                     })
 
-    # Rule: log-legacy-list-drift
     if fluent_bit_cm is not None and project_docs:
         if actual_legacy_set != expected_legacy_set:
             diff = actual_legacy_set.symmetric_difference(expected_legacy_set)
@@ -1339,7 +1273,6 @@ SPOT_ALLOWED_DEPLOYMENTS = frozenset({
 
 
 def _pod_tolerates_taint(pod_spec, taint_str):
-    """Return True when pod_spec declares a toleration matching taint_str (key=value:effect or key:effect)."""
     effect = ""
     key_val = str(taint_str or "").strip()
     if ":" in key_val:
@@ -1368,7 +1301,6 @@ def _pod_tolerates_taint(pod_spec, taint_str):
 
 
 def _pod_matches_pool(pod_spec, pool):
-    """Return True when pod_spec's nodeSelector and tolerations can schedule onto pool."""
     labels = {"kubernetes.io/os": "linux", **((pool or {}).get("labels") or {})}
     for k, v in ((pod_spec or {}).get("nodeSelector") or {}).items():
         if str(labels.get(k, "")) != str(v):
@@ -1380,7 +1312,6 @@ def _pod_matches_pool(pod_spec, pool):
 
 
 def _effective_pod_resources(pod_spec):
-    """Return Kubernetes effective pod (req_cpu, req_mem, lim_mem) = max(sum(containers), max(initContainers))."""
     containers = (pod_spec or {}).get("containers") or []
     init_containers = (pod_spec or {}).get("initContainers") or []
     c_req_cpu = sum(parse_cpu((c.get("resources") or {}).get("requests", {}).get("cpu")) or 0 for c in containers)
@@ -1407,7 +1338,6 @@ def main():
     status = STATUS_PASSED
     exit_code = 0
 
-    # Rule 1: Capacity validation
     cap_data = None
     if not os.path.exists(args.capacity):
         status = STATUS_REJECTED_NO_MEASUREMENT
@@ -1501,14 +1431,11 @@ def main():
     candidate_docs = load_yaml_docs(args.candidate)
     baseline_docs = load_yaml_docs(args.baseline) if args.baseline else []
 
-    # If Rule 1 already failed, skip checking other rules
     if status == STATUS_PASSED:
-        # Separate documents by layer/namespace
         project_docs = []
         platform_docs = []
         for doc in candidate_docs:
             ns = doc.get("metadata", {}).get("namespace", "")
-            # check flux label if metadata.namespace missing
             if not ns:
                 ns = doc.get("metadata", {}).get("labels", {}).get("kustomize.toolkit.fluxcd.io/namespace", "")
             if ns and ns not in PLATFORM_NAMESPACES:
@@ -1516,8 +1443,6 @@ def main():
             else:
                 platform_docs.append(doc)
 
-        # Rule 2: Isolation in project namespaces + GKE single L4 LoadBalancer & Spot placement contracts
-        # (specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md §4)
         if args.environment == "gke" or pools is not None:
             for doc in candidate_docs:
                 if doc.get("kind") == "Service":
@@ -1593,16 +1518,13 @@ def main():
                 if pod_spec.get("hostNetwork") or pod_spec.get("hostPID") or pod_spec.get("hostIPC"):
                     violations.append({"rule": 2, "object": obj_name, "detail": "hostNetwork/hostPID/hostIPC prohibited"})
                 
-                # automountServiceAccountToken MUST be false on pods
                 if pod_spec.get("automountServiceAccountToken") is not False:
                     violations.append({"rule": 2, "object": obj_name, "detail": "automountServiceAccountToken must be false on project pods"})
                 
-                # Check volumes for hostPath
                 for vol in pod_spec.get("volumes", []):
                     if "hostPath" in vol:
                         violations.append({"rule": 2, "object": obj_name, "detail": f"hostPath volume '{vol.get('name')}' prohibited"})
                 
-                # Check containers
                 all_c = pod_spec.get("containers", []) + pod_spec.get("initContainers", [])
                 for c in all_c:
                     img = str(c.get("image") or "").strip()
@@ -1628,7 +1550,6 @@ def main():
             rejection_reason = violations[0]["detail"]
             exit_code = 1
 
-        # Rule 3: Strict QoS in project layers (requests == limits)
         if status == STATUS_PASSED:
             for doc in project_docs:
                 pod_spec, _ = get_pod_spec_and_meta(doc)
@@ -1652,7 +1573,6 @@ def main():
                     if status != STATUS_PASSED:
                         break
 
-        # Rule 4: Every container across all layers declares requests and limits
         if status == STATUS_PASSED:
             for doc in candidate_docs:
                 pod_spec, _ = get_pod_spec_and_meta(doc)
@@ -1672,7 +1592,6 @@ def main():
                     if status != STATUS_PASSED:
                         break
 
-        # Rule 5: Memory freeze vs baseline
         if status == STATUS_PASSED and baseline_docs:
             baseline_containers = {}
             for doc in baseline_docs:
@@ -1704,7 +1623,6 @@ def main():
                     if status != STATUS_PASSED:
                         break
 
-    # Calculations for Rule 6 and JSON output
     alloc_cpu = cap_data.get("allocatable", {}).get("cpuMillicores", 0) if cap_data else 0
     alloc_mem = cap_data.get("allocatable", {}).get("memoryMib", 0) if cap_data else 0
     sys_cpu = cap_data.get("systemReserved", {}).get("cpuMillicores", 0) if cap_data else 0
@@ -1732,7 +1650,6 @@ def main():
                                 if isinstance(p, dict) and _pod_matches_pool(pod_spec, p)
                             )
                         elif kind in ("Deployment", "StatefulSet"):
-                            # Pre-reserve at least 1 replica slot even when paused at replicas: 0
                             multiplier = max(int(spec.get("replicas", 1)), 1)
                         else:
                             multiplier = 1
@@ -1757,7 +1674,6 @@ def main():
         rejection_reason = "Platform reservation exceeds allocatable capacity"
         exit_code = 1
 
-    # Project groupings
     projects_dict = {}
     for doc in candidate_docs:
         ns = doc.get("metadata", {}).get("namespace", "")
@@ -1899,7 +1815,6 @@ def main():
         if proj_mem > candidate_peak_mem:
             candidate_peak_mem = proj_mem
 
-        # Rule 6 check
         if status == STATUS_PASSED:
             if proj_cpu > slice_cpu or proj_mem > slice_mem:
                 status = STATUS_REJECTED_OVER_BUDGET
@@ -1907,7 +1822,6 @@ def main():
                 violations.append({"rule": 6, "object": f"project/{proj_id}", "detail": rejection_reason})
                 exit_code = 1
 
-    # Multi-node per-pool steady-state schedulability & standard-pool backup headroom
     if status == STATUS_PASSED and pools is not None:
         pool_usage = {
             str(p.get("name")): {"req_cpu": 0.0, "req_mem": 0.0, "lim_mem": 0.0}

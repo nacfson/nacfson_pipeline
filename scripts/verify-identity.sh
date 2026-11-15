@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# verify-identity.sh
-# Validates declarative Keycloak realm configuration, automated import,
-# and OpenBao Vault secret resolution for the platform realm.
-# ==============================================================================
 
 set -euo pipefail
 
@@ -12,7 +7,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "=== Verifying Keycloak Declarative Identity & Realm Ingestion ==="
 
-# Check 1: Static verification of Keycloak deployment flags and volume mounts
 echo "[Check 1/4] Verifying Keycloak deployment startup flags and volume mounts..."
 if grep -q -- "--import-realm" "$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml" && \
    grep -q -- "--vault=file" "$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml" && \
@@ -25,7 +19,6 @@ else
   exit 1
 fi
 
-# Check 2: Static verification of single-source-of-truth realm config
 echo "[Check 2/4] Verifying declarative realm definition and Vault secret placeholders..."
 if grep -q '"realm": "platform"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
    grep -q 'GOOGLE_CLIENT_ID' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
@@ -39,7 +32,6 @@ else
   exit 1
 fi
 
-# Check 3: AUTH-01 Google JIT first-broker-login (non-interactive user creation)
 echo "[Check 3/4] Verifying Google first-broker-login JIT provisioning (AUTH-01)..."
 if grep -q '"firstBrokerLoginFlowAlias": "google jit first broker login"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
    grep -q '"alias": "google jit first broker login"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
@@ -54,13 +46,11 @@ else
   exit 1
 fi
 
-# Check 4: Dynamic Realm API Reachability (if live cluster is accessible)
 echo "[Check 4/4] Dynamic Platform Realm Health & Discovery Endpoint Check..."
 if ssh -o BatchMode=yes -o ConnectTimeout=3 oracleCloud "sudo k3s kubectl get nodes" >/dev/null 2>&1; then
   echo "Live cluster detected. Querying Keycloak platform realm endpoint..."
   KC_IP=$(ssh oracleCloud "sudo k3s kubectl get svc -n identity keycloak-service -o jsonpath='{.spec.clusterIP}'" 2>/dev/null || true)
   if [ -n "$KC_IP" ]; then
-    # KC_IP was read on this machine and must be filled in before ssh.
     # shellcheck disable=SC2029
     REALM_RESP=$(ssh oracleCloud "curl -sS --max-time 5 http://${KC_IP}:8080/realms/platform" 2>/dev/null || true)
     if echo "$REALM_RESP" | grep -q '"realm":"platform"'; then

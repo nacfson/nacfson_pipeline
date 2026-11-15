@@ -1,11 +1,5 @@
 name: Claude Review
 
-# Event-driven review: a session starts when a PR or issue is created.
-# Rules live in REVIEW.md (severity tags, nit cap, file:line evidence,
-# summary header, 3-round cap, skipped paths). This workflow only triggers.
-#
-# Auth: Claude subscription OAuth token (run `claude setup-token` locally,
-# store as repo secret CLAUDE_CODE_OAUTH_TOKEN).
 
 on:
   pull_request:

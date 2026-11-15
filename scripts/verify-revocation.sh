@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# verify-revocation.sh
-# Verifies instant cross-project session revocation, CSRF protection, and
-# fail-closed behavior across all platform projects.
-# ==============================================================================
 
 set -euo pipefail
 
@@ -12,7 +7,6 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "=== Verifying Instant Cross-Project Session Revocation ==="
 
-# Check 1: Static verification of CSRF & Revocation Handlers
 echo "[Check 1/4] Verifying Gateway Logout & CSRF Implementation..."
 if grep -q "func (h \*Handler) HandleLogout" "$REPO_ROOT/gateway/internal/auth/logout.go" && \
    grep -q "ValidateCSRF" "$REPO_ROOT/gateway/internal/auth/logout.go" && \
@@ -23,7 +17,6 @@ else
   exit 1
 fi
 
-# Check 2: Project doors do not require forward-auth. Sign-out stays on the auth host.
 echo "[Check 2/4] Verifying project door and /auth/logout..."
 if grep -q "/auth/logout" "$REPO_ROOT/deploy/platform/ingress/ingress-allowlist.yaml"; then
   echo "  ✓ PASS: /auth/logout remains on the auth-host allowlist."
@@ -37,7 +30,6 @@ if grep -q "forward-auth" "$REPO_ROOT/deploy/projects/pn/workloads/ingress-route
 fi
 echo "  ✓ PASS: Project door without forward-auth is accepted."
 
-# Check 3: Automated Contract & Unit Testing via Container/Podman
 echo "[Check 3/4] Running Go Revocation & Contract Test Suite..."
 if command -v podman >/dev/null 2>&1; then
   podman run --rm -v "$REPO_ROOT/gateway:/app:Z" -w /app docker.io/library/golang:1.22-alpine \
@@ -50,7 +42,6 @@ else
   echo "  ! WARNING: Neither podman nor go found. Skipping runtime test execution."
 fi
 
-# Check 4: Online Next-Request Guarantee Live Verification (if live cluster is active)
 echo "[Check 4/4] Verifying Online Session Validation Contract..."
 if command -v kubectl >/dev/null 2>&1 && kubectl get nodes >/dev/null 2>&1; then
   echo "Live cluster detected. Validating gateway service endpoints..."

@@ -8,7 +8,6 @@ metadata:
   labels:
     app.kubernetes.io/name: postgres
     app.kubernetes.io/part-of: platform
-    # Protected reclaim flag to prevent unintended volume pruning
     platform.nacfson.io/protection: retain-data
 spec:
   accessModes:

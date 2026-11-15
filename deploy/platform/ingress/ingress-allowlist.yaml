@@ -9,10 +9,8 @@ metadata:
 spec:
   entryPoints:
     - websecure
-  # Certificate selected by hostname from TLSStore platform/default. HTTP is redirected by platform/http-to-https.
   tls: {}
   routes:
-    # 1. Keycloak Browser OIDC Login & Broker Callbacks
     - match: Host(`${AUTH_HOST}`) && (PathPrefix(`/realms/platform/protocol/openid-connect/auth`) || PathPrefix(`/realms/platform/login-actions`) || PathPrefix(`/realms/platform/broker/`) || PathPrefix(`/resources`))
       kind: Rule
       services:
@@ -20,7 +18,6 @@ spec:
           namespace: identity
           port: 8080
 
-    # 2. Gateway OIDC Start & Callback
     - match: Host(`${AUTH_HOST}`) && (PathPrefix(`/oauth/start`) || PathPrefix(`/oauth/callback`))
       kind: Rule
       services:
@@ -28,13 +25,9 @@ spec:
           namespace: identity
           port: 8080
 
-    # 3. Gateway Synchronous Session Revocation
     - match: Host(`${AUTH_HOST}`) && PathPrefix(`/auth/logout`)
       kind: Rule
       services:
         - name: gateway
           namespace: identity
           port: 8080
-
-# NOTE: Administrative paths (/admin/), master realm (/realms/master/), health checks,
-# and metrics port 9000 are omitted from this allowlist and will return 404 from Traefik.

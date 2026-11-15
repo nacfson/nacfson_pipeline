@@ -2,8 +2,6 @@ data "google_project" "this" {
   project_id = local.shared.project_id
 }
 
-# Monthly budget with e-mail alerts to billing admins (FR-015, research R9).
-# Steady state is about $65/month; alerts fire at 50%, 90% and 100% of $80.
 resource "google_billing_budget" "monthly" {
   billing_account = var.billing_account
   display_name    = "${local.shared.project_id} monthly"

@@ -1,13 +1,10 @@
 ---
-# Verify tasks: Four bounded readiness checks and version agreement validation
-# Scope: Read-only cluster verification; never exports kubeconfig or invokes app deployment.
 
 - name: Set current stage tracking to verify
   ansible.builtin.set_fact:
     current_stage: "verify"
     stage_failure_remediation: "Inspect cluster service logs (journalctl -u k3s) and pod status in kube-system."
 
-# Check 1: Service active and enabled (within 300s deadline)
 - name: Verify k3s service is active and enabled
   ansible.builtin.command:
     cmd: "systemctl is-active k3s"
@@ -31,7 +28,6 @@
       'readiness_outcomes': bootstrap_result.readiness_outcomes | combine({'service_active_and_enabled': true})
     }) }}"
 
-# Check 2: Authorized local /readyz endpoint (within 300s deadline, 5s request timeout)
 - name: Poll /readyz endpoint until healthy
   ansible.builtin.command:
     cmd: "k3s kubectl --request-timeout=5s get --raw=/readyz"
@@ -48,7 +44,6 @@
       'readiness_outcomes': bootstrap_result.readiness_outcomes | combine({'management_api_ready': true})
     }) }}"
 
-# Check 2b: Cilium CNI readiness (within 300s rollout bound)
 - name: Await Cilium DaemonSet rollout completion
   ansible.builtin.command:
     cmd: "k3s kubectl --request-timeout=5s -n kube-system rollout status daemonset/cilium --timeout=300s"
@@ -69,7 +64,6 @@
       'readiness_outcomes': bootstrap_result.readiness_outcomes | combine({'cni_ready': true})
     }) }}"
 
-# Check 3: Node readiness (within 300s deadline, exactly one Ready node)
 - name: Poll node readiness until exactly one Ready node is reported
   ansible.builtin.shell:
     cmd: |
@@ -95,7 +89,6 @@
       'readiness_outcomes': bootstrap_result.readiness_outcomes | combine({'node_ready': true})
     }) }}"
 
-# Check 4: CoreDNS readiness (within 300s rollout bound)
 - name: Await CoreDNS deployment rollout completion
   ansible.builtin.command:
     cmd: "k3s kubectl --request-timeout=5s -n kube-system rollout status deployment/coredns --timeout=300s"
@@ -109,7 +102,6 @@
       'readiness_outcomes': bootstrap_result.readiness_outcomes | combine({'coredns_ready': true})
     }) }}"
 
-# Version verification
 - name: Inspect observed k3s version
   ansible.builtin.shell:
     cmd: "k3s --version | head -n 1 | awk '{print $3}'"
@@ -130,7 +122,6 @@
       'observed_version': observed_version_check.stdout | trim
     }) }}"
 
-# Check 5: Verify non-root operator kubectl command execution
 - name: Verify non-root kubectl execution
   ansible.builtin.command:
     cmd: "kubectl --request-timeout=5s get nodes"

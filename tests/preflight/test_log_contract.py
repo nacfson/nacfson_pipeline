@@ -26,7 +26,6 @@ def _load_yaml(filename):
 class TestLogContractPreflight(unittest.TestCase):
     def setUp(self):
         self.module = _preflight()
-        # Mock minimal platform docs containing fluent-bit-config with legacy-containers.txt
         self.platform_docs = [
             {
                 "apiVersion": "v1",
@@ -78,9 +77,6 @@ class TestLogContractPreflight(unittest.TestCase):
 
     def test_declared_data_path_ok(self):
         docs = _load_yaml("declared-data-path-ok.yaml")
-        # Ensure migration row is satisfied by matching a known project/container or mock contract
-        # In declared-data-path-ok.yaml, namespace is proj-test, container is app.
-        # We temporarily pass platform docs and verify no data-path violation
         v = self.module.check_log_contract(docs, self.platform_docs, repo_root=BASE)
         rules = [item["rule"] for item in v]
         self.assertNotIn("log-volume-undeclared", rules)
@@ -124,7 +120,6 @@ class TestLogContractPreflight(unittest.TestCase):
 
     def test_done_regressed(self):
         docs = _load_yaml("done-regressed.yaml")
-        # In CONTRACT_LOG_SCHEMA.md §6, mock a done container
         mock_contract = "\n## 6. Migration from version 2\n\n| Project | Container | Current format | Status |\n|---|---|---|---|\n| `proj-test` | `done-app` | json | done |\n"
         import tempfile
 

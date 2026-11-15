@@ -26,8 +26,6 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # Portable public HTTPS egress (Wiktionary / api.wiktapi.dev) blocking all
-    # RFC1918 private networks, CGNAT, and cloud instance metadata / Workload Identity.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0

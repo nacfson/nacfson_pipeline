@@ -1,8 +1,4 @@
 #!/usr/bin/env python3
-"""
-CI Render Invariants Check (contracts/reconciliation-layers.md §5, contracts/manual-change-policy.md §5).
-Verifies structural, security, annotation, and layer boundary invariants against rendered manifests and clusters/<env>/.
-"""
 
 import argparse
 import os
@@ -27,7 +23,6 @@ CLUSTER_SCOPED_KINDS = {
 
 ALLOWED_PROJECT_KINDS = {"Deployment", "Service", "ConfigMap", "IngressRoute"}
 
-# Spec 004 R3 amendment: the only layer allowed postBuild, and the only variables it may substitute.
 INGRESS_LAYER_NAME = "ingress"
 ALLOWED_INGRESS_VARS = {"AUTH_HOST"}
 
@@ -41,9 +36,6 @@ def load_yaml_docs(file_path):
 
 
 def check_gke_edge(rendered_docs):
-    """Invariant 10 (gke): exactly one LoadBalancer Service, platform/traefik, matching the edge contract
-    (scripts/gke_edge.py); Traefik has no hostPort and no hostNetwork; no NodePort Service anywhere.
-    Returns a list of error strings."""
     errors = []
     found_traefik_svc = False
     found_traefik_dep = False
@@ -75,7 +67,6 @@ def check_gke_edge(rendered_docs):
             )
             if host_ports:
                 errors.append(f"Invariant 10 violation: Deployment platform/traefik must not declare hostPort, got {host_ports}")
-            # hostNetwork would make Traefik answer on the node's own IP, bypassing the load balancer.
             if pod_spec.get("hostNetwork"):
                 errors.append("Invariant 10 violation: Deployment platform/traefik must not use hostNetwork")
     if not found_traefik_svc:
@@ -99,9 +90,6 @@ def main():
         sys.stderr.write(f"Error: cluster directory does not exist: {env_dir}\n")
         sys.exit(2)
 
-    # 1. Invariant 1: No Flux Kustomization in clusters/<env>/ has spec.postBuild,
-    #    except the `ingress` layer, which may substitute exactly AUTH_HOST (spec 004 R3 amendment).
-    # Invariant 2: No GitRepository has spec.secretRef, and every URL starts with https://
     for root, _, files in os.walk(env_dir):
         for file in files:
             if file.endswith((".yaml", ".yml")):
@@ -132,7 +120,6 @@ def main():
                         if not url.startswith("https://"):
                             errors.append(f"Invariant 2 violation in {fpath}: GitRepository '{name}' URL '{url}' does not start with https://")
 
-    # Invariant 6 (part 1): No project layer object is in layers.yaml
     layers_yaml_path = os.path.join(env_dir, "layers.yaml")
     if os.path.exists(layers_yaml_path):
         for doc in load_yaml_docs(layers_yaml_path):
@@ -142,11 +129,8 @@ def main():
                 if k_ns != "flux-system" or k_name.startswith("proj-"):
                     errors.append(f"Invariant 6 violation: Project layer '{k_name}' forbidden in {layers_yaml_path}")
 
-    # Inspect rendered docs
     rendered_docs = load_yaml_docs(args.rendered)
 
-    # Invariant 9: Rendered IngressRoute matches have no unresolved ${...} and no empty Host().
-    # An undefined substitution variable would otherwise render a broken route silently.
     for doc in rendered_docs:
         if doc.get("kind") != "IngressRoute":
             continue
@@ -156,7 +140,6 @@ def main():
             if "${" in match or "Host(``)" in match:
                 errors.append(f"Invariant 9 violation: IngressRoute/{route_name} routes[{idx}] match has an unresolved or empty host: {match}")
 
-    # Invariant 3: Every rendered namespaced object has an explicit metadata.namespace
     for doc in rendered_docs:
         kind = doc.get("kind", "")
         name = doc.get("metadata", {}).get("name", "unnamed")
@@ -165,7 +148,6 @@ def main():
             if not ns:
                 errors.append(f"Invariant 3 violation: Object {kind}/{name} has no explicit metadata.namespace")
 
-    # Invariant 5: Required annotations in §3
     required_annotations = [
         ("Namespace", "identity", "kustomize.toolkit.fluxcd.io/prune", "disabled"),
         ("Namespace", "platform", "kustomize.toolkit.fluxcd.io/prune", "disabled"),
@@ -194,7 +176,6 @@ def main():
         if req not in found_annotations:
             errors.append(f"Invariant 5 violation: Missing required annotation {req[2]}: {req[3]} on {req[0]}/{req[1]}")
 
-    # Invariant 6 (part 2): Project layer properties & restricted kinds
     proj_dir = os.path.join(env_dir, "projects")
     if os.path.isdir(proj_dir):
         for pfile in os.listdir(proj_dir):
@@ -210,13 +191,11 @@ def main():
     for doc in rendered_docs:
         flux_ns = doc.get("metadata", {}).get("labels", {}).get("kustomize.toolkit.fluxcd.io/namespace")
         if flux_ns and flux_ns not in {"flux-system"}:
-            # Project layer object
             kind = doc.get("kind", "")
             name = doc.get("metadata", {}).get("name", "")
             ns = doc.get("metadata", {}).get("namespace", "")
             if kind not in ALLOWED_PROJECT_KINDS:
                 errors.append(f"Invariant 6 violation: Project layer rendered forbidden kind {kind} ({name})")
-    # Invariant 8: Manual-change policy invariants (contracts/manual-change-policy.md §5)
     deploy_dir = os.path.join(base_dir, "deploy")
     deploy_namespaces = set()
     for root, _, files in os.walk(deploy_dir):
@@ -245,7 +224,6 @@ def main():
         elif kind == "ClusterRoleBinding":
             cluster_role_bindings[name] = doc
 
-    # Item 1: failurePolicy: Fail and validationActions: [Deny]
     for pol_name in ["gitops-managed-namespaces", "gitops-managed-cluster-kinds"]:
         if pol_name not in policies:
             errors.append(f"Invariant 8 violation: Missing ValidatingAdmissionPolicy '{pol_name}'")
@@ -264,7 +242,6 @@ def main():
             if va != ["Deny"]:
                 errors.append(f"Invariant 8 violation: ValidatingAdmissionPolicyBinding '{bind_name}' validationActions is '{va}', expected ['Deny']")
 
-    # Item 2 & 3: namespaceSelector matches expected and contains no forbidden namespaces
     if "gitops-managed-namespaces" in bindings:
         bind_doc = bindings["gitops-managed-namespaces"]
         match_res = bind_doc.get("spec", {}).get("matchResources", {})
@@ -287,7 +264,6 @@ def main():
         if leaked_forbidden:
             errors.append(f"Invariant 8 violation: namespaceSelector contains forbidden namespaces: {sorted(leaked_forbidden)}")
 
-    # Item 4: platform-break-glass binds exactly Group platform:break-glass to cluster-admin
     if "platform-break-glass" not in cluster_role_bindings:
         errors.append("Invariant 8 violation: Missing ClusterRoleBinding 'platform-break-glass'")
     else:
@@ -303,7 +279,6 @@ def main():
             if sub.get("kind") != "Group" or sub.get("name") != "platform:break-glass":
                 errors.append(f"Invariant 8 violation: platform-break-glass subject is {sub}, expected Group 'platform:break-glass'")
 
-    # Item 5: operator-readonly-view binds only ClusterRole view
     if "operator-readonly-view" not in cluster_role_bindings:
         errors.append("Invariant 8 violation: Missing ClusterRoleBinding 'operator-readonly-view'")
     else:
@@ -312,8 +287,6 @@ def main():
         if ref_name != "view":
             errors.append(f"Invariant 8 violation: operator-readonly-view roleRef is '{ref_name}', expected 'view'")
 
-    # Invariant 10: GKE single L4 pass-through LoadBalancer edge
-    # (specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md §3)
     if args.environment == "gke":
         errors.extend(check_gke_edge(rendered_docs))
 

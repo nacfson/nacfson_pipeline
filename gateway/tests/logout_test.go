@@ -141,7 +141,6 @@ func TestLogoutSuccessWithValidCSRFToken(t *testing.T) {
 		t.Errorf("expected Keycloak revocation for 'sess-valid-456', got %v", terminator.revokedSessions)
 	}
 
-	// Verify cookie clearing
 	cookies := rr.Result().Cookies()
 	var sessionCookie *http.Cookie
 	for _, c := range cookies {

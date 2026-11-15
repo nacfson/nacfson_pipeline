@@ -14,6 +14,5 @@ spec:
     requests.memory: "768Mi"
     limits.memory: "768Mi"
     pods: "6"
-    # Strict perimeter backstops: Reject bypass service types at quota admission level
     services.nodeports: "0"
     services.loadbalancers: "0"

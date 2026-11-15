@@ -1,5 +1,3 @@
-# Project PN sign-in choice. Flux applies the copy in boundary/sign-in.yaml.
-# Keep the two files the same. This file does not grant business permissions.
 apiVersion: v1
 kind: ConfigMap
 metadata:

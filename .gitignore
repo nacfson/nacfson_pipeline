@@ -4,7 +4,6 @@ __pycache__/
 .DS_Store
 .tools/
 
-# OpenTofu / Terraform
 **/.terraform/
 **/*.tfstate
 **/*.tfstate.*
@@ -16,7 +15,6 @@ infra/handoff/*.yaml
 infra/handoff/*.yml
 !infra/handoff/.gitkeep
 
-# Ansible generated inventory + secrets
 ansible/inventories/home-lab/hosts.yaml
 ansible/inventories/home-lab/group_vars/all/from_opentofu.yaml
 ansible/.vault_pass
@@ -26,10 +24,8 @@ ansible/.secrets/
 
 ansible/inventories/home-lab/.hosts.syntax-check.yaml
 
-# Local plaintext input for the Google OIDC broker Secret (never commit).
 /platform-config/infrastructure/identity/google-oidc-broker.plaintext.yaml
 
-# Go build artifacts & tests
 *.exe
 *.test
 *.out
@@ -39,7 +35,6 @@ coverage.html
 services/vault-proxies/registry-proxy
 services/vault-proxies/db-proxy
 
-# Kubernetes secrets & local credentials
 *.secret.yaml
 *.credentials.yaml
 !*.example.yaml
@@ -65,15 +60,12 @@ secrets.env
 image-pull-secret.yaml
 .orca/
 
-# Migration cutover bundles (must stay outside Git)
 cutover-bundle*/
 *.snap
 *.dump.gz
 edge-tls-secrets.yaml
 victoria-logs-data.tar.gz
 
-# Terraform (Spec 015): state, plans and variable files stay out of Git.
-# .terraform.lock.hcl and infra/gcp/shared-values.json ARE committed.
 *.tfstate
 *.tfstate.*
 *.tfplan

@@ -1,4 +1,3 @@
-# Project that omits signIn. Absent means none: no forward-auth, no gateway egress.
 apiVersion: apps/v1
 kind: Deployment
 metadata:

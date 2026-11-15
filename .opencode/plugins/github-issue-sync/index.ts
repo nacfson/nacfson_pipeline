@@ -10,7 +10,6 @@ export default Plugin.define({
       child.on("error", () => {})
       child.on("exit", () => {})
     } catch {
-      // spawn can throw before the child exists; setup must not
     }
   },
 })

@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# Integration Test: Database Provisioning Job & Daily Backup Confinement
-# Validates specs/002-internal-cluster-vault/contracts/database-provisioning-backup.md
-# ==============================================================================
 
 set -euo pipefail
 

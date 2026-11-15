@@ -1,12 +1,4 @@
 #!/usr/bin/env python3
-"""Pure-Python Kustomize & Flux Kustomization renderer fallback.
-
-Used automatically by `scripts/render-validate.sh` and offline unit tests when
-the `kubectl` or `flux` CLI binaries are not installed in the local sandbox
-environment. Supports the repository's Kustomize feature subset (`resources`,
-`namespace`, `configMapGenerator`, strategic-merge / JSON-6902 / `$patch: delete`
-`patches`, and Flux `spec.patches` + `spec.postBuild.substitute`).
-"""
 
 from __future__ import annotations
 
@@ -185,7 +177,6 @@ def apply_patches(docs: list[dict], patches_spec: list[dict], base_dir: Path | N
         if parsed is None:
             continue
 
-        # If target is omitted on a strategic merge patch, infer kind/name/namespace from patch body
         effective_target = dict(target)
         if not effective_target and isinstance(parsed, dict):
             if parsed.get("kind"):
@@ -332,7 +323,6 @@ def dump_docs(docs: list[dict]) -> str:
 
 
 def kustomize_build(kdir: str | Path) -> str:
-    """Render a Kustomize directory using `kubectl kustomize` if available, else Python fallback."""
     if has_kubectl():
         res = subprocess.run(
             ["kubectl", "kustomize", str(kdir)],
@@ -350,7 +340,6 @@ def flux_build_kustomization(
     repo_root: str | Path,
     env: str,
 ) -> str:
-    """Render a Flux Kustomization using `flux build` if available, else Python fallback."""
     meta = flux_doc.get("metadata") or {}
     spec = flux_doc.get("spec") or {}
     name = meta["name"]

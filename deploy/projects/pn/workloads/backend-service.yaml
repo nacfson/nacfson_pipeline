@@ -7,7 +7,6 @@ metadata:
     app.kubernetes.io/name: pn-backend
     app.kubernetes.io/part-of: project-pn
 spec:
-  # Strictly ClusterIP: NodePort and LoadBalancer are perimeter bypasses and strictly rejected
   type: ClusterIP
   ports:
     - name: http

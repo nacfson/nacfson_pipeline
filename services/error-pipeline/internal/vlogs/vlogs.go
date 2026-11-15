@@ -1,5 +1,3 @@
-// Package vlogs reads project log entries from VictoriaLogs: a live tail for
-// new entries and a ranged query for catching up after a restart.
 package vlogs
 
 import (
@@ -20,12 +18,9 @@ import (
 	"nacfson_pipeline/services/error-pipeline/internal/classify"
 )
 
-// Query selects every project log entry in either v2 or v3 format.
 const Query = `{project=~"proj-.*"} OR {k8s.namespace.name=~"proj-.*"}`
 
 const (
-	// maxLineBytes bounds one JSON line. Longer lines are discarded up to
-	// their newline, counted in Skipped, and reading continues.
 	maxLineBytes = 1 << 20
 
 	tailOffset     = "5s"
@@ -33,9 +28,6 @@ const (
 	errBodyLimit   = 512
 )
 
-// Client talks to a VictoriaLogs instance. BaseURL is e.g.
-// http://victorialogs.observability.svc:9428. HTTP may be nil; a supplied
-// client must not set Timeout, because Tail streams indefinitely.
 type Client struct {
 	BaseURL string
 	HTTP    *http.Client
@@ -43,7 +35,6 @@ type Client struct {
 	skipped atomic.Int64
 }
 
-// Skipped returns how many malformed or over-long lines were dropped.
 func (c *Client) Skipped() int64 { return c.skipped.Load() }
 
 func (c *Client) httpClient() *http.Client {
@@ -53,8 +44,6 @@ func (c *Client) httpClient() *http.Client {
 	return http.DefaultClient
 }
 
-// Tail streams new entries to fn until the server closes the stream (nil
-// return, caller reconnects), ctx is cancelled (ctx.Err()), or fn fails.
 func (c *Client) Tail(ctx context.Context, fn func(classify.Record) error) error {
 	q := url.Values{"query": {Query}, "offset": {tailOffset}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,
@@ -65,7 +54,6 @@ func (c *Client) Tail(ctx context.Context, fn func(classify.Record) error) error
 	return c.stream(ctx, req, fn)
 }
 
-// CatchUp delivers entries in [from, to] in time order to fn.
 func (c *Client) CatchUp(ctx context.Context, from, to time.Time, fn func(classify.Record) error) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -83,7 +71,6 @@ func (c *Client) CatchUp(ctx context.Context, from, to time.Time, fn func(classi
 	return c.stream(ctx, req, fn)
 }
 
-// Ready reports whether VictoriaLogs answers its health endpoint with 200.
 func (c *Client) Ready(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -124,8 +111,7 @@ func (c *Client) stream(ctx context.Context, req *http.Request, fn func(classify
 	for {
 		line, tooLong, err := readLine(br)
 		if err != nil && !errors.Is(err, io.EOF) {
-			// A failed read (cancel, reset) may leave a partial line;
-			// it is not a malformed record, so drop it uncounted.
+
 			if ctx.Err() != nil {
 				return ctx.Err()
 			}
@@ -143,22 +129,18 @@ func (c *Client) stream(ctx context.Context, req *http.Request, fn func(classify
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
-		if err != nil { // io.EOF: server closed the stream
+		if err != nil {
 			return nil
 		}
 	}
 }
 
-// readLine returns the next line without its newline. A line longer than
-// maxLineBytes is consumed through its newline and reported as tooLong with
-// no content. The returned error is non-nil once the reader is exhausted;
-// the final unterminated line, if any, is still returned alongside it.
 func readLine(br *bufio.Reader) (line []byte, tooLong bool, err error) {
 	var buf []byte
 	for {
 		chunk, rerr := br.ReadSlice('\n')
 		if !tooLong {
-			if len(buf)+len(chunk) > maxLineBytes+1 { // +1 for the newline
+			if len(buf)+len(chunk) > maxLineBytes+1 {
 				tooLong, buf = true, nil
 			} else {
 				buf = append(buf, chunk...)
@@ -178,21 +160,18 @@ type wireRecord struct {
 	Time     string `json:"_time"`
 	StreamID string `json:"_stream_id"`
 
-	// v2 platform envelope
 	Project   string `json:"project"`
 	Pod       string `json:"pod"`
 	Container string `json:"container"`
 	Node      string `json:"node"`
 	Message   string `json:"message"`
 
-	// v3 platform envelope
 	K8sNamespace string `json:"k8s.namespace.name"`
 	K8sPod       string `json:"k8s.pod.name"`
 	K8sContainer string `json:"k8s.container.name"`
 	K8sNode      string `json:"k8s.node.name"`
 	MsgBody      string `json:"_msg"`
 
-	// v3 parsed project fields
 	Level            string `json:"level"`
 	Msg              string `json:"msg"`
 	EventName        string `json:"event.name"`
@@ -205,21 +184,18 @@ type wireRecord struct {
 	TimeField        string `json:"time"`
 }
 
-// QuarantineRecord holds a quarantined log entry from tenant 0:1 (FR-025, R-6).
 type QuarantineRecord struct {
 	Time         time.Time
 	StreamID     string
-	Project      string // k8s.namespace.name
-	Pod          string // k8s.pod.name
-	Container    string // k8s.container.name
-	Node         string // k8s.node.name
-	Message      string // msg or _msg
-	IOStream     string // log.iostream
-	ObservedTime string // observed_time
+	Project      string
+	Pod          string
+	Container    string
+	Node         string
+	Message      string
+	IOStream     string
+	ObservedTime string
 }
 
-// QueryQuarantine delivers quarantined records in [from, to] in time order to fn.
-// It sets AccountID: 0 and ProjectID: 1 headers to query the quarantine tenant (0:1).
 func (c *Client) QueryQuarantine(ctx context.Context, from, to time.Time, fn func(QuarantineRecord) error) error {
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -239,7 +215,6 @@ func (c *Client) QueryQuarantine(ctx context.Context, from, to time.Time, fn fun
 	return c.streamQuarantine(ctx, req, fn)
 }
 
-// TailQuarantine streams new quarantined entries from tenant 0:1 to fn.
 func (c *Client) TailQuarantine(ctx context.Context, fn func(QuarantineRecord) error) error {
 	q := url.Values{"query": {"*"}, "offset": {tailOffset}}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet,

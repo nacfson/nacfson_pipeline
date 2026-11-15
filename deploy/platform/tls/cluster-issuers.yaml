@@ -1,5 +1,4 @@
 ---
-# Self-signed issuer: default for base/local, needs no internet access.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -9,7 +8,6 @@ metadata:
 spec:
   selfSigned: {}
 ---
-# Local rehearsal root CA: exportable once for Android emulator / iOS simulator trust.
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -32,7 +30,6 @@ spec:
     kind: ClusterIssuer
     name: selfsigned
 ---
-# CA issuer backed by local-rehearsal-root-ca so auth.example.com and health.example.com share one root.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -43,8 +40,6 @@ spec:
   ca:
     secretName: local-rehearsal-root-ca
 ---
-# Let's Encrypt staging: untrusted certificates, generous rate limits.
-# Use it to debug challenges before switching an environment to production.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -61,13 +56,8 @@ spec:
       - http01:
           ingress:
             ingressClassName: traefik
-            # cert-manager defaults solver to NodePort; Principle II
-            # forbids node ports
             serviceType: ClusterIP
 ---
-# Let's Encrypt production: browser-trusted certificates.
-# HTTP-01 needs the hostname to resolve to the node and port 80 open
-# to the internet.
 apiVersion: cert-manager.io/v1
 kind: ClusterIssuer
 metadata:
@@ -84,6 +74,4 @@ spec:
       - http01:
           ingress:
             ingressClassName: traefik
-            # cert-manager defaults solver to NodePort; Principle II
-            # forbids node ports
             serviceType: ClusterIP

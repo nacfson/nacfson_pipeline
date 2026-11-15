@@ -33,7 +33,6 @@ func TestHeaderSanitization(t *testing.T) {
 	}
 	handler := auth.NewHandler(cfg, &mockSessionValidator{active: true}, nil)
 
-	// Craft request with malicious client-injected headers
 	req := httptest.NewRequest("GET", "/auth", nil)
 	req.Header.Set("X-Forwarded-Host", "pn.example.com")
 	req.Header.Set("X-Forwarded-Proto", "https")
@@ -45,8 +44,6 @@ func TestHeaderSanitization(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.HandleForwardAuth(rr, req)
 
-	// Opening confirmation without a cookie leaves the visitor unsigned-in.
-	// It does not redirect to the sign-in host.
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("expected status 401 Unauthorized, got %d", rr.Code)
 	}
@@ -57,7 +54,6 @@ func TestHeaderSanitization(t *testing.T) {
 		t.Errorf("Authorization must not be emitted when the visitor is unsigned-in")
 	}
 
-	// Verify inbound headers were stripped from the request
 	if req.Header.Get("X-User-Subject") != "" {
 		t.Errorf("expected X-User-Subject to be stripped, got %s", req.Header.Get("X-User-Subject"))
 	}
@@ -78,7 +74,6 @@ func TestAuthenticatedAccess(t *testing.T) {
 	}
 	handler := auth.NewHandler(cfg, &mockSessionValidator{active: true}, nil)
 
-	// Encode a valid session cookie
 	sess := auth.SessionCookieData{
 		SessionID: "test-session-uuid",
 		Subject:   "verified-user-123",
@@ -94,7 +89,6 @@ func TestAuthenticatedAccess(t *testing.T) {
 	req.Header.Set("X-Forwarded-Proto", "https")
 	req.Header.Set("X-Forwarded-Uri", "/dashboard")
 
-	// Set cookie using helper by crafting request
 	cookieVal := encodeTestCookie(sess, cfg.HMACSecret)
 	req.AddCookie(&http.Cookie{
 		Name:  "PLATFORM_SESSION",
@@ -172,7 +166,6 @@ func TestStatelessEncryptedStateAndCallbackReloadGracefulRestart(t *testing.T) {
 		},
 	}
 
-	// 1. Start login and capture encrypted state parameter + host-only OIDC_AUTH_STATE binding cookie
 	startReq := httptest.NewRequest(http.MethodGet, "/oauth/start?return=https://pn.nacfson.cloud/api/auth/callback", nil)
 	startRR := httptest.NewRecorder()
 	handler.HandleSessionStart(startRR, startReq)
@@ -192,7 +185,6 @@ func TestStatelessEncryptedStateAndCallbackReloadGracefulRestart(t *testing.T) {
 		t.Fatalf("expected host-only OIDC_AUTH_STATE binding cookie, got %+v", startCookies)
 	}
 
-	// 2. Callback WITHOUT the OIDC_AUTH_STATE binding cookie must be rejected (prevents Login CSRF)
 	csrfReq := httptest.NewRequest(http.MethodGet, "/oauth/callback?code=auth-code-1&state="+stateParam, nil)
 	csrfRR := httptest.NewRecorder()
 	handler.HandleCallback(csrfRR, csrfReq)
@@ -200,7 +192,6 @@ func TestStatelessEncryptedStateAndCallbackReloadGracefulRestart(t *testing.T) {
 		t.Fatalf("expected 400 Bad Request on unbound Login CSRF callback, got %d", csrfRR.Code)
 	}
 
-	// 3. Callback WITH the host-only OIDC_AUTH_STATE binding cookie succeeds and emits zero PLATFORM_SESSION cookies
 	cbReq := httptest.NewRequest(http.MethodGet, "/oauth/callback?code=auth-code-1&state="+stateParam, nil)
 	cbReq.AddCookie(startCookies[0])
 	cbRR := httptest.NewRecorder()
@@ -224,7 +215,6 @@ func TestStatelessEncryptedStateAndCallbackReloadGracefulRestart(t *testing.T) {
 		}
 	}
 
-	// 4. Expired callback on a valid return URL restarts login gracefully (302) instead of 400
 	expiredState := signTestState(auth.StatePayload{
 		TargetURL: "https://pn.nacfson.cloud/api/auth/callback",
 		Nonce:     "expired-1",

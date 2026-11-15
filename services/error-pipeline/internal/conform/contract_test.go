@@ -37,7 +37,7 @@ func tableUnder(t *testing.T, doc, heading string) [][]string {
 			cells[j] = strings.TrimSpace(cells[j])
 		}
 		if strings.Trim(cells[0], "-: ") == "" {
-			continue // separator row
+			continue
 		}
 		rows = append(rows, cells)
 	}

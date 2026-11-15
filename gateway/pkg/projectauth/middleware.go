@@ -1,6 +1,3 @@
-// Package projectauth provides the reusable, zero-dependency Go standard-library
-// Backend-For-Frontend (BFF) authentication handlers and request verification middleware
-// for hosted projects integrating with the nacfson_pipeline internal authentication gateway.
 package projectauth
 
 import (
@@ -27,7 +24,6 @@ const (
 	pickupCodeTTL                 = 30 * time.Second
 )
 
-// Identity represents the verified platform identity (issuer, subject, audience) injected into request context.
 type Identity struct {
 	Issuer        string `json:"issuer"`
 	Subject       string `json:"subject"`
@@ -35,18 +31,13 @@ type Identity struct {
 	SessionHandle string `json:"session_handle,omitempty"`
 }
 
-// FromContext retrieves the verified Identity from the request context.
 func FromContext(ctx context.Context) (*Identity, bool) {
 	id, ok := ctx.Value(identityContextKey).(*Identity)
 	return id, ok
 }
 
-// UserResolver is an optional project hook invoked during /api/auth/callback so the project backend
-// can provision or load the user's project account and requirements before returning to the frontend.
 type UserResolver func(ctx context.Context, issuer, subject string) (any, error)
 
-// PickupEntry stores the prepared authentication session and project user data for 30 seconds
-// while the browser redirects from /api/auth/callback back to the Project Frontend UI.
 type PickupEntry struct {
 	Code          string    `json:"code"`
 	SessionHandle string    `json:"session_handle"`
@@ -57,23 +48,20 @@ type PickupEntry struct {
 	ExpiresAt     time.Time `json:"expires_at"`
 }
 
-// Config configures the shared project authentication verifier for a specific project backend.
 type Config struct {
-	// PublicAppURL is the project's public origin (e.g., "https://pn.nacfson.cloud").
 	PublicAppURL string
-	// PublicAuthURL is the public OAuth redirect gateway origin (e.g., "https://auth.nacfson.cloud").
+
 	PublicAuthURL string
-	// InternalGatewayURL is the internal cluster gateway address (e.g., "http://gateway.identity.svc:8080").
+
 	InternalGatewayURL string
-	// ExpectedAudience is the required project audience (e.g., "project-pn").
+
 	ExpectedAudience string
-	// HTTPClient is an optional HTTP client (defaults to 5s timeout).
+
 	HTTPClient *http.Client
-	// UserResolver is an optional callback to load/provision project user data on login callback.
+
 	UserResolver UserResolver
 }
 
-// Verifier implements the 4-layer cookie-free BFF endpoints and protected route middleware.
 type Verifier struct {
 	cfg        Config
 	appHost    string
@@ -82,7 +70,6 @@ type Verifier struct {
 	pickups    map[string]PickupEntry
 }
 
-// NewVerifier creates a new shared project authentication Verifier.
 func NewVerifier(cfg Config) (*Verifier, error) {
 	u, err := url.Parse(strings.TrimSuffix(strings.TrimSpace(cfg.PublicAppURL), "/"))
 	if err != nil || u.Hostname() == "" {
@@ -110,7 +97,6 @@ func NewVerifier(cfg Config) (*Verifier, error) {
 	}, nil
 }
 
-// RegisterRoutes mounts /api/auth/login, /api/auth/callback, /api/auth/session, and /api/auth/logout onto mux.
 func (v *Verifier) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/auth/login", v.HandleLogin)
 	mux.HandleFunc("/api/auth/callback", v.HandleCallback)
@@ -118,7 +104,6 @@ func (v *Verifier) RegisterRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/auth/logout", v.HandleLogout)
 }
 
-// HandleLogin redirects the browser from the Project Backend (/api/auth/login) to the pipeline's headless /oauth/start endpoint.
 func (v *Verifier) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	nonce, err := randomHex128()
 	if err != nil {
@@ -148,8 +133,6 @@ func (v *Verifier) HandleLogin(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, startURL, http.StatusFound)
 }
 
-// HandleCallback exchanges the one-time handoff ticket with internal gateway.identity.svc:8080/auth/exchange,
-// resolves the project's user data, and redirects back to the Project Frontend UI with a 30-second pickup code.
 func (v *Verifier) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	ticket := strings.TrimSpace(r.URL.Query().Get("ticket"))
 	nextPath := sanitizeRelativePath(r.URL.Query().Get("next"))
@@ -158,7 +141,6 @@ func (v *Verifier) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify browser login-binding nonce before redeeming the ticket (prevents Login CSRF)
 	expectedBind := strings.TrimSpace(r.URL.Query().Get("pa_bind"))
 	nonceCookie, cookieErr := r.Cookie("__Host-pa_nonce")
 	if cookieErr != nil || nonceCookie.Value == "" || expectedBind == "" {
@@ -186,13 +168,12 @@ func (v *Verifier) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		if resp != nil {
 			resp.Body.Close()
 		}
-		// Graceful fallback to project login UI if ticket was already consumed or expired (FR-004)
+
 		http.Redirect(w, r, v.cfg.PublicAppURL+nextPath, http.StatusFound)
 		return
 	}
 	defer resp.Body.Close()
 
-	// Clear login-binding nonce cookie now that ticket exchange succeeded
 	http.SetCookie(w, &http.Cookie{
 		Name:     "__Host-pa_nonce",
 		Value:    "",
@@ -256,7 +237,6 @@ func (v *Verifier) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, v.cfg.PublicAppURL+nextPath+sep+"code="+url.QueryEscape(code), http.StatusFound)
 }
 
-// HandleSession exchanges a 30-second one-time pickup code from the Project Frontend for { session_handle, subject, issuer, user } JSON.
 func (v *Verifier) HandleSession(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
@@ -282,7 +262,7 @@ func (v *Verifier) HandleSession(w http.ResponseWriter, r *http.Request) {
 	v.evictExpiredPickupsLocked(now)
 	entry, ok := v.pickups[code]
 	if ok {
-		// Delete immediately on first use
+
 		delete(v.pickups, code)
 	}
 	v.mu.Unlock()
@@ -303,7 +283,6 @@ func (v *Verifier) HandleSession(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// HandleLogout forwards session revocation to internal gateway.identity.svc:8080/auth/logout.
 func (v *Verifier) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)
@@ -334,11 +313,9 @@ func (v *Verifier) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(`{"status":"revoked"}`))
 }
 
-// RequireAuth strips spoofed identity headers, verifies Authorization: Bearer <session_handle>
-// against internal gateway.identity.svc:8080/auth, enforces project audience isolation, and injects Identity into context.
 func (v *Verifier) RequireAuth(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// 1. Strip any spoofed client headers
+
 		r.Header.Del("X-User-Subject")
 		r.Header.Del("X-User-Issuer")
 

@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Invariant 10 on gke: single L4 pass-through LoadBalancer (Spec 015, contracts/traefik-l4-edge.md §3)."""
 
 import importlib.util
 import os

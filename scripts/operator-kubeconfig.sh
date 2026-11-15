@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# operator-kubeconfig.sh <vm> [<env>]
-# Generates a short-lived (24h) read-only workstation kubeconfig for operator-readonly.
-# See contracts/operations.md §13.
-# ==============================================================================
 
 set -euo pipefail
 
@@ -17,7 +12,6 @@ fi
 VM="$1"
 ENV="${2:-$1}"
 
-# Strip any user@ or domain suffix for standard naming if not explicitly provided
 if [ $# -lt 2 ]; then
   ENV="$(echo "$VM" | sed -E 's/^.*@//' | sed -E 's/\..*$//')"
 fi

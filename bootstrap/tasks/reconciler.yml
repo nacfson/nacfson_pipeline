@@ -1,13 +1,10 @@
 ---
-# Reconciler stage: Install and verify in-cluster Flux GitOps controller
-# Scope: Idempotently installs Flux 2.9.5 source-controller and kustomize-controller.
 
 - name: Set current stage tracking to reconciler
   ansible.builtin.set_fact:
     current_stage: "reconciler"
     stage_failure_remediation: "Check `k3s kubectl -n flux-system get pods,events`, outbound HTTPS to ghcr.io, then re-run bootstrap."
 
-# Step 2: Detect preexisting reconciler
 - name: Check if Flux controllers are already deployed
   ansible.builtin.command:
     cmd: "k3s kubectl -n flux-system get deployment source-controller kustomize-controller"
@@ -19,7 +16,6 @@
   ansible.builtin.set_fact:
     reconciler_preexisting: "{{ reconciler_detect.rc == 0 }}"
 
-# Steps 3 & 4: Copy and Apply (only when not preexisting)
 - name: Install Flux reconciler components
   when: not reconciler_preexisting
   block:
@@ -78,7 +74,6 @@
       ansible.builtin.fail:
         msg: "Failed to apply Flux reconciler manifests: {{ reconciler_apply.stderr | default(reconciler_apply.stdout) }}"
 
-# Step 5: Verify rollout status (always)
 - name: Verify source-controller deployment rollout status
   ansible.builtin.command:
     cmd: "k3s kubectl -n flux-system rollout status deployment/source-controller --timeout=300s"
@@ -89,7 +84,6 @@
     cmd: "k3s kubectl -n flux-system rollout status deployment/kustomize-controller --timeout=300s"
   changed_when: false
 
-# Step 6: Record outcomes in bootstrap_result
 - name: Record reconciler stage completion in bootstrap result
   ansible.builtin.set_fact:
     bootstrap_result: "{{ bootstrap_result | combine({

@@ -84,7 +84,6 @@ class TestHooksIntegration(unittest.TestCase):
         self.assertIsNotNone(found)
         jwt, ignore = found.group(1), found.group(2)
         fake = "eyJhbGciOiJub25lIn0.eyJzdWIiOiJwcm9qZWN0OnBuOndvcmtsb2FkOmJhY2tlbmQifQ.invalidsig"
-        # Split so this source line is not itself a scannable token.
         real = "eyJhbGciOiJIUzI1NiJ9." + "eyJzdWIiOiJhbGljZSIsImlhdCI6MX0." + "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
         self.assertRegex(fake, jwt)
         self.assertRegex(fake, ignore)

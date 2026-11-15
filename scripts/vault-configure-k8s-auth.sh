@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# OpenBao Vault Kubernetes Authentication & Workload Roles Configuration
-# Strictly adheres to Constitution Principle III, Principle V, and Spec 005
-# ==============================================================================
 
 set -euo pipefail
 
@@ -11,7 +7,6 @@ VAULT_POD="${VAULT_POD:-openbao-0}"
 POLICIES_DIR="${POLICIES_DIR:-deploy/platform/vault/policies}"
 KUBE_EXEC="${KUBE_EXEC:-kubectl}"
 
-# Optional SSH fallback is used only when ALLOW_SSH_FALLBACK=true and local kubectl cannot reach openbao-0
 ALLOW_SSH_FALLBACK="${ALLOW_SSH_FALLBACK:-false}"
 if ! ${KUBE_EXEC} get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
   if [ "${ALLOW_SSH_FALLBACK}" = "true" ]; then
@@ -33,7 +28,6 @@ if [ "${IS_INITIALIZED}" != "true" ] || [ "${IS_SEALED}" == "true" ]; then
 fi
 echo "PASS: Vault is initialized and unsealed."
 
-# Function to test token validity
 test_token() {
   local token="$1"
   ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- \
@@ -41,7 +35,6 @@ test_token() {
     bao token lookup >/dev/null 2>&1
 }
 
-# Function to generate a new root token using Shamir Unseal Key
 generate_root_token() {
   local unseal_key="$1"
   echo "Initiating root token generation ceremony..."
@@ -72,7 +65,6 @@ generate_root_token() {
   echo "${decoded_token}"
 }
 
-# Resolve Vault Token (Environment or Prompt; no Kubernetes ServiceAccount has operator-admin)
 GENERATED_EPHEMERAL_ROOT=0
 if [ -z "${VAULT_TOKEN:-}" ]; then
   read -r -s -p "Enter Vault Root/Admin Token (or press Enter if you only have the Unseal Key): " VAULT_TOKEN
@@ -159,7 +151,6 @@ if [ -d "${POLICIES_DIR}" ]; then
   done
 fi
 
-# Purge retired GHCR registry-proxy role and policy if carried over from an older Raft snapshot
 run_bao delete auth/kubernetes/role/vault-registry-proxy >/dev/null 2>&1 || true
 run_bao policy delete registry-proxy >/dev/null 2>&1 || true
 
@@ -179,14 +170,12 @@ create_k8s_role() {
     ttl="10m"
 }
 
-# Identity & Database Workload Roles
 create_k8s_role "postgres-server" "postgres" "identity" "postgres-server"
 create_k8s_role "postgres-init" "postgres-init" "identity" "postgres-init"
 create_k8s_role "postgres-backup" "postgres-backup" "identity" "backup-job"
 create_k8s_role "keycloak" "keycloak" "identity" "keycloak-broker"
 create_k8s_role "gateway" "gateway" "identity" "gateway-transit"
 
-# Vault Proxy & Snapshot Roles (no ServiceAccount is bound to operator-admin)
 create_k8s_role "vault-db-proxy" "vault-db-proxy" "vault" "db-proxy"
 create_k8s_role "vault-ai-proxy" "vault-ai-proxy" "vault" "ai-proxy"
 create_k8s_role "vault-notify-proxy" "vault-notify-proxy" "vault" "notify-proxy"

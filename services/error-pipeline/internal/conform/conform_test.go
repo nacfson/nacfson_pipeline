@@ -9,12 +9,12 @@ func TestCheck(t *testing.T) {
 	validBase := `{"time":"2026-11-04T09:00:10.125Z","level":"info","msg":"service started","service.name":"pn-api","service.version":"v1.4.2"}`
 
 	tests := []struct {
-		name         string
-		line         string
-		opts         Options
-		wantKind     string
-		wantSec      string
-		expectPass   bool
+		name       string
+		line       string
+		opts       Options
+		wantKind   string
+		wantSec    string
+		expectPass bool
 	}{
 		{
 			name:       "valid standard json line passes",

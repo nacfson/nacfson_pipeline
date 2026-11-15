@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# Integration Test: Keycloak Google OAuth Broker & Secret Confinement
-# Validates specs/002-internal-cluster-vault/contracts/google-oauth-broker.md
-# ==============================================================================
 
 set -euo pipefail
 
@@ -32,7 +28,6 @@ else
 fi
 
 echo "=== [3/4] Verifying Zero Plaintext Google Secrets in Manifests ==="
-# Search for any hardcoded google client secret in identity manifests
 if grep -rn "GOOGLE_CLIENT_SECRET=" deploy/platform/identity/ 2>/dev/null; then
   echo "FAIL: Plaintext GOOGLE_CLIENT_SECRET found in identity deployment manifests."
   exit 1

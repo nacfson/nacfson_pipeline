@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# Public auth-chain smoke test (spec 007 amendment 2026-10-13).
-# Covers what kubelet probes cannot see: Traefik routes on the auth host, gateway reachability and
-# return-host config, the public /api route and the 401 shape the SPA depends on.
-# Note: Traefik sends /api straight to pn-backend, so the FE nginx /api/ proxy is covered by the FE
-# startupProbe (/api/auth/language-options), not by this script.
-# Usage: scripts/smoke-auth-chain.sh <pn-url> <auth-url>
-#   e.g. scripts/smoke-auth-chain.sh https://pn.nacfson.cloud https://auth.nacfson.cloud
 set -uo pipefail
 
 PN="${1:-}"
@@ -21,7 +14,6 @@ FAILS=0
 TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
 
-# check <label> <expected-status> <url> [body-or-header-substring]
 check() {
   local label="$1" want="$2" url="$3" needle="${4:-}"
   local code

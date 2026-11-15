@@ -13,7 +13,6 @@ import (
 	"nacfson_pipeline/services/error-pipeline/internal/redact"
 )
 
-// RequiredKeys defines the keys required on every log line per contract §2.
 var RequiredKeys = []string{
 	"time",
 	"level",
@@ -22,7 +21,6 @@ var RequiredKeys = []string{
 	"service.version",
 }
 
-// ValidLevels defines recognized log levels and aliases per contract §2.
 var ValidLevels = map[string]string{
 	"debug":    "debug",
 	"info":     "info",
@@ -41,16 +39,15 @@ var (
 )
 
 var genericExceptionTypes = map[string]bool{
-	"*fmt.wrapError":       true,
-	"*errors.errorString":  true,
-	"*errors.joinError":    true,
-	"error":                true,
-	"Exception":            true,
-	"Error":                true,
-	"java.lang.Exception":  true,
+	"*fmt.wrapError":      true,
+	"*errors.errorString": true,
+	"*errors.joinError":   true,
+	"error":               true,
+	"Exception":           true,
+	"Error":               true,
+	"java.lang.Exception": true,
 }
 
-// Classify determines the log line class using contract signatures.
 func Classify(line string) Class {
 	trimmed := strings.TrimSpace(line)
 	if strings.HasPrefix(trimmed, "{") && strings.HasSuffix(trimmed, "}") {
@@ -80,7 +77,6 @@ func Classify(line string) Class {
 	return ClassOther
 }
 
-// Check validates a single log line against Contract v3 rules.
 func Check(line string, opts Options) []Violation {
 	var violations []Violation
 
@@ -124,7 +120,6 @@ func Check(line string, opts Options) []Violation {
 	flat := make(map[string]any)
 	flatten("", rawObj, flat)
 
-	// Check required keys
 	for _, req := range RequiredKeys {
 		val, ok := flat[req]
 		if !ok || val == nil || fmt.Sprint(val) == "" {
@@ -136,7 +131,6 @@ func Check(line string, opts Options) []Violation {
 		}
 	}
 
-	// Check time RFC3339
 	if tVal, ok := flat["time"]; ok && tVal != nil && fmt.Sprint(tVal) != "" {
 		tStr := fmt.Sprint(tVal)
 		if _, err := time.Parse(time.RFC3339Nano, tStr); err != nil {
@@ -148,7 +142,6 @@ func Check(line string, opts Options) []Violation {
 		}
 	}
 
-	// Check level
 	var normalizedLevel string
 	if lvlVal, ok := flat["level"]; ok && lvlVal != nil && fmt.Sprint(lvlVal) != "" {
 		lvlStr := strings.ToLower(fmt.Sprint(lvlVal))
@@ -163,7 +156,6 @@ func Check(line string, opts Options) []Violation {
 		}
 	}
 
-	// Check service.version
 	if verVal, ok := flat["service.version"]; ok && verVal != nil && fmt.Sprint(verVal) != "" {
 		verStr := fmt.Sprint(verVal)
 		if !versionRegex.MatchString(verStr) {
@@ -182,7 +174,6 @@ func Check(line string, opts Options) []Violation {
 		}
 	}
 
-	// Check service.name
 	if svcVal, ok := flat["service.name"]; ok && svcVal != nil && fmt.Sprint(svcVal) != "" {
 		svcStr := fmt.Sprint(svcVal)
 		if opts.ExpectService != "" && svcStr != opts.ExpectService {
@@ -194,7 +185,6 @@ func Check(line string, opts Options) []Violation {
 		}
 	}
 
-	// Check reserved and dynamic keys
 	seenReserved := false
 	seenDynamic := false
 	checkKey := func(k string) {
@@ -227,7 +217,6 @@ func Check(line string, opts Options) []Violation {
 		checkKey(k)
 	}
 
-	// Check trace_id
 	if tidVal, ok := flat["trace_id"]; ok && tidVal != nil && fmt.Sprint(tidVal) != "" {
 		tidStr := fmt.Sprint(tidVal)
 		if !traceIDRegex.MatchString(tidStr) {
@@ -239,7 +228,6 @@ func Check(line string, opts Options) []Violation {
 		}
 	}
 
-	// Section 3: Error fields when level is error or fatal
 	if normalizedLevel == "error" || normalizedLevel == "fatal" {
 		msgVal, hasMsg := flat["exception.message"]
 		typeVal, hasType := flat["exception.type"]
@@ -288,7 +276,6 @@ func Check(line string, opts Options) []Violation {
 		}
 	}
 
-	// Check HTTP status code >= 500 requires error or fatal
 	if statusVal, ok := flat["http.response.status_code"]; ok && statusVal != nil {
 		status := toInt(statusVal)
 		if status >= 500 && normalizedLevel != "error" && normalizedLevel != "fatal" {

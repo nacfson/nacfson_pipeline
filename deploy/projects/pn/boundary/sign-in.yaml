@@ -1,5 +1,3 @@
-# Applied by the project-boundary reconciler. Keep in step with ../sign-in.yaml.
-# This file does not grant business permissions.
 apiVersion: v1
 kind: ConfigMap
 metadata:

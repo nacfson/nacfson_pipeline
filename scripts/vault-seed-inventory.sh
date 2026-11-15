@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# OpenBao 11-Credential Inventory Seeding Automation
-# Strictly adheres to Constitution Principle V & Spec 002 Research Section 4.2
-# ==============================================================================
 
 set -euo pipefail
 
@@ -15,9 +11,7 @@ if [ "${1:-}" = "--force" ]; then
   FORCE_SEED="true"
 fi
 
-# If running against remote host without local kubectl cluster access
 if ! ${KUBE_EXEC} get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
-  # VAULT_NS and VAULT_POD exist on this machine and must expand before ssh.
   # shellcheck disable=SC2029
   if ssh oracleCloud "sudo k3s kubectl get pod -n ${VAULT_NS} ${VAULT_POD}" >/dev/null 2>&1; then
     KUBE_EXEC="ssh oracleCloud sudo k3s kubectl"
@@ -35,7 +29,6 @@ if [ "${IS_INITIALIZED}" != "true" ] || [ "${IS_SEALED}" = "true" ]; then
 fi
 echo "PASS: Vault is initialized and unsealed."
 
-# Function to test token validity
 test_token() {
   local token="$1"
   ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- \
@@ -43,7 +36,6 @@ test_token() {
     bao token lookup >/dev/null 2>&1
 }
 
-# Function to generate a new root token using Shamir Unseal Key
 generate_root_token() {
   local unseal_key="$1"
   echo "Initiating root token generation ceremony..."
@@ -74,7 +66,6 @@ generate_root_token() {
   echo "${decoded_token}"
 }
 
-# Resolve Vault Token (Prompt or environment)
 if [ -z "${VAULT_TOKEN:-}" ]; then
   read -r -s -p "Enter Vault Root/Admin Token (or press Enter if you only have the Unseal Key): " VAULT_TOKEN
   echo ""
@@ -128,73 +119,59 @@ seed_secret() {
     bao kv put "${path}" "$@"
 }
 
-# 1. GHCR Container Registry Pull Token
 seed_secret "kv/platform/ghcr-pull-token" \
   token="ghp_platform_managed_registry_pull_token_v1" \
   owner="platform" \
   active="true"
 
-# 2. Gateway OIDC Client Secret
 seed_secret "kv/gateway/client-secret" \
   client_id="gateway-client" \
   client_secret="$(openssl rand -hex 24)"
 
-# 3. Session Revocation Client Secret
 seed_secret "kv/gateway/session-revocation-secret" \
   client_id="session-revocation-client" \
   client_secret="$(openssl rand -hex 24)"
 
-# 4. Gateway Cryptographic HMAC Secret (Dual-Key Rotation Support)
 seed_secret "kv/gateway/hmac-secret" \
   hmac_secret="$(openssl rand -hex 32)" \
   hmac_secret_previous=""
 
-# 5. Keycloak Platform Bootstrap Admin Credential
 seed_secret "kv/platform/keycloak-admin" \
   username="admin" \
   password="$(openssl rand -hex 20)"
 
-# 6. PostgreSQL Admin Provisioning Superuser Password
 seed_secret "kv/database/postgres-admin" \
   username="postgres" \
   password="$(openssl rand -hex 24)"
 
-# 7. PostgreSQL Keycloak Database User Password
 seed_secret "kv/database/keycloak-user" \
   username="keycloak_user" \
   password="$(openssl rand -hex 24)"
 
-# 8. PostgreSQL Project PN Database User Password
 seed_secret "kv/database/pn-user" \
   username="user_pn" \
   password="$(openssl rand -hex 24)"
 
-# 8b. PostgreSQL Project Health Database User Password
 seed_secret "kv/database/health-user" \
   username="user_health" \
   password="$(openssl rand -hex 24)"
 
-# 9. PostgreSQL Dedicated Backup Role Password (pg_read_all_data)
 seed_secret "kv/database/backup-user" \
   username="backup_role" \
   password="$(openssl rand -hex 24)"
 
-# 10. Google OAuth Upstream Identity Broker Client Credentials
 seed_secret "kv/identity/google-oauth" \
   client_id="google-apps.apps.googleusercontent.com" \
   client_secret="$(openssl rand -hex 24)"
 
-# 11. Project PN Backend Application Client Secret
 seed_secret "kv/projects/pn/client-secret" \
   client_id="project-pn" \
   client_secret="$(openssl rand -hex 24)"
 
-# 12. Project Health Backend Application Client Secret
 seed_secret "kv/projects/health/client-secret" \
   client_id="project-health" \
   client_secret="$(openssl rand -hex 24)"
 
-# 13. Upstream Gemini AI Gateway API Key & Project PN Kill-Switch Default State
 seed_secret "kv/ai/gemini-api-key" \
   value="PLACEHOLDER_RUN_AI_GATEWAY_CTL_SET_KEY"
 seed_secret "kv/ai/projects/pn" \

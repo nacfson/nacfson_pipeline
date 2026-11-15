@@ -52,6 +52,7 @@ For public browser SPAs that call the project API on the project's published ori
 - **Restoration Verification for Backups:** When optional scheduled backups are enabled (default daily at 00:00 UTC with 7-day retention), backup validity MUST be proven via documented, successful restore exercises on a clean environment. Unexercised backups MUST NOT be considered disaster recovery assets.
 - **Automated Manifest Validation:** Helm templates and Kustomize overlays MUST render cleanly with pinned tool versions and pass schema validation against target Kubernetes API versions.
 - **Repository Secret Hygiene:** The repository is public. Every candidate revision MUST pass secret scanning, and the full history MUST pass a secret scan before the repository's visibility is widened. Any real credential that has appeared in Git history, encrypted or not, MUST be treated as exposed and rotated.
+- **No Comments in Code:** Code MUST NOT contain comments. *Code* is every file a program reads, runs, or applies: source code, scripts, infrastructure as code, Kubernetes manifests, container build files, CI workflows, configuration files, and templates. Documentation is not code: Markdown documents (`.md`) and HTML documentation pages (such as `docs/platform-architecture.html` and the pages under `agy_plan/html/`). A *comment* is any text the language or format ignores and that exists for human readers, including line, block, and trailing comments, commented-out code, Python docstrings, and Go doc comments; a comment inside code embedded in another file (for example, a script inside a manifest) is still a comment. Explanations MUST be written in Markdown documents instead (specs, contracts, runbooks, `README.md`, or a `.md` file beside the code). Machine-read directives that change how a tool behaves are not comments and are allowed: shebang lines, Go compiler directives (such as `//go:build` and `//go:embed`), container build parser directives (such as `# syntax=`), and linter or analyzer directives (such as `# shellcheck`, `# noqa`, and `//nolint`). Generated files (such as `.terraform.lock.hcl` and `go.sum`) and third-party files vendored unchanged from upstream are exempt. Code review enforces this rule: a reviewer MUST block a change that adds a comment to code.
 
 ## Governance
 
@@ -152,4 +153,18 @@ The log collector in the platform namespace `observability` may mount `/var/log/
 
 **Maintainer approval**: Requested by the repository maintainer on 2026-11-14 (analysis finding D1 of feature `015-gke-terraform-infra`). Merging this clarification's pull request records approval.
 
-**Version**: 2.3.1 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-11-14
+## Amendment 2.4.0
+
+**Rationale**: Comments drift from the code they describe and leave explanations spread across hundreds of files. The repository maintainer chose one home for explanations: Markdown documents, which are already the repository's specs, contracts, runbooks, and handbook. Code says what happens through names and structure; Markdown says why.
+
+**Impact**:
+
+- Security: Unchanged. Linter and analyzer directives stay allowed, so lint and security tooling keep their current results.
+- Resource quota: Unchanged.
+- Portability: Unchanged. Removing comments does not change any rendered manifest object, built binary, or applied infrastructure.
+
+**Migration**: One change removes every existing comment from code. Explanations still needed move to the Markdown document that owns that area. Enforcement is by code review (`REVIEW.md`); no CI script is added.
+
+**Maintainer approval**: Requested by the repository maintainer on 2026-11-15. Merging this amendment's pull request records formal approval of version 2.4.0.
+
+**Version**: 2.4.0 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-11-15

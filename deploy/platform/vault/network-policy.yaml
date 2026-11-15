@@ -13,7 +13,6 @@ spec:
     - Egress
   ingress: []
   egress:
-    # Allow DNS resolution
     - to:
         - namespaceSelector:
             matchLabels:
@@ -43,7 +42,6 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Allow intra-vault cluster traffic (Raft :8201 and API :8200)
     - from:
         - podSelector: {}
       ports:
@@ -51,7 +49,6 @@ spec:
           port: 8200
         - protocol: TCP
           port: 8201
-    # Allow authorized platform services (e.g. identity namespace, provisioning jobs)
     - from:
         - namespaceSelector:
             matchLabels:
@@ -67,7 +64,6 @@ spec:
         - protocol: TCP
           port: 8200
   egress:
-    # Intra-vault clustering & Raft sync
     - to:
         - podSelector:
             matchLabels:
@@ -75,11 +71,6 @@ spec:
       ports:
         - protocol: TCP
           port: 8201
-    # Kubernetes API Server TokenReview egress (auth/kubernetes).
-    # On local-k3s Cilium, policy-cidr-match-mode=nodes allows RFC1918 ipBlock rules to match
-    # the single-node apiserver IP. On GKE, clusters/gke/layers.yaml adds the control-plane CIDR,
-    # Workload Identity (169.254.169.254/32:80,988), and Private Google Access KMS (199.36.153.8/30:443).
-    # General 0.0.0.0/0 egress is strictly forbidden on openbao.
     - to:
         - ipBlock:
             cidr: 10.0.0.0/8
@@ -108,7 +99,6 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # Allow daily Raft snapshot CronJob to reach OpenBao API on port 8200
     - to:
         - podSelector:
             matchLabels:
@@ -133,7 +123,6 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Allow project pods (proj-pn, proj-health) to connect on Postgres port 5432
     - from:
         - namespaceSelector:
             matchLabels:
@@ -163,7 +152,6 @@ spec:
         - protocol: TCP
           port: 5432
   egress:
-    # Allow connection to OpenBao API
     - to:
         - podSelector:
             matchLabels:
@@ -171,7 +159,6 @@ spec:
       ports:
         - protocol: TCP
           port: 8200
-    # Allow connection to PostgreSQL in identity namespace
     - to:
         - namespaceSelector:
             matchLabels:
@@ -199,7 +186,6 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Allow ONLY authorized project backend pods (proj-pn/pn-backend) on TCP 8080
     - from:
         - namespaceSelector:
             matchLabels:
@@ -217,7 +203,6 @@ spec:
         - protocol: TCP
           port: 8080
   egress:
-    # Allow DNS resolution via kube-dns only
     - to:
         - namespaceSelector:
             matchLabels:
@@ -230,7 +215,6 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # Allow connection to OpenBao API
     - to:
         - podSelector:
             matchLabels:
@@ -238,7 +222,6 @@ spec:
       ports:
         - protocol: TCP
           port: 8200
-    # Allow kube-apiserver (RFC1918) for Pod-IP attribution
     - to:
         - ipBlock:
             cidr: 10.0.0.0/8
@@ -251,8 +234,6 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
-    # Portable outbound HTTPS to upstream AI API (generativelanguage.googleapis.com:443)
-    # while blocking RFC1918, CGNAT, and cloud metadata / Workload Identity (169.254.169.254/32).
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -282,7 +263,6 @@ spec:
     - Ingress
     - Egress
   ingress:
-    # Only the two pods the grants name may post here.
     - from:
         - namespaceSelector:
             matchLabels:
@@ -300,7 +280,6 @@ spec:
         - protocol: TCP
           port: 8080
   egress:
-    # Allow DNS resolution via kube-dns only
     - to:
         - namespaceSelector:
             matchLabels:
@@ -313,7 +292,6 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # OpenBao holds the Discord webhook URLs; the proxy keeps no secret of its own.
     - to:
         - podSelector:
             matchLabels:
@@ -321,7 +299,6 @@ spec:
       ports:
         - protocol: TCP
           port: 8200
-    # Allow kube-apiserver (RFC1918) for Pod-IP attribution
     - to:
         - ipBlock:
             cidr: 10.0.0.0/8
@@ -334,8 +311,6 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
-    # Portable outbound HTTPS to Discord webhook API (discord.com:443)
-    # while blocking RFC1918, CGNAT, and cloud metadata / Workload Identity (169.254.169.254/32).
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0

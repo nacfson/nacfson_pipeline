@@ -1,6 +1,4 @@
 ---
-# Preflight tasks: Inspections, capacity validation, and 3-way state classification
-# Scope: Read-only host evaluation; stops before any persistent changes.
 
 - name: Set current stage tracking to preflight
   ansible.builtin.set_fact:
@@ -164,7 +162,6 @@
   register: release_artifact_check
   failed_when: release_artifact_check.rc != 0
 
-# T018: Host state inspection & 3-way classification
 - name: Stat existing cluster artifacts and receipts
   ansible.builtin.stat:
     path: "{{ item }}"
@@ -232,7 +229,6 @@
       Existing cluster files, conflicting versions, or unmanaged configuration overrides were found without a matching valid receipt.
       Bootstrap will not overwrite, upgrade, downgrade, or silently adopt this host. Manual operator recovery is required.
 
-# Network route overlap checks (executed on fresh hosts only)
 - name: Check for CIDR conflicts on fresh target
   when: host_state == 'fresh'
   block:
@@ -252,7 +248,6 @@
           Network conflict: Existing host routes overlap with default K3s cluster ranges (10.42.0.0/16 or 10.43.0.0/16).
           Observed routes: {{ cidr_check.stdout }}.
 
-# Port conflict checks (executed on fresh hosts only)
 - name: Check for listening port conflicts on fresh target
   when: host_state == 'fresh'
   block:
@@ -272,7 +267,6 @@
           Port conflict: Ports required by K3s (6443, 10250, 80, 443) are already in use.
           Observed listeners: {{ port_conflict_check.stdout }}.
 
-# Controller check: verify Flux entrypoint exists for selected gitops_environment
 - name: Inspect controller Flux entrypoint directory for gitops_environment
   ansible.builtin.stat:
     path: "{{ playbook_dir }}/../clusters/{{ gitops_environment }}/flux-system"
@@ -292,7 +286,6 @@
   become: false
   run_once: true
 
-# Controller check: verify Cilium CNI manifest bundle exists on controller
 - name: Inspect controller Cilium CNI manifest files
   ansible.builtin.stat:
     path: "{{ item }}"

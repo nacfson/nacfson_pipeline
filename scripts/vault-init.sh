@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# OpenBao Vault Initialization & Unseal Automation
-# Strictly adheres to specs/002-internal-cluster-vault/spec.md (FR-015)
-# ==============================================================================
 
 set -euo pipefail
 
@@ -62,19 +58,15 @@ if [ -z "${VAULT_TOKEN:-}" ]; then
   echo ""
 fi
 
-# Enable KV v2 engine if not already enabled
 kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${VAULT_TOKEN}" \
   bao secrets enable -version=2 kv 2>/dev/null || echo "KV v2 engine already enabled."
 
-# Enable Transit engine if not already enabled
 kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${VAULT_TOKEN}" \
   bao secrets enable transit 2>/dev/null || echo "Transit engine already enabled."
 
-# Enable file audit device (FR-011, T028)
 kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${VAULT_TOKEN}" \
   bao audit enable file file_path=/var/log/openbao/audit.log log_raw=false 2>/dev/null || echo "Audit device already enabled."
 
-# Apply RBAC policies from deploy/platform/vault/policies/
 if [ -d "${POLICIES_DIR}" ]; then
   for policy_file in "${POLICIES_DIR}"/*.hcl; do
     if [ -f "${policy_file}" ]; then

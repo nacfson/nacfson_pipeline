@@ -1,5 +1,3 @@
-// Package podid attributes a peer IP to a Kubernetes pod by asking the
-// kube-apiserver with the caller's own ServiceAccount token.
 package podid
 
 import (
@@ -19,13 +17,11 @@ import (
 )
 
 const (
-	// DefaultTokenPath is the in-cluster ServiceAccount token location.
 	DefaultTokenPath = "/var/run/secrets/kubernetes.io/serviceaccount/token"
-	// DefaultCAPath is the in-cluster kube-apiserver CA bundle location.
+
 	DefaultCAPath = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
 )
 
-// Identity is the pod identity resolved for a peer IP.
 type Identity struct {
 	Namespace string `json:"namespace"`
 	PodName   string `json:"pod_name"`
@@ -37,9 +33,7 @@ type cachedIdentity struct {
 	expiresAt time.Time
 }
 
-// Resolver resolves pod IPs to identities, caching each result by IP for ttl.
 type Resolver struct {
-	// Now returns the current time for cache expiry; defaults to time.Now.
 	Now func() time.Time
 
 	apiServer string
@@ -51,8 +45,6 @@ type Resolver struct {
 	cache map[string]cachedIdentity
 }
 
-// NewResolver builds a Resolver. apiServer is the base URL, for example
-// https://kubernetes.default.svc.
 func NewResolver(apiServer string, client *http.Client, tokenPath string, ttl time.Duration) *Resolver {
 	return &Resolver{
 		Now:       time.Now,
@@ -64,7 +56,6 @@ func NewResolver(apiServer string, client *http.Client, tokenPath string, ttl ti
 	}
 }
 
-// Resolve returns the identity of the pod that owns ip.
 func (r *Resolver) Resolve(ctx context.Context, ip string) (*Identity, error) {
 	now := r.Now()
 	r.mu.Lock()
@@ -119,7 +110,6 @@ func (r *Resolver) Resolve(ctx context.Context, ip string) (*Identity, error) {
 	return id, nil
 }
 
-// PeerIP returns the host part of an http.Request.RemoteAddr.
 func PeerIP(remoteAddr string) string {
 	host, _, err := net.SplitHostPort(strings.TrimSpace(remoteAddr))
 	if err != nil {
@@ -128,8 +118,6 @@ func PeerIP(remoteAddr string) string {
 	return host
 }
 
-// InClusterAPIServer returns the kube-apiserver base URL from the in-cluster
-// environment, or "" when KUBERNETES_SERVICE_HOST/PORT are not set.
 func InClusterAPIServer() string {
 	host := os.Getenv("KUBERNETES_SERVICE_HOST")
 	port := os.Getenv("KUBERNETES_SERVICE_PORT")
@@ -139,7 +127,6 @@ func InClusterAPIServer() string {
 	return "https://" + net.JoinHostPort(host, port)
 }
 
-// InClusterHTTPClient returns an HTTP client that trusts the in-cluster CA.
 func InClusterHTTPClient() *http.Client {
 	pool := x509.NewCertPool()
 	if caBytes, err := os.ReadFile(DefaultCAPath); err == nil {
