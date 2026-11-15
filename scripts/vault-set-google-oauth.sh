@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# Helper to set Google OAuth Client ID & Secret in OpenBao Vault
-# Strictly adheres to Constitution Principle V (zero secrets in Git/K8s manifests)
-# ==============================================================================
 
 set -euo pipefail
 
@@ -10,16 +6,13 @@ VAULT_NS="${VAULT_NS:-vault}"
 VAULT_POD="${VAULT_POD:-openbao-0}"
 KUBE_EXEC="${KUBE_EXEC:-kubectl}"
 
-# If running locally against remote host without local kubectl cluster access
 if ! ${KUBE_EXEC} get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
-  # VAULT_NS and VAULT_POD exist on this machine and must expand before ssh.
   # shellcheck disable=SC2029
   if ssh oracleCloud "sudo k3s kubectl get pod -n ${VAULT_NS} ${VAULT_POD}" >/dev/null 2>&1; then
     KUBE_EXEC="ssh oracleCloud sudo k3s kubectl"
   fi
 fi
 
-# Function to test token validity
 test_token() {
   local token="$1"
   ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- \
@@ -27,7 +20,6 @@ test_token() {
     bao token lookup >/dev/null 2>&1
 }
 
-# Function to generate a short-lived root token using Shamir Unseal Key
 generate_root_token() {
   local unseal_key="$1"
   ${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator generate-root -cancel >/dev/null 2>&1 || true

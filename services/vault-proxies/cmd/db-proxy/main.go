@@ -18,7 +18,6 @@ import (
 	"time"
 )
 
-// Config represents runtime settings for the Database Query Proxy.
 type Config struct {
 	ListenPort      string
 	HealthPort      string
@@ -94,8 +93,6 @@ func isValidProjectSlug(slug string) bool {
 	return true
 }
 
-// extractProjectSlug extracts the canonical project slug from a workload identity
-// (e.g. "project:pn:workload:backend" -> "pn", "pn-backend" -> "pn").
 func extractProjectSlug(sub string) (string, error) {
 	if strings.HasPrefix(sub, "project:") {
 		parts := strings.Split(sub, ":")
@@ -113,8 +110,6 @@ func extractProjectSlug(sub string) (string, error) {
 	return "", fmt.Errorf("unable to extract project slug from caller subject %q", sub)
 }
 
-// resolveProjectBinding maps a validated caller claim to its isolated (database, role) pair:
-// project:<slug>:workload:<component> -> (proj_<slug>, user_<slug>).
 func (p *DBProxy) resolveProjectBinding(claims *CallerClaims) (string, string, string, error) {
 	slug, err := extractProjectSlug(claims.Sub)
 	if err != nil {
@@ -147,7 +142,6 @@ func (p *DBProxy) resolveRolePassword(slug string) string {
 	return p.cfg.InternalDBPass
 }
 
-// CallerClaims represents validated payload from short-lived caller identity token.
 type CallerClaims struct {
 	Iss string `json:"iss"`
 	Sub string `json:"sub"`
@@ -155,7 +149,6 @@ type CallerClaims struct {
 	Exp int64  `json:"exp"`
 }
 
-// DBProxy coordinates incoming caller connections, short-lived JWT verification, and upstream PostgreSQL proxying.
 type DBProxy struct {
 	cfg             *Config
 	activeConns     sync.WaitGroup
@@ -183,7 +176,6 @@ func (p *DBProxy) Start() error {
 	log.Printf("Vault Database Query Proxy listening on :%s (Upstream: %s:%s)\n",
 		p.cfg.ListenPort, p.cfg.UpstreamPGHost, p.cfg.UpstreamPGPort)
 
-	// Start internal health & admin server
 	go p.startHealthServer()
 
 	for {
@@ -224,13 +216,12 @@ func (p *DBProxy) checkUpstreamReadiness() error {
 
 func (p *DBProxy) buildAdminMux() *http.ServeMux {
 	mux := http.NewServeMux()
-	// Liveness probe (/healthz): process-local only; never depends on upstream DB.
+
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("OK"))
 	})
 
-	// Readiness probe (/readyz): verifies upstream PostgreSQL TCP reachability.
 	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
 		if err := p.checkUpstreamReadiness(); err != nil {
 			http.Error(w, fmt.Sprintf("upstream postgres unreachable: %v", err), http.StatusServiceUnavailable)
@@ -240,7 +231,6 @@ func (p *DBProxy) buildAdminMux() *http.ServeMux {
 		_, _ = w.Write([]byte("READY"))
 	})
 
-	// FR-020 & T025: Per-operation revocation management endpoint
 	mux.HandleFunc("/admin/revoke", func(w http.ResponseWriter, r *http.Request) {
 		sub := r.URL.Query().Get("sub")
 		if sub == "" {
@@ -306,7 +296,6 @@ func (p *DBProxy) startHealthServer() {
 func (p *DBProxy) handleConnection(clientConn net.Conn) {
 	_ = clientConn.SetDeadline(time.Now().Add(10 * time.Second))
 
-	// 1. Read PostgreSQL StartupMessage / SSLRequest
 	var msgLen uint32
 	if err := binary.Read(clientConn, binary.BigEndian, &msgLen); err != nil {
 		return
@@ -317,14 +306,13 @@ func (p *DBProxy) handleConnection(clientConn net.Conn) {
 		return
 	}
 
-	// Check for SSLRequest code: 80877103
 	code := binary.BigEndian.Uint32(payload[:4])
 	if code == 80877103 {
-		// Respond 'N' (SSL not supported on internal loopback proxy)
+
 		if _, err := clientConn.Write([]byte{'N'}); err != nil {
 			return
 		}
-		// Read actual StartupMessage after SSL denial
+
 		if err := binary.Read(clientConn, binary.BigEndian, &msgLen); err != nil {
 			return
 		}
@@ -340,13 +328,11 @@ func (p *DBProxy) handleConnection(clientConn net.Conn) {
 
 	log.Printf("[DB-Proxy] Inbound handshake from user='%s' db='%s'\n", requestedUser, requestedDB)
 
-	// 2. Request Cleartext Password (send AuthenticationCleartextPassword message: 'R', len 8, code 3)
 	authReq := []byte{'R', 0, 0, 0, 8, 0, 0, 0, 3}
 	if _, err := clientConn.Write(authReq); err != nil {
 		return
 	}
 
-	// 3. Read PasswordMessage (contains Caller Identity Token JWT or short-lived token)
 	var respType byte
 	if err := binary.Read(clientConn, binary.BigEndian, &respType); err != nil || respType != 'p' {
 		p.sendErrorResponse(clientConn, "28000", "Expected password message with caller identity token")
@@ -365,7 +351,6 @@ func (p *DBProxy) handleConnection(clientConn net.Conn) {
 
 	callerToken := strings.TrimRight(string(tokenBytes), "\x00")
 
-	// 4. Validate Caller Identity Token & Access Grant
 	claims, err := p.validateCallerToken(callerToken)
 	if err != nil {
 		log.Printf("[DB-Proxy] Token validation failed: %v", err)
@@ -373,14 +358,12 @@ func (p *DBProxy) handleConnection(clientConn net.Conn) {
 		return
 	}
 
-	// Check if caller grant has been revoked (FR-020 / T025)
 	if p.isRevoked(claims.Sub) {
 		log.Printf("[DB-Proxy] Connection rejected: grant for caller '%s' is revoked", claims.Sub)
 		p.sendErrorResponse(clientConn, "28000", "Caller access grant has been revoked")
 		return
 	}
 
-	// 5. Resolve Standardized Multi-Project Scope & Enforce Isolation
 	slug, targetDB, targetRole, err := p.resolveProjectBinding(claims)
 	if err != nil {
 		log.Printf("[DB-Proxy] Project binding resolution failed for '%s': %v", claims.Sub, err)
@@ -397,7 +380,6 @@ func (p *DBProxy) handleConnection(clientConn net.Conn) {
 	log.Printf("[DB-Proxy] Verified caller '%s' (project=%s). Binding to upstream role '%s' on db '%s'\n",
 		claims.Sub, slug, targetRole, targetDB)
 
-	// 6. Connect Upstream to PostgreSQL authenticated as enforced project role
 	upstreamConn, err := net.DialTimeout("tcp", net.JoinHostPort(p.cfg.UpstreamPGHost, p.cfg.UpstreamPGPort), 5*time.Second)
 	if err != nil {
 		log.Printf("[DB-Proxy] Upstream connect failed: %v", err)
@@ -406,24 +388,20 @@ func (p *DBProxy) handleConnection(clientConn net.Conn) {
 	}
 	defer upstreamConn.Close()
 
-	// Clear deadlines for active session proxying
 	_ = clientConn.SetDeadline(time.Time{})
 	_ = upstreamConn.SetDeadline(time.Time{})
 
-	// 7. Perform Upstream PostgreSQL Startup Handshake using internal Vault credentials
 	if err := p.performUpstreamHandshake(upstreamConn, targetDB, targetRole, p.resolveRolePassword(slug)); err != nil {
 		log.Printf("[DB-Proxy] Upstream handshake error: %v", err)
 		p.sendErrorResponse(clientConn, "28P01", "Upstream authentication failure")
 		return
 	}
 
-	// 8. Send AuthenticationOk ('R', len 8, code 0) to client
 	authOk := []byte{'R', 0, 0, 0, 8, 0, 0, 0, 0}
 	if _, err := clientConn.Write(authOk); err != nil {
 		return
 	}
 
-	// 9. Bi-directional Streaming with Per-Operation Grant Tracking
 	p.pipeConnections(clientConn, upstreamConn, claims)
 }
 
@@ -434,7 +412,7 @@ func (p *DBProxy) validateCallerToken(rawToken string) (*CallerClaims, error) {
 
 	parts := strings.Split(rawToken, ".")
 	if len(parts) == 3 {
-		// Standard JWT: header.payload.signature
+
 		payloadBytes, err := base64.RawURLEncoding.DecodeString(parts[1])
 		if err != nil {
 			return nil, fmt.Errorf("invalid jwt payload encoding: %w", err)
@@ -445,7 +423,6 @@ func (p *DBProxy) validateCallerToken(rawToken string) (*CallerClaims, error) {
 			return nil, fmt.Errorf("invalid jwt payload: %w", err)
 		}
 
-		// Enforce expiry check
 		if claims.Exp > 0 && time.Now().Unix() > claims.Exp {
 			return nil, fmt.Errorf("caller token expired")
 		}
@@ -453,7 +430,6 @@ func (p *DBProxy) validateCallerToken(rawToken string) (*CallerClaims, error) {
 		return &claims, nil
 	}
 
-	// Fallback to workload identity format (e.g. project:pn:workload:backend)
 	if strings.HasPrefix(rawToken, "project:") || strings.HasPrefix(rawToken, "pn-") {
 		return &CallerClaims{
 			Sub: rawToken,
@@ -466,9 +442,9 @@ func (p *DBProxy) validateCallerToken(rawToken string) (*CallerClaims, error) {
 }
 
 func (p *DBProxy) performUpstreamHandshake(upstream net.Conn, targetDB, targetRole, rolePassword string) error {
-	// Build upstream StartupMessage
+
 	var body []byte
-	body = binary.BigEndian.AppendUint32(body, 196608) // Protocol 3.0
+	body = binary.BigEndian.AppendUint32(body, 196608)
 	body = append(body, []byte("user\x00"+targetRole+"\x00database\x00"+targetDB+"\x00client_encoding\x00UTF8\x00\x00")...)
 
 	msg := make([]byte, 4+len(body))
@@ -479,7 +455,6 @@ func (p *DBProxy) performUpstreamHandshake(upstream net.Conn, targetDB, targetRo
 		return err
 	}
 
-	// Read upstream response
 	var tag byte
 	if err := binary.Read(upstream, binary.BigEndian, &tag); err != nil {
 		return err
@@ -498,7 +473,7 @@ func (p *DBProxy) performUpstreamHandshake(upstream net.Conn, targetDB, targetRo
 	if tag == 'R' {
 		authType := binary.BigEndian.Uint32(respData[:4])
 		if authType == 3 {
-			// Cleartext password requested
+
 			passMsg := []byte{'p'}
 			passBody := []byte(rolePassword + "\x00")
 			passMsg = binary.BigEndian.AppendUint32(passMsg, uint32(4+len(passBody)))
@@ -507,7 +482,6 @@ func (p *DBProxy) performUpstreamHandshake(upstream net.Conn, targetDB, targetRo
 				return err
 			}
 
-			// Read AuthOk
 			if err := binary.Read(upstream, binary.BigEndian, &tag); err != nil || tag != 'R' {
 				return fmt.Errorf("upstream rejected password authentication")
 			}
@@ -526,7 +500,6 @@ func (p *DBProxy) pipeConnections(client, upstream net.Conn, claims *CallerClaim
 	done := make(chan struct{})
 	defer close(done)
 
-	// FR-020 / T025: Active per-operation revocation monitor
 	go func() {
 		ticker := time.NewTicker(100 * time.Millisecond)
 		defer ticker.Stop()
@@ -561,7 +534,7 @@ func (p *DBProxy) pipeConnections(client, upstream net.Conn, claims *CallerClaim
 }
 
 func (p *DBProxy) sendErrorResponse(conn net.Conn, sqlState, msg string) {
-	// Construct PostgreSQL ErrorResponse ('E')
+
 	body := fmt.Sprintf("SFATAL\x00C%s\x00M%s\x00\x00", sqlState, msg)
 	resp := []byte{'E'}
 	resp = binary.BigEndian.AppendUint32(resp, uint32(4+len(body)))

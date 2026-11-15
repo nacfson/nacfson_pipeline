@@ -1,21 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 
-# cert-manager issues and renews TLS certificates (Let's Encrypt) for Traefik.
-# See docs/tls-certificates.md.
-#
-# upstream/cert-manager.yaml is the unmodified release manifest:
-#   https://github.com/cert-manager/cert-manager/releases/download/v1.21.2/cert-manager.yaml
-#   sha256 e03b668ec8675214af6b0a671699d088f2601fa3878e0dbe1b41d3feafd1879f
-# Flux runs only source-controller and kustomize-controller (no helm-controller),
-# so the static manifest is vendored instead of a HelmRelease.
-# To upgrade: replace the file, update the URL and sha256 above, and re-run
-# ./scripts/render-validate.sh for both environments.
 resources:
   - upstream/cert-manager.yaml
 
 patches:
-  # Match the other platform namespaces: labelled, and never pruned by Flux.
   - target:
       kind: Namespace
       name: cert-manager
@@ -30,7 +19,6 @@ patches:
           app.kubernetes.io/part-of: platform
           name: cert-manager
 
-  # Preflight Rule 4: every container declares requests and limits.
   - target:
       kind: Deployment
       name: cert-manager

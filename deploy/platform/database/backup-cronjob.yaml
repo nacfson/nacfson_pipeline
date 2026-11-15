@@ -43,7 +43,6 @@ spec:
                 - |
                   set -euo pipefail
 
-                  # 1. Fetch credentials from ephemeral memory mount or Vault Kubernetes Auth
                   if [ -f /var/run/secrets/database/backup_password ]; then
                     export PGPASSWORD=$(cat /var/run/secrets/database/backup_password)
                   elif [ -f /var/run/secrets/kubernetes.io/serviceaccount/token ]; then
@@ -68,7 +67,6 @@ spec:
 
                   pg_dumpall -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" | gzip > "${BACKUP_FILE}"
 
-                  # Immediately clear password from process memory
                   unset PGPASSWORD
                   echo "Backup completed successfully."
 

@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# verify-tls.sh
-# Verification Suite for Platform-Owned TLS Termination (Spec 008, US3).
-# Inspects edge certificates in namespace 'platform' and tests external TLS.
-# ==============================================================================
 
 set -euo pipefail
 
@@ -40,7 +35,6 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-# Read KUBECTL into an array to handle multi-word values safely
 read -r -a KUBECTL_CMD <<< "${KUBECTL:-kubectl}"
 
 echo "================================================================================"
@@ -49,7 +43,6 @@ echo "==========================================================================
 
 CERT_JSON=$("${KUBECTL_CMD[@]}" get certificate -n platform -o json)
 
-# Process certificates with python3 for robust date math and JSON parsing
 PYTHON_SCRIPT='
 import sys
 import json
@@ -104,11 +97,9 @@ for cert in items:
     print(f"  renewalTime:     {renewal_time_str}")
     print(f"  lastFailureTime: {last_failure_str}")
 
-    # Check 1: Ready condition must be True
     if ready_status != "True":
         failures.append(f"{name}: Ready condition is {ready_status} ({ready_reason}: {ready_msg})")
 
-    # Check 2: renewalTime not more than 1 hour in the past
     if renewal_time_str:
         try:
             clean_str = renewal_time_str.replace("Z", "+00:00")
@@ -118,7 +109,6 @@ for cert in items:
         except Exception as e:
             failures.append(f"{name}: cannot parse renewalTime {renewal_time_str}: {e}")
 
-    # Check 3: notAfter must be at least 14 days in the future
     if not_after_str:
         try:
             clean_str = not_after_str.replace("Z", "+00:00")
@@ -144,7 +134,6 @@ if failures:
 print("All platform certificates are Ready and within validity bounds.")
 '
 
-# Run the python validation
 if ! printf '%s\n' "$CERT_JSON" | python3 -c "$PYTHON_SCRIPT"; then
   exit 1
 fi
@@ -174,7 +163,6 @@ print("\n".join(hosts))
   while IFS= read -r host; do
     [[ -z "$host" ]] && continue
     echo "Checking external TLS for https://${host}:443..."
-    # Connect with openssl s_client and verify return error
     OPENSSL_OUTPUT=""
     if ! OPENSSL_OUTPUT=$(echo "" | openssl s_client -connect "${host}:443" -servername "${host}" -verify_return_error 2>&1); then
       echo "  FAIL: openssl s_client failed for ${host}:" >&2
@@ -185,7 +173,6 @@ print("\n".join(hosts))
       continue
     fi
 
-    # Fail if issuer contains TRAEFIK DEFAULT CERT
     if echo "${OPENSSL_OUTPUT}" | grep -qi "TRAEFIK DEFAULT CERT"; then
       echo "  FAIL: Certificate issuer for ${host} is TRAEFIK DEFAULT CERT (fallback certificate)" >&2
       EXT_FAILURES=$((EXT_FAILURES + 1))

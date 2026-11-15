@@ -21,8 +21,6 @@ import (
 )
 
 const (
-	// maxNotifyBodyBytes bounds a POST body: a 1 MiB body plus a 1 MiB
-	// attachment plus JSON escaping overhead.
 	maxNotifyBodyBytes = 2 << 20
 	maxAdminBodyBytes  = 4 << 10
 
@@ -30,12 +28,8 @@ const (
 	selfTestAppLabel  = "__selftest_pod__"
 )
 
-// selfTestIdentityKey carries a synthetic caller identity on the request
-// context. Only in-process code can set a context value, so a network client
-// cannot use it to bypass attribution.
 type selfTestIdentityKey struct{}
 
-// Grant allows pods labelled app=AppLabel in Namespace to post to Channel.
 type Grant struct {
 	Channel   string
 	Namespace string
@@ -56,8 +50,6 @@ func validChannelName(s string) bool {
 	return true
 }
 
-// ParseGrants parses "channel:namespace:app,channel:namespace:app". An empty
-// spec yields no grants.
 func ParseGrants(s string) ([]Grant, error) {
 	if strings.TrimSpace(s) == "" {
 		return nil, nil
@@ -80,7 +72,6 @@ func ParseGrants(s string) ([]Grant, error) {
 	return grants, nil
 }
 
-// VaultStore persists Discord webhook URLs (secrets) per channel.
 type VaultStore interface {
 	LoadWebhook(ctx context.Context, channel string) (string, error)
 	SaveWebhook(ctx context.Context, channel, url string) error
@@ -93,12 +84,12 @@ type NotifyProxyConfig struct {
 	Resolve   func(ctx context.Context, ip string) (*podid.Identity, error)
 	Vault     VaultStore
 	Send      func(ctx context.Context, url string, n Notification) error
-	// Logger defaults to a discarding logger. It never receives webhook URLs.
+
 	Logger *slog.Logger
 }
 
 type channelState struct {
-	webhook string // cached secret; never logged or returned
+	webhook string
 	sent    int
 	failed  int
 }
@@ -173,8 +164,6 @@ func (p *NotifyProxy) granted(channel string, id *podid.Identity) bool {
 	return false
 }
 
-// webhookFor returns the cached webhook URL, loading it from the vault on the
-// first use. The result is cached only when non-empty.
 func (p *NotifyProxy) webhookFor(ctx context.Context, channel string) (string, error) {
 	p.mu.Lock()
 	cs := p.channels[channel]
@@ -226,7 +215,6 @@ func (p *NotifyProxy) handleNotify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Identity comes only from the TCP peer address, never from headers.
 	var id *podid.Identity
 	if v, ok := r.Context().Value(selfTestIdentityKey{}).(*podid.Identity); ok {
 		id = v
@@ -272,7 +260,6 @@ func (p *NotifyProxy) handleNotify(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
 }
 
-// validateWebhookURL accepts only https://discord.com/api/webhooks/... URLs.
 func validateWebhookURL(raw string) error {
 	u, err := url.Parse(raw)
 	if err != nil {
@@ -344,20 +331,14 @@ func (p *NotifyProxy) handleAdminStatus(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, rows)
 }
 
-// RunStartupSelfTest audits the listener and routing invariants: the admin
-// listener is loopback, the data mux exposes no admin route, and a caller that
-// holds no grant is refused with 403. It never calls Send and never depends on
-// Discord.
 func (p *NotifyProxy) RunStartupSelfTest() error {
 	p.selfTestMu.Lock()
 	defer p.selfTestMu.Unlock()
 
-	// Check 1: loopback socket audit.
 	if !isStrictLoopbackAddr(p.cfg.AdminAddr) {
 		return fmt.Errorf("admin listener address %q is not strictly loopback (127.0.0.1)", p.cfg.AdminAddr)
 	}
 
-	// Check 2: route isolation (no admin route on the data mux).
 	for _, probe := range []struct{ method, path string }{
 		{http.MethodPost, "/admin/set-webhook?channel=errors"},
 		{http.MethodGet, "/admin/status"},
@@ -369,10 +350,6 @@ func (p *NotifyProxy) RunStartupSelfTest() error {
 		}
 	}
 
-	// Check 3: an ungranted caller is refused with 403 on every channel. The
-	// synthetic identity is injected through the request context, which a
-	// network client cannot set, so the check works whatever the configured
-	// resolver would say and needs no magic peer IP.
 	ungranted := &podid.Identity{Namespace: selfTestNamespace, PodName: selfTestAppLabel, AppLabel: selfTestAppLabel}
 	p.mu.Lock()
 	channels := make([]string, 0, len(p.channels))
@@ -391,8 +368,6 @@ func (p *NotifyProxy) RunStartupSelfTest() error {
 		}
 	}
 
-	// Best-effort one-time warm-up of the webhook cache. Failures are fine:
-	// readiness must not depend on OpenBao or Discord.
 	if !p.preloaded && p.cfg.Vault != nil {
 		p.preloaded = true
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -438,7 +413,6 @@ func (p *NotifyProxy) handleReadyz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "READY"})
 }
 
-// handleHealthz is strictly process-local per CONTRACT_PROBES_READINESS.md §3.3.
 func (p *NotifyProxy) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ALIVE"})
 }

@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# Private Loopback Tunnel & Verification for Internal AI Gateway UI (127.0.0.1:18081)
-# Matches scripts/open-hubble-ui.sh & scripts/open-victorialogs-ui.sh
-# ==============================================================================
 
 set -euo pipefail
 

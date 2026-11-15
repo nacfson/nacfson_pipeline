@@ -1,10 +1,4 @@
 #!/usr/bin/env python3
-"""Gate 1b: Version-label check (contracts/enforcement-gates.md Gate 1b, FR-024a).
-
-Verifies that for every container in a proj-* workload, the pod-template label
-app.kubernetes.io/version matches the pinned image's org.opencontainers.image.version
-label in the container registry, read via `skopeo inspect`.
-"""
 
 import argparse
 import glob
@@ -22,10 +16,6 @@ VIOLATION_UNREADABLE = "log-version-image-unreadable"
 def inspect_image_version(
     image_ref: str, skopeo_cmd: str = "skopeo"
 ) -> Tuple[Optional[str], Optional[str]]:
-    """Inspects the image version label using skopeo inspect.
-
-    Returns (version, error_message).
-    """
     cmd = [skopeo_cmd, "inspect", f"docker://{image_ref}"]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True)
@@ -53,7 +43,6 @@ def inspect_image_version(
 
 
 def extract_workload_containers(docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Finds all containers in proj-* workload documents."""
     containers = []
     for doc in docs:
         if not isinstance(doc, dict):
@@ -103,7 +92,6 @@ def check_version_labels(
     skopeo_cmd: str = "skopeo",
     include_legacy: bool = False,
 ) -> List[Dict[str, str]]:
-    """Runs Gate 1b check against the given documents."""
     violations = []
     containers = extract_workload_containers(docs)
 

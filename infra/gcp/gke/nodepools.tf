@@ -1,4 +1,3 @@
-# Least-privilege identity for node VMs, instead of the Editor-level default compute account (FR-006).
 resource "google_service_account" "gke_nodes" {
   account_id   = "gke-nodes"
   display_name = "GKE node VMs"
@@ -18,7 +17,6 @@ locals {
   }
 }
 
-# One pool per entry in shared-values.json (research R6).
 resource "google_container_node_pool" "pools" {
   for_each = local.node_pools
 
@@ -39,7 +37,6 @@ resource "google_container_node_pool" "pools" {
       mode = "GKE_METADATA"
     }
 
-    # "key=value:Effect" from shared-values.json. GKE labels Spot nodes but does not taint them.
     dynamic "taint" {
       for_each = each.value.taints
       content {
@@ -55,7 +52,6 @@ resource "google_container_node_pool" "pools" {
     auto_upgrade = true
   }
 
-  # Keep the old node until its replacement is ready. 2+2+2 vCPUs fits the 6-vCPU quota.
   upgrade_settings {
     strategy        = "SURGE"
     max_surge       = 1

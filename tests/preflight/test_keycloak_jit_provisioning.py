@@ -1,27 +1,4 @@
 #!/usr/bin/env python3
-"""
-Config-as-code checks for AUTH-01 Google SSO just-in-time (JIT) user provisioning.
-
-Keycloak 24.0.5 ignores IdentityProviderRepresentation.updateProfileFirstLoginMode
-and runs the IdP's firstBrokerLoginFlowAlias. The built-in "first broker login"
-flow is interactive (Review Profile = MISSING, Handle Existing Account /
-Confirm Link / email-or-password re-auth). Combined with VERIFY_PROFILE (on by
-default, firstName/lastName required) and registrationAllowed=false, a first
-Google login does not create a usable account until an operator links it.
-
-This test locks the GitOps realm JSON to a non-interactive JIT flow.
-
-Before (the bug):
-  firstBrokerLoginFlowAlias = "first broker login"
-  no authenticationFlows / authenticatorConfig in the import
-  no syncMode, no linkOnly, VERIFY_PROFILE left at Keycloak 24 default (enabled)
-
-After (this change):
-  firstBrokerLoginFlowAlias = "google jit first broker login"
-  Review Profile authenticator config = off
-  Create User If Unique = REQUIRED (no email auto-link)
-  VERIFY_PROFILE disabled; Google emails trusted via trustEmail
-"""
 
 from __future__ import annotations
 

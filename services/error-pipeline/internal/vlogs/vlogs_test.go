@@ -88,8 +88,8 @@ func TestCatchUpSendsRangeAndSort(t *testing.T) {
 	defer srv.Close()
 
 	loc := time.FixedZone("KST", 9*3600)
-	from := time.Date(2026, 10, 29, 17, 0, 0, 5, loc) // 08:00:00.000000005Z
-	to := time.Date(2026, 10, 29, 18, 0, 0, 0, loc)   // 09:00:00Z
+	from := time.Date(2026, 10, 29, 17, 0, 0, 5, loc)
+	to := time.Date(2026, 10, 29, 18, 0, 0, 0, loc)
 	c := &Client{BaseURL: srv.URL}
 	var got []classify.Record
 	if err := c.CatchUp(context.Background(), from, to, collect(&got)); err != nil {
@@ -113,11 +113,10 @@ func TestCatchUpSendsRangeAndSort(t *testing.T) {
 }
 
 func TestTailStopsOnContextCancel(t *testing.T) {
-	// The server sends one full line and half of a second, then goes
-	// silent. Cancellation must unblock the stalled read.
+
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, line1)
-		fmt.Fprint(w, line2[:20]) // partial line, no newline
+		fmt.Fprint(w, line2[:20])
 		w.(http.Flusher).Flush()
 		<-r.Context().Done()
 	}))
@@ -140,7 +139,7 @@ func TestTailStopsOnContextCancel(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("first record not delivered")
 	}
-	time.Sleep(50 * time.Millisecond) // let Tail block reading the silent stream
+	time.Sleep(50 * time.Millisecond)
 	select {
 	case err := <-done:
 		t.Fatalf("Tail returned before cancel: %v", err)

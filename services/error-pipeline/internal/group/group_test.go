@@ -186,7 +186,7 @@ func TestRecurrenceAfterCooldown(t *testing.T) {
 	if !reflect.DeepEqual(g.Pods, []string{"p9"}) || len(g.Samples) != 1 {
 		t.Fatalf("pods/samples not reset: %+v", g)
 	}
-	// The new window hands off again.
+
 	hs := tr.Tick(at.Add(3 * time.Minute))
 	if len(hs) != 1 || hs[0].Type != Handoff || hs[0].Group.Count != 1 {
 		t.Fatalf("second cycle handoff: %+v", hs)
@@ -241,7 +241,7 @@ func TestSamplesCappedAt20(t *testing.T) {
 func TestSampleTruncatedRuneSafe(t *testing.T) {
 	tr := NewTracker(DefaultConfig())
 	c := occ("p1")
-	c.Record.Message = strings.Repeat("가", 5000) // 3 bytes each
+	c.Record.Message = strings.Repeat("가", 5000)
 	tr.Observe(c, t0)
 	s := only(t, tr).Samples[0]
 	if len(s) > 4096 || len(s) < 4096-3 {
@@ -266,7 +266,7 @@ func TestRetentionDropsGroupsAfter7Days(t *testing.T) {
 func TestRetentionNeverDropsOpenWindow(t *testing.T) {
 	tr := NewTracker(Config{Window: time.Hour, Cooldown: time.Hour, Retention: time.Minute, MaxSamples: 20})
 	tr.Observe(occ("p1"), t0)
-	tr.Tick(t0.Add(30 * time.Minute)) // window (1h) still open, but idle longer than retention
+	tr.Tick(t0.Add(30 * time.Minute))
 	if len(tr.Export()) != 1 {
 		t.Fatal("dropped a group mid-window")
 	}
@@ -310,7 +310,7 @@ func TestExportImportRoundTripAndIsolation(t *testing.T) {
 	if !reflect.DeepEqual(tr2.Export(), tr.Export()) {
 		t.Fatalf("round trip mismatch:\n%+v\n%+v", tr2.Export(), tr.Export())
 	}
-	// Imported state continues the lifecycle.
+
 	if hs := tr2.Tick(t0.Add(3 * time.Minute)); len(hs) != 1 || hs[0].Type != Handoff {
 		t.Fatalf("imported group did not hand off: %+v", hs)
 	}

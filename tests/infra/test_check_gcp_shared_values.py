@@ -1,5 +1,3 @@
-"""Tests for scripts/check-gcp-shared-values.py (Spec 015, contracts/shared-values.md)."""
-
 import json
 import re
 import shutil
@@ -49,7 +47,6 @@ class CheckGcpSharedValuesTests(unittest.TestCase):
     def tearDown(self):
         self._tmp.cleanup()
 
-    # --- helpers -------------------------------------------------------------------------
 
     def edit(self, rel: str, old: str, new: str, count: int = 1):
         path = self.root / rel
@@ -70,7 +67,6 @@ class CheckGcpSharedValuesTests(unittest.TestCase):
         if field:
             self.assertRegex(res.stdout, rf"(?m)^CHECK {check_id} FAIL {re.escape(field)}:")
 
-    # --- the real repository -------------------------------------------------------------
 
     def test_real_repository_passes(self):
         res = run(REPO_ROOT)
@@ -88,7 +84,6 @@ class CheckGcpSharedValuesTests(unittest.TestCase):
         self.assertFalse(data["ok"])
         self.assertEqual(data["failures"][0]["id"], 1)
 
-    # --- one changed value per check ----------------------------------------------------
 
     def test_check_1_pool_machine_type(self):
         self.edit("clusters/gke/capacity.yaml", "machineType: e2-small", "machineType: e2-micro")
@@ -111,7 +106,6 @@ class CheckGcpSharedValuesTests(unittest.TestCase):
         self.assert_fails(4)
 
     def test_check_4_other_workload_identity_users_are_ignored(self):
-        # A second Workload Identity user (e.g. cert-manager) may name its own Google account.
         self.edit("clusters/gke/layers.yaml", "  patches:\n", (
             "  patches:\n"
             "    - target:\n"
@@ -178,7 +172,6 @@ class CheckGcpSharedValuesTests(unittest.TestCase):
         self.edit_shared(lambda d: d.update(zone="us-west1-b"))
         self.assert_fails(11)
 
-    # --- missing source ------------------------------------------------------------------
 
     def test_missing_source_exits_2(self):
         (self.root / "deploy/platform/traefik/service.yaml").unlink()

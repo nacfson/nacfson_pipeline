@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# OpenBao Post-Restore Reconciliation Safety Gate & Verification CLI
-# Strictly adheres to specs/002-internal-cluster-vault/spec.md (FR-014, SC-006)
-# ==============================================================================
 
 set -euo pipefail
 
@@ -15,7 +11,6 @@ echo "=================================================================="
 echo "OPENBAO POST-RESTORE RECONCILIATION SAFETY GATE (FR-014)"
 echo "=================================================================="
 
-# Check if running in mock/local test mode
 if [ "${VAULT_MOCK_MODE:-false}" = "true" ] || ! kubectl --request-timeout=1s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
   echo "[Mode: Simulated / Local Drill]"
   IS_SEALED="false"
@@ -61,7 +56,6 @@ echo "PASS: All 11 platform and workload credentials reconciled successfully."
 echo "=== [4/4] Lifting Safety Gate & Resuming Operational Execution ==="
 if [ "${VAULT_MOCK_MODE:-false}" != "true" ] && kubectl --request-timeout=1s get pod -n "${VAULT_NS}" "${VAULT_POD}" >/dev/null 2>&1; then
   kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- rm -f "${GATE_FLAG_FILE}" 2>/dev/null || true
-  # Log reconciliation event to OpenBao audit trail
   kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_TOKEN="${VAULT_TOKEN:-root}" \
     bao write sys/audit-hash/file input="SAFETY_GATE_LIFTED_BY_OPERATOR" 2>/dev/null || true
 fi

@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# Private Loopback Tunnel & Automated Live Verification for Hubble UI (Spec 010: FR-010, FR-013)
-#
-# Usage:
-#   ./scripts/open-hubble-ui.sh [--port <local-port>]   # Open foreground tunnel on 127.0.0.1:12000
-#   ./scripts/open-hubble-ui.sh --verify                # Run 5-point live cluster & flow verification
 
 set -euo pipefail
 
@@ -95,8 +90,6 @@ run_verify() {
   PF_LOG="$(mktemp /tmp/hubble-ui-pf-XXXXXX.log)"
   kubectl -n kube-system port-forward --address 127.0.0.1 svc/hubble-ui "${PORT}:80" >"${PF_LOG}" 2>&1 &
   PF_PID=$!
-  # Invoked only by the EXIT trap below. ShellCheck does not treat trap
-  # callbacks as calls (https://www.shellcheck.net/wiki/SC2329).
   # shellcheck disable=SC2329
   cleanup_pf() {
     kill "${PF_PID}" >/dev/null 2>&1 || true

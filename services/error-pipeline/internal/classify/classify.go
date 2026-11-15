@@ -1,7 +1,3 @@
-// Package classify decides which project log lines are errors. It implements
-// contracts/CONTRACT_LOG_SCHEMA.md version 2 (sections 2 to 4 and the legacy
-// read in section 6) and nothing more: no heuristics, no logfmt, no free text.
-// Redaction is not done here; it happens later, at render time.
 package classify
 
 import (
@@ -15,20 +11,14 @@ import (
 	"unicode/utf8"
 )
 
-// maxFieldBytes bounds every string field of an Event and the raw text of a
-// non-JSON line.
 const maxFieldBytes = 64 << 10
 
-// Source values of Event.Source.
 const (
 	SourceJSON  = "json"
 	SourceCrash = "crash"
 	SourceNginx = "nginx"
 )
 
-// Record is one stored log line as the error detector reads it from
-// VictoriaLogs: either the v2 platform envelope of contract section 1,
-// or the v3 dual-read envelope with pre-parsed project fields.
 type Record struct {
 	Time      time.Time
 	StreamID  string
@@ -38,7 +28,6 @@ type Record struct {
 	Node      string
 	Message   string
 
-	// v3 pre-parsed fields (populated when reading v3 parsed records)
 	Parsed           bool
 	Level            string
 	Msg              string
@@ -53,8 +42,6 @@ type Record struct {
 	DynamicKey       bool
 }
 
-// Event is the contract view of an error line. The JSON tags are the
-// contract keys.
 type Event struct {
 	Level            string `json:"level"`
 	Msg              string `json:"msg"`
@@ -64,21 +51,18 @@ type Event struct {
 	ExceptionMessage string `json:"exception.message,omitempty"`
 	Stacktrace       string `json:"exception.stacktrace,omitempty"`
 	Fingerprint      string `json:"error.fingerprint,omitempty"`
-	Source           string `json:"source"` // json, crash or nginx
+	Source           string `json:"source"`
 }
 
-// LineKind is the verdict of Line.
 type LineKind int
 
 const (
-	// NotError is a recognised structured line that is not an error.
 	NotError LineKind = iota
-	// Error is a complete error event.
+
 	Error
-	// CrashStart is a runtime crash signature (contract section 4). The
-	// following Plain lines are its stack trace.
+
 	CrashStart
-	// Plain is an unrecognised line. It is never an error by itself.
+
 	Plain
 )
 
@@ -96,8 +80,6 @@ func (k LineKind) String() string {
 	return fmt.Sprintf("LineKind(%d)", int(k))
 }
 
-// CrashSignatures are the line prefixes that mark a runtime crash
-// (contract section 4, "Runtime crash signatures").
 var CrashSignatures = []string{
 	"panic:",
 	"fatal error:",
@@ -105,9 +87,6 @@ var CrashSignatures = []string{
 	`Exception in thread "`,
 }
 
-// NginxLevels maps the bracketed level of a native nginx error-log line to a
-// contract level (contract section 4, "Third-party server formats"). Any
-// other nginx level is not an error.
 var NginxLevels = map[string]string{
 	"error": "error",
 	"crit":  "fatal",
@@ -126,7 +105,6 @@ var knownLevels = map[string]bool{
 	"debug": true, "info": true, "warn": true, "error": true, "fatal": true,
 }
 
-// truncate cuts s to at most n bytes without splitting a UTF-8 sequence.
 func truncate(s string, n int) string {
 	if len(s) <= n {
 		return s
@@ -137,17 +115,6 @@ func truncate(s string, n int) string {
 	return s[:n]
 }
 
-// Line classifies one raw message. It is pure.
-//
-// A message that starts with "{" and is one valid JSON object is a contract
-// section 2 line: it is an Error when its level is error or fatal, and
-// NotError otherwise (including a missing or unknown level). Otherwise a
-// crash signature prefix gives CrashStart, a native nginx line gives Error or
-// NotError by NginxLevels, and everything else is Plain.
-//
-// A JSON line is parsed whole, because a truncated object is not valid JSON;
-// each string field of the resulting Event is then cut to 64 KiB. For every
-// other format only the first 64 KiB of the message is considered.
 func Line(message string) (Event, LineKind) {
 	if strings.HasPrefix(message, "{") {
 		if ev, kind, ok := jsonLine(message); ok {
@@ -170,8 +137,6 @@ func Line(message string) (Event, LineKind) {
 	return Event{}, Plain
 }
 
-// EventFromRecord maps a pre-parsed v3 record directly into an Event and LineKind
-// without re-parsing raw JSON messages (R-5 / PR 2 dual-read).
 func EventFromRecord(r Record) (Event, LineKind) {
 	level := strings.ToLower(r.Level)
 	if alias, ok := levelAliases[level]; ok {
@@ -205,7 +170,7 @@ func jsonLine(message string) (Event, LineKind, bool) {
 		return Event{}, Plain, false
 	}
 	if _, err := dec.Token(); err != io.EOF {
-		return Event{}, Plain, false // trailing data: not one JSON object
+		return Event{}, Plain, false
 	}
 	flat := map[string]any{}
 	flatten("", obj, flat)
@@ -229,7 +194,7 @@ func jsonLine(message string) (Event, LineKind, bool) {
 		Source:           SourceJSON,
 	}
 	if ev.EventName == "" {
-		ev.EventName = str(flat, "kind") // contract section 6: legacy kind
+		ev.EventName = str(flat, "kind")
 	}
 	if level == "error" || level == "fatal" {
 		return ev, Error, true
@@ -237,9 +202,6 @@ func jsonLine(message string) (Event, LineKind, bool) {
 	return ev, NotError, true
 }
 
-// flatten joins nested object keys with "." into out. Arrays are kept as
-// opaque values. On a name collision (a dotted key and a nested object) the
-// first name in sorted key order wins, so the result is deterministic.
 func flatten(prefix string, in map[string]any, out map[string]any) {
 	keys := make([]string, 0, len(in))
 	for k := range in {
@@ -261,13 +223,11 @@ func flatten(prefix string, in map[string]any, out map[string]any) {
 	}
 }
 
-// str returns a string field truncated to 64 KiB. Non-strings give "".
 func str(flat map[string]any, key string) string {
 	s, _ := flat[key].(string)
 	return truncate(s, maxFieldBytes)
 }
 
-// msgField is str for "msg", except that a number or bool is formatted.
 func msgField(flat map[string]any) string {
 	switch v := flat["msg"].(type) {
 	case string:

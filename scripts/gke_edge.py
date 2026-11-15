@@ -1,9 +1,3 @@
-"""Single source for the GKE edge rules (Spec 015, specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md).
-
-Used by scripts/platform-preflight.py (Rule 2), scripts/render-invariants.py (Invariant 10) and
-scripts/check-gcp-shared-values.py (check 8), so the three can never disagree.
-"""
-
 EDGE_NAMESPACE = "platform"
 EDGE_NAME = "traefik"
 LB_CLASS = "networking.gke.io/l4-regional-external"
@@ -11,13 +5,11 @@ LB_ADDRESS_ANNOTATION = "networking.gke.io/load-balancer-ip-addresses"
 
 
 def is_edge_service(doc) -> bool:
-    """True for Service platform/traefik, whatever its spec."""
     meta = doc.get("metadata") or {}
     return doc.get("kind") == "Service" and meta.get("namespace") == EDGE_NAMESPACE and meta.get("name") == EDGE_NAME
 
 
 def edge_service_problems(doc) -> list[str]:
-    """Reasons Service platform/traefik does not match the edge contract (empty list = valid)."""
     meta = doc.get("metadata") or {}
     spec = doc.get("spec") or {}
     problems = []
@@ -33,5 +25,4 @@ def edge_service_problems(doc) -> list[str]:
 
 
 def is_allowed_edge_lb(doc) -> bool:
-    """True only for the single allowed LoadBalancer: platform/traefik matching the contract."""
     return is_edge_service(doc) and not edge_service_problems(doc)

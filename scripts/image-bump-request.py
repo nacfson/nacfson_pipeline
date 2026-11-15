@@ -1,18 +1,4 @@
 #!/usr/bin/env python3
-"""Turn an `image-built` dispatch from a project repo into an image-bump issue.
-
-Run by `.github/workflows/image-bump-request.yaml`.  The dispatch payload is a
-hint only: the project and source repository must match
-`config/image-pin-sources.json`, and every image is re-resolved and validated
-from the registry by the `update-project-images` helper (dry run, so no file
-is written).  The issue is the request; whoever handles it (a Claude session,
-Copilot, or a person) decides whether a pin PR is opened.
-
-Outcomes: invalid request or failed image validation -> exit 2, no issue;
-every image already pinned -> exit 0, no issue; an open issue already asks for
-the same commit -> exit 0, no issue; otherwise open a new issue and close older
-open issues for the same project whose roles it covers.
-"""
 
 from __future__ import annotations
 
@@ -45,7 +31,7 @@ MARKER_RE = re.compile(r"<!-- image-bump-request: (\{.*?\}) -->")
 
 
 class RequestError(RuntimeError):
-    """The dispatch cannot become an issue; the CLI exits with status 2."""
+    pass
 
 
 @dataclass
@@ -116,7 +102,6 @@ def parse_request(event: dict, event_name: str) -> Request:
 
 
 def validate_request(request: Request, sources: dict) -> Request:
-    """Check the hint against the allowlist and return it in canonical form."""
     projects = sources.get("projects") or {}
     entry = projects.get(request.project)
     if entry is None:
@@ -125,7 +110,6 @@ def validate_request(request: Request, sources: dict) -> Request:
             f"allowed: {', '.join(sorted(projects)) or 'none'}"
         )
     source_repo = entry["source_repo"]
-    # workflow_dispatch runs omit source_repo and take it from the allowlist.
     if request.source_repo and request.source_repo.lower() != source_repo.lower():
         raise RequestError(
             f"source repository {request.source_repo!r} is not allowed for "
@@ -158,7 +142,6 @@ def validate_request(request: Request, sources: dict) -> Request:
                 )
             validated_images[role] = ref
     run_url = request.run_url
-    # run_url is rendered as a link, so allow nothing but a run (attempt) URL.
     run_re = rf"https://github\.com/{re.escape(source_repo)}/actions/runs/\d+(/attempts/\d+)?"
     if run_url and not re.fullmatch(run_re, run_url, re.IGNORECASE):
         raise RequestError(f"run_url is not a run of {source_repo}: {run_url!r}")
@@ -183,7 +166,6 @@ def load_helper():
 
 
 def resolve(root: Path, request: Request, helper) -> dict:
-    """Dry-run the pin helper: resolve the commit tag or digest ref and validate each image."""
     image_args = [f"{role}={request.image_link(role)}" for role in request.roles]
     try:
         summary = helper.run_update(
@@ -232,14 +214,6 @@ def parse_marker(body: str) -> dict | None:
 
 
 def plan(request: Request, open_issues: list[dict]) -> tuple[int | None, list[int]]:
-    """Return (duplicate issue number or None, issue numbers to supersede).
-
-    A duplicate already asks for this commit and every requested role.  Older
-    requests are superseded only when this one covers all of their roles, so a
-    frontend-only build never drops a pending backend request.  Supersede
-    numbers are returned with a duplicate too, so a retry after a failed close
-    still closes them.
-    """
     roles = set(request.roles)
     duplicate: int | None = None
     candidates: list[tuple[int, set[str]]] = []
@@ -382,7 +356,7 @@ def close_superseded(repo: str, numbers: list[int], new_number: int, gh=run_gh) 
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
+    parser = argparse.ArgumentParser(description='Turn an `image-built` dispatch from a project repo into an image-bump issue.')
     parser.add_argument("--event-file", type=Path, required=True)
     parser.add_argument("--event-name", required=True)
     parser.add_argument("--repo", required=True, help="owner/name that receives the issue")
@@ -415,7 +389,6 @@ def main(argv: list[str] | None = None) -> int:
             number = duplicate
         else:
             number = open_issue(args.repo, label, title, body, gh=run_gh)
-        # Open first, then close: a failed close is retried by the next run.
         close_superseded(args.repo, supersede, number, gh=run_gh)
         print(f"request #{number}; superseded {supersede or 'none'}")
     except RequestError as exc:

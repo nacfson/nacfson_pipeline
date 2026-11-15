@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# verify-isolation.sh
-# Verifies Restricted Pod Security Admission, disabled token automounting,
-# ClusterIP-only services, and NetworkPolicy isolation rules.
-# ==============================================================================
 
 set -euo pipefail
 
@@ -20,7 +15,6 @@ if [ "${BREAK_GLASS:-0}" = "1" ] || [ "${BREAK_GLASS:-}" = "true" ]; then
   KUBECTL_OPTS=(--as=break-glass:verify --as-group=platform:break-glass)
 fi
 
-# Check 1: Static verification of Namespace Restricted PSA labels
 echo "[Check 1/4] Verifying Restricted PSA labels in deploy/projects/pn/boundary/namespace.yaml..."
 if grep -q "pod-security.kubernetes.io/enforce: restricted" "$REPO_ROOT/deploy/projects/pn/boundary/namespace.yaml"; then
   echo "  ✓ PASS: Namespace explicitly enforces Restricted Pod Security."
@@ -30,7 +24,6 @@ else
   exit 1
 fi
 
-# Check 2: ServiceAccount token automount disabled
 echo "[Check 2/4] Verifying ServiceAccount token automounting in deploy/projects/pn/boundary/service-account.yaml..."
 if grep -q "automountServiceAccountToken: false" "$REPO_ROOT/deploy/projects/pn/boundary/service-account.yaml"; then
   echo "  ✓ PASS: ServiceAccount token automounting is disabled."
@@ -40,7 +33,6 @@ else
   exit 1
 fi
 
-# Check 3: ClusterIP service enforcement (No NodePort / LoadBalancer)
 echo "[Check 3/4] Verifying ClusterIP-only Services in deploy/projects/pn/workloads/backend-service.yaml..."
 if grep -q "type: ClusterIP" "$REPO_ROOT/deploy/projects/pn/workloads/backend-service.yaml" && \
    ! grep -q "type: NodePort" "$REPO_ROOT/deploy/projects/pn/workloads/backend-service.yaml" && \
@@ -52,7 +44,6 @@ else
   exit 1
 fi
 
-# Check 4: NetworkPolicy default-deny ingress & egress with DNS/Postgres allowlist
 echo "[Check 4/4] Verifying NetworkPolicy rules in deploy/projects/pn/boundary/network-policy.yaml..."
 if grep -q "policyTypes:" "$REPO_ROOT/deploy/projects/pn/boundary/network-policy.yaml" && \
    grep -q -- "- Ingress" "$REPO_ROOT/deploy/projects/pn/boundary/network-policy.yaml" && \
@@ -65,11 +56,9 @@ else
   exit 1
 fi
 
-# Dynamic cluster checks (if live cluster is present)
 if command -v kubectl >/dev/null 2>&1 && kubectl get nodes >/dev/null 2>&1; then
   echo "Live cluster detected. Running dynamic rejection checks..."
   
-  # 1. Test root pod rejection
   set +e
   ERR_OUTPUT=$(kubectl "${KUBECTL_OPTS[@]}" run test-root-violation --namespace=proj-pn --image=busybox --restart=Never --overrides='{"spec":{"containers":[{"name":"root","image":"busybox","securityContext":{"runAsUser":0}}]}}' 2>&1)
   set -e

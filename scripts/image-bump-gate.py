@@ -1,30 +1,4 @@
 #!/usr/bin/env python3
-"""
-image-bump-gate.py — Claude Code PreToolUse hook that holds publishing for approval.
-
-Active only when `IMAGE_BUMP_GATE=1` is set, which the cloud environment used by
-the image-bump decision task sets (docs/image-bump-dispatch.md). That session
-is started by issues anyone can open, so in gate mode the hook allows only what
-the `image-bump-decision` skill needs and returns permissionDecision "ask" for
-everything else:
-
-  - GitHub connector tools: reads pass, plus issue state changes and the
-    skill's fixed comments on this repository; every other tool (PRs, pushes,
-    merges, branches, files, other comments) asks.
-  - Write / Edit / NotebookEdit and every tool not in UNGATED_TOOLS ask; the
-    skill edits files only through the pin helper.
-  - Bash: the command is split on `;`, `&&`, `||`, `|` and newlines, and every
-    part must fully match one of the skill's own command shapes
-    (ALLOWED_SEGMENTS), with refs, paths and arguments pinned. Redirections,
-    heredocs and command substitution always ask (the code-review receipt
-    step therefore prompts once).
-
-Approving the prompt for `git push` and the PR is the "Allow"; denying it is
-"Disallow". The fired task prompt and the issue text can never stand in for it.
-
-Everywhere else the hook prints nothing and exits 0, so ordinary sessions are
-unchanged.
-"""
 
 from __future__ import annotations
 
@@ -36,10 +10,6 @@ import sys
 GITHUB_PREFIX = "mcp__github__"
 UNGATED_GITHUB_PREFIXES = ("get_", "list_", "search_")
 UNGATED_GITHUB_TOOLS = {"issue_read", "pull_request_read"}
-# Issue writes are the only GitHub writes without a prompt, and only the exact
-# ones the skill makes on this repository: a state change, or one of its fixed
-# comments. Anything else could carry data out (for example a secret or
-# private source pasted into a comment), so it asks.
 HOME_REPO = ("nacfson", "nacfson_pipeline")
 ISSUE_STATE_KEYS = {"method", "owner", "repo", "issue_number", "state", "state_reason"}
 FIXED_COMMENTS = {
@@ -48,21 +18,14 @@ FIXED_COMMENTS = {
     "Already pinned; nothing to do.",
 }
 PIN_PR_COMMENT = re.compile(r"Pin PR: https://github\.com/nacfson/nacfson_pipeline/pull/\d+")
-# Every other tool asks in gate mode (file writes, other connectors, session
-# or schedule tools), so a tool added later is gated until listed here.
 UNGATED_TOOLS = {
     "Read", "Grep", "Glob", "AskUserQuestion", "PushNotification", "ToolSearch",
     "Skill", "Agent", "TaskCreate", "TaskUpdate", "TaskList", "TaskGet",
 }
 
-# Harmless redirections are removed before the "no redirection" check.
 SAFE_REDIRECTS = re.compile(r"\s*(?:2>&1|2?>\s*/dev/null)(?=\s|$)")
 UNSAFE_SHELL = re.compile(r"\$\(|`|<\(|>\(|>|<<")
 SEPARATORS = re.compile(r"\|\||&&|[;|\n]")
-# Each shape is pinned to what the skill runs: fixed refs, the worktree path
-# pattern, in-repo test directories, and the helper's exact arguments. A free
-# argument anywhere (a remote URL, a ref, a test directory, --source,
-# --output) could fetch and run code that the hook never sees.
 _SLUG = r"[a-z0-9][a-z0-9-]*"
 _WORKTREE = rf"\.worktrees/images-{_SLUG}-[0-9a-f]{{7}}"
 _DEPLOY_PATH = rf"deploy/projects/{_SLUG}/workloads/[\w.-]+\.ya?ml|docs/platform-architecture\.html"
@@ -92,8 +55,6 @@ ALLOWED_SEGMENTS = [
         r"(?:sudo )?apt-get (?:update|install -y skopeo)",
     )
 ]
-# The private-package login is allowed only as this whole command, so the
-# token is never printed on its own.
 GHCR_LOGIN = (
     '[ -n "${GHCR_READ_TOKEN:-}" ] && echo "$GHCR_READ_TOKEN" '
     "| skopeo login ghcr.io -u nacfson --password-stdin"
@@ -135,7 +96,6 @@ def github_write_allowed(name: str, tool_input: dict) -> bool:
 
 
 def decide(payload: dict, env=os.environ) -> dict | None:
-    """Return the hook output for `payload`, or None to stay silent."""
     if not enabled(env):
         return None
     tool = str(payload.get("tool_name") or "")

@@ -18,7 +18,6 @@ import (
 	"nacfson_pipeline/gateway/internal/keycloak"
 )
 
-// StatePayload carries PKCE digest and return state information across OIDC redirection.
 type StatePayload struct {
 	TargetURL      string `json:"target_url"`
 	Nonce          string `json:"nonce"`
@@ -26,32 +25,26 @@ type StatePayload struct {
 	VerifierDigest string `json:"vd,omitempty"`
 }
 
-// SessionCookieData (and SessionHandleData) stores authenticated session state inside the Vault-sealed opaque session_handle.
 type SessionCookieData struct {
 	SessionID    string            `json:"sid"`
 	Subject      string            `json:"sub"`
 	Issuer       string            `json:"iss"`
 	Audience     string            `json:"aud,omitempty"`
-	Tokens       map[string]string `json:"tokens"` // audience -> project access token
+	Tokens       map[string]string `json:"tokens"`
 	RefreshToken string            `json:"rt"`
 	CreatedAt    int64             `json:"iat"`
 }
 
-// SessionHandleData is the canonical alias for the Vault-sealed opaque session handle payload.
 type SessionHandleData = SessionCookieData
 
-// CodeExchanger exchanges an authorization code for tokens.
 type CodeExchanger interface {
 	ExchangeCode(code, codeVerifier, redirectURI string) (*keycloak.TokenResponse, error)
 }
 
-// TokenRefreshValidator is an optional extension of keycloak.SessionValidator that validates actual OAuth access tokens
-// and transparently refreshes expired short-lived tokens using the session's refresh token.
 type TokenRefreshValidator interface {
 	ValidateAndRefresh(sessionID, accessToken, refreshToken, targetAudience string) (bool, *keycloak.TokenResponse, error)
 }
 
-// Handler handles headless OAuth redirection, ticket exchange, and session_handle confirmation.
 type Handler struct {
 	Config         *config.Config
 	Validator      keycloak.SessionValidator
@@ -62,7 +55,6 @@ type Handler struct {
 	tickets        *TicketStore
 }
 
-// NewHandler creates a new Auth Handler.
 func NewHandler(cfg *config.Config, validator keycloak.SessionValidator, client *keycloak.Client) *Handler {
 	return &Handler{
 		Config:    cfg,
@@ -72,17 +64,14 @@ func NewHandler(cfg *config.Config, validator keycloak.SessionValidator, client 
 	}
 }
 
-// SetRevoker overrides the default session revoker.
 func (h *Handler) SetRevoker(revoker keycloak.SessionTerminator) {
 	h.Revoker = revoker
 }
 
-// SealSessionHandle encrypts and authenticates SessionHandleData using AES-256-GCM with the Gateway's Vault secret.
 func (h *Handler) SealSessionHandle(data SessionHandleData) (string, error) {
 	return sealJSON(data, h.Config.HMACSecret)
 }
 
-// UnsealSessionHandle decrypts or verifies a session_handle (supporting both AES-256-GCM v1 handles and HMAC-encoded handles).
 func (h *Handler) UnsealSessionHandle(raw string) (*SessionHandleData, error) {
 	if strings.HasPrefix(raw, sealedPrefix) {
 		var data SessionHandleData
@@ -94,16 +83,14 @@ func (h *Handler) UnsealSessionHandle(raw string) (*SessionHandleData, error) {
 	return h.decodeSessionCookie(raw)
 }
 
-// HandleForwardAuth confirms an opaque session_handle (via Authorization: Bearer <session_handle> or legacy cookie) when a shared project asks.
 func (h *Handler) HandleForwardAuth(w http.ResponseWriter, r *http.Request) {
-	// Capture any inbound Bearer session_handle before stripping client-supplied headers
+
 	rawAuthHeader := strings.TrimSpace(r.Header.Get("Authorization"))
 	var bearerCandidate string
 	if strings.HasPrefix(strings.ToLower(rawAuthHeader), "bearer ") {
 		bearerCandidate = strings.TrimSpace(rawAuthHeader[7:])
 	}
 
-	// 1. Inbound Header Sanitization: Strip client-supplied identity headers from request
 	r.Header.Del("X-User-Subject")
 	r.Header.Del("X-User-Issuer")
 	r.Header.Del("Authorization")
@@ -113,7 +100,6 @@ func (h *Handler) HandleForwardAuth(w http.ResponseWriter, r *http.Request) {
 		targetHost = r.Host
 	}
 
-	// 2. Resolve session from Bearer session_handle (primary) or legacy cookie (fallback for existing unit tests)
 	var session *SessionHandleData
 	if bearerCandidate != "" {
 		if s, err := h.UnsealSessionHandle(bearerCandidate); err == nil {
@@ -152,7 +138,6 @@ func (h *Handler) HandleForwardAuth(w http.ResponseWriter, r *http.Request) {
 		projectToken = session.Tokens[projectAudience]
 	}
 
-	// 3. Online Session Check & Transparent Token Refresh against Keycloak (Fail-Closed)
 	var refreshedSessionHandle string
 	if h.Validator != nil {
 		var active bool
@@ -204,13 +189,11 @@ func (h *Handler) HandleForwardAuth(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// 4. Confirm only a token issued for this project.
 	if projectToken == "" {
 		http.Error(w, `{"error":"unsigned_in","message":"Session is not confirmed for this project"}`, http.StatusUnauthorized)
 		return
 	}
 
-	// Success: Emit verified identity headers for the project backend
 	w.Header().Set("Authorization", "Bearer "+projectToken)
 	w.Header().Set("X-User-Subject", session.Subject)
 	w.Header().Set("X-User-Issuer", session.Issuer)
@@ -250,7 +233,6 @@ func (h *Handler) initiateLogin(w http.ResponseWriter, r *http.Request, targetUR
 		return
 	}
 
-	// Host-only browser binding cookie on auth.<domain> (prevents Login CSRF while keeping verifier out of the URL).
 	http.SetCookie(w, &http.Cookie{
 		Name:     "OIDC_AUTH_STATE",
 		Value:    verifier,
@@ -279,8 +261,6 @@ func (h *Handler) initiateLogin(w http.ResponseWriter, r *http.Request, targetUR
 	http.Redirect(w, r, loginURL, http.StatusFound)
 }
 
-// HandleSessionStart begins headless sign-in for a shared project.
-// return must already be an address on an allowed project door.
 func (h *Handler) HandleSessionStart(w http.ResponseWriter, r *http.Request) {
 	returnTo := r.URL.Query().Get("return")
 	if !h.returnHostAllowed(returnTo) {
@@ -312,7 +292,6 @@ func (h *Handler) returnHostAllowed(targetURL string) bool {
 	return false
 }
 
-// unsealState parses either an AES-256-GCM sealed state (v1.) or a legacy HMAC-signed state.
 func (h *Handler) unsealState(stateParam string) (*StatePayload, error) {
 	if strings.HasPrefix(stateParam, sealedPrefix) {
 		var st StatePayload
@@ -344,7 +323,6 @@ func (h *Handler) unsealState(stateParam string) (*StatePayload, error) {
 	return &st, nil
 }
 
-// HandleCallback processes OIDC authorization code return from Keycloak and redirects to the Project Backend with a one-time handoff ticket.
 func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 	code := r.URL.Query().Get("code")
 	stateParam := r.URL.Query().Get("state")
@@ -369,13 +347,11 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Verify expiration (10-minute window); if expired on a valid allowed project return URL, gracefully restart sign-in (FR-004).
 	if time.Now().Unix()-state.Timestamp > maxStateAgeSecs {
 		http.Redirect(w, r, "/oauth/start?return="+url.QueryEscape(state.TargetURL), http.StatusFound)
 		return
 	}
 
-	// Verify host-only browser binding cookie (prevents Login CSRF)
 	stateCookie, cookieErr := r.Cookie("OIDC_AUTH_STATE")
 	if cookieErr != nil || stateCookie.Value == "" {
 		http.Error(w, "missing or invalid auth state cookie", http.StatusBadRequest)
@@ -394,8 +370,6 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Exchange Code with Keycloak. Unreachable sign-in does not confirm the user.
-	// Note: OIDC_AUTH_STATE cookie is only cleared AFTER ExchangeCode succeeds so browser reloads within 10m succeed if Keycloak was transiently unavailable.
 	redirectURI := fmt.Sprintf("https://auth%s/oauth/callback", h.Config.CookieDomain)
 	var tokenResp *keycloak.TokenResponse
 	if h.Exchanger != nil {
@@ -411,7 +385,6 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Clear OIDC_AUTH_STATE cookie now that code exchange succeeded
 	http.SetCookie(w, &http.Cookie{
 		Name:     "OIDC_AUTH_STATE",
 		Value:    "",
@@ -448,14 +421,12 @@ func (h *Handler) HandleCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Redirect to the Project Backend callback URL with the one-time handoff ticket and zero cross-subdomain cookies.
 	q := returnURL.Query()
 	q.Set("ticket", ticket)
 	returnURL.RawQuery = q.Encode()
 	http.Redirect(w, r, returnURL.String(), http.StatusFound)
 }
 
-// HandleTicketExchange exchanges a one-time callback handoff ticket for a Vault-sealed opaque session_handle over internal HTTP (POST /auth/exchange).
 func (h *Handler) HandleTicketExchange(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, `{"error":"method_not_allowed"}`, http.StatusMethodNotAllowed)

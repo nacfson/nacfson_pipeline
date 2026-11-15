@@ -9,15 +9,12 @@ import (
 	"time"
 )
 
-// SessionTerminator defines the interface for revoking a user session in Keycloak.
 type SessionTerminator interface {
 	RevokeSession(sessionID string) error
 }
 
-// SessionRevocationClientID is the Keycloak service account that deletes one session.
 const SessionRevocationClientID = "session-revocation-client"
 
-// SessionClient handles administrative session revocation in Keycloak via Admin API.
 type SessionClient struct {
 	AdminURL     string
 	ClientID     string
@@ -25,7 +22,6 @@ type SessionClient struct {
 	HTTPClient   *http.Client
 }
 
-// NewSessionClient creates a new SessionClient using dedicated session-revocation credentials.
 func NewSessionClient(adminURL, clientID, clientSecret string) *SessionClient {
 	return &SessionClient{
 		AdminURL:     strings.TrimSuffix(adminURL, "/"),
@@ -37,7 +33,6 @@ func NewSessionClient(adminURL, clientID, clientSecret string) *SessionClient {
 	}
 }
 
-// getAdminToken fetches a service account access token using client credentials grant.
 func (c *SessionClient) getAdminToken() (string, error) {
 	tokenURL := fmt.Sprintf("%s/realms/platform/protocol/openid-connect/token", c.AdminURL)
 	data := url.Values{}
@@ -72,8 +67,6 @@ func (c *SessionClient) getAdminToken() (string, error) {
 	return tr.AccessToken, nil
 }
 
-// RevokeSession terminates a user session synchronously via Keycloak Admin API.
-// DELETE /admin/realms/platform/sessions/{sessionId}
 func (c *SessionClient) RevokeSession(sessionID string) error {
 	if sessionID == "" {
 		return fmt.Errorf("sessionID cannot be empty")

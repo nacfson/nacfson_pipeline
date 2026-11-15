@@ -48,7 +48,6 @@ func TestSameErrorDifferentIDsSameFingerprint(t *testing.T) {
 		t.Errorf("fingerprints differ: %s vs %s", Of(a), Of(b))
 	}
 
-	// Crash: signature line in Msg, no exception fields.
 	c := classified("blog", "web", "", "", "panic: runtime error: index out of range [5] with length 3")
 	d := classified("blog", "web", "", "", "panic: runtime error: index out of range [9] with length 12")
 	if Of(c) != Of(d) {

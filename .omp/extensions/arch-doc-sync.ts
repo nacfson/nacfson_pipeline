@@ -1,10 +1,3 @@
-/**
- * Oh-my-pi (omp / pi-coding-agent) Extension — Architecture Handbook Sync Gate.
- *
- * Enforces that `docs/platform-architecture.html` is updated whenever
- * architecture-affecting files are modified before `git commit` or turn completion.
- */
-
 import { execFileSync } from "node:child_process";
 import * as path from "node:path";
 
@@ -13,7 +6,6 @@ export default function archDocSyncExtension(pi: any): void {
   const checkerPath = path.join(repoRoot, "scripts", "check-arch-doc-sync.py");
   const reviewCyclePath = path.join(repoRoot, "scripts", "review-cycle.py");
 
-  // 1. Intercept bash/shell tool calls that run `git commit`
   pi.on("tool_call", async (event: any) => {
     const toolName = String(event?.toolName || "");
     if (toolName !== "bash" && toolName !== "run_command" && toolName !== "shell") {
@@ -60,7 +52,6 @@ export default function archDocSyncExtension(pi: any): void {
     return undefined;
   });
 
-  // 2. Verify working tree sync when agent finishes its turn
   pi.on("agent_end", async (_event: any, ctx: any) => {
     try {
       execFileSync("python3", [checkerPath, "--worktree"], {

@@ -39,11 +39,10 @@ func TestResolveProjectBindingMultiTenant(t *testing.T) {
 }
 
 func TestLivenessVsReadinessProbes(t *testing.T) {
-	// 1. When upstream PostgreSQL is unreachable, /healthz (liveness) MUST return 200 OK,
-	// while /readyz (readiness) MUST return 503 Service Unavailable.
+
 	cfgDown := &Config{
 		UpstreamPGHost:  "127.0.0.1",
-		UpstreamPGPort:  "1", // closed port
+		UpstreamPGPort:  "1",
 		AllowedProjects: parseAllowedProjects("pn"),
 	}
 	proxyDown := NewDBProxy(cfgDown)
@@ -63,7 +62,6 @@ func TestLivenessVsReadinessProbes(t *testing.T) {
 		t.Fatalf("expected /readyz 503 when upstream down, got %d", recReady.Code)
 	}
 
-	// 2. When upstream PostgreSQL TCP listener is reachable, /readyz MUST return 200 READY.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to start mock upstream listener: %v", err)
@@ -112,7 +110,6 @@ func TestWireHandshakeScopeAndTokenRejection(t *testing.T) {
 			t.Fatalf("write startup failed: %v", err)
 		}
 
-		// Read AuthCleartextPassword request (9 bytes)
 		authReq := make([]byte, 9)
 		if _, err := io.ReadFull(clientConn, authReq); err != nil {
 			t.Fatalf("read authReq failed: %v", err)
@@ -130,13 +127,11 @@ func TestWireHandshakeScopeAndTokenRejection(t *testing.T) {
 		return string(resp)
 	}
 
-	// Case 1: Invalid token -> SQLSTATE 28000
 	outInvalid := runHandshake("project:pn:workload:backend", "proj_pn", "invalid-token")
 	if !strings.Contains(outInvalid, "28000") {
 		t.Fatalf("expected SQLSTATE 28000 for invalid token, got %q", outInvalid)
 	}
 
-	// Case 2: Valid pn caller attempting to access keycloak DB -> SQLSTATE 42501
 	outCrossDB := runHandshake("project:pn:workload:backend", "keycloak", "project:pn:workload:backend")
 	if !strings.Contains(outCrossDB, "42501") {
 		t.Fatalf("expected SQLSTATE 42501 for cross-database access, got %q", outCrossDB)

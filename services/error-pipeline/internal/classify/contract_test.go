@@ -12,8 +12,6 @@ const contractPath = "../../../../contracts/CONTRACT_LOG_SCHEMA.md"
 
 var backticked = regexp.MustCompile("`([^`]+)`")
 
-// tableUnder returns the cells of the first markdown table after the given
-// heading line, header row first, separator row removed.
 func tableUnder(t *testing.T, doc, heading string) [][]string {
 	t.Helper()
 	lines := strings.Split(doc, "\n")
@@ -39,7 +37,7 @@ func tableUnder(t *testing.T, doc, heading string) [][]string {
 			cells[j] = strings.TrimSpace(cells[j])
 		}
 		if strings.Trim(cells[0], "-: ") == "" {
-			continue // separator row
+			continue
 		}
 		rows = append(rows, cells)
 	}

@@ -1,8 +1,3 @@
-"""Static checks on infra/gcp Terraform (Spec 015, User Stories 2 and 4).
-
-Stdlib only: the .tf files are scanned as text, so no Terraform binary or credentials are needed.
-"""
-
 import importlib.util
 import json
 import re
@@ -13,7 +8,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 INFRA = REPO_ROOT / "infra" / "gcp"
 RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "gke-terraform.md"
 
-# One HCL comment stripper for the checker and these tests (handles #, // and /* */).
 _spec = importlib.util.spec_from_file_location(
     "check_gcp_shared_values", REPO_ROOT / "scripts" / "check-gcp-shared-values.py")
 _checker = importlib.util.module_from_spec(_spec)
@@ -24,7 +18,6 @@ RESOURCE_RE = re.compile(r'^resource\s+"([^"]+)"\s+"([^"]+)"\s*\{', re.MULTILINE
 
 
 def load_resources(root: Path) -> dict[tuple[str, str], str]:
-    """Return {(type, name): body} for every resource block under root."""
     resources: dict[tuple[str, str], str] = {}
     for tf in sorted(root.glob("*.tf")):
         text = strip_hcl_comments(tf.read_text(encoding="utf-8"))
@@ -75,7 +68,6 @@ class TerraformProtectionTests(unittest.TestCase):
             self.assertRegex(body, r"disable_on_destroy\s*=\s*false")
 
     def test_only_the_web_firewall_rule(self):
-        # Code review finding 10: Terraform owns the web opening; GKE's own LB firewall rule is off.
         rules = [k for k in self.gke if k[0] == "google_compute_firewall"]
         self.assertEqual(rules, [("google_compute_firewall", "web_ingress")])
         body = self.gke[("google_compute_firewall", "web_ingress")]
@@ -95,13 +87,11 @@ class TerraformProtectionTests(unittest.TestCase):
         self.assertFalse(has_prevent_destroy(body))
 
     def test_public_api_without_authorized_networks(self):
-        # FR-025: the API is gated by Google IAM and RBAC, not by source networks.
         body = self.gke[("google_container_cluster", "this")]
         self.assertNotIn("master_authorized_networks_config", body)
 
 
 class RunbookTargetTests(unittest.TestCase):
-    """T036: every -target in the removal runbook exists in infra/gcp/gke under that address."""
 
     def test_removal_targets_exist(self):
         gke = load_resources(INFRA / "gke")

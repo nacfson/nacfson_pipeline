@@ -1,10 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# Vault Registry Proxy Retirement Verification (Spec 012 FR-004)
-# Asserts that vault-registry-proxy manifests, OpenBao policy, K3s mirror
-# template, and Go binary have been cleanly retired in favor of public GAR
-# @sha256 digest pulls with zero pull credentials.
-# ==============================================================================
 
 set -euo pipefail
 

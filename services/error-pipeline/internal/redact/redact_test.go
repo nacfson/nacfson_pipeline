@@ -37,11 +37,11 @@ func TestRedact(t *testing.T) {
 		{"escaped quotes in nested json", `password=\"abc\" user=a`, `password=[REDACTED] user=a`},
 		{"task- is not an sk key", "task-abcdefghijklmnopqrstuvwxyz", "task-abcdefghijklmnopqrstuvwxyz"},
 		{"already redacted", `{"password":"[REDACTED]"}`, `{"password":"[REDACTED]"}`},
-		// fix round 1: Bearer behind a key=value separator.
+
 		{"authorization assign bearer", "authorization=Bearer abc.def", "authorization=[REDACTED]"},
 		{"authorization assign BEARER", "Authorization=BEARER abc123", "Authorization=[REDACTED]"},
 		{"json authorization bearer", `{"authorization":"Bearer abc","user":"a"}`, `{"authorization":"[REDACTED]","user":"a"}`},
-		// fix round 1: array/object values.
+
 		{"json cookie array", `{"Cookie":["sid=abc123"]}`, `{"Cookie":"[REDACTED]"`},
 		{"json set-cookie array", `{"Set-Cookie":["sid=abc123; Path=/"]}`, `{"Set-Cookie":"[REDACTED]"`},
 		{"json token object", `{"token":{"v":"abc123"}}`, `{"token":"[REDACTED]"`},
@@ -49,7 +49,7 @@ func TestRedact(t *testing.T) {
 		{"json nested array", `{"token":[["abc123"],["d]ef"]],"u":"v"}`, `{"token":"[REDACTED]"`},
 		{"passphrase", `{"passphrase":"abc123"}`, `{"passphrase":"[REDACTED]"}`},
 		{"client_secret json", `{"client_secret":"abc123"}`, `{"client_secret":"[REDACTED]"}`},
-		// fix round 1: python repr, spaces around =, truncated JSON.
+
 		{"python repr", `{'password': 'hunter2', 'user': 'a'}`, `{'password': "[REDACTED]", 'user': 'a'}`},
 		{"python repr double value", `{'token': "abc 123", 'user': 'a'}`, `{'token': "[REDACTED]", 'user': 'a'}`},
 		{"spaces around equals", "password = hunter2 user=a", "password = [REDACTED] user=a"},

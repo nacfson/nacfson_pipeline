@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Refresh docs/issues/index.md from GitHub without rewriting FIX bodies."""
 
 import json
 import os
@@ -9,7 +8,6 @@ import sys
 import tempfile
 from pathlib import Path
 
-# shortcut: --limit 100 drops later issues; their rows stay, raise it past 100 issues
 GH_CMD = [
     "gh",
     "issue",
@@ -24,7 +22,6 @@ GH_CMD = [
     "number,title,state",
 ]
 ISSUE_URL = "https://github.com/nacfson/nacfson_pipeline/issues/{number}"
-# shortcut: a title containing | or a newline splits the row, escape titles if one shows up
 ISSUE_CELL = re.compile(r"\[#(\d+)\]\(([^)]+)\)\s*(.*)\Z")
 
 
@@ -167,7 +164,6 @@ def main():
     except (json.JSONDecodeError, KeyError, TypeError, ValueError):
         return 1
 
-    # cwd is the tree to update. The plugin sets it; the failure test points it at a copy.
     issues_dir = Path.cwd() / "docs" / "issues"
     index_path = issues_dir / "index.md"
     if not index_path.is_file():

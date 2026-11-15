@@ -4,7 +4,7 @@ To prevent rule drift across agent harnesses (`agy`, `claude`, `omp`, `opencode`
 
 1. **Architecture, Context & Engineering Rules**: [`AGENTS.md`](AGENTS.md)
 2. **Code Review & Verification Rulebook**: [`REVIEW.md`](REVIEW.md)
-3. **Constitutional Invariants (`v2.3.1`)**: [`.specify/memory/constitution.md`](.specify/memory/constitution.md)
+3. **Constitutional Invariants (`v2.4.0`)**: [`.specify/memory/constitution.md`](.specify/memory/constitution.md)
 4. **Canonical Interactive Architecture Handbook**: [`docs/platform-architecture.html`](docs/platform-architecture.html)
 
 ## Required Verification & Quality Gates

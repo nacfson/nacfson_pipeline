@@ -1,4 +1,3 @@
-# Sensitive platform, identity, security, and governance paths require repository owner sign-off.
 /gateway/ @nacfson
 /services/vault-proxies/ @nacfson
 /deploy/platform/ @nacfson

@@ -120,7 +120,7 @@ func TestSaveIsAtomic(t *testing.T) {
 
 func TestSaveFailureLeavesNoTempFile(t *testing.T) {
 	dir := t.TempDir()
-	// A directory at the target path makes the final rename fail.
+
 	path := filepath.Join(dir, "state.json")
 	if err := os.Mkdir(path, 0o700); err != nil {
 		t.Fatal(err)

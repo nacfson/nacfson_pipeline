@@ -36,9 +36,6 @@ rules:
       - get
       - list
       - watch
-  # Traefik's kubernetescrd and kubernetesingress providers start a Secrets informer in every
-  # watched namespace (all namespaces here), so a Role scoped to `platform` leaves the cache
-  # unsynced and neither provider ever loads a route. Read-only, same as the upstream chart.
   - apiGroups:
       - ""
     resources:

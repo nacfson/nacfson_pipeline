@@ -1,11 +1,3 @@
-/**
- * OpenCode Plugin — Architecture Handbook Synchronization Gate.
- *
- * Hooks into OpenCode tool execution and session idle events to enforce that
- * `docs/platform-architecture.html` is updated whenever architecture-affecting
- * files change.
- */
-
 import { execFileSync } from "node:child_process";
 import * as path from "node:path";
 

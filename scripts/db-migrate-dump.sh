@@ -1,18 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# db-migrate-dump.sh
-# Standardized, Zero-Plaintext Pipeline Database Dump Import / Export Tool
-# Governing Contract: contracts/CONTRACT_DATABASE.md (§6)
-#
-# Features:
-#   - Project-agnostic: maps --project <slug> -> db: proj_<slug>, role: user_<slug>
-#   - Zero plaintext passwords on workstation: streams over `kubectl exec -i`
-#     (auto-detects local kubectl vs `ssh <host> sudo k3s kubectl`)
-#   - Automatic pre-restore safety snapshot on postgres-0 (/tmp or /backups)
-#   - Supports .dump (custom), .dump.gz, .sql, .sql.gz, and .tar.gz archives
-#   - Enforces ownership normalization (REASSIGN OWNED / GRANT ALL to user_<slug>)
-#   - Supports --export to pull a verified .dump.gz + .sha256 from the cluster
-# ==============================================================================
 
 set -euo pipefail
 
@@ -21,7 +7,7 @@ PROJECT_EXPLICIT="false"
 IS_KEYCLOAK="false"
 DUMP_PATH=""
 EXPORT_PATH=""
-MODE="full" # full | data
+MODE="full"
 SSH_HOST="${SSH_HOST:-}"
 PG_NAMESPACE="${PG_NAMESPACE:-identity}"
 PG_POD="${PG_POD:-postgres-0}"
@@ -115,7 +101,6 @@ if [[ "${IS_KEYCLOAK}" == "true" ]]; then
   TARGET_DB="keycloak"
   TARGET_ROLE="${KEYCLOAK_DB_ROLE:-keycloak_user}"
 else
-  # Normalize and validate project slug
   PROJECT_SLUG="$(echo "${PROJECT_SLUG}" | tr '[:upper:]' '[:lower:]' | sed -E 's/^proj[-_]//; s/-/_/g')"
   if [[ ! "${PROJECT_SLUG}" =~ ^[a-z0-9_]+$ ]]; then
     echo "Error: Invalid project slug '${PROJECT_SLUG}' (must be alphanumeric/underscore)." >&2
@@ -136,7 +121,6 @@ if [[ -z "${DUMP_PATH}" && -z "${EXPORT_PATH}" ]] || [[ -n "${DUMP_PATH}" && -n 
   exit 1
 fi
 
-# Helper to run kubectl locally or over SSH on the K3s host
 KUBE_MODE="local"
 resolve_kubectl() {
   if [[ "${DRY_RUN}" == "true" ]]; then
@@ -188,9 +172,6 @@ kube_exec_stdin() {
   fi
 }
 
-# ==============================================================================
-# EXPORT MODE
-# ==============================================================================
 if [[ -n "${EXPORT_PATH}" ]]; then
   resolve_kubectl
   echo "=== [Pipeline DB Export] Exporting ${TARGET_DB} (role: ${TARGET_ROLE}) -> ${EXPORT_PATH} ==="
@@ -208,9 +189,6 @@ if [[ -n "${EXPORT_PATH}" ]]; then
   exit 0
 fi
 
-# ==============================================================================
-# IMPORT MODE
-# ==============================================================================
 if [[ ! -f "${DUMP_PATH}" ]]; then
   echo "Error: Dump file not found at '${DUMP_PATH}'." >&2
   exit 1
@@ -254,7 +232,6 @@ if [[ -z "${PAYLOAD_FILE}" || ! -f "${PAYLOAD_FILE}" ]]; then
   exit 1
 fi
 
-# Detect whether payload is PostgreSQL custom format ("PGDMP" magic header) or plain SQL
 HEADER_MAGIC="$(head -c 5 "${PAYLOAD_FILE}" 2>/dev/null || true)"
 if [[ "${HEADER_MAGIC}" == "PGDMP" ]]; then
   ARCHIVE_FORMAT="custom"
@@ -344,4 +321,3 @@ echo "=== [5/5] Verifying Restored Tables in ${TARGET_DB} ==="
 kube_exec env PGUSER="${TARGET_ROLE}" PGDATABASE="${TARGET_DB}" psql -U "${TARGET_ROLE}" -d "${TARGET_DB}" -c '\dt'
 
 echo "=== Migration Completed Successfully for ${TARGET_DB} (role: ${TARGET_ROLE}) ==="
-

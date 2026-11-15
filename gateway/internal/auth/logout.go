@@ -10,17 +10,14 @@ import (
 	"strings"
 )
 
-// GenerateCSRFToken generates a deterministic HMAC CSRF token bound to the session ID.
 func (h *Handler) GenerateCSRFToken(sessionID string) string {
 	mac := hmac.New(sha256.New, h.Config.HMACSecret)
 	mac.Write([]byte("csrf:" + sessionID))
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-// ValidateCSRF verifies that the request originates from an authorized project domain
-// or carries a valid cryptographic CSRF token.
 func (h *Handler) ValidateCSRF(r *http.Request, sessionID string) bool {
-	// Check 1: X-CSRF-Token header
+
 	csrfHeader := r.Header.Get("X-CSRF-Token")
 	if csrfHeader != "" {
 		expected := h.GenerateCSRFToken(sessionID)
@@ -37,7 +34,6 @@ func (h *Handler) ValidateCSRF(r *http.Request, sessionID string) bool {
 		}
 	}
 
-	// Check 2: Origin or Referer domain validation
 	origin := r.Header.Get("Origin")
 	if origin == "" {
 		origin = r.Header.Get("Referer")
@@ -56,8 +52,6 @@ func (h *Handler) ValidateCSRF(r *http.Request, sessionID string) bool {
 	return false
 }
 
-// HandleLogout processes user-initiated session termination on POST /auth/logout.
-// Supports both Authorization: Bearer <session_handle> (4-layer BFF flow) and legacy cookie revocation.
 func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "Method Not Allowed", http.StatusMethodNotAllowed)
@@ -82,7 +76,7 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if session == nil {
-		// Legacy Cookie Precondition
+
 		cookie, err := r.Cookie(h.Config.CookieName)
 		if err != nil || cookie.Value == "" {
 			w.Header().Set("Content-Type", "application/json")
@@ -101,7 +95,6 @@ func (h *Handler) HandleLogout(w http.ResponseWriter, r *http.Request) {
 		}
 		session = s
 
-		// CSRF Protection Precondition (required when browser cookies are used)
 		if !h.ValidateCSRF(r, session.SessionID) {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusForbidden)

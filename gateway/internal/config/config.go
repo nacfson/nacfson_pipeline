@@ -8,7 +8,6 @@ import (
 	"time"
 )
 
-// Config represents runtime settings for the Go Authentication Gateway.
 type Config struct {
 	Port                    int
 	KeycloakIssuerURL       string
@@ -25,7 +24,6 @@ type Config struct {
 	SessionTimeout          time.Duration
 }
 
-// LoadFromEnv loads and validates configuration from environment variables and ephemeral tmpfs mounts.
 func LoadFromEnv() (*Config, error) {
 	portStr := getEnvOrDefault("GATEWAY_PORT", "8080")
 	port, err := strconv.Atoi(portStr)
@@ -62,23 +60,19 @@ func LoadFromEnv() (*Config, error) {
 		}
 	}
 
-	// 1. Load HMAC Secret (check ephemeral tmpfs first, then environment variable)
 	hmacSecretStr := readSecretFileOrEnv("GATEWAY_HMAC_SECRET_FILE", "/var/run/secrets/gateway/hmac", "GATEWAY_HMAC_SECRET", "default-insecure-secret-for-dev-32b!")
 	if len(hmacSecretStr) < 32 {
 		return nil, fmt.Errorf("GATEWAY_HMAC_SECRET must be at least 32 bytes")
 	}
 
-	// 2. Load optional Previous HMAC Secret for zero-downtime rotation grace period
 	hmacSecretPrevStr := readSecretFileOrEnv("GATEWAY_HMAC_SECRET_PREVIOUS_FILE", "/var/run/secrets/gateway/hmac_previous", "GATEWAY_HMAC_SECRET_PREVIOUS", "")
 	var hmacSecretPrevious []byte
 	if len(hmacSecretPrevStr) >= 32 {
 		hmacSecretPrevious = []byte(hmacSecretPrevStr)
 	}
 
-	// 3. Load Gateway Client Secret (for OIDC authorization code exchange)
 	clientSecret := readSecretFileOrEnv("GATEWAY_CLIENT_SECRET_FILE", "/var/run/secrets/gateway/client_secret", "GATEWAY_CLIENT_SECRET", "")
 
-	// 4. Load Session Revocation Client Secret (for Admin API session termination)
 	sessionRevocationSecret := readSecretFileOrEnv("SESSION_REVOCATION_CLIENT_SECRET_FILE", "/var/run/secrets/gateway/session_revocation_secret", "SESSION_REVOCATION_CLIENT_SECRET", "")
 
 	return &Config{
@@ -99,17 +93,17 @@ func LoadFromEnv() (*Config, error) {
 }
 
 func readSecretFileOrEnv(fileEnvVar, defaultPath, envVar, fallback string) string {
-	// Check custom file path env var
+
 	if path := os.Getenv(fileEnvVar); path != "" {
 		if content, err := os.ReadFile(path); err == nil {
 			return strings.TrimSpace(string(content))
 		}
 	}
-	// Check standard ephemeral tmpfs path
+
 	if content, err := os.ReadFile(defaultPath); err == nil {
 		return strings.TrimSpace(string(content))
 	}
-	// Fall back to environment variable
+
 	if val := os.Getenv(envVar); val != "" {
 		return strings.TrimSpace(val)
 	}
@@ -123,7 +117,6 @@ func getEnvOrDefault(key, fallback string) string {
 	return fallback
 }
 
-// CanonicalIssuer returns the canonical public realm issuer URL (KEYCLOAK_PUBLIC_URL falling back to KEYCLOAK_ISSUER_URL).
 func (c *Config) CanonicalIssuer() string {
 	if c == nil {
 		return ""
@@ -134,7 +127,6 @@ func (c *Config) CanonicalIssuer() string {
 	return strings.TrimSuffix(strings.TrimSpace(c.KeycloakIssuerURL), "/")
 }
 
-// IsAllowedIssuer verifies whether a session issuer matches the configured canonical public or internal Keycloak issuer.
 func (c *Config) IsAllowedIssuer(issuer string) bool {
 	if c == nil {
 		return false

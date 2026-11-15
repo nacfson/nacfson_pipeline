@@ -1,5 +1,3 @@
-# Applied by the project-boundary reconciler for proj-blog.
-# This file does not grant business permissions.
 apiVersion: v1
 kind: ConfigMap
 metadata:

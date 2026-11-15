@@ -1,6 +1,3 @@
-// Package state persists the error detector's VictoriaLogs cursor and group
-// table as one JSON file, so a restart neither re-announces known errors nor
-// loses an open collection window.
 package state
 
 import (
@@ -15,19 +12,14 @@ import (
 	"nacfson_pipeline/services/error-pipeline/internal/group"
 )
 
-// version is the only on-disk format Load accepts. Save always writes it.
 const version = 1
 
-// Snapshot is the persisted detector state.
 type Snapshot struct {
 	Version int           `json:"version"`
 	Cursor  time.Time     `json:"cursor"`
 	Groups  []group.Group `json:"groups"`
 }
 
-// Load reads the snapshot at path. A missing file is not an error: it returns
-// an empty Snapshot. Corrupt JSON or an unsupported version returns an error,
-// and the caller decides whether to start fresh.
 func Load(path string) (Snapshot, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
@@ -46,10 +38,6 @@ func Load(path string) (Snapshot, error) {
 	return s, nil
 }
 
-// Save writes s to path atomically: it writes a temporary file in the same
-// directory, fsyncs it, and renames it over path. The stored version is
-// always 1, whatever s.Version holds. On failure the temporary file is
-// removed.
 func Save(path string, s Snapshot) (err error) {
 	s.Version = version
 	data, err := json.Marshal(s)
@@ -64,7 +52,7 @@ func Save(path string, s Snapshot) (err error) {
 	tmp := f.Name()
 	defer func() {
 		if err != nil {
-			f.Close() // best effort; a second Close error is irrelevant here
+			f.Close()
 			os.Remove(tmp)
 		}
 	}()

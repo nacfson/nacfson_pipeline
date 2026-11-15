@@ -1,5 +1,3 @@
-# Names and meanings are fixed by specs/015-gke-terraform-infra/contracts/terraform-outputs.md.
-
 output "cluster_name" {
   description = "GKE cluster name."
   value       = google_container_cluster.this.name

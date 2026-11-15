@@ -76,7 +76,6 @@ func TestSharedVerificationModuleFourLayerBFFEndToEnd(t *testing.T) {
 	gwServer := httptest.NewServer(gwMux)
 	defer gwServer.Close()
 
-	// Create Project PN Verifier and Project Alpha Verifier using the exact same shared module
 	pnVerifier, err := projectauth.NewVerifier(projectauth.Config{
 		PublicAppURL:       "https://pn.nacfson.cloud",
 		PublicAuthURL:      gwServer.URL,
@@ -123,7 +122,6 @@ func TestSharedVerificationModuleFourLayerBFFEndToEnd(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})))
 
-	// Step 1: Project Frontend calls Project Backend GET /api/auth/login
 	loginReq := httptest.NewRequest(http.MethodGet, "https://pn.nacfson.cloud/api/auth/login?next=/dashboard", nil)
 	loginRR := httptest.NewRecorder()
 	pnMux.ServeHTTP(loginRR, loginReq)
@@ -135,7 +133,6 @@ func TestSharedVerificationModuleFourLayerBFFEndToEnd(t *testing.T) {
 		t.Fatalf("expected __Host-pa_nonce cookie from /api/auth/login, got %+v", loginCookies)
 	}
 
-	// Step 2: Follow redirect to Gateway /oauth/start -> verify kc_idp_hint=google and encrypted state
 	startLoc, _ := loginRR.Result().Location()
 	startReq := httptest.NewRequest(http.MethodGet, startLoc.RequestURI(), nil)
 	startRR := httptest.NewRecorder()
@@ -150,7 +147,6 @@ func TestSharedVerificationModuleFourLayerBFFEndToEnd(t *testing.T) {
 	stateParam := kcLoc.Query().Get("state")
 	gwStartCookies := startRR.Result().Cookies()
 
-	// Step 3: Google + Keycloak returns to Gateway /oauth/callback with host-only OIDC_AUTH_STATE binding cookie
 	cbGwReq := httptest.NewRequest(http.MethodGet, "/oauth/callback?code=kc-code-1&state="+stateParam, nil)
 	for _, c := range gwStartCookies {
 		cbGwReq.AddCookie(c)
@@ -161,9 +157,8 @@ func TestSharedVerificationModuleFourLayerBFFEndToEnd(t *testing.T) {
 		t.Fatalf("expected 302 from Gateway /oauth/callback, got %d: %s", cbGwRR.Code, cbGwRR.Body.String())
 	}
 
-	// Step 4: Follow redirect to Project Backend /api/auth/callback?ticket=...&pa_bind=...
 	beCbLoc, _ := cbGwRR.Result().Location()
-	// Verify that an unbound Login CSRF request without __Host-pa_nonce is rejected with 400
+
 	csrfBeReq := httptest.NewRequest(http.MethodGet, beCbLoc.String(), nil)
 	csrfBeRR := httptest.NewRecorder()
 	pnMux.ServeHTTP(csrfBeRR, csrfBeReq)
@@ -186,7 +181,6 @@ func TestSharedVerificationModuleFourLayerBFFEndToEnd(t *testing.T) {
 		}
 	}
 
-	// Step 5: Project Frontend exchanges one-time pickup code via POST /api/auth/session for JSON { session_handle, user }
 	feLoc, _ := beCbRR.Result().Location()
 	pickupCode := feLoc.Query().Get("code")
 	if pickupCode == "" {
@@ -214,7 +208,6 @@ func TestSharedVerificationModuleFourLayerBFFEndToEnd(t *testing.T) {
 		t.Fatalf("unexpected session payload: %+v", sessPayload)
 	}
 
-	// Replaying the same pickup code MUST be rejected (single-use enforcement)
 	replaySessReq := httptest.NewRequest(http.MethodPost, "https://pn.nacfson.cloud/api/auth/session", strings.NewReader(`{"code":"`+pickupCode+`"}`))
 	replaySessRR := httptest.NewRecorder()
 	pnMux.ServeHTTP(replaySessRR, replaySessReq)
@@ -222,7 +215,6 @@ func TestSharedVerificationModuleFourLayerBFFEndToEnd(t *testing.T) {
 		t.Fatalf("expected 401 on replayed pickup code, got %d", replaySessRR.Code)
 	}
 
-	// Step 6: Project Frontend calls GET /api/auth/me with Authorization: Bearer <session_handle> (and forged headers that must be stripped)
 	meReq := httptest.NewRequest(http.MethodGet, "https://pn.nacfson.cloud/api/auth/me", nil)
 	meReq.Header.Set("Authorization", "Bearer "+sessPayload.SessionHandle)
 	meReq.Header.Set("X-User-Subject", "spoofed-attacker")
@@ -237,7 +229,6 @@ func TestSharedVerificationModuleFourLayerBFFEndToEnd(t *testing.T) {
 		t.Fatalf("expected verified subject 'google-user-777' (spoofed header stripped), got %q", verifiedID.Subject)
 	}
 
-	// Step 7: Cross-Project Isolation — presenting Project PN's session_handle to Project Alpha MUST be denied
 	crossReq := httptest.NewRequest(http.MethodGet, "https://alpha.nacfson.cloud/api/auth/me", nil)
 	crossReq.Header.Set("Authorization", "Bearer "+sessPayload.SessionHandle)
 	crossRR := httptest.NewRecorder()
@@ -246,7 +237,6 @@ func TestSharedVerificationModuleFourLayerBFFEndToEnd(t *testing.T) {
 		t.Fatalf("expected 401 Unauthorized when presenting Project PN handle to Project Alpha, got %d", crossRR.Code)
 	}
 
-	// Step 8: Online Logout via POST /api/auth/logout immediately invalidates subsequent requests
 	logoutReq := httptest.NewRequest(http.MethodPost, "https://pn.nacfson.cloud/api/auth/logout", nil)
 	logoutReq.Header.Set("Authorization", "Bearer "+sessPayload.SessionHandle)
 	logoutRR := httptest.NewRecorder()

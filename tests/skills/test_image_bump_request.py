@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-"""Unit tests for scripts/image-bump-request.py (dispatch -> image-bump issue)."""
 
 from __future__ import annotations
 

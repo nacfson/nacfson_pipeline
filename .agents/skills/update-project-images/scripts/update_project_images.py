@@ -1,14 +1,4 @@
 #!/usr/bin/env python3
-"""Resolve project image links, validate the images, and update the image pins.
-
-This helper is used by the ``update-project-images`` skill.  It edits only the
-main containers of Deployments under ``deploy/projects/<slug>/workloads`` and
-the tenant image-pin inventory in ``docs/platform-architecture.html``.
-
-Image validation is registry-only by default: manifests and the small config
-blobs are inspected, but layers are never downloaded.  ``--pull-check`` is an
-optional, non-blocking local pull.
-"""
 
 from __future__ import annotations
 
@@ -43,7 +33,7 @@ PINS_END = "<!-- PROJECT_IMAGE_PINS:END -->"
 
 
 class UpdateError(RuntimeError):
-    """A user-actionable failure; the CLI exits with status 2."""
+    pass
 
 
 @dataclass
@@ -221,7 +211,6 @@ def _same_allowed_package(repo_a: str, repo_b: str) -> bool:
 
 
 def _image_parts(image: str) -> tuple[str, str]:
-    """Return (repo, digest). A tag-pinned image returns an empty digest."""
     if "@" in image:
         repo, digest = image.rsplit("@", 1)
         if not DIGEST_RE.fullmatch(digest):
@@ -233,7 +222,6 @@ def _image_parts(image: str) -> tuple[str, str]:
 
 
 def _iter_deployments(workload_dir: Path):
-    """Yield (path, deployment, container, image, containerPort) for main containers."""
     if yaml is None:
         raise UpdateError("PyYAML is required to read project manifests")
     paths = sorted(
@@ -1129,10 +1117,6 @@ def _summary_images(updates: list[ImageUpdate], root: Path) -> list[dict]:
                 "warnings": report.warnings if report else [],
                 "resolution_warnings": update.resolution_warnings,
                 "skipped": report.skipped if report else [],
-                # Explicit, because empty platforms/checks/evidence otherwise
-                # reads the same as "validated and clean". True means the image
-                # was never inspected; a consumer must say so rather than imply
-                # a pass. A noop role is not "skipped": it needed no work.
                 "validation_skipped": bool(
                     report is None and update.new_image != target.old_image
                 ),
@@ -1180,12 +1164,6 @@ def run_update(
         new_image = f"{target_repo}@{resolved.digest}"
         noop = target.old_image == new_image
         if noop or skip_validation:
-            # `skip_validation` suppresses only the image inspection: the
-            # multi-arch, label, port and entrypoint checks. It does not skip
-            # `resolve_digest_ref` above, so a digest that does not exist in the
-            # registry still fails, and it does not bypass the repo-equality
-            # guard in `resolve_link`. Empty `checks`/`platforms`/`evidence` in
-            # the summary are how a caller tells the two paths apart.
             validation = None
         else:
             validation = validate_image(
@@ -1216,7 +1194,6 @@ def run_update(
     html_changed = False
     html_warnings: list[str] = []
     if html_updates:
-        # Compute first so a missing pins block stops before any YAML is edited.
         html_changed = update_html(
             root,
             html_updates,
@@ -1306,9 +1283,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     if args.skip_validation and (args.strict or args.pull_check):
-        # Both flags are consumed only inside validate_image, so with validation
-        # skipped they would be silently inert. Refusing is better than exiting 0
-        # on a run where the caller asked for checks that never happened.
         print(
             "error: --skip-validation cannot be combined with --strict or "
             "--pull-check; those checks run only inside validation",

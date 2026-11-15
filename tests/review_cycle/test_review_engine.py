@@ -261,7 +261,6 @@ class TestReviewEngine(unittest.TestCase):
             self.assertEqual(r1["gate_status"], "BLOCKED")
             r_resolved = eng.resolve_finding(r_path, s_path, "F-SEC1", "false_positive", "Validated host allowlist")
             self.assertEqual(r_resolved["gate_status"], "PASS")
-            # Next round with same finding should suppress it as already resolved
             r2 = eng.validate_and_record_receipt(
                 {"verification": {"passed": True, "commands_run": []}, "findings": [finding]},
                 r_path,

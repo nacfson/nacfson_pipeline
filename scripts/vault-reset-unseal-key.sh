@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# Zero-Data-Loss OpenBao Unseal Key Regeneration & PostgreSQL Role Password Sync
-# Use when the Shamir Unseal Key and Root Token are both lost.
-# Wipes ONLY OpenBao's encrypted store, generates a brand-new Unseal Key,
-# re-seeds Vault credentials, and syncs the new DB role passwords into
-# postgres-0 via local Unix socket (preserving 100% of PostgreSQL tables/data).
-# ==============================================================================
 
 set -euo pipefail
 
@@ -115,8 +108,6 @@ kubectl kustomize deploy/platform/database | ${KUBE_BG} apply -f -
 ${KUBE_BG} wait --for=condition=complete job/postgres-init-job -n "${IDENTITY_NS}" --timeout=120s
 echo "PASS: postgres-init-job synced keycloak_user, user_pn, and backup_role passwords."
 
-# Sync rotated OIDC client secrets into Keycloak's existing 'platform' realm in PostgreSQL
-# (kc.sh start --import-realm uses IGNORE_EXISTING and skips updating existing realms).
 GW_SECRET=$(${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${ROOT_TOKEN}" bao kv get -field=client_secret kv/gateway/client-secret | tr -d '\r\n')
 REV_SECRET=$(${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${ROOT_TOKEN}" bao kv get -field=client_secret kv/gateway/session-revocation-secret | tr -d '\r\n')
 PN_SECRET=$(${KUBE_BG} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="http://127.0.0.1:8200" VAULT_TOKEN="${ROOT_TOKEN}" bao kv get -field=client_secret kv/projects/pn/client-secret | tr -d '\r\n')
@@ -130,7 +121,6 @@ UPDATE client SET secret = '${HL_SECRET}' WHERE realm_id = (SELECT id FROM realm
 EOF
 echo "PASS: Synced rotated OIDC client secrets into Keycloak PostgreSQL database."
 
-# Preserve existing Google OAuth credentials from Keycloak PostgreSQL into OpenBao if present
 EXISTING_GOOGLE_ID=$(${KUBE_BG} exec -n "${IDENTITY_NS}" "${POSTGRES_POD}" -- psql -U postgres -d keycloak -Atc "SELECT value FROM identity_provider_config WHERE name = 'clientId' AND identity_provider_id IN (SELECT internal_id FROM identity_provider WHERE provider_alias = 'google');" 2>/dev/null | tr -d '\r\n ' || true)
 EXISTING_GOOGLE_SECRET=$(${KUBE_BG} exec -n "${IDENTITY_NS}" "${POSTGRES_POD}" -- psql -U postgres -d keycloak -Atc "SELECT value FROM identity_provider_config WHERE name = 'clientSecret' AND identity_provider_id IN (SELECT internal_id FROM identity_provider WHERE provider_alias = 'google');" 2>/dev/null | tr -d '\r\n ' || true)
 if [ -n "${EXISTING_GOOGLE_ID}" ] && [ "${EXISTING_GOOGLE_ID}" != "google-apps.apps.googleusercontent.com" ] && [ -n "${EXISTING_GOOGLE_SECRET}" ]; then

@@ -1,11 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# OpenBao Secret Versioning & Isolation Integration Test
-# Validates SC-001, SC-002, and FR-002:
-# 1. Immutable version history retention in KV v2
-# 2. Rejection of unauthorized cross-project access
-# 3. Value-free audit and status assertions
-# ==============================================================================
 
 set -euo pipefail
 
@@ -33,15 +26,12 @@ run_bao() {
   fi
 }
 
-# 1. Write Version 1 of a synthetic test secret
 echo "[1/4] Writing synthetic secret v1..."
 run_bao kv put kv/projects/pn/test-secret value="synthetic-secret-v1" owner="project-pn" >/dev/null
 
-# 2. Write Version 2
 echo "[2/4] Writing synthetic secret v2..."
 run_bao kv put kv/projects/pn/test-secret value="synthetic-secret-v2" owner="project-pn" >/dev/null
 
-# 3. Assert version history retention
 echo "[3/4] Asserting immutable version history..."
 V1_OUTPUT=$(run_bao kv get -version=1 -format=json kv/projects/pn/test-secret)
 V2_OUTPUT=$(run_bao kv get -version=2 -format=json kv/projects/pn/test-secret)
@@ -60,12 +50,10 @@ if [ "${V2_VAL}" != "synthetic-secret-v2" ]; then
 fi
 echo "✓ PASS: Version 1 and Version 2 immutably retained."
 
-# 4. Test RBAC Isolation Denial
 echo "[4/4] Asserting cross-project access denial..."
 TOKEN_RESP=$(run_bao token create -policy="db-proxy" -ttl="10m" -format=json)
 SCOPED_TOKEN=$(echo "${TOKEN_RESP}" | grep -o '"client_token":"[^"]*"' | cut -d'"' -f4)
 
-# Attempt to access unauthorized operator or admin secret with scoped token
 DENIAL_RESULT=$(VAULT_TOKEN="${SCOPED_TOKEN}" run_bao kv get kv/platform/keycloak-admin 2>&1 || true)
 
 if echo "${DENIAL_RESULT}" | grep -q "permission denied"; then
@@ -75,6 +63,5 @@ else
   exit 1
 fi
 
-# Cleanup synthetic test secret
 run_bao kv metadata delete kv/projects/pn/test-secret >/dev/null 2>&1 || true
 echo "=== All Secret Versioning & Isolation Tests Passed Successfully ==="

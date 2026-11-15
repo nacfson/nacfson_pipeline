@@ -1,4 +1,3 @@
-# Candidate door on port 9090. The NetworkPolicy allows only 80 and 8080 from the platform namespace.
 apiVersion: v1
 kind: Service
 metadata:

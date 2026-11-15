@@ -167,8 +167,6 @@ spec:
     kind: GitRepository
     name: flux-system
   path: ./deploy/platform/ingress
-  # Spec 004 R3 amendment: postBuild is allowed on this layer only, for AUTH_HOST only.
-  # Route paths live in deploy/platform/ingress/ingress-allowlist.yaml (single copy).
   postBuild:
     substitute:
       AUTH_HOST: auth.nacfson.cloud
@@ -213,7 +211,6 @@ spec:
     name: flux-system
   path: ./deploy/platform/tls
   patches:
-    # To debug challenges without production rate limits, set the issuer to letsencrypt-staging.
     - target:
         kind: Certificate
         name: auth-tls

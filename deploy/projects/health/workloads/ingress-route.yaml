@@ -9,10 +9,8 @@ metadata:
 spec:
   entryPoints:
     - websecure
-  # The platform selects the certificate by hostname (TLSStore platform/default). HTTP is redirected by platform/http-to-https.
   tls: {}
   routes:
-    # Host route, then /api. Flux match patches address these indexes.
     - match: Host(`health.example.com`)
       kind: Rule
       priority: 10

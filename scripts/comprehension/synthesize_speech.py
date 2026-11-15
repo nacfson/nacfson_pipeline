@@ -1,11 +1,4 @@
 #!/usr/bin/env python3
-"""
-Speech Synthesis Script for the Comprehension Engine.
-Supports:
-1. Microsoft Neural TTS via edge-tts (uvx edge-tts) - Zero configuration, high quality.
-2. ElevenLabs API if ELEVENLABS_API_KEY is present in environment.
-3. Fallback to omp say if available.
-"""
 
 import argparse
 import os
@@ -16,7 +9,6 @@ from pathlib import Path
 
 
 def synthesize_with_edge_tts(text: str, output_path: Path, voice: str = "en-US-ChristopherNeural") -> bool:
-    """Synthesize speech using uvx edge-tts."""
     try:
         cmd = [
             "uvx", "edge-tts",
@@ -32,11 +24,10 @@ def synthesize_with_edge_tts(text: str, output_path: Path, voice: str = "en-US-C
 
 
 def synthesize_with_elevenlabs(text: str, output_path: Path, api_key: str) -> bool:
-    """Synthesize speech using ElevenLabs API via curl/python."""
     import urllib.request
     import json
 
-    voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")  # Default voice: Rachel
+    voice_id = os.environ.get("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
     headers = {
         "Accept": "audio/mpeg",
@@ -60,7 +51,6 @@ def synthesize_with_elevenlabs(text: str, output_path: Path, api_key: str) -> bo
 
 
 def synthesize_with_omp(text: str, output_path: Path) -> bool:
-    """Synthesize speech using omp say --out."""
     omp_path = shutil.which("omp") or str(Path.home() / ".bun/bin/omp")
     if not os.path.exists(omp_path):
         return False
@@ -94,7 +84,6 @@ def main():
 
     args.output.parent.mkdir(parents=True, exist_ok=True)
 
-    # 1. Check ElevenLabs API key
     eleven_key = os.environ.get("ELEVENLABS_API_KEY")
     if eleven_key:
         print(f"[TTS] Using ElevenLabs API...")
@@ -102,13 +91,11 @@ def main():
             print(f"[TTS] Successfully generated {args.output}")
             sys.exit(0)
 
-    # 2. Try edge-tts via uvx (zero setup, high quality)
     print(f"[TTS] Synthesizing speech with edge-tts ({args.voice})...")
     if synthesize_with_edge_tts(text, args.output, args.voice):
         print(f"[TTS] Successfully generated {args.output}")
         sys.exit(0)
 
-    # 3. Fallback to omp say
     print("[TTS] Falling back to omp say...")
     if synthesize_with_omp(text, args.output):
         print(f"[TTS] Successfully generated {args.output}")

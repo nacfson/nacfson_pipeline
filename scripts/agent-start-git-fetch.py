@@ -1,26 +1,4 @@
 #!/usr/bin/env python3
-"""
-agent-start-git-fetch.py — Non-Mutating Remote Refresh at AI Agent Session Start.
-
-Runs `git fetch` so an agent starts with current remote-tracking refs,
-then reports how the current branch diverged from its upstream. It never
-merges, rebases, checks out, or otherwise touches the working tree.
-
-Safety contract:
-  - Fail open: every failure (offline, timeout, missing remote, not a repo,
-    disabled by env) returns a status dict and exit code 0.
-  - Non-interactive: `GIT_TERMINAL_PROMPT=0`, SSH `BatchMode=yes`, hard timeout.
-  - Throttled: at most one fetch per cooldown window (default 60s), so agents
-    that fire SessionStart on resume/compact do not stampede the remote.
-  - Opt-out: `AGENT_START_FETCH_DISABLE=1`.
-
-Environment:
-  AGENT_START_FETCH_DISABLE     Set to 1/true/yes to skip entirely.
-  AGENT_START_FETCH_REMOTE      Remote name; defaults to `origin`.
-  AGENT_START_FETCH_TIMEOUT     Fetch timeout seconds; defaults to 12.
-  AGENT_START_FETCH_COOLDOWN    Minimum seconds between fetches; defaults to 60.
-  AGENT_START_FETCH_PRUNE       Set to 1/true/yes to also prune stale remote refs.
-"""
 
 from __future__ import annotations
 
@@ -64,7 +42,6 @@ def _git(
     timeout: float = 10,
     env: dict | None = None,
 ) -> subprocess.CompletedProcess[str] | None:
-    """Run git without a terminal and without ever raising."""
     try:
         return subprocess.run(
             ["git", *args],
@@ -160,7 +137,6 @@ def fetch(
     env: dict | None = None,
     force: bool = False,
 ) -> dict:
-    """Fetch the remote and return a JSON-serializable status dict. Never raises."""
     resolved_env = _resolve_env(env)
     timeout = (
         _int_env(resolved_env, "AGENT_START_FETCH_TIMEOUT", DEFAULT_TIMEOUT_SECONDS)
@@ -206,7 +182,6 @@ def fetch(
         return result
     result["remote"] = remote
 
-    # Stamp before fetching so concurrent session-start hooks do not stampede.
     try:
         stamp.parent.mkdir(parents=True, exist_ok=True)
         stamp.touch()

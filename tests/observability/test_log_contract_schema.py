@@ -1,5 +1,3 @@
-"""Test log contract schema invariants across contracts, Lua collector, and Dockerfile."""
-
 import os
 import re
 import unittest
@@ -167,8 +165,6 @@ class TestLogContractSchema(unittest.TestCase):
         self.assertTrue(from_lines, "Dockerfile.logcheck has no FROM line")
 
         for line in from_lines:
-            # Must contain exact x.y.z tag or sha256 digest
-            # E.g. golang:1.22.12-alpine or gcr.io/distroless/static@sha256:...
             has_sha = "@sha256:" in line
             has_patch_tag = bool(re.search(r":\d+\.\d+\.\d+(-[a-zA-Z0-9._-]+)?", line))
             self.assertTrue(

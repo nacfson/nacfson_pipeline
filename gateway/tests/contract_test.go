@@ -37,7 +37,6 @@ func TestForwardAuthContractFailClosed(t *testing.T) {
 		SessionTimeout: 1 * time.Hour,
 	}
 
-	// Mock validator that returns network error simulating Keycloak outage
 	mockVal := &mockSessionValidator{
 		active: false,
 		err:    errors.New("connection refused: keycloak is down"),
@@ -62,12 +61,10 @@ func TestForwardAuthContractFailClosed(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.HandleForwardAuth(rr, req)
 
-	// An unreachable sign-in service does not confirm the user.
 	if rr.Code != http.StatusServiceUnavailable {
 		t.Fatalf("expected HTTP 503 on dependency outage, got %d", rr.Code)
 	}
 
-	// Verify no upstream injection headers are leaked
 	if rr.Header().Get("Authorization") != "" {
 		t.Errorf("Authorization header must NOT be emitted on 503")
 	}
@@ -81,7 +78,6 @@ func TestForwardAuthContractRevokedSession(t *testing.T) {
 		SessionTimeout: 1 * time.Hour,
 	}
 
-	// Mock validator reporting session is revoked
 	mockVal := &mockSessionValidator{
 		active: false,
 		err:    nil,
@@ -106,7 +102,6 @@ func TestForwardAuthContractRevokedSession(t *testing.T) {
 	rr := httptest.NewRecorder()
 	handler.HandleForwardAuth(rr, req)
 
-	// A rejected session leaves the visitor unsigned-in for the part that asked.
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("expected HTTP 401 on revoked session, got %d", rr.Code)
 	}
@@ -283,7 +278,6 @@ func TestSessionReturnHandoffTicketAndExchangeZeroCookies(t *testing.T) {
 		}
 	}
 
-	// Exchange ticket via POST /auth/exchange from Project Backend
 	exchBody := fmt.Sprintf(`{"ticket":%q}`, ticket)
 	exchReq := httptest.NewRequest(http.MethodPost, "/auth/exchange", strings.NewReader(exchBody))
 	exchReq.Header.Set("Content-Type", "application/json")
@@ -310,7 +304,6 @@ func TestSessionReturnHandoffTicketAndExchangeZeroCookies(t *testing.T) {
 		t.Fatalf("expected canonical public issuer, got %q", exchResp.Issuer)
 	}
 
-	// Replaying the same one-time ticket MUST be rejected with 401
 	replayReq := httptest.NewRequest(http.MethodPost, "/auth/exchange", strings.NewReader(exchBody))
 	replayReq.Header.Set("X-Forwarded-Host", "pn.example.com")
 	replayRR := httptest.NewRecorder()
@@ -319,7 +312,6 @@ func TestSessionReturnHandoffTicketAndExchangeZeroCookies(t *testing.T) {
 		t.Fatalf("expected 401 Unauthorized on replayed ticket, got %d", replayRR.Code)
 	}
 
-	// Verify GET /auth with Authorization: Bearer <session_handle> (zero cookies)
 	verifyReq := httptest.NewRequest(http.MethodGet, "/auth", nil)
 	verifyReq.Header.Set("X-Forwarded-Host", "pn.example.com")
 	verifyReq.Header.Set("Authorization", "Bearer "+exchResp.SessionHandle)
@@ -335,8 +327,7 @@ func TestSessionReturnHandoffTicketAndExchangeZeroCookies(t *testing.T) {
 }
 
 func TestTransparentTokenRefreshAndRealKeycloakIntrospection(t *testing.T) {
-	// Mock Keycloak server that rejects the expired access token on /token/introspect
-	// and issues a fresh access token on /token (grant_type=refresh_token).
+
 	var introspectedTokens []string
 	mockKC := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
@@ -409,4 +400,3 @@ func TestTransparentTokenRefreshAndRealKeycloakIntrospection(t *testing.T) {
 		t.Fatal("expected X-Refreshed-Session-Handle header when token was rotated")
 	}
 }
-

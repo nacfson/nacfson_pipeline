@@ -1,7 +1,3 @@
-// Command error-detector watches the proj-* logs in VictoriaLogs, alerts the
-// #errors Discord channel for every new error through the vault-notify-proxy,
-// and hands each error group to the error-investigator once its collection
-// window closes.
 package main
 
 import (
@@ -21,16 +17,15 @@ import (
 	"nacfson_pipeline/services/error-pipeline/internal/vlogs"
 )
 
-// Environment defaults of the design (section 8.4 and the deployment manifest).
 const (
 	defaultListenAddr   = ":8080"
 	defaultVLogsURL     = "http://victorialogs.observability.svc:9428"
 	defaultNotifyURL    = "http://notify-gateway.vault.svc:8080"
-	defaultInvestigator = "" // workstream 3 has not landed; empty disables the handoff
+	defaultInvestigator = ""
 	defaultStatePath    = "/state/detector.json"
 	probeReadHeaderTime = 5 * time.Second
-	probeWriteTimeout   = 30 * time.Second // /readyz waits on VictoriaLogs for up to 10 s
-	shutdownGrace       = 30 * time.Second // one final drain fits inside this
+	probeWriteTimeout   = 30 * time.Second
+	shutdownGrace       = 30 * time.Second
 )
 
 func envOrDefault(key, def string) string {
@@ -47,15 +42,11 @@ func main() {
 	listenAddr := envOrDefault("LISTEN_ADDR", defaultListenAddr)
 	statePath := envOrDefault("STATE_PATH", defaultStatePath)
 
-	// Tail streams indefinitely, so its client must have no Timeout: the
-	// request lives as long as the process. CatchUp and Ready set their own
-	// 30 s deadline internally.
 	vlogsClient := &vlogs.Client{
 		BaseURL: strings.TrimRight(envOrDefault("VLOGS_URL", defaultVLogsURL), "/"),
 		HTTP:    &http.Client{},
 	}
-	// The notify queue bounds each send with its own context deadline, so this
-	// client needs none; a client-wide one would also cut a slow retry short.
+
 	notifyClient := &notify.Client{
 		BaseURL: strings.TrimRight(envOrDefault("NOTIFY_URL", defaultNotifyURL), "/"),
 	}
@@ -80,10 +71,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// SIGTERM from Kubernetes and SIGINT from a terminal both mean "stop after
-	// saving": Run flushes the open crashes, reports the burst overflow, saves
-	// the cursor and groups, and makes one bounded delivery attempt. Windows
-	// still open stay open in the state, so the next start hands them off.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
 	defer stop()
 
@@ -104,8 +91,7 @@ func main() {
 
 	select {
 	case err := <-serveErr:
-		// A listener that stops on its own is fatal: the probes are how the
-		// kubelet decides whether to restart this pod.
+
 		stop()
 		<-runDone
 		logger.Error("probe listener stopped", "error", err.Error())

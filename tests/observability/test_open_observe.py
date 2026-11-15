@@ -1,8 +1,3 @@
-"""Unit tests for scripts/open-observe.sh.
-
-The live SSH and port-forward path is not executed here.
-"""
-
 from __future__ import annotations
 
 import os
@@ -15,11 +10,6 @@ SCRIPT = os.path.join(BASE_DIR, "scripts", "open-observe.sh")
 
 
 def _path_without_kubectl(tmp: str) -> str:
-    """Return a PATH that keeps system tools but never resolves kubectl.
-
-    CI runners ship kubectl in /usr/bin, so trimming PATH to /usr/bin:/bin
-    does not hide it. Symlink every system tool except kubectl instead.
-    """
     for src_dir in ("/usr/bin", "/bin"):
         if not os.path.isdir(src_dir):
             continue

@@ -19,8 +19,6 @@ spec:
     spec:
       restartPolicy: Always
       serviceAccountName: vault-notify-proxy
-      # The proxy resolves the calling pod's identity from the API, so it needs
-      # a token: this is the one vault proxy where automount stays on.
       automountServiceAccountToken: true
       securityContext:
         runAsNonRoot: true
@@ -30,8 +28,6 @@ spec:
           type: RuntimeDefault
       containers:
         - name: notify-proxy
-          # Pinned by digest: a tag would let a rebuild silently change what
-          # #errors posts with.
           image: ghcr.io/nacfson/vault-notify-proxy@sha256:27a559c8f07cef4c7a79d62fd4780999b0eb19e3281cc84e4975b4ba13381fbc
           imagePullPolicy: IfNotPresent
           ports:
@@ -41,8 +37,6 @@ spec:
           env:
             - name: DATA_ADDR
               value: "0.0.0.0:8080"
-            # Strictly loopback: the admin listener seeds Discord webhooks and
-            # must never be reachable from another pod or through the Service.
             - name: ADMIN_ADDR
               value: "127.0.0.1:8081"
             - name: OPENBAO_ADDR
@@ -94,8 +88,6 @@ metadata:
     app.kubernetes.io/part-of: platform-vault
 spec:
   type: ClusterIP
-  # Port 8080 only: the admin listener (8081) is bound to the pod's loopback
-  # and is reached through port-forward, never through a Service.
   ports:
     - name: http
       port: 8080

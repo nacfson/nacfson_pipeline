@@ -1,7 +1,3 @@
--- log_contract.lua
--- Fluent Bit Lua filter implementing Contract v3 validation, field extraction,
--- time selection, truncation, redaction, and routing.
-
 REQUIRED = { "time", "level", "msg", "service.name", "service.version" }
 
 RESERVED = {
@@ -82,11 +78,9 @@ end
 local function redact(s)
     if type(s) ~= "string" then return s end
 
-    -- 1. Bearer
     s = s:gsub("(%f[%a])" .. PATTERNS["bearer"], "%1[REDACTED:bearer]")
     s = s:gsub("^" .. PATTERNS["bearer"], "[REDACTED:bearer]")
 
-    -- 2. Quoted KV (JSON style: "key": "val" or "key": 123)
     s = s:gsub('(%b"")(%s*[:=]%s*)(%b"")', function(k_quoted, sep, val_quoted)
         local k = k_quoted:sub(2, -2)
         if is_sensitive(k) then
@@ -99,7 +93,6 @@ local function redact(s)
         return k_quoted .. sep .. val_quoted
     end)
 
-    -- Python dict style single quoted ('key': 'val')
     s = s:gsub("(%b'')(%s*[:=]%s*)(%b'')", function(k_quoted, sep, val_quoted)
         local k = k_quoted:sub(2, -2)
         if is_sensitive(k) then
@@ -112,7 +105,6 @@ local function redact(s)
         return k_quoted .. sep .. val_quoted
     end)
 
-    -- Quoted KV bare scalar e.g. {"token_count":42}
     s = s:gsub('(%b"")(%s*[:=]%s*)([^%s,{}%[%]"\'\n\r]+)', function(k_quoted, sep, scalar)
         local k = k_quoted:sub(2, -2)
         if is_sensitive(k) then
@@ -125,7 +117,6 @@ local function redact(s)
         return k_quoted .. sep .. scalar
     end)
 
-    -- 3. Header KV e.g. X-Api-Key: secret123 def
     s = s:gsub('([%w_.-]+)(%s*:%s*)([^\r\n]+)', function(k, sep, val)
         if is_sensitive(k) then
             local trimmed = val:match("^%s*(.-)%s*$")
@@ -138,7 +129,6 @@ local function redact(s)
         return k .. sep .. val
     end)
 
-    -- 4. Assign KV e.g. password=hunter2 or password="abc" or password="secret123",
     s = s:gsub('([%w_.-]+)(%s*=%s*)(%b"")', function(k, sep, val_quoted)
         if is_sensitive(k) then
             if has_redacted(val_quoted) then
@@ -150,7 +140,6 @@ local function redact(s)
         return k .. sep .. val_quoted
     end)
 
-    -- Escaped quotes e.g. password=\"abc\" or password=\"hunter 2\"
     s = s:gsub('([%w_.-]+)(%s*=%s*)(\\"[^\r\n]-")', function(k, sep, val_quoted)
         if is_sensitive(k) then
             return k .. sep .. "[REDACTED:secret-field]"
@@ -169,16 +158,13 @@ local function redact(s)
         return k .. sep .. val
     end)
 
-    -- 5. JWT
     s = s:gsub(PATTERNS["jwt"], "[REDACTED:jwt]")
 
-    -- 6. Google key
     s = s:gsub(PATTERNS["google-key"], function(m)
         if #m >= 34 then return "[REDACTED:google-key]" end
         return m
     end)
 
-    -- 7. sk- key
     s = s:gsub("(%f[%a])" .. PATTERNS["sk-key"], function(prefix, m)
         if #m >= 19 then return prefix .. "[REDACTED:sk-key]" end
         return prefix .. m
@@ -243,7 +229,6 @@ local function parse_rfc3339(ts_str)
     epoch = epoch + tz_diff
 
     if tz == "Z" or tz == "z" then
-        -- UTC
     else
         local sign, tz_h, tz_m = tz:match("^([+-])(%d%d):(%d%d)$")
         if not sign then return nil end
@@ -261,7 +246,6 @@ local function parse_rfc3339(ts_str)
 end
 
 function process(tag, timestamp, record)
-    -- Stage 1: Strip reserved keys before any platform assignments (FR-011, FR-012)
     for _, key in ipairs(RESERVED) do
         record[key] = nil
     end
@@ -272,14 +256,12 @@ function process(tag, timestamp, record)
         end
     end
 
-    -- Stage 2: Extract platform fields
     local ns = record["ns"] or record["namespace"] or record["project"] or ""
     local pod = record["pod"] or ""
     local uid = record["uid"] or record["pod_uid"] or ""
     local container = record["container"] or ""
     local iostream = record["stream"] or "stdout"
 
-    -- Remove temporary extraction keys
     record["ns"] = nil
     record["namespace"] = nil
     record["project"] = nil
@@ -310,7 +292,6 @@ function process(tag, timestamp, record)
     record["log.iostream"] = iostream
     record["observed_time"] = observed_time
 
-    -- Stage 3: Routing decision (can it be refined?)
     local container_id = ns .. "/" .. container
     local legacy_set = load_legacy_containers()
     local is_legacy = legacy_set[container_id] == true
@@ -342,7 +323,6 @@ function process(tag, timestamp, record)
 
     local is_refined = is_legacy or is_crash or is_nginx_error or has_all_required
 
-    -- Quarantine path: unrefined records
     if not is_refined then
         local q_record = {
             ["msg"] = redact(raw_log),
@@ -358,12 +338,10 @@ function process(tag, timestamp, record)
         return 2, timestamp, q_record
     end
 
-    -- Main path: refined records
     if record["msg"] == nil or record["msg"] == "" then
         record["msg"] = raw_log
     end
 
-    -- Stacktrace truncation
     if type(record["exception.stacktrace"]) == "string" then
         record["exception.stacktrace"] = truncate_stacktrace(record["exception.stacktrace"])
     end
@@ -371,7 +349,6 @@ function process(tag, timestamp, record)
         record["msg"] = truncate_stacktrace(record["msg"])
     end
 
-    -- Time selection (FR-015)
     local code = 2
     local out_ts = timestamp
     if record["time"] ~= nil then
@@ -389,7 +366,6 @@ function process(tag, timestamp, record)
         end
     end
 
-    -- Redaction of string values
     for k, v in pairs(record) do
         if type(v) == "string" then
             local red = redact(v)

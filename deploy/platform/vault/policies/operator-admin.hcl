@@ -1,6 +1,3 @@
-# OpenBao Policy: Platform Operator Administrator
-# Full administrative management of secrets, mounts, policies, and transit engines.
-
 path "kv/*" {
   capabilities = ["create", "read", "update", "delete", "list"]
 }

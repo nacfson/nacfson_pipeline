@@ -1,7 +1,3 @@
-// Package group tracks error fingerprints through their notification
-// lifecycle: an immediate first alert, a fixed collection window, a handoff
-// of the collected group, and a cooldown during which repeats are only
-// counted. Time comes only from the arguments the caller passes in.
 package group
 
 import (
@@ -14,12 +10,8 @@ import (
 	"nacfson_pipeline/services/error-pipeline/internal/fingerprint"
 )
 
-// maxSampleBytes bounds one stored sample.
 const maxSampleBytes = 4 << 10
 
-// Group is the state of one fingerprint. Its JSON form is the ErrorGroup
-// payload that the investigator service accepts (POST /v1/investigate), so
-// the tags are a contract.
 type Group struct {
 	Fingerprint    string         `json:"fingerprint"`
 	Project        string         `json:"project"`
@@ -36,16 +28,13 @@ type Group struct {
 	Handed         bool           `json:"handed"`
 }
 
-// Config sets the lifecycle timings.
 type Config struct {
-	Window     time.Duration // collection window, fixed from the first occurrence
-	Cooldown   time.Duration // quiet period after the window closes
-	Retention  time.Duration // how long an idle, handed-off group is kept
-	MaxSamples int           // raw log lines kept per window
+	Window     time.Duration
+	Cooldown   time.Duration
+	Retention  time.Duration
+	MaxSamples int
 }
 
-// DefaultConfig is the 3 minute window, 6 hour cooldown, 7 day retention and
-// 20 samples of the error pipeline design.
 func DefaultConfig() Config {
 	return Config{
 		Window:     3 * time.Minute,
@@ -55,13 +44,11 @@ func DefaultConfig() Config {
 	}
 }
 
-// ActionType says what the caller must do with an Action.
 type ActionType int
 
 const (
-	// NotifyNew asks for an immediate first alert (or a recurrence alert).
 	NotifyNew ActionType = iota
-	// Handoff passes the collected group on once its window closed.
+
 	Handoff
 )
 
@@ -75,30 +62,22 @@ func (t ActionType) String() string {
 	return "Unknown"
 }
 
-// Action is one thing the caller has to do. Group is a deep copy. For a
-// recurrence NotifyNew (Recurred true), Group.SinceLastAlert is the number of
-// occurrences counted since the previous alert; the tracker itself restarts
-// that counter at zero.
 type Action struct {
 	Type     ActionType
 	Group    Group
 	Recurred bool
 }
 
-// Tracker holds the groups. It is safe for concurrent use.
 type Tracker struct {
 	cfg    Config
 	mu     sync.Mutex
 	groups map[string]*Group
 }
 
-// NewTracker returns an empty tracker.
 func NewTracker(cfg Config) *Tracker {
 	return &Tracker{cfg: cfg, groups: map[string]*Group{}}
 }
 
-// Observe records one classified error at time now and returns the actions it
-// causes.
 func (t *Tracker) Observe(c classify.Classified, now time.Time) []Action {
 	fp := fingerprint.Of(c)
 
@@ -115,8 +94,7 @@ func (t *Tracker) Observe(c classify.Classified, now time.Time) []Action {
 
 	var actions []Action
 	if !g.Handed && !now.Before(g.WindowEnd) {
-		// The window ran out before any Tick closed it. Close it now, so the
-		// handoff does not include this later occurrence.
+
 		actions = append(actions, t.close(g))
 	}
 
@@ -132,7 +110,6 @@ func (t *Tracker) Observe(c classify.Classified, now time.Time) []Action {
 		return actions
 	}
 
-	// Cooldown expired: alert again and start a new cycle.
 	since := g.SinceLastAlert
 	t.start(g, c, now)
 	alert := clone(*g)
@@ -140,9 +117,6 @@ func (t *Tracker) Observe(c classify.Classified, now time.Time) []Action {
 	return append(actions, Action{Type: NotifyNew, Group: alert, Recurred: true})
 }
 
-// Tick closes every window that ended at or before now, returning a Handoff
-// for each (ordered by fingerprint), then drops handed-off groups idle for
-// longer than the retention.
 func (t *Tracker) Tick(now time.Time) []Action {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -167,7 +141,6 @@ func (t *Tracker) Tick(now time.Time) []Action {
 	return actions
 }
 
-// Export returns a deep copy of every group, sorted by fingerprint.
 func (t *Tracker) Export() []Group {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -180,7 +153,6 @@ func (t *Tracker) Export() []Group {
 	return out
 }
 
-// Import replaces all state with gs.
 func (t *Tracker) Import(gs []Group) {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -192,8 +164,6 @@ func (t *Tracker) Import(gs []Group) {
 	}
 }
 
-// start (re)initialises g as a fresh cycle whose first occurrence is c at now.
-// The caller holds t.mu.
 func (t *Tracker) start(g *Group, c classify.Classified, now time.Time) {
 	g.Project = c.Record.Project
 	g.Container = c.Record.Container
@@ -210,14 +180,12 @@ func (t *Tracker) start(g *Group, c classify.Classified, now time.Time) {
 	g.record(c, now, t.cfg.MaxSamples)
 }
 
-// close ends g's window and starts its cooldown. The caller holds t.mu.
 func (t *Tracker) close(g *Group) Action {
 	g.Handed = true
 	g.CooldownUntil = g.WindowEnd.Add(t.cfg.Cooldown)
 	return Action{Type: Handoff, Group: clone(*g)}
 }
 
-// record counts an occurrence inside an open window.
 func (g *Group) record(c classify.Classified, now time.Time, maxSamples int) {
 	g.Count++
 	g.LastSeen = now
@@ -227,7 +195,6 @@ func (g *Group) record(c classify.Classified, now time.Time, maxSamples int) {
 	}
 }
 
-// addPod keeps Pods deduplicated and sorted.
 func (g *Group) addPod(pod string) {
 	if pod == "" {
 		return
@@ -241,15 +208,12 @@ func (g *Group) addPod(pod string) {
 	g.Pods[i] = pod
 }
 
-// clone deep-copies g's slices. Nil slices become empty so the JSON form is
-// always an array.
 func clone(g Group) Group {
 	g.Pods = append([]string{}, g.Pods...)
 	g.Samples = append([]string{}, g.Samples...)
 	return g
 }
 
-// truncate cuts s to at most max bytes without splitting a UTF-8 rune.
 func truncate(s string, max int) string {
 	if len(s) <= max {
 		return s

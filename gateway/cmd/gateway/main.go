@@ -39,25 +39,19 @@ func main() {
 
 	mux := http.NewServeMux()
 
-	// Liveness / readiness probe for Kubernetes
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
 	})
 
-	// Internal session verification endpoint
 	mux.HandleFunc("/auth", handler.HandleForwardAuth)
 
-	// Internal one-time callback ticket exchange endpoint for project backends
 	mux.HandleFunc("/auth/exchange", handler.HandleTicketExchange)
 
-	// Sign-in start. return must be an address already on the project door.
 	mux.HandleFunc("/oauth/start", handler.HandleSessionStart)
 
-	// OIDC callback from Keycloak
 	mux.HandleFunc("/oauth/callback", handler.HandleCallback)
 
-	// User-initiated synchronous session revocation
 	mux.HandleFunc("/auth/logout", handler.HandleLogout)
 
 	server := &http.Server{

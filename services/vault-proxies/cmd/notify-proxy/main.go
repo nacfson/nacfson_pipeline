@@ -14,9 +14,6 @@ import (
 	"nacfson_pipeline/services/vault-proxies/internal/podid"
 )
 
-// openBaoStore keeps Discord webhook URLs at kv/notify/discord/<channel>.
-// It logs in per call: loads happen once per channel (the proxy caches the
-// result) and saves only on an operator action, so the cost is negligible.
 type openBaoStore struct {
 	client *openbao.Client
 }
@@ -99,7 +96,7 @@ func main() {
 			Handler:           proxy.AdminMux(),
 			ReadHeaderTimeout: 5 * time.Second,
 			ReadTimeout:       15 * time.Second,
-			WriteTimeout:      45 * time.Second, // set-webhook does an OpenBao login + write
+			WriteTimeout:      45 * time.Second,
 		}
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			fatal(logger, "admin listener failed", "error", err.Error())
@@ -111,7 +108,7 @@ func main() {
 		Addr:              proxy.cfg.DataAddr,
 		Handler:           proxy.DataMux(),
 		ReadHeaderTimeout: 10 * time.Second,
-		// SendDiscord can block ~60 s on capped 429 waits.
+
 		WriteTimeout: 120 * time.Second,
 	}
 	if err := dataSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {

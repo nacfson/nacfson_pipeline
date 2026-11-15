@@ -10,7 +10,6 @@ terraform {
 }
 
 locals {
-  # Single source for values shared with clusters/gke/ (Spec 015, contracts/shared-values.md).
   shared = jsondecode(file("${path.module}/../shared-values.json"))
 }
 

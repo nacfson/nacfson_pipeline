@@ -24,7 +24,7 @@ import (
 )
 
 const (
-	maxChatBodyBytes = 1 << 20 // 1 MiB cap per Review Focus #2
+	maxChatBodyBytes = 1 << 20
 	selfTestProject  = "__selftest__"
 	defaultSAJWTPath = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 )
@@ -42,7 +42,6 @@ type ProjectGrant struct {
 	CurrentUTCDate string          `json:"current_utc_date"`
 }
 
-// PodIdentity is the resolved identity of a calling pod.
 type PodIdentity = podid.Identity
 
 type AIProxyConfig struct {
@@ -166,7 +165,6 @@ func NewAIProxy(cfg AIProxyConfig) *AIProxy {
 func (p *AIProxy) DataMux() http.Handler  { return p.dataMux }
 func (p *AIProxy) AdminMux() http.Handler { return p.adminMux }
 
-// wipeGeminiKeyLocked overwrites every byte of p.geminiKey in RAM with 0x00 before releasing the slice.
 func (p *AIProxy) wipeGeminiKeyLocked() {
 	for i := range p.geminiKey {
 		p.geminiKey[i] = 0
@@ -174,7 +172,6 @@ func (p *AIProxy) wipeGeminiKeyLocked() {
 	p.geminiKey = nil
 }
 
-// setGeminiKeyLocked scrubs any previous key bytes in RAM and stores the new key in a fresh mutable []byte slice.
 func (p *AIProxy) setGeminiKeyLocked(val string) {
 	p.wipeGeminiKeyLocked()
 	val = strings.TrimSpace(val)
@@ -232,17 +229,14 @@ func isStrictLoopbackAddr(addr string) bool {
 	return ip.IsLoopback()
 }
 
-// RunStartupSelfTest executes the 5-point live Kill-Switch & vulnerability self-audit.
 func (p *AIProxy) RunStartupSelfTest() error {
 	p.selfTestMu.Lock()
 	defer p.selfTestMu.Unlock()
 
-	// Check 1: Loopback Socket Audit
 	if !isStrictLoopbackAddr(p.cfg.AdminAddr) {
 		return fmt.Errorf("admin listener address %q is not strictly loopback (127.0.0.1)", p.cfg.AdminAddr)
 	}
 
-	// Check 2: :8080 Route Isolation Audit (ensure no /admin/* route exists on DataMux)
 	for _, adminPath := range []string{"/admin/enable?project=" + selfTestProject, "/admin/revoke?project=" + selfTestProject, "/admin/status"} {
 		req := httptest.NewRequest(http.MethodPost, adminPath, nil)
 		rec := httptest.NewRecorder()
@@ -252,7 +246,6 @@ func (p *AIProxy) RunStartupSelfTest() error {
 		}
 	}
 
-	// Check 3: Caller Authorization Header Spoofing Audit
 	spoofReq := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gemini-3.1-flash-lite"}`))
 	spoofReq.RemoteAddr = "127.0.0.1:60000"
 	spoofReq.Header.Set("Authorization", "Bearer caller-spoofed-key")
@@ -262,7 +255,6 @@ func (p *AIProxy) RunStartupSelfTest() error {
 		return fmt.Errorf("vulnerability detected: caller Authorization header was not rejected with 403 (got %d)", spoofRec.Code)
 	}
 
-	// Check 4: Live Kill-Switch Flip & Block Drill on reserved __selftest__ slot
 	p.mu.Lock()
 	p.projects[selfTestProject] = &ProjectGrant{
 		Project:        selfTestProject,
@@ -295,7 +287,6 @@ func (p *AIProxy) RunStartupSelfTest() error {
 		return errors.New("kill-switch self-drill failed: __selftest__ grant remained Enabled after revoke")
 	}
 
-	// Verify DataMux blocks __selftest__ pod with 403 Forbidden
 	drillReq := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", strings.NewReader(`{"model":"gemini-3.1-flash-lite"}`))
 	drillReq.RemoteAddr = "127.0.0.254:60001"
 	drillRec := httptest.NewRecorder()
@@ -304,7 +295,6 @@ func (p *AIProxy) RunStartupSelfTest() error {
 		return fmt.Errorf("kill-switch self-drill failed: DataMux returned %d instead of 403 for stopped __selftest__", drillRec.Code)
 	}
 
-	// Check 5: Sync persisted state & key from OpenBao once on initial startup
 	p.mu.RLock()
 	alreadySynced := p.openBaoSynced
 	p.mu.RUnlock()
@@ -353,7 +343,6 @@ func (p *AIProxy) handleReadyz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "READY"})
 }
 
-// handleHealthz is strictly process-local per CONTRACT_PROBES_READINESS.md §3.3.
 func (p *AIProxy) handleHealthz(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ALIVE"})
 }
@@ -364,13 +353,11 @@ func (p *AIProxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Never allow caller to supply or spoof an Authorization header
 	if strings.TrimSpace(r.Header.Get("Authorization")) != "" {
 		writeJSON(w, http.StatusForbidden, map[string]string{"error": "caller Authorization header is forbidden; vault-ai-proxy injects credentials"})
 		return
 	}
 
-	// Extract caller peer IP strictly from TCP socket (r.RemoteAddr), ignoring X-Forwarded-For
 	peerIP := podid.PeerIP(r.RemoteAddr)
 	var identity *PodIdentity
 	if peerIP == "127.0.0.254" {
@@ -384,7 +371,6 @@ func (p *AIProxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) 
 		}
 	}
 
-	// Cap body size at 1 MiB (Review Focus #2)
 	r.Body = http.MaxBytesReader(w, r.Body, maxChatBodyBytes)
 	rawBody, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -401,7 +387,6 @@ func (p *AIProxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) 
 	}
 	requestedModel := strings.TrimSpace(reqPayload.Model)
 
-	// Match caller pod identity against project grants & enforce Kill Switch + Daily Quota under lock
 	today := p.cfg.NowFunc().UTC().Format("2006-01-02")
 	p.mu.Lock()
 	var matched *ProjectGrant
@@ -419,7 +404,6 @@ func (p *AIProxy) handleChatCompletions(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	// Handle UTC day rollover (Review Focus #3: preserve ManualRevoked across rollover)
 	if matched.CurrentUTCDate != today {
 		matched.CurrentUTCDate = today
 		matched.UsedToday = 0
@@ -543,7 +527,7 @@ func (p *AIProxy) handleAdminRevoke(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": "unknown project"})
 		return
 	}
-	// Fail-safe RAM flip first (Review Focus #5) + scrub credential bytes in RAM when stopped
+
 	g.Enabled = false
 	if proj != selfTestProject {
 		g.ManualRevoked = true
@@ -757,7 +741,6 @@ func (p *AIProxy) syncFromOpenBao() error {
 		return err
 	}
 
-	// 1. Sync upstream Gemini API key from kv/data/ai/gemini-api-key
 	if d, err := p.bao.ReadKV(ctx, token, "ai/gemini-api-key"); err == nil {
 		v, _ := d["value"].(string)
 		p.mu.Lock()
@@ -765,7 +748,6 @@ func (p *AIProxy) syncFromOpenBao() error {
 		p.mu.Unlock()
 	}
 
-	// 2. Sync persisted per-project Kill-Switch & quota state from kv/data/ai/projects/<slug>
 	p.mu.RLock()
 	slugs := make([]string, 0, len(p.projects))
 	for slug := range p.projects {

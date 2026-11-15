@@ -1,9 +1,4 @@
 #!/usr/bin/env bash
-# Private loopback tunnel and live verification for VictoriaLogs.
-#
-# Usage:
-#   ./scripts/open-victorialogs-ui.sh [--port <local-port>]
-#   ./scripts/open-victorialogs-ui.sh --verify
 
 set -euo pipefail
 
@@ -22,9 +17,6 @@ Options:
 EOF
 }
 
-# Fluent Bit 4.2.8 prefixes every line with [YYYY/MM/DD HH:MM:SS.<ns>].
-# Drop that prefix so the same [error] text counts as a repeat. One unique
-# error still passes. Unit tests source this file with OPEN_VICTORIALOGS_LIB=1.
 repeated_fluentbit_errors() {
   grep -F '[error]' \
     | sed -E 's/^\[[0-9]{4}\/[0-9]{2}\/[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}\.[0-9]+\] //' \
@@ -107,8 +99,6 @@ EOF
   PF_LOG="$(mktemp /tmp/victorialogs-ui-pf-XXXXXX.log)"
   kubectl -n "${NS}" port-forward --address 127.0.0.1 svc/victorialogs "${PORT}:9428" >"${PF_LOG}" 2>&1 &
   PF_PID=$!
-  # Invoked only by the EXIT trap below. ShellCheck does not treat trap
-  # callbacks as calls (https://www.shellcheck.net/wiki/SC2329).
   # shellcheck disable=SC2329
   cleanup_pf() {
     kill "${PF_PID}" >/dev/null 2>&1 || true

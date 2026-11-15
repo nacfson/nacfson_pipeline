@@ -11,11 +11,9 @@ const (
 	maxFields         = 25
 	maxFieldNameLen   = 256
 	maxFieldValueLen  = 1024
-	maxAttachmentSize = 1 << 20 // 1 MiB
+	maxAttachmentSize = 1 << 20
 )
 
-// Notification is the destination-neutral message accepted by the notify
-// proxy. Callers never see the destination (Discord today).
 type Notification struct {
 	Title      string      `json:"title"`
 	Severity   string      `json:"severity"`
@@ -34,7 +32,6 @@ type Attachment struct {
 	Content string `json:"content"`
 }
 
-// Validate enforces the limits shared with the Discord renderer.
 func (n Notification) Validate() error {
 	if l := utf8.RuneCountInString(n.Title); l < 1 || l > maxTitleLen {
 		return fmt.Errorf("title must be 1-%d characters", maxTitleLen)
@@ -55,7 +52,7 @@ func (n Notification) Validate() error {
 			return fmt.Errorf("field %d value exceeds %d characters", i, maxFieldValueLen)
 		}
 	}
-	// An oversize body is uploaded as body.md, so it shares the attachment cap.
+
 	if len(n.Body) > maxAttachmentSize {
 		return errors.New("body exceeds 1 MiB")
 	}

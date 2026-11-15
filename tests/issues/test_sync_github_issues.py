@@ -15,8 +15,6 @@ GH_ARGV = (
     "--limit 100 --json number,title,state"
 )
 
-# Fixture copied from docs/issues/index.md. INDEX keeps the prose, the table
-# header, and the #4 and #57 rows. ORIGINAL is the full index the CLI copies.
 ORIGINAL = """\
 # Filed GitHub issues
 

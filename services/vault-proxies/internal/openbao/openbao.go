@@ -1,5 +1,3 @@
-// Package openbao is a minimal OpenBao client: Kubernetes-auth login and
-// KV v2 read/write under the "kv" mount.
 package openbao
 
 import (
@@ -14,12 +12,11 @@ import (
 	"time"
 )
 
-// Client talks to OpenBao using a ServiceAccount JWT.
 type Client struct {
 	Addr    string
 	Role    string
 	JWTPath string
-	// HTTP is the client used for all requests; a 30s-timeout client is used when nil.
+
 	HTTP *http.Client
 }
 
@@ -39,7 +36,6 @@ func (c *Client) httpClient() *http.Client {
 
 func (c *Client) base() string { return strings.TrimRight(c.Addr, "/") }
 
-// Login authenticates with the Kubernetes auth method and returns a client token.
 func (c *Client) Login(ctx context.Context) (string, error) {
 	jwtBytes, err := os.ReadFile(c.JWTPath)
 	if err != nil {
@@ -73,8 +69,6 @@ func (c *Client) Login(ctx context.Context) (string, error) {
 	return parsed.Auth.ClientToken, nil
 }
 
-// ReadKV reads the KV v2 secret at kv/data/<path> and returns its data map.
-// The map is nil when the response carries no data.
 func (c *Client) ReadKV(ctx context.Context, token, path string) (map[string]any, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.base()+"/v1/kv/data/"+path, nil)
 	if err != nil {
@@ -100,7 +94,6 @@ func (c *Client) ReadKV(ctx context.Context, token, path string) (map[string]any
 	return parsed.Data.Data, nil
 }
 
-// WriteKV writes data to the KV v2 secret at kv/data/<path>.
 func (c *Client) WriteKV(ctx context.Context, token, path string, data map[string]any) error {
 	body, _ := json.Marshal(map[string]any{"data": data})
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.base()+"/v1/kv/data/"+path, bytes.NewReader(body))

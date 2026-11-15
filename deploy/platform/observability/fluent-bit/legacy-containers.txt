@@ -1,1 +1,0 @@
-# All hosted project containers have migrated to Contract v3.

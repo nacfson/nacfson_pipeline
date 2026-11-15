@@ -12,13 +12,6 @@ import (
 	"nacfson_pipeline/gateway/internal/keycloak"
 )
 
-// Regression for the 2026-11-02 pn.nacfson.cloud sign-out at 12:01:58 UTC.
-// Keycloak introspection reports a token active while now <= exp. The project
-// backend rejects it when now >= exp. A request landing in the token's last
-// second was confirmed by the gateway and then rejected by the project, which
-// signed the visitor out. The gateway must refresh a token that is close to expiry
-// instead of handing it out.
-
 func jwtWithExp(exp int64) string {
 	enc := base64.RawURLEncoding
 	header := enc.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`))

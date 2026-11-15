@@ -1,8 +1,4 @@
 #!/usr/bin/env bash
-# ==============================================================================
-# Integration Test: Vault Credential Staged Rotation & Emergency Revocation Drill
-# Validates User Story 3, SC-004, FR-020 (updated in Spec 012 for retired registry-proxy)
-# ==============================================================================
 
 set -euo pipefail
 

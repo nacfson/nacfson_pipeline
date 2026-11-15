@@ -170,8 +170,6 @@ spec:
             spec:
               serviceAccountName: openbao
               automountServiceAccountToken: true
-              # Pin Cloud KMS to the private.googleapis.com VIP: openbao-ingress-policy only allows
-              # 199.36.153.8/30:443, and default DNS would return public addresses that it drops.
               hostAliases:
                 - ip: "199.36.153.8"
                   hostnames:
@@ -243,8 +241,6 @@ spec:
                         limits:
                           cpu: 100m
                           memory: 128Mi
-    # Allow OpenBao Workload Identity token exchange (nacfson-pipeline.svc.id.goog via gke-metadata-server)
-    # and Private Google Access KMS auto-unseal (199.36.153.8/30:443) without 0.0.0.0/0 egress.
     - target:
         kind: NetworkPolicy
         name: openbao-ingress-policy
@@ -542,8 +538,6 @@ spec:
     kind: GitRepository
     name: flux-system
   path: ./deploy/platform/ingress
-  # Spec 004 R3 amendment: postBuild is allowed on this layer only, for AUTH_HOST only.
-  # Route paths live in deploy/platform/ingress/ingress-allowlist.yaml (single copy).
   postBuild:
     substitute:
       AUTH_HOST: auth.nacfson.cloud
@@ -711,8 +705,6 @@ spec:
   timeout: 5m
   prune: true
   wait: true
-  # VictoriaLogs is deleted on GKE (logs stream to OCI Kafka via WireGuard) and error-detector is paused
-  # at replicas: 0 until Spec 014 switches it to Kafka logs.proj.errors, so healthChecks watch fluent-bit only.
   healthChecks:
     - apiVersion: apps/v1
       kind: DaemonSet

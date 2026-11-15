@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Render and Validate Script (contracts/reconciliation-layers.md, contracts/platform-preflight.md)
-# Usage: ./scripts/render-validate.sh <env> [<git-ref>]
 
 ENV="${1:-}"
 REF="${2:-}"
@@ -15,7 +13,6 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
-# If a git ref is specified, create a worktree, run there, and exit
 if [ -n "$REF" ]; then
   WORKTREE_DIR="$(mktemp -d "/tmp/render-validate-worktree-XXXXXX")"
   trap 'rm -rf "${WORKTREE_DIR}"' EXIT
@@ -104,13 +101,8 @@ else
   python3 "${SCRIPT_DIR}/kustomize_render.py" env "${ENV}" --root "${ROOT_DIR}" > "${RENDER_FILE}"
 fi
 
-# Schema validation with kubeconform if present
 if command -v kubeconform >/dev/null 2>&1; then
   echo "=== Running kubeconform schema validation ===" >&2
-  # Pinned: the catalog's main branch changes without notice. Its Cilium 1.20.2
-  # update (8f08f38d) made kubeconform v0.6.7 report CiliumNetworkPolicy as having
-  # no schema, which failed this check for every change. This ref is that commit's
-  # parent, so its CiliumNetworkPolicy schema is still Cilium 1.18.2.
   CRD_CATALOG_REF="6ec4c804fcb9b0a90fec9dd468aa57b984be150a"
   kubeconform -strict -kubernetes-version 1.35.0 \
     -skip CustomResourceDefinition \

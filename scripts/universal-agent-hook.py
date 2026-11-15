@@ -1,21 +1,4 @@
 #!/usr/bin/env python3
-"""
-universal-agent-hook.py — Multi-Agent Lifecycle Hook Adapter for nacfson_pipeline.
-
-On `SessionStart`, performs a non-mutating remote refresh
-(`scripts/agent-start-git-fetch.py`) so the agent starts with current
-remote-tracking refs.
-
-Enforces that `docs/platform-architecture.html` stays synchronized whenever
-architecture-affecting files are modified across all major AI coding agents:
-  - Antigravity CLI / IDE / 2.0 (.agents/hooks.json)
-  - Claude Code (.claude/settings.json)
-  - OpenAI Codex CLI (.codex/hooks.json)
-  - Grok Build (.grok/hooks.json)
-  - Cursor (.cursor/hooks.json)
-  - Oh-my-pi (.omp/extensions/arch-doc-sync.ts calls this script)
-  - OpenCode (.opencode/plugins/arch-doc-sync.js calls this script)
-"""
 
 from __future__ import annotations
 
@@ -79,12 +62,10 @@ def is_git_commit_command(cmd: str) -> bool:
 
 
 def print_allow(agent: str) -> None:
-    """Claude Code rejects top-level decision "allow" (only approve|block); `{}` means no objection."""
     print(json.dumps({} if agent == "claude" else {"decision": "allow"}))
 
 
 def run_session_start(agent: str) -> int:
-    """Refresh remote-tracking refs without blocking or mutating the work tree."""
     result = agent_start_fetch.fetch()
     message = str(result.get("message") or "")
     if not message or result.get("status") == "skipped":
@@ -104,7 +85,6 @@ def run_session_start(agent: str) -> int:
     elif agent == "cursor":
         print(json.dumps({"additional_context": message}))
     else:
-        # Antigravity and generic adapters: plain stdout is shown/logged as context.
         print(message)
     return 0
 
@@ -125,7 +105,6 @@ def main() -> int:
 
     payload = load_stdin_json()
 
-    # Detect event name
     event = args.event
     if event == "auto":
         raw_event = (
@@ -142,7 +121,6 @@ def main() -> int:
         else:
             event = "Stop"
 
-    # Detect agent dialect
     agent = args.agent
     if agent == "auto":
         if "hookEventName" in payload or "toolInput" in payload or "stopHookActive" in payload:
@@ -152,7 +130,6 @@ def main() -> int:
         else:
             agent = "generic"
 
-    # Prevent infinite Stop-hook loops if agent already re-prompted once
     if event == "Stop" and (
         payload.get("stopHookActive") is True or payload.get("stop_hook_active") is True
     ):
@@ -165,7 +142,6 @@ def main() -> int:
     arch_errors: list[str] = []
     review_errors: list[str] = []
 
-    # For PreToolUse, only gate `git commit` commands so normal exploration/test commands run freely
     if event == "PreToolUse":
         cmd = extract_command(payload)
         if not is_git_commit_command(cmd):
@@ -197,7 +173,6 @@ def main() -> int:
             if not ok:
                 review_errors.extend(gate_errs)
     else:
-        # Stop event: verify static invariants + working tree co-update
         arch_errors = sync_checker.check_static_invariants()
         arch_errors.extend(sync_checker.check_git_co_update("worktree"))
 
@@ -223,7 +198,6 @@ def main() -> int:
         print(json.dumps({"decision": "block", "reason": reason}))
         return 2 if event == "PreToolUse" else 0
 
-    # Generic fallback
     print(json.dumps({"ok": False, "decision": "block", "reason": reason}))
     print(reason, file=sys.stderr)
     return 1

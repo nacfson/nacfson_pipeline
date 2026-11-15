@@ -19,8 +19,6 @@ import (
 	"nacfson_pipeline/services/error-pipeline/internal/group"
 )
 
-// The golden payload of Task 2 is the contract these structs must speak, so it
-// is decoded, checked field by field, and re-encoded.
 func TestGoldenMatchesStruct(t *testing.T) {
 	raw, err := os.ReadFile("testdata/notification.json")
 	if err != nil {
@@ -56,8 +54,6 @@ func TestGoldenMatchesStruct(t *testing.T) {
 		t.Errorf("attachment = %+v, want nil", n.Attachment)
 	}
 
-	// Re-encoding and comparing as generic JSON catches a renamed, missing or
-	// extra key even when the decode above happened to succeed.
 	b, err := json.Marshal(n)
 	if err != nil {
 		t.Fatalf("marshal: %v", err)
@@ -124,7 +120,6 @@ func TestClientSendRejectsNon202(t *testing.T) {
 	}
 }
 
-// sampleGroup is the PN connection-pool error of the golden payload.
 func sampleGroup() group.Group {
 	var ev classify.Event
 	ev.Level = "error"
@@ -164,8 +159,7 @@ func TestRenderNew(t *testing.T) {
 	if !reflect.DeepEqual(n.Fields, wantFields) {
 		t.Errorf("fields = %+v, want %+v", n.Fields, wantFields)
 	}
-	// A rendered group has the shape of the golden body: one fenced block with
-	// the exception line, then the samples, then the stack.
+
 	wantBody := "```\n" +
 		"java.lang.IllegalStateException: connection pool exhausted\n" +
 		`{"level":"error","msg":"connection pool exhausted"}` + "\n" +
@@ -218,15 +212,14 @@ func TestRenderRecurring(t *testing.T) {
 	if !strings.Contains(n.Body, "3 occurrences since last alert") {
 		t.Errorf("body = %q", n.Body)
 	}
-	// The recurrence note is outside the fence, so it stays readable as text.
+
 	if !strings.HasPrefix(n.Body, "Recurred; 3 occurrences since last alert.\n\n```\n") {
 		t.Errorf("body = %q", n.Body)
 	}
 }
 
 func TestRenderNewActionRecurrenceWithoutCount(t *testing.T) {
-	// A cooldown that expired with no occurrence during it yields Recurred
-	// with SinceLastAlert still zero; it must not read as a first alert.
+
 	g := sampleGroup()
 	g.SinceLastAlert = 0
 	n := RenderNewAction(group.Action{Type: group.NotifyNew, Group: g, Recurred: true})
@@ -257,8 +250,7 @@ func TestRenderNewActionRecurrenceWithCount(t *testing.T) {
 }
 
 func TestRenderNewActionFirstAlertIgnoresCount(t *testing.T) {
-	// Without Recurred the tracker is starting a cycle, so even a leftover
-	// count (defensive) must not turn the message into a recurrence.
+
 	g := sampleGroup()
 	g.SinceLastAlert = 0
 	n := RenderNewAction(group.Action{Type: group.NotifyNew, Group: g})
@@ -271,8 +263,6 @@ func TestRenderNewActionFirstAlertIgnoresCount(t *testing.T) {
 	}
 }
 
-// RenderNew must keep deciding from the group alone, as it did before
-// RenderNewAction existed.
 func TestRenderNewDelegatesToAction(t *testing.T) {
 	g := sampleGroup()
 	got := RenderNew(g)
@@ -289,11 +279,9 @@ func TestRenderNewDelegatesToAction(t *testing.T) {
 	}
 }
 
-// A fingerprint can be maxFieldBytes long (classify caps it there), and the
-// proxy rejects a field value over 1024 runes with a permanent 400.
 func TestRenderTruncatesFingerprint(t *testing.T) {
 	g := sampleGroup()
-	g.Fingerprint = strings.Repeat("fp", 32<<10) // 64 KiB
+	g.Fingerprint = strings.Repeat("fp", 32<<10)
 	n := RenderNew(g)
 
 	got := fieldValue(t, n, "Fingerprint")
@@ -309,8 +297,6 @@ func TestRenderTruncatesFingerprint(t *testing.T) {
 	assertProxyLimits(t, n)
 }
 
-// The tracker does not cap Pods, so a wide incident produces a value far over
-// the proxy's limit.
 func TestRenderTruncatesPods(t *testing.T) {
 	g := sampleGroup()
 	g.Pods = make([]string, 0, 40)
@@ -346,7 +332,6 @@ func TestRenderTruncatesLongTitle(t *testing.T) {
 	}
 	assertProxyLimits(t, n)
 
-	// The investigator notice builds its own title and needs the same cap.
 	g.Project, g.Container = strings.Repeat("é", 200), strings.Repeat("é", 200)
 	inv := RenderInvestigatorUnavailable(g)
 	if c := utf8.RuneCountInString(inv.Title); c > 256 {
@@ -357,7 +342,6 @@ func TestRenderTruncatesLongTitle(t *testing.T) {
 	}
 	assertProxyLimits(t, inv)
 
-	// Multi-byte runes in a field value must survive truncation intact.
 	g.Fingerprint = strings.Repeat("é", 2000)
 	n = RenderNew(g)
 	fp := fieldValue(t, n, "Fingerprint")
@@ -369,7 +353,6 @@ func TestRenderTruncatesLongTitle(t *testing.T) {
 	}
 }
 
-// A secret must not survive truncation as a readable prefix of the value.
 func TestRenderTruncatesAfterRedacting(t *testing.T) {
 	g := sampleGroup()
 	g.Fingerprint = "authorization=Bearer " + strings.Repeat("s", 4000)
@@ -387,7 +370,6 @@ func TestRenderTruncatesAfterRedacting(t *testing.T) {
 	}
 }
 
-// fieldValue returns the value of the named field.
 func fieldValue(t *testing.T, n Notification, name string) string {
 	t.Helper()
 	for _, f := range n.Fields {
@@ -399,8 +381,6 @@ func fieldValue(t *testing.T, n Notification, name string) string {
 	return ""
 }
 
-// head returns at most the first n runes of s, so a failure message stays
-// readable without slicing a string in the middle of a rune.
 func head(s string, n int) string {
 	if r := []rune(s); len(r) > n {
 		return string(r[:n])
@@ -408,7 +388,6 @@ func head(s string, n int) string {
 	return s
 }
 
-// tail returns at most the last n runes of s.
 func tail(s string, n int) string {
 	if r := []rune(s); len(r) > n {
 		return string(r[len(r)-n:])
@@ -416,8 +395,6 @@ func tail(s string, n int) string {
 	return s
 }
 
-// assertProxyLimits checks a rendered notification against the notify proxy's
-// Validate limits, so a new render path cannot quietly break them.
 func assertProxyLimits(t *testing.T, n Notification) {
 	t.Helper()
 	if c := utf8.RuneCountInString(n.Title); c < 1 || c > 256 {
@@ -472,13 +449,6 @@ func TestRenderInvestigatorUnavailable(t *testing.T) {
 	}
 }
 
-// TestRenderInvestigatorUnavailableBatchStaysWithinProxyLimits proves the one
-// notice that stands in for a large batch is still acceptable to the notify
-// proxy. The batch is the worst case a shutdown can produce: 133 groups whose
-// fingerprints are project-supplied, so they can be far longer than a derived
-// one. An over-long title or field is a permanent 400 for the message at the
-// head of the retry queue, which would block every notification behind it, so
-// the caps have to hold without losing the count.
 func TestRenderInvestigatorUnavailableBatchStaysWithinProxyLimits(t *testing.T) {
 	batch := make([]group.Group, 133)
 	for i := range batch {
@@ -500,8 +470,7 @@ func TestRenderInvestigatorUnavailableBatchStaysWithinProxyLimits(t *testing.T) 
 			t.Errorf("field %q is %d runes, limit %d", f.Name, got, maxFieldRunes)
 		}
 	}
-	// The count must survive the clamp: a truncated name list that no longer
-	// says how many groups are missing reads as the whole truth.
+
 	if !strings.Contains(n.Body, "133") {
 		t.Errorf("body %q lost the group count", n.Body)
 	}
@@ -675,8 +644,6 @@ func TestQueueConcurrentPushIsSafe(t *testing.T) {
 	}
 }
 
-// Push must not report a drop for the head an in-flight send already copied:
-// if that send fails, the notification is still queued and will be retried.
 func TestPushDoesNotLogDropForInflightHead(t *testing.T) {
 	sent := make(chan struct{})
 	release := make(chan struct{})
@@ -714,10 +681,8 @@ func TestPushDoesNotLogDropForInflightHead(t *testing.T) {
 		defer close(done)
 		q.Drain(context.Background())
 	}()
-	<-sent // t1 is copied for the send and still queued.
+	<-sent
 
-	// The queue is full at 2. Dropping t1 here would silently lose it when the
-	// send fails, so t2 must be the one dropped.
 	q.Push(Notification{Title: "t3", Severity: "error"})
 	close(release)
 	<-done
@@ -744,7 +709,7 @@ func TestPushDoesNotLogDropForInflightHead(t *testing.T) {
 	mu.Lock()
 	got := append([]string(nil), sentTitles...)
 	mu.Unlock()
-	// t1 failed once and was retried, so the delivered order is t1, t1, t3.
+
 	if want := []string{"t1", "t1", "t3"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("sent %q, want %q: the failed head must stay queued", got, want)
 	}
@@ -753,8 +718,6 @@ func TestPushDoesNotLogDropForInflightHead(t *testing.T) {
 	}
 }
 
-// A shutdown drain that overlaps a ticker drain must run its own pass rather
-// than return immediately and deliver nothing.
 func TestDrainWaitsForRunningPass(t *testing.T) {
 	sent := make(chan struct{})
 	release := make(chan struct{})
@@ -780,7 +743,6 @@ func TestDrainWaitsForRunningPass(t *testing.T) {
 	}()
 	<-sent
 
-	// Arrive mid-pass; the queue is non-empty because the head is in flight.
 	q.Push(Notification{Title: "second", Severity: "error"})
 	shutdownDone := make(chan struct{})
 	go func() {
@@ -803,7 +765,6 @@ func TestDrainWaitsForRunningPass(t *testing.T) {
 	}
 }
 
-// A drain waiting on another pass must obey its context.
 func TestDrainWaitingHonoursContext(t *testing.T) {
 	sent := make(chan struct{})
 	release := make(chan struct{})
@@ -827,7 +788,7 @@ func TestDrainWaitingHonoursContext(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	before := time.Now()
-	q.Drain(ctx) // Both entry points block on the running pass.
+	q.Drain(ctx)
 	if waited := time.Since(before); waited > time.Second {
 		t.Errorf("Drain waited %v, want an immediate return", waited)
 	}

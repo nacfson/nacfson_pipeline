@@ -18,6 +18,8 @@ Reviewers MUST focus on concrete failure mechanisms specific to each subsystem:
   - Breaking $1/n$ resource budgets, missing Guaranteed QoS (`requests == limits`), privileged or root containers (`runAsNonRoot: true` required), non-`ClusterIP` services, mutable image tags instead of immutable `@sha256:...` digests, or coupled liveness/readiness probes (`livenessProbe` must remain process-local while `startupProbe`/`readinessProbe` verify upstream hops).
 - **`docs/`, `contracts/`, & `specs/`**:
   - Documentation or contract statements that contradict runtime manifests, `scripts/platform-preflight.py`, `scripts/render-invariants.py`, or `docs/platform-architecture.html`.
+- **All code (Constitution v2.4.0, "No Comments in Code")**:
+  - A comment added to code: line, block, or trailing comments, commented-out code, Python docstrings, Go doc comments, or a comment inside code embedded in a manifest or workflow. Report it as `Important`; the explanation belongs in a Markdown document. Not findings: shebang lines, Go compiler directives (`//go:build`, `//go:embed`), container build parser directives (`# syntax=`), linter or analyzer directives (`# shellcheck`, `# noqa`, `//nolint`), text inside data such as printed help output, generated files (`.terraform.lock.hcl`, `go.sum`), and third-party files vendored unchanged from upstream (`deploy/platform/cni/upstream/`, `deploy/platform/cert-manager/upstream/`, `.specify/scripts/`).
 
 ---
 

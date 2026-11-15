@@ -12,7 +12,6 @@ spec:
     - Egress
   ingress: []
   egress:
-    # Allow DNS resolution (copied from vault-default-deny)
     - to:
         - namespaceSelector:
             matchLabels:
@@ -99,8 +98,6 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # DNS first: every peer below is named by Service, so nothing resolves
-    # without it.
     - to:
         - namespaceSelector:
             matchLabels:
@@ -113,7 +110,6 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # The tail and catch-up queries.
     - to:
         - podSelector:
             matchLabels:
@@ -121,7 +117,6 @@ spec:
       ports:
         - protocol: TCP
           port: 9428
-    # #errors alerts. The proxy owns the Discord URL; the detector never sees it.
     - to:
         - namespaceSelector:
             matchLabels:
@@ -132,8 +127,6 @@ spec:
       ports:
         - protocol: TCP
           port: 8080
-    # The investigator handoff. Empty INVESTIGATOR_URL today, but the door is
-    # declared so enabling workstream 3 is a config change, not a policy change.
     - to:
         - podSelector:
             matchLabels:
