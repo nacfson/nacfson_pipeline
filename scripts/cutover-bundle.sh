@@ -392,16 +392,28 @@ restart_openbao() {
   kubectl wait --for=jsonpath='{.status.phase}'=Running pod/openbao-0 -n vault --timeout=180s
 }
 
-bao_status_field() {
+bao_state() {
   local json
   json="$(kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao status -format=json 2>/dev/null || true)"
-  python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); v=d.get(sys.argv[1]); print(str(v).lower() if isinstance(v,bool) else (v or ""))' "$1" <<< "${json}"
+  python3 "${SCRIPT_DIR}/lib/openbao_status.py" <<< "${json}"
 }
 
-bao_on_kms() {
-  local json
-  json="$(kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao status -format=json 2>/dev/null || true)"
-  python3 -c 'import json,sys; d=json.loads(sys.stdin.read() or "{}"); sys.exit(0 if d.get("recovery_seal") is True and d.get("sealed") is False and not d.get("migration") else 1)' <<< "${json}"
+show_bao_status_failure() {
+  local rc=0
+  kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao status -format=json >&2 || rc=$?
+  echo "kubectl exec ... bao status exited ${rc}" >&2
+}
+
+wait_bao_settled() {
+  local attempts="$1" state="unreachable"
+  for _ in $(seq 1 "${attempts}"); do
+    state="$(bao_state)"
+    case "${state}" in
+      unreachable | sealed-auto) sleep "${POLL_SECONDS}" ;;
+      *) break ;;
+    esac
+  done
+  echo "${state}"
 }
 
 RESTORE_MARKER_CM="cutover-restore-state"
@@ -439,13 +451,29 @@ if [[ "${TARGET_ENV}" == "gke" ]]; then
 fi
 
 RESUME_AFTER_KMS="false"
-if [[ "${TARGET_ENV}" == "gke" ]] && bao_on_kms; then
-  PREVIOUS_BUNDLE_SHA="$(restored_bundle_sha)"
-  if [[ -n "${PREVIOUS_BUNDLE_SHA}" && "${PREVIOUS_BUNDLE_SHA}" != "${BUNDLE_SHA}" ]]; then
-    echo "Error: openbao-0 already runs on Cloud KMS with data from another bundle (manifest ${PREVIOUS_BUNDLE_SHA}); refusing to overwrite it." >&2
-    exit 1
-  fi
-  RESUME_AFTER_KMS="true"
+if [[ "${TARGET_ENV}" == "gke" ]]; then
+  PRECHECK_STATE="$(wait_bao_settled 12)"
+  case "${PRECHECK_STATE}" in
+    unsealed-auto)
+      PREVIOUS_BUNDLE_SHA="$(restored_bundle_sha)"
+      if [[ -n "${PREVIOUS_BUNDLE_SHA}" && "${PREVIOUS_BUNDLE_SHA}" != "${BUNDLE_SHA}" ]]; then
+        echo "Error: openbao-0 already runs on Cloud KMS with data from another bundle (manifest ${PREVIOUS_BUNDLE_SHA}); refusing to overwrite it." >&2
+        exit 1
+      fi
+      RESUME_AFTER_KMS="true"
+      ;;
+    uninitialized | sealed-shamir | unsealed-shamir | sealed-migration)
+      ;;
+    unreachable)
+      echo "Error: cannot read the openbao-0 status (empty or unparseable 'bao status' output); refusing to touch the cluster. Check that openbao-0 is Running and rerun." >&2
+      show_bao_status_failure
+      exit 1
+      ;;
+    *)
+      echo "Error: openbao-0 is '${PRECHECK_STATE}'; it holds Cloud KMS data that cannot be switched back to Shamir. Restore its access to the Cloud KMS key so it auto-unseals, then rerun." >&2
+      exit 1
+      ;;
+  esac
 fi
 
 echo "=== [1/7] Pre-Seeding Platform Edge TLS & ACME Account Secrets ==="
@@ -467,20 +495,28 @@ else
   fi
 
   echo "=== [3/7] Restoring openbao.snap ==="
-  BAO_INITIALIZED="$(bao_status_field initialized)"
-  BAO_SEALED="$(bao_status_field sealed)"
+  BAO_STATE="$(wait_bao_settled 60)"
 
   RESTORE_AUTH_TOKEN="${VAULT_TOKEN}"
-  if [[ "${BAO_INITIALIZED}" != "true" ]]; then
-    echo "Target openbao-0 is uninitialized; performing ephemeral 1-share bootstrap init/unseal for raft snapshot restore..."
-    INIT_JSON="$(kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator init -key-shares=1 -key-threshold=1 -format=json)"
-    TEMP_UNSEAL_KEY="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["unseal_keys_b64"][0])' <<< "${INIT_JSON}")"
-    RESTORE_AUTH_TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["root_token"])' <<< "${INIT_JSON}")"
-    kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator unseal "${TEMP_UNSEAL_KEY}" >/dev/null
-    unset INIT_JSON TEMP_UNSEAL_KEY
-  elif [[ "${BAO_SEALED}" == "true" ]]; then
-    kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator unseal "${UNSEAL_KEY}" >/dev/null
-  fi
+  case "${BAO_STATE}" in
+    uninitialized)
+      echo "Target openbao-0 is uninitialized; performing ephemeral 1-share bootstrap init/unseal for raft snapshot restore..."
+      INIT_JSON="$(kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator init -key-shares=1 -key-threshold=1 -format=json)"
+      TEMP_UNSEAL_KEY="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["unseal_keys_b64"][0])' <<< "${INIT_JSON}")"
+      RESTORE_AUTH_TOKEN="$(python3 -c 'import json,sys; print(json.load(sys.stdin)["root_token"])' <<< "${INIT_JSON}")"
+      kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator unseal "${TEMP_UNSEAL_KEY}" >/dev/null
+      unset INIT_JSON TEMP_UNSEAL_KEY
+      ;;
+    sealed-shamir)
+      kubectl exec -n vault openbao-0 -- env VAULT_ADDR="http://127.0.0.1:8200" bao operator unseal "${UNSEAL_KEY}" >/dev/null
+      ;;
+    unsealed-shamir)
+      ;;
+    *)
+      echo "Error: openbao-0 is '${BAO_STATE}' before the snapshot restore; expected uninitialized, sealed-shamir or unsealed-shamir." >&2
+      exit 1
+      ;;
+  esac
 
   kubectl exec -i -n vault openbao-0 -- tee /tmp/openbao.snap >/dev/null < "${ABS_BUNDLE_DIR}/openbao.snap"
   kubectl exec -n vault openbao-0 -- \
@@ -497,12 +533,17 @@ else
     echo "=== [4/7] Migrating openbao-0 from Shamir to Cloud KMS (gcpckms) ==="
     set_openbao_config "${KMS_HCL}"
     restart_openbao
+    MIGRATION_STATE="$(wait_bao_settled 60)"
+    if [[ "${MIGRATION_STATE}" != "sealed-migration" ]]; then
+      echo "Error: openbao-0 is '${MIGRATION_STATE}' after the switch to the gcpckms config; expected sealed-migration. Flux 'vault' and 'identity' stay suspended for break-glass recovery." >&2
+      exit 1
+    fi
     kubectl exec -n vault openbao-0 -- \
       env VAULT_ADDR="http://127.0.0.1:8200" \
       bao operator unseal -migrate "${UNSEAL_KEY}"
     MIGRATED="false"
     for _ in $(seq 1 24); do
-      if bao_on_kms; then
+      if [[ "$(bao_state)" == "unsealed-auto" ]]; then
         MIGRATED="true"
         break
       fi

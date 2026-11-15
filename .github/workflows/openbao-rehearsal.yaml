@@ -1,0 +1,38 @@
+name: OpenBao Seal Migration Rehearsal
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "scripts/cutover-bundle.sh"
+      - "scripts/vault-*.sh"
+      - "scripts/lib/openbao_status.py"
+      - "scripts/lib/openbao_fixture_compare.py"
+      - "scripts/rehearse-openbao-seal-migration.sh"
+      - "tests/fixtures/openbao/**"
+      - "deploy/platform/vault/**"
+      - ".github/workflows/openbao-rehearsal.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  rehearse-seal-migration:
+    name: rehearse-seal-migration (OpenBao 2.0.0)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Rehearse the Shamir to auto-unseal migration and check the fixtures
+        run: |
+          ./scripts/rehearse-openbao-seal-migration.sh --check-fixtures tests/fixtures/openbao/2.0.0/status
