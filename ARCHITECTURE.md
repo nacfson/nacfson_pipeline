@@ -20,7 +20,7 @@ flowchart TD
 
     subgraph PlatformIdentity["Identity Namespace (identity)"]
         Gateway["Go Auth Gateway (Stdlib Only)<br/>[/oauth/start, /oauth/callback, /auth/logout]"]
-        Keycloak["Keycloak IdP (--features=persistent-user-sessions)<br/>[Realm: platform, Google Broker, JIT first login]"]
+        Keycloak["Keycloak IdP (24.0.5 · --vault=file)<br/>[Realm: platform, Google Broker, JIT first login]"]
         Postgres[("PostgreSQL StatefulSet<br/>[keycloak, proj_pn, proj_health DBs]")]
     end
 
@@ -139,7 +139,7 @@ flowchart LR
 ### 3.2 Project Door Separation & Persistent Shared Sign-In (Constitution Principle III, Specs 001, 006, 009 & 012)
 - **Direct Project Door**: Visitors reach a project (`https://pn.nacfson.cloud`, `https://health.nacfson.cloud`, `https://blog.nacfson.cloud`) directly through its own `IngressRoute` without ForwardAuth blocking the front door.
 - **Sign-In Declaration (`sign-in.yaml`)**: Each project declares `mode: none` or `mode: shared` in [`deploy/projects/<project>/sign-in.yaml`](deploy/projects/pn/sign-in.yaml).
-- **Database-Persisted Sessions**: `Deployment/keycloak` runs with `--features=persistent-user-sessions` (Spec 012) so active user and client sessions live in `postgres-0` (`keycloak` DB) across Keycloak pod restarts, GKE node upgrades, and `cutover-bundle.sh` cross-cluster restores.
+- **PostgreSQL Realm & User Persistence**: `Deployment/keycloak` (`24.0.5`) persists realm configuration, federated Google links, and offline tokens in `postgres-0` (`keycloak` DB) across `cutover-bundle.sh` cross-cluster restores (`--features=persistent-user-sessions` requires Keycloak `25+` and is deferred post-cutover).
 - **Public Auth Surface Allowlist**: On `auth.nacfson.cloud`, Traefik exposes **only** `/oauth/start`, `/oauth/callback`, `/auth/logout`, and `/realms/platform/{protocol/openid-connect/*,login-actions*,broker/*}` + `/resources/*`. Keycloak `/admin/*`, master realm, metrics (`:9000`), and internal JWKS are strictly blocked at the edge.
 - **Identity Tuple**: Platform identity is strictly `(issuer, subject)`. Email is never used as a primary key, and authentication never grants implicit app-admin privileges.
 - **Reference**: [`docs/architecture-auth-routing.md`](docs/architecture-auth-routing.md) | [`docs/project-auth-verification.md`](docs/project-auth-verification.md)

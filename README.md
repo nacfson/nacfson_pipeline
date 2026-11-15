@@ -81,7 +81,7 @@ flowchart TD
     User["🌐 User Browser"]
     Ingress["Traefik v3.3.4 Ingress Controller (:80/:443)<br/>[GKE L4 Pass-Through LB · gke-ingress-ip]"]
     Gateway["Go Auth Gateway (Standard Library)<br/>[/oauth/start, /oauth/callback, /auth/logout]"]
-    Keycloak["Keycloak IdP (Google Broker)<br/>[--features=persistent-user-sessions]"]
+    Keycloak["Keycloak IdP (24.0.5 · Google Broker)"]
     Google["Google OAuth2"]
     Workload["Project Workload (e.g., 'pn')<br/>[Restricted Pod Security Standard]"]
     

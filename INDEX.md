@@ -88,7 +88,7 @@ Each directory under `specs/` is a SpecKit feature package containing `spec.md` 
 - [`deploy/platform/vault/`](deploy/platform/vault/) — OpenBao StatefulSet, `ServiceAccount/openbao`, portable `networking.k8s.io/v1` `NetworkPolicy` (`network-policy.yaml`), backup CronJob, and HCL policies.
 - [`deploy/platform/vault-proxies/`](deploy/platform/vault-proxies/) — In-cluster `db-proxy`, `ai-proxy`, and `notify-proxy` Deployments *(Spec 012 retired `registry-proxy`)*.
 - [`deploy/platform/database/`](deploy/platform/database/) — Shared PostgreSQL StatefulSet, PVC, init job, and backup CronJob.
-- [`deploy/platform/identity/`](deploy/platform/identity/) — Keycloak Deployment (`--features=persistent-user-sessions`) & realm config (`keycloak-realm-config.yaml`) and Go Auth Gateway Deployment (`gateway-deployment.yaml`).
+- [`deploy/platform/identity/`](deploy/platform/identity/) — Keycloak Deployment (`keycloak-deployment.yaml`) & realm config (`keycloak-realm-config.yaml`) and Go Auth Gateway Deployment (`gateway-deployment.yaml`).
 - [`deploy/platform/traefik/`](deploy/platform/traefik/) — Non-root `Traefik v3.3.4` edge ingress (single L4 pass-through `LoadBalancer` Service on `gke-ingress-ip`, no `hostPort`, CRDs, RBAC) used by `clusters/gke/` (Spec 015).
 - [`deploy/platform/ingress/`](deploy/platform/ingress/) — Traefik `IngressRoute` allowlist (`ingress-allowlist.yaml`), HTTP-to-HTTPS redirect, and middlewares.
 - [`deploy/platform/cert-manager/`](deploy/platform/cert-manager/) — Upstream cert-manager `v1.21.2` manifest bundle.

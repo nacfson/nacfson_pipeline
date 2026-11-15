@@ -206,6 +206,7 @@ class TestKeycloakGoogleJitProvisioning(unittest.TestCase):
         self.assertIn("kc.sh start --import-realm", text)
         self.assertNotIn("--override", text)
         self.assertIn("quay.io/keycloak/keycloak:24.0.5", text)
+        self.assertNotIn("--features=persistent-user-sessions", text)
 
     def test_session_revocation_service_account_can_delete_sessions(self) -> None:
         users = self.realm["users"]
