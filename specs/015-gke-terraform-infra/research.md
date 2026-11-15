@@ -120,7 +120,7 @@ It exits non-zero and names each mismatch. It runs in CI, and from `scripts/rend
 
 **Decision**:
 
-- **`ondemand-core`**: e2-medium, `node_count = 1`
+- **`ondemand-core`**: e2-standard-2, `node_count = 1`
   - 30 GB `pd-balanced` boot disk
   - service account `gke-nodes` with `roles/container.defaultNodeServiceAccount` only, scope `cloud-platform`
   - `workload_metadata_config.mode = "GKE_METADATA"`
@@ -129,7 +129,7 @@ It exits non-zero and names each mismatch. It runs in CI, and from `scripts/rend
 - **`spot-controllers`**: e2-small, `spot = true`, same disk and identity
   - taint `cloud.google.com/gke-spot=true:NO_SCHEDULE`, set explicitly (GKE adds the label but not the taint)
 
-**Rationale**: matches `clusters/gke/capacity.yaml`. Surge with one extra node keeps the old node until the new one is ready. That is 2 + 2 + 2 = 6 vCPUs during an e2-medium surge, within the control center's `asia-northeast3` CPU quota of 6. A 30 GB disk instead of the 100 GB default saves cost; the platform's PVCs are separate disks.
+**Rationale**: matches `clusters/gke/capacity.yaml`. Surge with one extra node keeps the old node until the new one is ready. That is 2 + 2 + 2 = 6 vCPUs during an e2-standard-2 surge, within the `asia-northeast3` CPU quota (100 on 2026-11-15). A 30 GB disk instead of the 100 GB default saves cost; the platform's PVCs are separate disks.
 
 **Alternatives considered**: `max_surge = 0, max_unavailable = 1` (no quota risk, but the only on-demand node is drained before a replacement exists, so the outage is longer); the default compute service account (Editor-level access, which spec FR-006 forbids).
 

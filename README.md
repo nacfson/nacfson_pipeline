@@ -74,7 +74,7 @@ All platform components and project workloads strictly adhere to the 7 principle
 
 ## 3. System Architecture & Topology
 
-The platform coordinates ingress traffic, identity negotiation, credential isolation, and persistent storage across a two-node zonal GKE Standard cluster (`ondemand-core` `e2-medium` + `spot-controllers` `e2-small`, with `local-k3s` for local verification):
+The platform coordinates ingress traffic, identity negotiation, credential isolation, and persistent storage across a two-node zonal GKE Standard cluster (`ondemand-core` `e2-standard-2` + `spot-controllers` `e2-small`, with `local-k3s` for local verification):
 
 ```mermaid
 flowchart TD
@@ -182,7 +182,7 @@ flowchart TB
         FW["Firewall rule nacfson-gke-allow-web<br/>TCP 80/443 → that address only"]
         subgraph VPC["VPC nacfson-gke · subnet with Private Google Access"]
             subgraph Cluster["GKE cluster nacfson-gke (zonal, asia-northeast3-a)"]
-                OD["Pool ondemand-core<br/>1 × e2-medium"]
+                OD["Pool ondemand-core<br/>1 × e2-standard-2"]
                 SP["Pool spot-controllers<br/>1 × e2-small Spot (tainted)"]
             end
         end

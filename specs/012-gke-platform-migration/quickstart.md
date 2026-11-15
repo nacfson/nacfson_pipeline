@@ -30,7 +30,7 @@ python3 scripts/check-arch-doc-sync.py --worktree
 ```
 
 **Expected Outcome**:
-- `platform-preflight.py` reports `PASSED` for `gke` with `allocatable=(1880m, 4408Mi)`, `perProjectBudget=(303m, 418Mi)`, `ondemand-core` (`e2-medium`) hosting `keycloak` + all `proj-*` + `RWO` PVCs, and `spot-controllers` (`e2-small`) hosting `cert-manager` + `flux-system`.
+- `platform-preflight.py` reports `PASSED` for `gke` with `allocatable=(2870m, 7158Mi)`, `perProjectBudget=(323m, 815Mi)`, `ondemand-core` (`e2-standard-2`) hosting `keycloak` + all `proj-*` + `RWO` PVCs, and `spot-controllers` (`e2-small`) hosting `cert-manager` + `flux-system`.
 - Zero `CiliumNetworkPolicy` or `vault-registry-proxy` resources exist in rendered outputs.
 
 ---

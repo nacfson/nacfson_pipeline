@@ -9,7 +9,7 @@ For supreme governance rules, read [`.specify/memory/constitution.md`](.specify/
 ## 1. High-Level Runtime Topology
 
 The platform runs across cloud-agnostic Kubernetes environments:
-- **`clusters/gke/` (Primary Cloud Target — Spec 012 Design 1)**: Zonal GKE Standard in GCP project **`nacfson-pipeline`**, zone **`asia-northeast3-a`** (`1 × e2-medium` On-Demand `ondemand-core` hosting all 24/7 stateful/auth/tenant workloads + `1 × e2-small` Spot `spot-controllers` hosting stateless `cert-manager` & `flux-system` controllers, `--logging=NONE --monitoring=NONE`, `Traefik v3.3.4` behind a single GKE L4 pass-through LoadBalancer on the Terraform-reserved address `gke-ingress-ip` (Spec 015); infrastructure in `infra/gcp/`).
+- **`clusters/gke/` (Primary Cloud Target — Spec 012 Design 1)**: Zonal GKE Standard in GCP project **`nacfson-pipeline`**, zone **`asia-northeast3-a`** (`1 × e2-standard-2` On-Demand `ondemand-core` hosting all 24/7 stateful/auth/tenant workloads + `1 × e2-small` Spot `spot-controllers` hosting stateless `cert-manager` & `flux-system` controllers, `--logging=NONE --monitoring=NONE`, `Traefik v3.3.4` behind a single GKE L4 pass-through LoadBalancer on the Terraform-reserved address `gke-ingress-ip` (Spec 015); infrastructure in `infra/gcp/`).
 - **`clusters/local-k3s/` (Lockstep Local Verification Target)**: Single-node Linux K3s (`v1.35.9+k3s1`) running Cilium eBPF CNI and in-cluster VictoriaLogs.
 - **`clusters/vps-k3s/` (Transitional Until Gate 4 Cutover)**: Legacy Oracle Cloud ARM64 K3s node, repurposed into OCI Kafka Broker VM 1 (`10.200.0.11`) immediately after Gate 4 DNS cutover.
 
@@ -156,7 +156,7 @@ flowchart LR
 - **Restricted Pod Security**: Every project namespace enforces `pod-security.kubernetes.io/enforce: restricted`, `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: ["ALL"]`, `automountServiceAccountToken: false`, and `ClusterIP`-only Services.
 - **Multi-Node Per-Pool Placement & $1/n$ Slicing**:
   $$\text{Project Slice} = \frac{\sum_{\text{pools}} \text{Allocatable} - \text{Platform Reservation (incl. } N_{\text{nodes}} \times \text{DaemonSets)}}{n_{\text{projects}}}$$
-  On GKE Design 1 (`1880m / 4408Mi` across `2` nodes, `platformReservations = 970m / 3152Mi`), each of the $n = 3$ projects receives **`303m` CPU / `418Mi` RAM**. `scripts/platform-preflight.py` validates per-pool CPU/memory fit, forbids `RWO` PVCs or `keycloak`/`proj-*` pods on `spot-controllers`, and enforces `>= 50m` CPU / `>= 192Mi` memory backup headroom on `ondemand-core`.
+  On GKE Design 1 (`2870m / 7158Mi` across `2` nodes, `platformReservations = 1900m / 4712Mi`), each of the $n = 3$ projects receives **`323m` CPU / `815Mi` RAM**. `scripts/platform-preflight.py` validates per-pool CPU/memory fit, forbids `RWO` PVCs or `keycloak`/`proj-*` pods on `spot-controllers`, and enforces `>= 50m` CPU / `>= 192Mi` memory backup headroom on `ondemand-core`.
 
 ### 3.5 Dependent Workload Probes & Browser CORS Contract (Constitution Principle VII & Spec 007)
 - **Three Probe Roles**: `startupProbe` (initial cluster hop to backend), `readinessProbe` (continuous cluster hop / disconnect signal), and `livenessProbe` (process-local only), with `restartPolicy: Always` and `PUBLIC_APP_URL` inside backend `ALLOWED_ORIGINS`.

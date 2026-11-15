@@ -65,7 +65,7 @@
             <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Specs 001–012</span>
             <span class="px-2 py-0.5 text-[11px] font-mono font-semibold rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30">Hook-Synced</span>
           </div>
-          <p class="text-xs text-slate-400 mt-0.5">Interactive topology across Zonal GKE Design 1 (<code class="text-cyan-300">clusters/gke/</code> in <code class="text-cyan-300">nacfson-pipeline</code> / <code class="text-cyan-300">asia-northeast3-a</code>: <code class="text-cyan-300">1 × e2-medium</code> On-Demand + <code class="text-cyan-300">1 × e2-small</code> Spot, Traefik <code class="text-cyan-300">v3.3.4</code> behind a single GKE L4 pass-through LoadBalancer on <code class="text-cyan-300">gke-ingress-ip</code>, Spec 015) and lockstep <code class="text-cyan-300">local-k3s</code>, portable <code class="text-cyan-300">networking.k8s.io/v1</code> NetworkPolicy simulator, Gateway allow-vs-block auth tester, 8 lifecycle flows, Flux 14-layer DAG, 1/n budget &amp; junior mental models. Log envelope v3 (OpenTelemetry JSON lines in <code class="text-cyan-300">contracts/CONTRACT_LOG_SCHEMA.md</code>) is tailed from <code class="text-cyan-300">proj-*</code> by Fluent Bit (<code class="text-cyan-300">fluent/fluent-bit:4.2.8</code>) with per-node crash-resilient state on <code class="text-cyan-300">/var/lib/fluent-bit-state</code> (<code class="text-cyan-300">256M</code> cap, Amendment 2.3.0), shipping to VictoriaLogs (<code class="text-cyan-300">v1.53.0</code>) on <code class="text-cyan-300">local-k3s</code> and OCI Kafka (<code class="text-cyan-300">10.200.0.11..13:9092</code>) on GKE.</p>
+          <p class="text-xs text-slate-400 mt-0.5">Interactive topology across Zonal GKE Design 1 (<code class="text-cyan-300">clusters/gke/</code> in <code class="text-cyan-300">nacfson-pipeline</code> / <code class="text-cyan-300">asia-northeast3-a</code>: <code class="text-cyan-300">1 × e2-standard-2</code> On-Demand + <code class="text-cyan-300">1 × e2-small</code> Spot, Traefik <code class="text-cyan-300">v3.3.4</code> behind a single GKE L4 pass-through LoadBalancer on <code class="text-cyan-300">gke-ingress-ip</code>, Spec 015) and lockstep <code class="text-cyan-300">local-k3s</code>, portable <code class="text-cyan-300">networking.k8s.io/v1</code> NetworkPolicy simulator, Gateway allow-vs-block auth tester, 8 lifecycle flows, Flux 14-layer DAG, 1/n budget &amp; junior mental models. Log envelope v3 (OpenTelemetry JSON lines in <code class="text-cyan-300">contracts/CONTRACT_LOG_SCHEMA.md</code>) is tailed from <code class="text-cyan-300">proj-*</code> by Fluent Bit (<code class="text-cyan-300">fluent/fluent-bit:4.2.8</code>) with per-node crash-resilient state on <code class="text-cyan-300">/var/lib/fluent-bit-state</code> (<code class="text-cyan-300">256M</code> cap, Amendment 2.3.0), shipping to VictoriaLogs (<code class="text-cyan-300">v1.53.0</code>) on <code class="text-cyan-300">local-k3s</code> and OCI Kafka (<code class="text-cyan-300">10.200.0.11..13:9092</code>) on GKE.</p>
         </div>
       </div>
 
@@ -988,7 +988,7 @@
               <h2 class="text-base font-bold text-white mt-1">Interactive 1/n Resource Budget Simulator</h2>
             </div>
             <select id="calc-env" onchange="updateBudgetCalc()" class="bg-slate-950 border border-slate-700 rounded-lg px-3 py-1.5 text-xs font-mono text-cyan-300">
-              <option value="gke">gke Design 1 (1880m CPU / 4408 MiB, 2 nodes)</option>
+              <option value="gke">gke Design 1 (2870m CPU / 7158 MiB, 2 nodes)</option>
               <option value="local">local-k3s (4000m CPU / 8192 MiB)</option>
               <option value="vps">vps-k3s (2000m CPU / 10898 MiB)</option>
             </select>
@@ -1024,11 +1024,11 @@
           <div class="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-2.5 font-mono text-xs">
             <div class="flex justify-between text-slate-400">
               <span>Node Allocatable (<code class="text-slate-300">capacity.yaml</code>):</span>
-              <span id="calc-alloc" class="text-white">1880m CPU · 4408 MiB</span>
+              <span id="calc-alloc" class="text-white">2870m CPU · 7158 MiB</span>
             </div>
             <div class="flex justify-between text-slate-400">
               <span>Platform Reservation (sysReserved + Traefik/CNI + Flux + Vault + PG + KC + GW + Cert + Obs):</span>
-              <span id="calc-plat" class="text-amber-300">970m CPU · 3152 MiB</span>
+              <span id="calc-plat" class="text-amber-300">1900m CPU · 4712 MiB</span>
             </div>
             <div class="flex justify-between text-slate-300 border-t border-slate-800 pt-2">
               <span>Available Application Pool:</span>
@@ -1036,9 +1036,9 @@
             </div>
             <div class="flex justify-between text-slate-200">
               <span>Per-Project 1/n Slice (<code class="text-cyan-300">Pool / n</code>):</span>
-              <span id="calc-slice" class="text-emerald-300 font-bold">303m CPU · 418 MiB</span>
+              <span id="calc-slice" class="text-emerald-300 font-bold">323m CPU · 815 MiB</span>
             </div>
-            <p class="text-[11px] text-amber-300/90 border-t border-slate-800 pt-2">ℹ Spec 012 GKE Design 1 (1 × e2-medium On-Demand + 1 × e2-small Spot): platform reservation is 970m / 3152 MiB, yielding a 303m / 418 MiB slice at n=3 (proj-pn peak 250m / 384 MiB, quota 416Mi) with >= 50m / 192 MiB backup headroom on ondemand-core. On local-k3s / vps-k3s, retiring vault-registry-proxy (-25m / -64Mi) lowered platform reservation from 1395m / 5920 MiB to 1370m / 5856 MiB.</p>
+            <p class="text-[11px] text-amber-300/90 border-t border-slate-800 pt-2">ℹ Spec 012 GKE Design 1 (1 × e2-standard-2 On-Demand + 1 × e2-small Spot): platform reservation is 1900m / 4712 MiB (GKE system pods measured 2026-11-15), yielding a 323m / 815 MiB slice at n=3 (proj-pn peak 250m / 384 MiB, quota 416Mi) with >= 50m / 192 MiB backup headroom on ondemand-core. On local-k3s / vps-k3s, retiring vault-registry-proxy (-25m / -64Mi) lowered platform reservation from 1395m / 5920 MiB to 1370m / 5856 MiB.</p>
           </div>
 
           <!-- Preflight Gate Verdict -->
@@ -1131,7 +1131,7 @@
                 <span class="font-mono text-xs font-bold text-cyan-300">Spec 012 — GKE Platform Portability &amp; Full-State Cutover</span>
                 <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/012-gke-platform-migration</span>
               </div>
-              <p class="text-xs text-slate-400 mt-1">Adds declarative <code class="text-cyan-300">clusters/gke/</code> Design 1 overlay in GCP project <code class="text-cyan-300">nacfson-pipeline</code> (<code class="text-cyan-300">asia-northeast3-a</code> Seoul, <code class="text-cyan-300">1 × e2-medium</code> On-Demand <code class="text-cyan-300">ondemand-core</code> + <code class="text-cyan-300">1 × e2-small</code> Spot <code class="text-cyan-300">spot-controllers</code> with <code class="text-cyan-300">--logging=NONE --monitoring=NONE</code>, <code class="text-cyan-300">303m / 418Mi</code> per-project <code class="text-cyan-300">1/n</code> slice, Traefik <code class="text-cyan-300">v3.3.4</code> (edge later moved to a single L4 LoadBalancer by Spec 015), keeping <code class="text-cyan-300">keycloak</code> <code class="text-cyan-300">832Mi</code> + all live projects/PVCs 24/7 on On-Demand and offloading only <code class="text-cyan-300">cert-manager</code> + <code class="text-cyan-300">flux-system</code> to Spot) alongside cloud-agnostic <code class="text-cyan-300">clusters/local-k3s/</code>, Cloud Build + public <code class="text-cyan-300">GAR</code> (<code class="text-cyan-300">asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public</code>) <code class="text-cyan-300">@sha256</code> pulls retiring <code class="text-cyan-300">vault-registry-proxy</code>, portable <code class="text-cyan-300">networking.k8s.io/v1</code> <code class="text-cyan-300">NetworkPolicy</code> rules, Fluent Bit <code class="text-cyan-300">/var/lib/fluent-bit-state</code> (<code class="text-cyan-300">256M</code> cap) + <code class="text-cyan-300">[OUTPUT] kafka</code>, Constitution Amendment <code class="text-cyan-300">2.3.0</code>, and <code class="text-cyan-300">scripts/cutover-bundle.sh</code> full-state restore + <code class="text-cyan-300">gcpckms</code> auto-unseal (<code class="text-cyan-300">T001</code>–<code class="text-cyan-300">T035</code> in <code class="text-cyan-300">tasks.md</code>).</p>
+              <p class="text-xs text-slate-400 mt-1">Adds declarative <code class="text-cyan-300">clusters/gke/</code> Design 1 overlay in GCP project <code class="text-cyan-300">nacfson-pipeline</code> (<code class="text-cyan-300">asia-northeast3-a</code> Seoul, <code class="text-cyan-300">1 × e2-standard-2</code> On-Demand <code class="text-cyan-300">ondemand-core</code> + <code class="text-cyan-300">1 × e2-small</code> Spot <code class="text-cyan-300">spot-controllers</code> with <code class="text-cyan-300">--logging=NONE --monitoring=NONE</code>, <code class="text-cyan-300">303m / 418Mi</code> per-project <code class="text-cyan-300">1/n</code> slice, Traefik <code class="text-cyan-300">v3.3.4</code> (edge later moved to a single L4 LoadBalancer by Spec 015), keeping <code class="text-cyan-300">keycloak</code> <code class="text-cyan-300">832Mi</code> + all live projects/PVCs 24/7 on On-Demand and offloading only <code class="text-cyan-300">cert-manager</code> + <code class="text-cyan-300">flux-system</code> to Spot) alongside cloud-agnostic <code class="text-cyan-300">clusters/local-k3s/</code>, Cloud Build + public <code class="text-cyan-300">GAR</code> (<code class="text-cyan-300">asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public</code>) <code class="text-cyan-300">@sha256</code> pulls retiring <code class="text-cyan-300">vault-registry-proxy</code>, portable <code class="text-cyan-300">networking.k8s.io/v1</code> <code class="text-cyan-300">NetworkPolicy</code> rules, Fluent Bit <code class="text-cyan-300">/var/lib/fluent-bit-state</code> (<code class="text-cyan-300">256M</code> cap) + <code class="text-cyan-300">[OUTPUT] kafka</code>, Constitution Amendment <code class="text-cyan-300">2.3.0</code>, and <code class="text-cyan-300">scripts/cutover-bundle.sh</code> full-state restore + <code class="text-cyan-300">gcpckms</code> auto-unseal (<code class="text-cyan-300">T001</code>–<code class="text-cyan-300">T035</code> in <code class="text-cyan-300">tasks.md</code>).</p>
             </div>
             <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
               <div class="flex justify-between items-center">
@@ -1322,8 +1322,8 @@
         ns: 'Host OS / kube-system',
         image: 'GKE Zonal Standard | Cilium v1.20.3 + Hubble v0.13.6',
         oss: 'CNCF Kubernetes & Cilium (Apache-2.0)',
-        res: 'GKE: 1880m / 4408Mi (ondemand-core + spot-controllers)',
-        desc: 'GKE runs 1 × e2-medium On-Demand + 1 × e2-small Spot in asia-northeast3-a with managed Dataplane V2 eBPF; local-k3s runs K3s v1.35.9+k3s1 with Git-vendored Cilium v1.20.3 (policy-cidr-match-mode: "nodes") and Hubble UI.',
+        res: 'GKE: 2870m / 7158Mi (ondemand-core + spot-controllers)',
+        desc: 'GKE runs 1 × e2-standard-2 On-Demand + 1 × e2-small Spot in asia-northeast3-a with managed Dataplane V2 eBPF; local-k3s runs K3s v1.35.9+k3s1 with Git-vendored Cilium v1.20.3 (policy-cidr-match-mode: "nodes") and Hubble UI.',
         bullets: [
           '➔ Enforces identical standard networking.k8s.io/v1 NetworkPolicies via kernel eBPF across both environments.',
           '➔ Hubble UI & Relay on K3s are ClusterIP-only; accessed privately via ./scripts/open-hubble-ui.sh (:12000).',
@@ -1765,8 +1765,8 @@
           from: 'Ansible / gcloud container clusters create',
           to: 'K3s Service | GKE Zonal Standard (asia-northeast3-a)',
           proto: '--flannel-backend=none (K3s) | --enable-dataplane-v2 --logging=NONE --monitoring=NONE (GKE)',
-          desc: 'Local dev installs K3s v1.35.9+k3s1 with Flannel/kube-router disabled so Cilium owns CNI. Production GKE runs 1 × e2-medium On-Demand (ondemand-core) + 1 × e2-small Spot (spot-controllers) in nacfson-pipeline with Dataplane V2 and Workload Identity.',
-          code: `# GKE Design 1 (Spec 012) + Spec 015 edge: zero control-plane fee, one L4 LoadBalancer\nondemand-core:    1 × e2-medium (940m / 2972Mi allocatable, runs Traefik behind the L4 LB)\nspot-controllers: 1 × e2-small  (940m / 1436Mi allocatable, tainted gke-spot)`,
+          desc: 'Local dev installs K3s v1.35.9+k3s1 with Flannel/kube-router disabled so Cilium owns CNI. Production GKE runs 1 × e2-standard-2 On-Demand (ondemand-core) + 1 × e2-small Spot (spot-controllers) in nacfson-pipeline with Dataplane V2 and Workload Identity.',
+          code: `# GKE Design 1 (Spec 012) + Spec 015 edge: zero control-plane fee, one L4 LoadBalancer\nondemand-core:    1 × e2-standard-2 (1930m / 5800Mi allocatable, runs Traefik behind the L4 LB)\nspot-controllers: 1 × e2-small  (940m / 1358Mi allocatable, tainted gke-spot)`,
           guard: 'Both local-k3s and gke enforce identical standard networking.k8s.io/v1 NetworkPolicy manifests.'
         },
         {
@@ -2264,7 +2264,7 @@
         license: 'Apache-2.0 (CNCF)',
         role: 'Zonal GKE Standard (2 Pools) & Local K3s Parity',
         where: 'clusters/gke/capacity.yaml & bootstrap/bootstrap.yml',
-        details: 'Production runs Zonal GKE Standard in nacfson-pipeline (asia-northeast3-a: 1 × e2-medium On-Demand + 1 × e2-small Spot, --logging=NONE --monitoring=NONE); local dev runs K3s v1.35.9+k3s1.'
+        details: 'Production runs Zonal GKE Standard in nacfson-pipeline (asia-northeast3-a: 1 × e2-standard-2 On-Demand + 1 × e2-small Spot, --logging=NONE --monitoring=NONE); local dev runs K3s v1.35.9+k3s1.'
       },
       {
         cat: 'oss',
@@ -2494,11 +2494,11 @@
       const candMem = parseInt(document.getElementById('calc-mem').value, 10);
       const candCpu = parseInt(document.getElementById('calc-cpu').value, 10);
 
-      // Exact platform-preflight.py figures (Spec 012 retired vault-registry-proxy -25m/-64Mi from pre-Spec-012 1395m / 5920 MiB -> 1370m / 5856 MiB on K3s; GKE Design 1 2-node reservation = 970m / 3152 MiB)
-      const allocCpu = env === 'gke' ? 1880 : (env === 'vps' ? 2000 : 4000);
-      const allocMem = env === 'gke' ? 4408 : (env === 'vps' ? 10898 : 8192);
-      const platCpu = env === 'gke' ? 970 : 1370;
-      const platMem = env === 'gke' ? 3152 : 5856;
+      // Exact platform-preflight.py figures (Spec 012 retired vault-registry-proxy -25m/-64Mi from pre-Spec-012 1395m / 5920 MiB -> 1370m / 5856 MiB on K3s; GKE Design 1 2-node reservation = 1900m / 4712 MiB, measured 2026-11-15)
+      const allocCpu = env === 'gke' ? 2870 : (env === 'vps' ? 2000 : 4000);
+      const allocMem = env === 'gke' ? 7158 : (env === 'vps' ? 10898 : 8192);
+      const platCpu = env === 'gke' ? 1900 : 1370;
+      const platMem = env === 'gke' ? 4712 : 5856;
 
       const poolCpu = allocCpu - platCpu;
       const poolMem = allocMem - platMem;
@@ -2856,7 +2856,7 @@
         icon: '🏢',
         name: 'GKE Standard (2 Pools) & K3s (v1.35.9+k3s1)',
         analogy: 'The Apartment Building Foundation',
-        plain: 'GKE runs 1 On-Demand e2-medium node (24/7 core + tenant workloads + PVCs) and 1 Spot e2-small node (stateless cert-manager + Flux controllers). Local dev uses single-node K3s with identical portable manifests.',
+        plain: 'GKE runs 1 On-Demand e2-standard-2 node (24/7 core + tenant workloads + PVCs) and 1 Spot e2-small node (stateless cert-manager + Flux controllers). Local dev uses single-node K3s with identical portable manifests.',
         file: 'clusters/gke/capacity.yaml & bootstrap/'
       },
       {

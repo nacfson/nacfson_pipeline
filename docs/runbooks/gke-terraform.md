@@ -389,8 +389,8 @@ Use this to tear down a rehearsal. After DNS points at GKE, removal is an outage
 
 ## Cost
 
-Expected steady state: about $65/month (two nodes about $39, load balancer about $18, disks, address and
-traffic about $8). The budget alerts at $40, $72 and $80.
+Expected steady state: about $96/month (two nodes about $70, load balancer about $18, disks, address and
+traffic about $8). The budget alerts at $55, $99 and $110.
 *To be recorded after one month of running (Spec 015 T045).*
 
 ## Offline check (no credentials, any machine)

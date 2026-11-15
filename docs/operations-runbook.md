@@ -400,7 +400,7 @@ Execute only after Gate 2 and Gate 3 pass:
    - No node static IP or manual firewall rule: web traffic enters through the single L4 pass-through load balancer that GKE builds from `Service/platform/traefik` (contract `specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md`).
    - Run `deploy/gcp/cloudbuild.yaml` to publish pinned `@sha256` multi-arch images.
 2. **Measure live GKE node pools & bootstrap Flux**:
-   - Verify `kubectl get nodes -o jsonpath` allocatable values match `clusters/gke/capacity.yaml` (`1880m / 4408Mi`).
+   - Verify `kubectl get nodes -o jsonpath` allocatable values match `clusters/gke/capacity.yaml` (`2870m / 7158Mi`).
    - Apply `clusters/gke/flux-system/` so Flux reconciles `clusters/gke/layers.yaml`.
 3. **Export fresh final cutover bundle & restore onto GKE with KMS migration**:
    ```bash
