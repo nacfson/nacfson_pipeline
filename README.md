@@ -1,11 +1,11 @@
 # nacfson_pipeline: Personal Project Platform
 
 [![Constitution](https://img.shields.io/badge/governance-constitution%20v2.4.1-blue.svg)](.specify/memory/constitution.md)
-[![Specs](https://img.shields.io/badge/specs-001--012-success.svg)](specs/)
+[![Specs](https://img.shields.io/badge/specs-001--015-success.svg)](specs/)
 [![Security Profile](https://img.shields.io/badge/pod--security-restricted-green.svg)](.specify/memory/constitution.md)
 [![Secrets Model](https://img.shields.io/badge/secrets-zero--plaintext%20vault-critical.svg)](specs/002-internal-cluster-vault/spec.md)
 
-A secure, multi-tenant Kubernetes platform for running personal projects on modest compute resources (single Oracle Cloud Always Free VPS running native K3s, with portability to local Linux K3s, EKS, and GKE). 
+A multi-tenant Kubernetes platform for running personal projects on modest compute resources (zonal GKE Standard in `nacfson-pipeline` / `asia-northeast3-a` as the primary production target, with lockstep local Linux K3s in `local-k3s` and transitional `vps-k3s`). 
 
 The platform guarantees **shared Google-backed Single Sign-On (SSO)**, **strict workload isolation via Kubernetes Restricted Pod Security Standards**, **deterministic 1/n QoS resource budgeting**, **persistent tenant-isolated PostgreSQL**, and a **zero-plaintext self-hosted internal cluster Vault**.
 
@@ -22,11 +22,11 @@ nacfson_pipeline/
 ├── TROUBLESHOOTING.md                           # Tier 4: Incident Runbook (CPU budget, OpenBao, GHCR pulls, OAuth callback)
 ├── .specify/memory/constitution.md              # Tier 1: Authoritative Invariants & Governance Rules
 │
-├── specs/                                       # Tier 3: Feature Specifications (SpecKit Packages 001..012)
+├── specs/                                       # Tier 3: Feature Specifications (SpecKit Packages 001..015)
 │   ├── 001-project-platform/                    #   ├── Ingress, Auth Gateway & Workload Sandboxing
 │   ├── 002-internal-cluster-vault/              #   ├── Zero-Plaintext OpenBao Vault & Proxies
 │   ├── 003-minimal-vm-bootstrap/                #   ├── Host OS, Networking & K3s Bootstrap
-│   ├── 004-flux-gitops-reconciliation/          #   ├── 14-Layer FluxCD GitOps & Preflight Gate
+│   ├── 004-flux-gitops-reconciliation/          #   ├── FluxCD GitOps Layers & Preflight Gate
 │   ├── 005-post-vault-automation/               #   ├── Post-Unseal Workload Wiring
 │   ├── 006-separate-project-auth/               #   ├── Project Door vs Shared Sign-In
 │   ├── 007-pn-readiness-restart/                #   ├── Separate Startup/Readiness/Liveness Probes & CORS
@@ -34,7 +34,8 @@ nacfson_pipeline/
 │   ├── 009-host-scoped-shared-auth/             #   ├── Host-Scoped Cookies & Direct OIDC
 │   ├── 010-cilium-hubble-observability/         #   ├── Cilium eBPF CNI & Hubble Observability
 │   ├── 011-project-log-contract/                #   ├── Fluent Bit, VictoriaLogs & Error Detector
-│   └── 012-gke-platform-migration/              #   └── Multi-Node GKE Portability & Cloud KMS Unseal
+│   ├── 012-gke-platform-migration/              #   ├── Multi-Node GKE Portability & Cloud KMS Unseal
+│   └── 015-gke-terraform-infra/                 #   └── GKE Terraform Infrastructure & L4 LoadBalancer Edge
 │
 ├── contracts/                                   # Tier 2: Canonical Preflight-Enforced Contracts (CONTRACT_*.md)
 │
@@ -65,7 +66,7 @@ All platform components and project workloads strictly adhere to the 7 principle
 * **[Principle II: Workload Isolation & Restricted Pod Security](.specify/memory/constitution.md)**: Project namespaces MUST enforce the Kubernetes `Restricted` Pod Security profile (audit/warn modes strictly prohibited). Containers run non-root, drop all capabilities (allowing at most `NET_BIND_SERVICE`), and use dedicated platform ServiceAccounts with auto-token-mount disabled. Project services are `ClusterIP` only.
 * **[Principle III: Defense-in-Depth Identity & Standard-Library Gateway](.specify/memory/constitution.md)**: Ingress exposes only public browser-facing login/callback routes and current-session revocation. Keycloak admin, metrics (port 9000), and internal JWKS are strictly private. The Authentication Gateway is written in pure standard-library Go with **zero runtime third-party dependencies** and fails closed (HTTP 503).
 * **[Principle IV: Bounded 1/n Resource Budgeting](.specify/memory/constitution.md)**: Containers MUST enforce strict `requests == limits`. Compute is sliced equally across projects ($1/n$). Candidate deployments exceeding budgets or lowering existing memory limits during the interim freeze are rejected by the platform-preflight CI gate ([`scripts/platform-preflight.py`](scripts/platform-preflight.py)).
-* **[Principle V: Zero Plaintext Secrets & Centralized Cluster Vault](.specify/memory/constitution.md)**: Plaintext secrets are NEVER committed to Git, embedded in Helm/Kustomize, or delivered to application pods via Kubernetes Secrets or volume mounts (with the sole constitutional exception of platform-owned edge TLS Secrets in `platform` and ACME account keys in `cert-manager`). Applications invoke authorized operations via internal Vault Proxies (`ai-proxy`, `db-proxy`, `notify-proxy`, `registry-proxy`), receiving sanitized results without ever holding backend credentials.
+* **[Principle V: Zero Plaintext Secrets & Centralized Cluster Vault](.specify/memory/constitution.md)**: Plaintext secrets are NEVER committed to Git, embedded in Helm/Kustomize, or delivered to application pods via Kubernetes Secrets or volume mounts (with the sole constitutional exception of platform-owned edge TLS Secrets in `platform` and ACME account keys in `cert-manager`). Applications invoke authorized operations via internal Vault Proxies (`ai-proxy`, `db-proxy`, `notify-proxy`), receiving sanitized results without ever holding backend credentials. Spec 012 retired `registry-proxy` in favor of anonymous `@sha256`-pinned pulls from public GAR and GHCR.
 * **[Principle VI: Environmental Portability](.specify/memory/constitution.md)**: Zero application code changes across single-VPS K3s, local Linux K3s, AWS EKS, and GCP GKE.
 * **[Principle VII: Distinct Lifecycle Signals for Dependent Project Workloads](.specify/memory/constitution.md)**: Dependent project workloads separate `startupProbe` (initial cluster dependency hop), `readinessProbe` (continuous cluster hop / disconnect signal), and `livenessProbe` (process-local only), declare `restartPolicy: Always`, and include `PUBLIC_APP_URL` in backend `ALLOWED_ORIGINS`.
 
@@ -73,39 +74,46 @@ All platform components and project workloads strictly adhere to the 7 principle
 
 ## 3. System Architecture & Topology
 
-The platform coordinates ingress traffic, identity negotiation, credential isolation, and persistent storage on a single host node:
+The platform coordinates ingress traffic, identity negotiation, credential isolation, and persistent storage across a two-node zonal GKE Standard cluster (`ondemand-core` `e2-medium` + `spot-controllers` `e2-small`, with `local-k3s` for local verification):
 
 ```mermaid
 flowchart TD
     User["🌐 User Browser"]
-    Ingress["Traefik Ingress Controller (:80/:443)"]
-    Gateway["Go Auth Gateway (Standard Library)<br/>[ForwardAuth / Session Revocation]"]
-    Keycloak["Keycloak IdP (Google Broker)"]
+    Ingress["Traefik v3.3.4 Ingress Controller (:80/:443)<br/>[GKE L4 Pass-Through LB · gke-ingress-ip]"]
+    Gateway["Go Auth Gateway (Standard Library)<br/>[/oauth/start, /oauth/callback, /auth/logout]"]
+    Keycloak["Keycloak IdP (Google Broker)<br/>[--features=persistent-user-sessions]"]
     Google["Google OAuth2"]
     Workload["Project Workload (e.g., 'pn')<br/>[Restricted Pod Security Standard]"]
     
     subgraph ZeroPlaintextBoundary["Internal Cluster Vault Boundary (Zero-Plaintext)"]
-        Vault["Centralized Cluster Vault<br/>(Transit Engine & KV Store)"]
+        Vault["OpenBao 2.0.0 Cluster Vault<br/>(KV v2, Transit, gcpckms Auto-Unseal)"]
         DBProxy["Database Proxy (services/vault-proxies)"]
-        RegProxy["Registry Proxy (services/vault-proxies)"]
+        AIProxy["AI Proxy (services/vault-proxies)"]
+        NotifyProxy["Notify Proxy (services/vault-proxies)"]
     end
     
     Postgres[("PostgreSQL StatefulSet<br/>[Dedicated DBs & Restricted Roles]")]
-    GHCR["GitHub Container Registry (GHCR)"]
+    GAR["Public GAR / GHCR (@sha256 Multi-Arch)"]
+    FB["Fluent Bit DaemonSet (4.2.8)<br/>[proj-* logs, /var/lib/fluent-bit-state]"]
+    OCIKafka["OCI WireGuard Kafka (GKE)<br/>/ VictoriaLogs (local-k3s)"]
 
-    User -->|"HTTP/HTTPS"| Ingress
-    Ingress -->|"ForwardAuth Check"| Gateway
+    User -->|"HTTPS (*.nacfson.cloud)"| Ingress
+    Ingress -->|"Public Auth Allowlist Only"| Gateway
     Gateway <-->|"OIDC Verification"| Keycloak
     Keycloak <-->|"Brokered Auth"| Google
-    Ingress -->|"Authorized Request + Token"| Workload
+    Ingress -->|"Project Door (/ and /api/*)"| Workload
+    Workload -.->|"Session Confirmation (:8080)"| Gateway
 
     Workload -->|"Proxied SQL Query (No DB Creds)"| DBProxy
     DBProxy <-->|"Credentials Confined in Memory"| Vault
     DBProxy -->|"Authenticated Connection"| Postgres
 
-    K3sNode["K3s Kubelet Engine"] -->|"Image Pull Request"| RegProxy
-    RegProxy <-->|"Inject Pull Token"| Vault
-    RegProxy -->|"Authenticated Pull"| GHCR
+    Workload -->|"AI Quota Request"| AIProxy
+    AIProxy <-->|"RAM Key Hydration"| Vault
+
+    GKENode["Node Kubelet"] -->|"Anonymous @sha256 Pull"| GAR
+    Workload -->|"stdout/stderr"| FB
+    FB -->|"Ship Structured Logs"| OCIKafka
 
     classDef secure fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
     classDef boundary fill:#f3e5f5,stroke:#7b1fa2,stroke-width:2px;
@@ -115,9 +123,9 @@ flowchart TD
 
 ### 3.1 Domain-Based Project Naming & Identity Rule
 
-All hosted projects and authentication handoffs MUST derive project names, return hosts, and OAuth/JWT audiences deterministically from the **configured public domain under the platform's main domain** (`nacfson.cloud` in `vps-k3s`, `example.com` in `local-k3s`), and **NEVER** from internal Kubernetes service hostnames (`pn-backend`, `pn-backend.proj-pn.svc:8080`, or `gateway.identity.svc:8080`):
+All hosted projects and authentication handoffs MUST derive project names, return hosts, and OAuth/JWT audiences deterministically from the **configured public domain under the platform's main domain** (`nacfson.cloud` in `gke` and `vps-k3s`, `example.com` in `local-k3s`), and **NEVER** from internal Kubernetes service hostnames (`pn-backend`, `pn-backend.proj-pn.svc:8080`, or `gateway.identity.svc:8080`):
 
-| Identifier | Naming Rule | Production (`vps-k3s`) Example | Local (`local-k3s`) Example |
+| Identifier | Naming Rule | Production (`gke`) Example | Local (`local-k3s`) Example |
 | :--- | :--- | :--- | :--- |
 | **Main Platform Domain** | `<main-domain>` | `nacfson.cloud` | `example.com` |
 | **Central Auth Domain** | `auth.<main-domain>` | `auth.nacfson.cloud` | `auth.example.com` |
@@ -238,7 +246,7 @@ All features follow the SpecKit methodology. See [`INDEX.md`](INDEX.md#3-feature
 * **Specification**: [`specs/002-internal-cluster-vault/spec.md`](specs/002-internal-cluster-vault/spec.md) | **Plan**: [`specs/002-internal-cluster-vault/plan.md`](specs/002-internal-cluster-vault/plan.md) | **Tasks**: [`specs/002-internal-cluster-vault/tasks.md`](specs/002-internal-cluster-vault/tasks.md)
 * **Contracts**:
   * [`contracts/database-proxy.md`](specs/002-internal-cluster-vault/contracts/database-proxy.md) — Query proxy isolating PostgreSQL credentials from applications.
-  * [`contracts/registry-proxy.md`](specs/002-internal-cluster-vault/contracts/registry-proxy.md) — Image pull proxy isolating GHCR tokens from worker nodes.
+  * [`contracts/registry-proxy.md`](specs/002-internal-cluster-vault/contracts/registry-proxy.md) — *(Retired in Spec 012)* Historical image pull proxy prior to public GAR/GHCR `@sha256` pulls.
   * [`contracts/database-provisioning-backup.md`](specs/002-internal-cluster-vault/contracts/database-provisioning-backup.md) — Automated database provisioning and snapshot verification.
   * [`contracts/google-oauth-broker.md`](specs/002-internal-cluster-vault/contracts/google-oauth-broker.md) — Keycloak broker client secret injection without plaintext leaks.
   * [`contracts/transit-signing.md`](specs/002-internal-cluster-vault/contracts/transit-signing.md) — Asymmetric token signing via Vault Transit Engine.
@@ -258,7 +266,8 @@ The table below maps constitutional requirements to contracts, code modules, and
 | **Restricted Workload Sandboxing** | [`specs/001-project-platform/spec.md`](specs/001-project-platform/spec.md) | [`deploy/platform/governance/`](deploy/platform/governance/) | [`scripts/verify-isolation.sh`](scripts/verify-isolation.sh) | [Principle II](.specify/memory/constitution.md) |
 | **1/n Resource Budget Gating** | [`contracts/platform-preflight.md`](specs/004-flux-gitops-reconciliation/contracts/platform-preflight.md) | [`clusters/`](clusters/) | [`scripts/platform-preflight.py`](scripts/platform-preflight.py) | [Principle IV](.specify/memory/constitution.md) |
 | **Zero-Plaintext DB Proxy** | [`contracts/database-proxy.md`](specs/002-internal-cluster-vault/contracts/database-proxy.md) | [`services/vault-proxies/`](services/vault-proxies/) | [`tests/vault/test_db_proxy.sh`](tests/vault/test_db_proxy.sh) | [Principle V](.specify/memory/constitution.md) |
-| **Zero-Plaintext Registry Proxy** | [`contracts/registry-proxy.md`](specs/002-internal-cluster-vault/contracts/registry-proxy.md) | [`services/vault-proxies/`](services/vault-proxies/) | [`tests/vault/test_registry_proxy.sh`](tests/vault/test_registry_proxy.sh) | [Principle V](.specify/memory/constitution.md) |
+| **GKE Infrastructure & L4 Edge** | [`contracts/traefik-l4-edge.md`](specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md) | [`infra/gcp/`](infra/gcp/), [`deploy/platform/traefik/`](deploy/platform/traefik/) | [`scripts/check-gcp-shared-values.py`](scripts/check-gcp-shared-values.py) | [Principle VI](.specify/memory/constitution.md) |
+| **Public GAR Multi-Arch Delivery** | [`contracts/portable-network-policy-and-gar.md`](specs/012-gke-platform-migration/contracts/portable-network-policy-and-gar.md) | [`deploy/gcp/cloudbuild.yaml`](deploy/gcp/cloudbuild.yaml) | [`scripts/platform-preflight.py`](scripts/platform-preflight.py) | [Principle I & V](.specify/memory/constitution.md) |
 | **Zero-Downtime Credential Rotation** | [`specs/002-internal-cluster-vault/spec.md`](specs/002-internal-cluster-vault/spec.md) | [`scripts/vault-rotate.sh`](scripts/vault-rotate.sh) | [`tests/vault/test_rotation_drill.sh`](tests/vault/test_rotation_drill.sh) | [Principle V](.specify/memory/constitution.md) |
 | **Disaster Recovery & Backup Restore** | [`contracts/database-provisioning-backup.md`](specs/002-internal-cluster-vault/contracts/database-provisioning-backup.md) | [`scripts/verify-backup.sh`](scripts/verify-backup.sh) | [`tests/vault/test_disaster_recovery.sh`](tests/vault/test_disaster_recovery.sh) | [Quality Gates](.specify/memory/constitution.md) |
 
@@ -272,20 +281,21 @@ The table below maps constitutional requirements to contracts, code modules, and
 ├── .github/workflows/         # CI, GitOps, lint, secret-scan & review workflows
 ├── .specify/                  # SpecKit memory, constitution, templates & workflows
 ├── agy_plan/                  # Generated HTML implementation plans
-├── bootstrap/                 # Ansible automation for Linux VM, K3s installation, and Flux reconciler
-├── clusters/                  # Flux GitOps entrypoints and 14-layer declarations (local-k3s, vps-k3s)
+├── bootstrap/                 # Ansible automation for local Linux K3s VM and Flux reconciler
+├── clusters/                  # Flux GitOps entrypoints and layer declarations (gke, local-k3s, vps-k3s)
 ├── config/                    # Image-pin source mappings and review risk policy
 ├── contracts/                 # Canonical preflight-enforced contracts (CONTRACT_*.md)
-├── deploy/                    # Base platform and project workload manifests
-│   ├── platform/              #   ├── cert-manager, cni, database, governance, identity, ingress, observability, tls, vault, vault-proxies
+├── deploy/                    # Base platform, GCP CI, and project workload manifests
+│   ├── gcp/                   #   ├── Google Cloud Build multi-arch pipeline & GAR cleanup policy
+│   ├── platform/              #   ├── cert-manager, cni, database, governance, identity, ingress, observability, tls, traefik, vault, vault-proxies
 │   └── projects/              #   └── tenant projects (pn, health, blog)
 ├── docs/                      # Operations runbooks, conceptual guides & HTML architecture handbook
 ├── gateway/                   # Go standard-library authentication gateway service
 ├── infra/gcp/                 # Terraform for the GKE environment (bootstrap, project, gke roots; Spec 015)
 ├── services/                  # Cluster auxiliary services
-│   └── vault-proxies/         #   └── Zero-plaintext ai-proxy, db-proxy, notify-proxy & registry-proxy
+│   └── vault-proxies/         #   └── Zero-plaintext ai-proxy, db-proxy & notify-proxy
 ├── scripts/                   # Operator release, rotation, observability, and validation scripts
-├── specs/                     # Formal SpecKit specifications (001 through 015)
+├── specs/                     # Formal SpecKit specifications (001 through 012, 015)
 └── tests/                     # Preflight, observability, skills, review-cycle, hooks & vault test suites
 ```
 
@@ -293,38 +303,37 @@ The table below maps constitutional requirements to contracts, code modules, and
 
 ## 7. Operational Quickstart
 
-Follow this deployment progression when bootstrapping a fresh environment:
+Follow this deployment progression when provisioning the GKE environment or a local K3s verification cluster:
 
-### Step 1: Bootstrap the Host VM & Install Flux Reconciler (Spec 003 & 004)
-Prepare the host, install pinned K3s, and deploy Flux GitOps controllers via Ansible:
+### Step 1: Provision GKE Infrastructure via Terraform (Spec 015) or Local K3s via Ansible (Spec 003)
+On GKE, apply the three Terraform roots in order (`bootstrap/` -> `project/` -> `gke/`) from Cloud Shell or your own PC, following [`docs/runbooks/gke-deploy.md`](docs/runbooks/gke-deploy.md) (short) or [`docs/runbooks/gke-terraform.md`](docs/runbooks/gke-terraform.md) (full). Then install FluxCD from the manifests in Git. No GitHub token is needed: the repository is public and Flux reads it over HTTPS with no credential. Do not use `flux bootstrap github`, which stores a repository key in the cluster and pushes to `main` (Principle I):
+```bash
+kubectl apply --server-side -f clusters/gke/flux-system/gotk-components.yaml
+kubectl wait --for=condition=Established crd --all --timeout=120s
+kubectl apply --server-side -k clusters/gke/flux-system
+```
+
+For local Linux K3s verification (`local-k3s`), run the Ansible bootstrap playbook:
 ```bash
 ansible-playbook -i "<target-ip>," bootstrap/bootstrap.yml \
   -e ansible_user="ubuntu" \
   -e k3s_version="v1.35.9+k3s1" \
-  -e gitops_environment="vps-k3s"
+  -e gitops_environment="local-k3s"
 ```
 
-### Step 2: Automated GitOps Reconciliation & Vault Initialization (Spec 004 & 002)
-Flux reconciles platform layers continuously. Unseal OpenBao once the `vault` layer is ready:
+### Step 2: Automated GitOps Reconciliation & OpenBao Initialization (Spec 004, 002 & 012)
+Flux reconciles platform layers continuously. On GKE, `openbao-0` auto-unseals via Cloud KMS (`gcpckms`) Workload Identity, and the Spec 012 cutover bundle restores databases, OpenBao secrets, and TLS certificates from the control center:
 ```bash
 # 1. Inspect Flux reconciliation layers
 flux get kustomizations -A
 
-# 2. Initialize or unseal OpenBao
+# 2. On local-k3s, initialize/unseal OpenBao and reconcile policies
 ./scripts/vault-init.sh
 ./scripts/vault-seed-inventory.sh
 ./scripts/vault-reconcile.sh
 ```
 
-### Step 3: Initialize Internal Vault & Proxies (Spec 002)
-Initialize Vault storage, populate dummy/initial credentials, and reconcile policies:
-```bash
-./scripts/vault-init.sh
-./scripts/vault-seed-inventory.sh
-./scripts/vault-reconcile.sh
-```
-
-### Step 4: Execute Verification Drills
+### Step 3: Execute Verification Drills
 Run the end-to-end acceptance tests to ensure compliance with the Constitution:
 ```bash
 # Verify Restricted Pod Security & NetworkPolicy isolation
