@@ -267,6 +267,33 @@ PROJECT_IMAGE_DIGEST_RE = re.compile(
 WORLD_DETAIL = "translation egress must not allow unrestricted world or 0.0.0.0/0 without private/metadata except CIDRs"
 
 
+def _is_portable_dns_peer(peer):
+    if not isinstance(peer, dict) or peer.get("ipBlock") is not None:
+        return False
+    ns_selector = peer.get("namespaceSelector") or {}
+    pod_selector = peer.get("podSelector") or {}
+    if not isinstance(ns_selector, dict) or not isinstance(pod_selector, dict):
+        return False
+    if ns_selector.get("matchExpressions"):
+        return False
+    if ns_selector.get("matchLabels") != {"kubernetes.io/metadata.name": "kube-system"}:
+        return False
+    if pod_selector.get("matchLabels"):
+        return False
+    exprs = pod_selector.get("matchExpressions") or []
+    if len(exprs) != 1 or not isinstance(exprs[0], dict):
+        return False
+    expr = exprs[0]
+    values = expr.get("values") or []
+    return (
+        isinstance(values, list)
+        and expr.get("key") == "k8s-app"
+        and expr.get("operator") == "In"
+        and len(values) == 2
+        and set(values) == {"kube-dns", "node-local-dns"}
+    )
+
+
 def _validate_portable_https_egress(policy_doc, expected_app_name, obj_label):
     violations = []
 
@@ -292,12 +319,7 @@ def _validate_portable_https_egress(policy_doc, expected_app_name, obj_label):
             continue
 
         for peer in peers:
-            ns_labels = ((peer or {}).get("namespaceSelector") or {}).get("matchLabels") or {}
-            pod_labels = ((peer or {}).get("podSelector") or {}).get("matchLabels") or {}
-            if (
-                ns_labels.get("kubernetes.io/metadata.name") == "kube-system"
-                and pod_labels.get("k8s-app") == "kube-dns"
-            ):
+            if _is_portable_dns_peer(peer):
                 port_set = {(str(p.get("protocol") or "TCP").upper(), _as_port(p.get("port"))) for p in ports if isinstance(p, dict)}
                 if port_set and port_set.issubset({("UDP", 53), ("TCP", 53)}):
                     has_kube_dns = True
@@ -324,7 +346,7 @@ def _validate_portable_https_egress(policy_doc, expected_app_name, obj_label):
                     )
 
     if not has_kube_dns:
-        add(f"{obj_label} must restrict DNS egress (port 53) to kube-system/kube-dns")
+        add(f"{obj_label} must restrict DNS egress (port 53) to kube-system k8s-app in [kube-dns, node-local-dns]")
     if not has_public_https:
         add(f"{obj_label} missing scoped 0.0.0.0/0 TCP 443 ipBlock egress rule")
 
@@ -381,6 +403,41 @@ def check_translation_egress(docs):
     violations.extend(_validate_portable_https_egress(policy, "pn-backend", obj))
     return violations
 
+
+def check_portable_dns_egress(docs):
+    violations = []
+    for doc in docs or []:
+        if not isinstance(doc, dict) or doc.get("kind") != "NetworkPolicy":
+            continue
+        meta = doc.get("metadata") or {}
+        ns = meta.get("namespace") or ""
+        if ns == "flux-system":
+            continue
+        name = meta.get("name") or "<unnamed>"
+        obj = f"{ns}/NetworkPolicy/{name}" if ns else f"NetworkPolicy/{name}"
+        for rule in (doc.get("spec") or {}).get("egress") or []:
+            if not isinstance(rule, dict):
+                continue
+            ports = rule.get("ports") or []
+            if not any(isinstance(p, dict) and _as_port(p.get("port")) == 53 for p in ports):
+                continue
+            port_set = {
+                (str(p.get("protocol") or "TCP").upper(), _as_port(p.get("port")))
+                for p in ports
+                if isinstance(p, dict)
+            }
+            peers = rule.get("to") or []
+            if (
+                not port_set.issubset({("UDP", 53), ("TCP", 53)})
+                or not peers
+                or not all(_is_portable_dns_peer(p) for p in peers)
+            ):
+                violations.append({
+                    "rule": 2,
+                    "object": obj,
+                    "detail": f"{obj} must restrict port 53 DNS egress to kube-system k8s-app in [kube-dns, node-local-dns]",
+                })
+    return violations
 
 
 def check_database_and_readiness_contract(projects_dict, platform_docs):
@@ -1698,6 +1755,14 @@ def main():
             status = STATUS_REJECTED_ISOLATION
             if not rejection_reason:
                 rejection_reason = translation_violations[0]["detail"]
+            exit_code = 1
+
+        dns_violations = check_portable_dns_egress(candidate_docs)
+        if dns_violations:
+            violations.extend(dns_violations)
+            status = STATUS_REJECTED_ISOLATION
+            if not rejection_reason:
+                rejection_reason = dns_violations[0]["detail"]
             exit_code = 1
 
         tls_violations = check_edge_tls(project_docs, platform_docs)

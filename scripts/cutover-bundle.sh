@@ -568,9 +568,29 @@ echo "=== [5/7] Resuming Flux 'vault' and Waiting for PostgreSQL ==="
 set_layer_suspend vault false
 request_layer_reconcile vault
 wait_layer_ready vault
+if [[ "$(kubectl get job postgres-init-job -n identity -o 'jsonpath={.status.conditions[?(@.type=="Failed")].status}' 2>/dev/null || true)" == "True" ]]; then
+  bg_kubectl delete job postgres-init-job -n identity --cascade=background --ignore-not-found
+fi
+if [[ "$(kubectl get pod postgres-0 -n identity -o 'jsonpath={.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)" == "False" ]]; then
+  bg_kubectl rollout restart statefulset/postgres -n identity
+fi
 request_layer_reconcile database
 wait_layer_ready database
 kubectl rollout status statefulset/postgres -n identity --timeout=600s
+restarted_proxies=()
+for proxy_deploy in vault-db-proxy vault-ai-proxy vault-notify-proxy; do
+  if [[ "$(kubectl get deployment "${proxy_deploy}" -n vault -o 'jsonpath={.status.conditions[?(@.type=="Available")].status}' 2>/dev/null || true)" == "False" ]]; then
+    bg_kubectl rollout restart "deployment/${proxy_deploy}" -n vault
+    restarted_proxies+=("${proxy_deploy}")
+  fi
+done
+if (( ${#restarted_proxies[@]} > 0 )); then
+  request_layer_reconcile vault-proxies
+  for proxy_deploy in "${restarted_proxies[@]}"; do
+    kubectl rollout status "deployment/${proxy_deploy}" -n vault --timeout=300s
+  done
+fi
+wait_layer_ready vault-proxies
 
 echo "=== [6/7] Restoring PostgreSQL Databases (keycloak, proj_pn, proj_health) ==="
 "${SCRIPT_DIR}/db-migrate-dump.sh" --keycloak --file "${ABS_BUNDLE_DIR}/keycloak.dump.gz" --yes

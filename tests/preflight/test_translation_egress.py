@@ -55,7 +55,11 @@ class TestPnTranslationEgress(unittest.TestCase):
             [
                 {
                     "namespaceSelector": {"matchLabels": {"kubernetes.io/metadata.name": "kube-system"}},
-                    "podSelector": {"matchLabels": {"k8s-app": "kube-dns"}},
+                    "podSelector": {
+                        "matchExpressions": [
+                            {"key": "k8s-app", "operator": "In", "values": ["kube-dns", "node-local-dns"]}
+                        ]
+                    },
                 }
             ],
         )
@@ -177,6 +181,19 @@ class TestTranslationEgressPreflight(unittest.TestCase):
         doc["spec"]["ingress"] = [{}]
         violations = module.check_translation_egress([doc, _load(PORTABLE)])
         self.assertTrue(violations)
+
+    def test_kube_dns_only_without_node_local_dns_is_rejected(self):
+        module = _preflight()
+        doc = copy.deepcopy(_load(POLICY))
+        dns_rule = next(r for r in doc["spec"]["egress"] if any("namespaceSelector" in p for p in r.get("to", [])))
+        dns_rule["to"][0]["podSelector"] = {"matchLabels": {"k8s-app": "kube-dns"}}
+        violations = module.check_translation_egress([doc, _load(PORTABLE)])
+        self.assertTrue(any("node-local-dns" in item["detail"] for item in violations), violations)
+
+        bad_isolation = copy.deepcopy(_load(PORTABLE))
+        bad_isolation["spec"]["egress"][0]["to"][0]["podSelector"] = {"matchLabels": {"k8s-app": "kube-dns"}}
+        dns_violations = module.check_portable_dns_egress([bad_isolation])
+        self.assertTrue(any("node-local-dns" in item["detail"] for item in dns_violations), dns_violations)
 
 
 class TestTranslationHandbook(unittest.TestCase):

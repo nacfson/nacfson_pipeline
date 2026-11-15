@@ -127,11 +127,27 @@ fi
 TOKEN_JWT=$(${KUBE_EXEC} --as=break-glass:vault-auth --as-group=platform:break-glass create token openbao-token-reviewer -n vault --duration=87600h 2>/dev/null \
   || ${KUBE_EXEC} create token openbao-token-reviewer -n vault --duration=87600h)
 
+K8S_POD_ENV=$(${KUBE_EXEC} exec -n "${VAULT_NS}" "${VAULT_POD}" -- env)
+K8S_SERVICE_HOST=$(printf '%s\n' "${K8S_POD_ENV}" | awk -F= '$1 == "KUBERNETES_SERVICE_HOST" {print substr($0, index($0, "=") + 1); exit}' | tr -d '\r ')
+K8S_SERVICE_PORT=$(printf '%s\n' "${K8S_POD_ENV}" | awk -F= '$1 == "KUBERNETES_SERVICE_PORT" {print substr($0, index($0, "=") + 1); exit}' | tr -d '\r ')
+unset K8S_POD_ENV
+if [ -z "${K8S_SERVICE_HOST}" ]; then
+  echo "Error: KUBERNETES_SERVICE_HOST is empty inside ${VAULT_NS}/${VAULT_POD}." >&2
+  exit 1
+fi
+if [ -z "${K8S_SERVICE_PORT}" ]; then
+  K8S_SERVICE_PORT="443"
+fi
+case "${K8S_SERVICE_HOST}" in
+  *:*) K8S_HOST_URL="https://[${K8S_SERVICE_HOST}]:${K8S_SERVICE_PORT}" ;;
+  *)   K8S_HOST_URL="https://${K8S_SERVICE_HOST}:${K8S_SERVICE_PORT}" ;;
+esac
+
 printf "%s\n" "${CA_DATA}" | ${KUBE_EXEC} exec -i -n "${VAULT_NS}" "${VAULT_POD}" -- tee /tmp/ca.crt >/dev/null
 printf "%s\n" "${TOKEN_JWT}" | ${KUBE_EXEC} exec -i -n "${VAULT_NS}" "${VAULT_POD}" -- tee /tmp/token_reviewer.jwt >/dev/null
 
 run_bao write auth/kubernetes/config \
-  kubernetes_host="https://kubernetes.default.svc:443" \
+  kubernetes_host="${K8S_HOST_URL}" \
   kubernetes_ca_cert=@/tmp/ca.crt \
   token_reviewer_jwt=@/tmp/token_reviewer.jwt \
   disable_iss_validation=true

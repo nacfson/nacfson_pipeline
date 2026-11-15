@@ -426,7 +426,7 @@
               <text x="14" y="156" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">5. In-cluster egress to:</text>
               <text x="24" y="172" fill="#34d399" font-size="8.5" font-family="'JetBrains Mono'">• vault-db-proxy:5432 &amp; ai-gateway:8080</text>
               <text x="24" y="186" fill="#38bdf8" font-size="8.5" font-family="'JetBrains Mono'">• gateway.identity.svc:8080</text>
-              <text x="24" y="200" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">• kube-dns (UDP/TCP :53)</text>
+              <text x="24" y="200" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">• kube-dns / node-local-dns (:53)</text>
               <text x="14" y="220" fill="#e2e8f0" font-size="9.5" font-family="'JetBrains Mono'">6. Portable NetPol, pn-backend:</text>
               <text x="24" y="236" fill="#34d399" font-size="8.5" font-family="'JetBrains Mono'">• TCP :443 minus RFC1918/metadata</text>
               <text x="24" y="250" fill="#94a3b8" font-size="8.5" font-family="'JetBrains Mono'">• (Gemini via vault/vault-ai-proxy:8080)</text>
@@ -1089,7 +1089,7 @@
                 <span class="font-mono text-xs font-bold text-teal-300">Spec 005 — Post-Vault Automation</span>
                 <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/005-post-vault-automation</span>
               </div>
-              <p class="text-xs text-slate-400 mt-1">Automates Kubernetes SA auth binding (<code class="text-teal-300">vault-configure-k8s-auth.sh</code>), secret seeding, and initContainer memory secret hydration after OpenBao unseal.</p>
+              <p class="text-xs text-slate-400 mt-1">Automates Kubernetes SA auth binding (<code class="text-teal-300">vault-configure-k8s-auth.sh</code> using in-pod <code class="text-teal-300">KUBERNETES_SERVICE_HOST</code> so OpenBao avoids DNS), secret seeding, and initContainer memory secret hydration after OpenBao unseal.</p>
             </div>
             <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
               <div class="flex justify-between items-center">
@@ -1503,7 +1503,7 @@
         desc: 'Platform-owned boundary layer reconciled before tenant workloads. Enforces Restricted Pod Security Admission, zero ServiceAccount token mounts, portable networking.k8s.io/v1 egress firewalling, and 1/n ResourceQuota.',
         bullets: [
           '➔ services.nodeports: "0" and services.loadbalancers: "0" enforced at quota admission.',
-          '➔ In-cluster egress: kube-dns (:53), vault-db-proxy (:5432), vault-ai-proxy (:8080), gateway (:8080), and intra-namespace.',
+          '➔ In-cluster egress: kube-dns + node-local-dns (:53), vault-db-proxy (:5432), vault-ai-proxy (:8080), gateway (:8080), and intra-namespace.',
           '➔ Portable NetworkPolicy for pn-backend only: TCP :443 (api.wiktapi.dev) minus RFC1918, 169.254.169.254/32, and 100.64.0.0/10 (Gemini generativelanguage.googleapis.com:443 egresses via vault/vault-ai-proxy).',
           '➔ Reconciler RBAC (pn-reconciler) cannot modify Quotas, NetworkPolicies, or RoleBindings.'
         ],
@@ -1881,8 +1881,8 @@
           from: 'eBPF Policy Engine',
           to: 'Namespace proj-pn',
           proto: 'Default-Deny + PortableEgressPolicy (TCP :443 minus private/metadata)',
-          desc: 'Ingress is allowed only from Traefik and intra-namespace pods. In-cluster egress is CoreDNS, vault-db-proxy, vault-ai-proxy, and gateway. pn-backend adds portable TCP :443 egress (api.wiktapi.dev) excluding RFC1918, 169.254.169.254/32, and 100.64.0.0/10, while vault/vault-ai-proxy owns generativelanguage.googleapis.com:443.',
-          code: `# Allowed egress from proj-pn:\n1. kube-system CoreDNS (UDP/TCP 53)\n2. vault/vault-db-proxy (:5432) & vault/vault-ai-proxy (:8080)\n3. identity/gateway (:8080)\n4. pn-backend TCP :443 minus [10/8, 172.16/12, 192.168/16, 169.254.169.254/32, 100.64/10]`,
+          desc: 'Ingress is allowed only from Traefik and intra-namespace pods. In-cluster egress is kube-dns / node-local-dns, vault-db-proxy, vault-ai-proxy, and gateway. pn-backend adds portable TCP :443 egress (api.wiktapi.dev) excluding RFC1918, 169.254.169.254/32, and 100.64.0.0/10, while vault/vault-ai-proxy owns generativelanguage.googleapis.com:443.',
+          code: `# Allowed egress from proj-pn:\n1. kube-system kube-dns / node-local-dns (UDP/TCP 53)\n2. vault/vault-db-proxy (:5432) & vault/vault-ai-proxy (:8080)\n3. identity/gateway (:8080)\n4. pn-backend TCP :443 minus [10/8, 172.16/12, 192.168/16, 169.254.169.254/32, 100.64/10]`,
           guard: 'Blocks lateral movement to PostgreSQL, OpenBao, cloud metadata, and private networks.'
         },
         {
@@ -1977,7 +1977,7 @@
           proto: 'HTTP /insert/jsonline (local-k3s) | Kafka acks=-1 idempotent (GKE)',
           desc: 'On local-k3s (and vps-k3s pre-cutover), Fluent Bit posts JSON lines to VictoriaLogs ClusterIP :9428. On GKE, VictoriaLogs is deleted and Fluent Bit streams proj.* (192M cap -> logs.proj.valid) and quarantine.* (64M cap -> logs.proj.quarantine) over WireGuard to the 3-broker OCI Kafka cluster.',
           code: `# GKE clusters/gke/observability/fluent-bit-kafka.conf\nBrokers 10.200.0.11:9092,10.200.0.12:9092,10.200.0.13:9092\nrdkafka.request.required.acks -1 · rdkafka.enable.idempotence true`,
-          guard: 'No 0.0.0.0/0 egress; GKE Fluent Bit egresses only to CoreDNS and 10.200.0.11..13:9092.'
+          guard: 'No 0.0.0.0/0 egress; GKE Fluent Bit egresses only to kube-dns / node-local-dns and 10.200.0.11..13:9092.'
         },
         {
           title: '4. Operator reads the store through a private tunnel',
