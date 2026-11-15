@@ -945,6 +945,20 @@ spec:
         self.assertEqual(rc_tag, 1)
         self.assertIn("digest", data_tag.get("rejectionReason", "").lower())
 
+    def test_postgres_poststart_waits_for_tcp_and_hba_before_reload(self):
+        import yaml
+
+        sts_path = os.path.join(BASE_DIR, "deploy", "platform", "database", "postgres-statefulset.yaml")
+        with open(sts_path, encoding="utf-8") as fh:
+            doc = yaml.safe_load(fh)
+        script = doc["spec"]["template"]["spec"]["containers"][0]["lifecycle"]["postStart"]["exec"]["command"][2]
+        self.assertIn("set -eu", script)
+        self.assertIn("pg_isready -U postgres -h 127.0.0.1 -p 5432", script)
+        self.assertIn('grep -q "^host all all all scram-sha-256"', script)
+        self.assertIn('grep -q "^host ${DB_NAME} ${ROLE_NAME} all trust$"', script)
+        self.assertIn("pg_ctl reload -D /var/lib/postgresql/data/pgdata", script)
+        self.assertNotIn("|| true", script)
+
 
 if __name__ == "__main__":
     unittest.main()

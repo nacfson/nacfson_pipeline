@@ -1399,6 +1399,7 @@
         desc: 'Single shared PostgreSQL instance on ondemand-core hosting isolated databases and restricted roles for Keycloak (keycloak / keycloak_user) and tenant projects (proj_pn, proj_health).',
         bullets: [
           '➔ postgres-init-job provisions per-project databases and roles using credentials from OpenBao.',
+          '➔ postStart waits for TCP :5432 pg_isready + scram-sha-256 pg_hba.conf before inserting PROJECT_SLUGS rules and reloading.',
           '➔ Tenant pods CANNOT reach Postgres directly; NetworkPolicy forces traffic through vault-db-proxy.',
           '➔ scripts/db-migrate-dump.sh (--keycloak | --project) streams SHA-256 verified logical dumps.'
         ],
