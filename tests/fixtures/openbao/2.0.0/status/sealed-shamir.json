@@ -1,0 +1,16 @@
+{
+  "type": "shamir",
+  "initialized": true,
+  "sealed": true,
+  "t": 1,
+  "n": 1,
+  "progress": 0,
+  "nonce": "",
+  "version": "2.0.0",
+  "build_date": "2024-07-17T22:05:43Z",
+  "migration": false,
+  "recovery_seal": false,
+  "storage_type": "raft",
+  "ha_enabled": true,
+  "active_time": "0001-01-01T00:00:00Z"
+}

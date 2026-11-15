@@ -1,0 +1,23 @@
+{
+  "type": "shamir",
+  "initialized": true,
+  "sealed": false,
+  "t": 1,
+  "n": 1,
+  "progress": 0,
+  "nonce": "",
+  "version": "2.0.0",
+  "build_date": "2024-07-17T22:05:43Z",
+  "migration": false,
+  "cluster_name": "vault-cluster-b64defec",
+  "cluster_id": "0862b91a-b109-c355-5c26-34657443f17d",
+  "recovery_seal": false,
+  "storage_type": "raft",
+  "ha_enabled": true,
+  "is_self": true,
+  "active_time": "2026-11-15T06:48:51.485470776Z",
+  "leader_address": "http://127.0.0.1:48577",
+  "leader_cluster_address": "https://127.0.0.1:45779",
+  "raft_committed_index": 31,
+  "raft_applied_index": 31
+}

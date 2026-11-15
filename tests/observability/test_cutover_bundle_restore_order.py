@@ -11,6 +11,8 @@ import unittest
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SCRIPT = os.path.join(REPO, "scripts", "cutover-bundle.sh")
+SCRIPT_LIB = os.path.join(REPO, "scripts", "lib")
+STATUS_FIXTURES = os.path.join(REPO, "tests", "fixtures", "openbao", "2.0.0", "status")
 
 LIVE_HCL = """ui = false
 
@@ -51,22 +53,43 @@ case "$joined" in
     printf '%s\n' "${args[-1]}" >> "$STATE/cm-patches.log"
     ;;
   *"bao status -format=json"*)
-    if [[ -f "$STATE/migrated" ]]; then
-      echo '{"type":"shamir","initialized":true,"sealed":false,"migration":false,"recovery_seal":true}'
-    elif [[ -f "$STATE/initialized" ]]; then
-      echo '{"type":"shamir","initialized":true,"sealed":true}'
-      exit 2
-    else
-      echo '{"type":"shamir","initialized":false,"sealed":true}'
-      exit 2
+    bao_state="$(cat "$STATE/bao-state")"
+    if [[ "$bao_state" == "unreachable" ]]; then
+      echo 'error: unable to upgrade connection: container not found ("openbao")' >&2
+      exit 1
     fi
+    cat "__FIXTURES__/$bao_state.json"
+    case "$bao_state" in
+      unsealed-*) exit 0 ;;
+      *) exit 2 ;;
+    esac
+    ;;
+  "delete pod -n vault openbao-0"*)
+    if [[ -f "$STATE/cm-patches.log" ]]; then
+      config="$(tail -n 1 "$STATE/cm-patches.log")"
+    else
+      config="$(cat "$STATE/live.hcl")"
+    fi
+    kms="false"
+    [[ "$config" == *gcpckms* ]] && kms="true"
+    case "$(cat "$STATE/bao-state")" in
+      sealed-shamir | unsealed-shamir | sealed-migration)
+        if [[ "$kms" == "true" ]]; then echo sealed-migration; else echo sealed-shamir; fi > "$STATE/bao-state"
+        ;;
+      sealed-auto | unsealed-auto)
+        if [[ "$kms" == "true" ]]; then echo unsealed-auto; else echo unreachable; fi > "$STATE/bao-state"
+        ;;
+    esac
     ;;
   *"bao operator init"*)
-    touch "$STATE/initialized"
+    echo sealed-shamir > "$STATE/bao-state"
     echo '{"unseal_keys_b64":["temp-key"],"root_token":"temp-root"}'
     ;;
   *"bao operator unseal -migrate"*)
-    touch "$STATE/migrated"
+    echo unsealed-auto > "$STATE/bao-state"
+    ;;
+  *"bao operator unseal"*)
+    echo unsealed-shamir > "$STATE/bao-state"
     ;;
   "exec -i -n vault openbao-0 -- tee /tmp/openbao.snap")
     cat > /dev/null
@@ -137,19 +160,20 @@ def _make_bundle(bundle_dir):
 
 
 class CutoverRestoreOrderTest(unittest.TestCase):
-    def _run_restore(self, target, extra_args=(), on_kms=False, marker=None):
+    def _run_restore(self, target, extra_args=(), bao_state="uninitialized", marker=None):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         repo = os.path.join(tmp, "repo")
         scripts = os.path.join(repo, "scripts")
         os.makedirs(scripts)
         shutil.copy(SCRIPT, os.path.join(scripts, "cutover-bundle.sh"))
+        shutil.copytree(SCRIPT_LIB, os.path.join(scripts, "lib"))
         state = os.path.join(tmp, "state")
         os.makedirs(state)
         with open(os.path.join(state, "live.hcl"), "w", encoding="utf-8") as fh:
             fh.write(LIVE_HCL)
-        if on_kms:
-            open(os.path.join(state, "migrated"), "w").close()
+        with open(os.path.join(state, "bao-state"), "w", encoding="utf-8") as fh:
+            fh.write(bao_state)
         if marker is not None:
             with open(os.path.join(state, "marker"), "w", encoding="utf-8") as fh:
                 fh.write(marker)
@@ -157,7 +181,7 @@ class CutoverRestoreOrderTest(unittest.TestCase):
             _write_executable(os.path.join(scripts, helper), HELPER_STUB.replace("__STATE__", state))
         bin_dir = os.path.join(tmp, "bin")
         os.makedirs(bin_dir)
-        _write_executable(os.path.join(bin_dir, "kubectl"), KUBECTL_STUB.replace("__STATE__", state))
+        _write_executable(os.path.join(bin_dir, "kubectl"), KUBECTL_STUB.replace("__STATE__", state).replace("__FIXTURES__", STATUS_FIXTURES))
         bundle = os.path.join(tmp, "bundle")
         _make_bundle(bundle)
         env = {
@@ -235,7 +259,7 @@ class CutoverRestoreOrderTest(unittest.TestCase):
         self.assertEqual(self.marker, self.bundle_sha)
 
     def test_gke_rerun_after_migration_resumes_without_touching_openbao(self):
-        result, calls, patches = self._run_restore("gke", on_kms=True)
+        result, calls, patches = self._run_restore("gke", bao_state="unsealed-auto")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("[4/7] Skipped", result.stdout)
         self.assertEqual(patches, [])
@@ -246,16 +270,51 @@ class CutoverRestoreOrderTest(unittest.TestCase):
     def test_gke_rerun_with_the_same_bundle_marker_resumes(self):
         self._run_restore("gke")
         same = self.bundle_sha
-        result, calls, _ = self._run_restore("gke", on_kms=True, marker=same)
+        result, calls, _ = self._run_restore("gke", bao_state="unsealed-auto", marker=same)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertFalse(any("raft snapshot restore" in c for c in calls), calls)
 
     def test_gke_refuses_to_resume_onto_data_from_another_bundle(self):
-        result, calls, patches = self._run_restore("gke", on_kms=True, marker="0" * 64)
+        result, calls, patches = self._run_restore("gke", bao_state="unsealed-auto", marker="0" * 64)
         self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
         self.assertIn("another bundle", result.stderr)
         self.assertEqual(patches, [])
         self.assertFalse(any("suspend" in c or "apply -f" in c for c in calls), calls)
+
+    def _assert_read_only(self, calls):
+        for call in calls:
+            self.assertTrue(
+                call.startswith("get configmap openbao-config") or "bao status -format=json" in call,
+                f"mutating call before the status pre-check passed: {call!r}\n" + "\n".join(calls),
+            )
+
+    def test_gke_aborts_before_any_mutation_when_status_is_unreachable(self):
+        result, calls, patches = self._run_restore("gke", bao_state="unreachable")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("cannot read the openbao-0 status", result.stderr)
+        self.assertNotIn("Traceback", result.stderr)
+        self.assertEqual(patches, [])
+        self._assert_read_only(calls)
+
+    def test_gke_refuses_the_shamir_switch_for_sealed_kms_data(self):
+        result, calls, patches = self._run_restore("gke", bao_state="sealed-auto")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("openbao-0 is 'sealed-auto'", result.stderr)
+        self.assertEqual(patches, [])
+        self._assert_read_only(calls)
+
+    def test_gke_takes_the_shamir_switch_from_every_shamir_state(self):
+        for state in ("uninitialized", "sealed-shamir", "unsealed-shamir", "sealed-migration"):
+            with self.subTest(state=state):
+                result, _, patches = self._run_restore("gke", bao_state=state)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(len(patches), 2, patches)
+
+    def test_local_k3s_stops_before_restoring_when_status_stays_unreachable(self):
+        result, calls, _ = self._run_restore("local-k3s", bao_state="unreachable")
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("'unreachable' before the snapshot restore", result.stderr)
+        self.assertFalse(any("operator init" in c or "snapshot restore" in c for c in calls), calls)
 
     def test_local_k3s_restore_does_not_touch_seal_config(self):
         result, calls, patches = self._run_restore("local-k3s")

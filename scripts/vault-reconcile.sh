@@ -2,20 +2,12 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VAULT_NS="vault"
 VAULT_POD="openbao-0"
 GATE_FLAG_FILE="/var/lib/openbao/data/RESTORATION_SAFETY_GATE"
 CONFIRM_FLAG="${1:-}"
 BAO_ADDR="http://127.0.0.1:8200"
-
-status_field() {
-  python3 -c 'import json,sys
-try:
-    v = json.loads(sys.argv[2]).get(sys.argv[1])
-except ValueError:
-    v = None
-print(str(v).lower() if isinstance(v, bool) else "")' "$1" "$2"
-}
 
 echo "=================================================================="
 echo "OPENBAO POST-RESTORE RECONCILIATION SAFETY GATE (FR-014)"
@@ -23,25 +15,37 @@ echo "=================================================================="
 
 if [ "${VAULT_MOCK_MODE:-false}" = "true" ]; then
   echo "[Mode: Simulated / Local Drill]"
-  IS_SEALED="false"
-  IS_INITIALIZED="true"
+  BAO_STATE="unsealed-shamir"
 else
   STATUS_JSON=$(kubectl exec -n "${VAULT_NS}" "${VAULT_POD}" -- env VAULT_ADDR="${BAO_ADDR}" bao status -format=json 2>/dev/null || true)
-  IS_INITIALIZED=$(status_field initialized "${STATUS_JSON}")
-  IS_SEALED=$(status_field sealed "${STATUS_JSON}")
+  BAO_STATE=$(python3 "${SCRIPT_DIR}/lib/openbao_status.py" <<< "${STATUS_JSON}")
 fi
 
 echo "=== [1/4] Checking Vault Engine Health & Seal Status ==="
-if [ "${IS_INITIALIZED}" != "true" ]; then
-  echo "Error: Vault is not initialized."
-  exit 1
-fi
-
-if [ "${IS_SEALED}" = "true" ]; then
-  echo "Error: Vault is currently SEALED. Unseal with the master unseal key first:"
-  echo "kubectl exec -n ${VAULT_NS} ${VAULT_POD} -- bao operator unseal <UNSEAL_KEY>"
-  exit 1
-fi
+case "${BAO_STATE}" in
+  unreachable)
+    echo "Error: Vault status is unreachable (empty or unparseable 'bao status' output)."
+    exit 1
+    ;;
+  uninitialized)
+    echo "Error: Vault is not initialized."
+    exit 1
+    ;;
+  sealed-shamir)
+    echo "Error: Vault is currently SEALED. Unseal with the master unseal key first:"
+    echo "kubectl exec -n ${VAULT_NS} ${VAULT_POD} -- env VAULT_ADDR=${BAO_ADDR} bao operator unseal <UNSEAL_KEY>"
+    exit 1
+    ;;
+  sealed-migration)
+    echo "Error: Vault is currently SEALED in the middle of a seal migration. Finish it with the Shamir unseal key first:"
+    echo "kubectl exec -n ${VAULT_NS} ${VAULT_POD} -- env VAULT_ADDR=${BAO_ADDR} bao operator unseal -migrate <UNSEAL_KEY>"
+    exit 1
+    ;;
+  sealed-auto)
+    echo "Error: Vault is currently SEALED on auto-unseal. An unseal key cannot open it; restore its access to the auto-unseal key and restart ${VAULT_POD}."
+    exit 1
+    ;;
+esac
 echo "PASS: Vault instance is unsealed and healthy."
 
 echo "=== [2/4] Safety Gate Status Check ==="

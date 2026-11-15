@@ -127,6 +127,9 @@ python3 -m unittest discover tests/hooks
 python3 -m unittest discover tests/observability
 python3 -m unittest discover tests/skills
 
+# 3d. Vault script tests, OpenBao status classifier, and the hand-written status guard
+python3 -m unittest discover tests/vault
+
 # 4. Full Kustomize render, kubeconform schema validation & preflight gate (gke, local-k3s & vps-k3s)
 ./scripts/render-validate.sh gke
 ./scripts/render-validate.sh local-k3s
