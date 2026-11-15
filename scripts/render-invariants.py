@@ -9,6 +9,9 @@ import os
 import sys
 import yaml
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import gke_edge  # noqa: E402  (shared edge rules, Spec 015)
+
 CLUSTER_SCOPED_KINDS = {
     "Namespace",
     "ClusterRole",
@@ -34,6 +37,52 @@ def load_yaml_docs(file_path):
         return []
     with open(file_path, "r", encoding="utf-8") as f:
         return [doc for doc in yaml.safe_load_all(f) if doc is not None]
+
+
+
+def check_gke_edge(rendered_docs):
+    """Invariant 10 (gke): exactly one LoadBalancer Service, platform/traefik, matching the edge contract
+    (scripts/gke_edge.py); Traefik has no hostPort and no hostNetwork; no NodePort Service anywhere.
+    Returns a list of error strings."""
+    errors = []
+    found_traefik_svc = False
+    found_traefik_dep = False
+    for doc in rendered_docs:
+        kind = doc.get("kind", "")
+        meta = doc.get("metadata") or {}
+        name = meta.get("name", "")
+        ns = meta.get("namespace", "")
+        if kind == "Service":
+            svc_type = (doc.get("spec") or {}).get("type", "ClusterIP")
+            if svc_type == "NodePort":
+                errors.append(f"Invariant 10 violation: Service {ns}/{name} uses forbidden type: NodePort on gke")
+            if gke_edge.is_edge_service(doc):
+                found_traefik_svc = True
+                for problem in gke_edge.edge_service_problems(doc):
+                    errors.append(f"Invariant 10 violation: Service platform/traefik {problem}")
+            elif svc_type == "LoadBalancer":
+                errors.append(
+                    f"Invariant 10 violation: Service {ns}/{name} is a LoadBalancer; only platform/traefik may be on gke"
+                )
+        elif kind == "Deployment" and ns == gke_edge.EDGE_NAMESPACE and name == gke_edge.EDGE_NAME:
+            found_traefik_dep = True
+            pod_spec = (((doc.get("spec") or {}).get("template") or {}).get("spec") or {})
+            host_ports = sorted(
+                p.get("hostPort")
+                for c in (pod_spec.get("containers") or [])
+                for p in (c.get("ports") or [])
+                if isinstance(p, dict) and p.get("hostPort") is not None
+            )
+            if host_ports:
+                errors.append(f"Invariant 10 violation: Deployment platform/traefik must not declare hostPort, got {host_ports}")
+            # hostNetwork would make Traefik answer on the node's own IP, bypassing the load balancer.
+            if pod_spec.get("hostNetwork"):
+                errors.append("Invariant 10 violation: Deployment platform/traefik must not use hostNetwork")
+    if not found_traefik_svc:
+        errors.append("Invariant 10 violation: Missing Service platform/traefik in gke render")
+    if not found_traefik_dep:
+        errors.append("Invariant 10 violation: Missing Deployment platform/traefik in gke render")
+    return errors
 
 
 def main():
@@ -263,40 +312,10 @@ def main():
         if ref_name != "view":
             errors.append(f"Invariant 8 violation: operator-readonly-view roleRef is '{ref_name}', expected 'view'")
 
-    # Invariant 10: GKE zero-LoadBalancer & Traefik hostPort 80/443 contract (contracts/gke-capacity-and-placement.md §3)
+    # Invariant 10: GKE single L4 pass-through LoadBalancer edge
+    # (specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md §3)
     if args.environment == "gke":
-        found_traefik_svc = False
-        found_traefik_dep = False
-        for doc in rendered_docs:
-            kind = doc.get("kind", "")
-            meta = doc.get("metadata") or {}
-            name = meta.get("name", "")
-            ns = meta.get("namespace", "")
-            if kind == "Service":
-                svc_type = (doc.get("spec") or {}).get("type", "ClusterIP")
-                if svc_type == "LoadBalancer":
-                    errors.append(f"Invariant 10 violation: Service {ns}/{name} uses forbidden type: LoadBalancer on gke")
-                if ns == "platform" and name == "traefik":
-                    found_traefik_svc = True
-                    if svc_type != "ClusterIP":
-                        errors.append(f"Invariant 10 violation: Service platform/traefik must use type: ClusterIP, got '{svc_type}'")
-            elif kind == "Deployment" and ns == "platform" and name == "traefik":
-                found_traefik_dep = True
-                pod_spec = (((doc.get("spec") or {}).get("template") or {}).get("spec") or {})
-                host_ports = {
-                    p.get("hostPort")
-                    for c in (pod_spec.get("containers") or [])
-                    for p in (c.get("ports") or [])
-                    if isinstance(p, dict) and p.get("hostPort") is not None
-                }
-                if host_ports != {80, 443}:
-                    errors.append(
-                        f"Invariant 10 violation: Deployment platform/traefik must bind hostPort {{80, 443}}, got {sorted(host_ports)}"
-                    )
-        if not found_traefik_svc:
-            errors.append("Invariant 10 violation: Missing Service platform/traefik in gke render")
-        if not found_traefik_dep:
-            errors.append("Invariant 10 violation: Missing Deployment platform/traefik in gke render")
+        errors.extend(check_gke_edge(rendered_docs))
 
     if errors:
         sys.stderr.write("Render Invariants Violations:\n")

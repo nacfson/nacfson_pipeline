@@ -1,4 +1,3 @@
-
 # nacfson_pipeline Constitution
 
 ## Core Principles
@@ -11,7 +10,7 @@ All declarative configurations, workload definitions, and environment profiles M
 All project namespaces MUST enforce the Kubernetes Restricted Pod Security profile through Pod Security Admission (audit and warn modes are strictly prohibited). Application containers MUST run as non-root and drop all capabilities, permitting at most `NET_BIND_SERVICE`. Workloads MUST run under dedicated platform-provisioned ServiceAccounts with automatic API token mounting disabled. Project pods MUST NOT mount service-account tokens or access the Kubernetes API. Project Services MUST be ClusterIP only; NodePort and LoadBalancer services represent perimeter bypasses and MUST be rejected. Cross-workload traffic MUST be constrained by explicit NetworkPolicies.
 
 ### III. Defense-in-Depth Identity & Decoupled Authorization
-Public ingress MUST expose only the minimal browser-facing OIDC routes and authenticated session revocation. Administrative consoles (including Keycloak `/admin/`, master realm, metrics port 9000, and health endpoints) MUST NEVER be exposed via public ingress and require private, authenticated cluster access. Platform authentication MUST be handled via a custom Go gateway built strictly with the Go standard library (zero runtime third-party dependencies). The shared sign-in service establishes who a user is only after a project asks. It does not select the project's published addresses. A project that uses shared sign-in verifies a confirmed identity for signature, issuer, audience, and expiration. A project that does not use shared sign-in has no connection to the sign-in service. Platform identity is strictly `(issuer, subject)`—email addresses MUST NOT serve as persistent unique identifiers. Identity establishment does NOT grant application permissions; projects MUST explicitly declare business authorization, and missing declarations MUST fail closed.
+Public ingress MUST expose only the minimal browser-facing OIDC routes and authenticated session revocation. Administrative consoles (including Keycloak `/admin/`, master realm, metrics port 9000, and health endpoints) MUST NEVER be exposed via public ingress and require private, authenticated cluster access. *Private, authenticated cluster access* means a path that never passes through public ingress or a public load balancer, admits only a named operator identity with strong authentication (multi-factor sign-in to the cloud identity provider, or an SSH private key held only by the operator) before any request reaches the cluster, and is then authorized by Kubernetes RBAC. The endpoint of that path (for example, a managed Kubernetes API endpoint gated by cloud IAM, or SSH to a node) MAY be reachable from the internet. Shared accounts and anonymous access MUST NOT be used, and cluster administrator credentials MUST NOT be committed to Git or shared between people. Administrative consoles are reached only through that path (for example, `kubectl port-forward`), never through a published hostname. Platform authentication MUST be handled via a custom Go gateway built strictly with the Go standard library (zero runtime third-party dependencies). The shared sign-in service establishes who a user is only after a project asks. It does not select the project's published addresses. A project that uses shared sign-in verifies a confirmed identity for signature, issuer, audience, and expiration. A project that does not use shared sign-in has no connection to the sign-in service. Platform identity is strictly `(issuer, subject)`—email addresses MUST NOT serve as persistent unique identifiers. Identity establishment does NOT grant application permissions; projects MUST explicitly declare business authorization, and missing declarations MUST fail closed.
 
 ### IV. Bounded Resource Allocation & 1/n Budgeting
 Every container MUST define explicit CPU and memory requests and limits; unbounded borrowing or unconstrained memory execution is prohibited. Compute resources MUST be allocated according to a deterministic 1/n project model: application capacity equals measured node allocatable capacity minus platform reservations, divided equally across deployed projects. The aggregate resource consumption of a project (accounting for peak concurrency, rollout surge, Jobs, and CronJobs) MUST fit within its assigned slice. Candidate revisions exceeding project budgets or decreasing existing memory limits during the interim freeze MUST be rejected before application. Platform-managed namespace ResourceQuotas act as non-bypassable admission backstops.
@@ -139,4 +138,18 @@ The log collector in the platform namespace `observability` may mount `/var/log/
 
 **Maintainer approval**: Requested by the repository maintainer on 2026-11-11 (analysis finding C1 of feature `012-gke-platform-migration`). Merging this amendment's pull request records formal approval of version 2.3.0.
 
-**Version**: 2.3.0 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-11-11
+## Clarification 2.3.1
+
+**Rationale**: Principle III required "private, authenticated cluster access" for administrative consoles without saying what "private" means. Feature `015-gke-terraform-infra` (analysis finding D1) uses a GKE API endpoint that is reachable from the internet and gated by Google sign-in and Kubernetes RBAC. The current `vps-k3s` path is the same shape: an internet-reachable SSH port gated by the operator's private key. "Private" means private to one named, strongly authenticated operator and separate from public ingress, not hidden from the internet.
+
+**Impact**:
+
+- Security: Unchanged in practice. Administrative consoles stay off public ingress, and the public-surface allowlist is unchanged. The clarification adds explicit bans on shared accounts, anonymous access, and committed or shared administrator credentials. A network-restricted endpoint (for example, a DNS-only or private API endpoint) remains allowed and is stricter.
+- Resource quota: Unchanged.
+- Portability: Unchanged. Each environment's access path is environment configuration.
+
+**Migration**: None. The `vps-k3s` SSH path and the planned GKE public API endpoint both comply.
+
+**Maintainer approval**: Requested by the repository maintainer on 2026-11-14 (analysis finding D1 of feature `015-gke-terraform-infra`). Merging this clarification's pull request records approval.
+
+**Version**: 2.3.1 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-11-14

@@ -83,9 +83,9 @@ BUNDLE_DIR="$HOME/.nacfson-cutover/rehearsal-$(date -u +%Y%m%d)"
 ## Gate 4 — Single-Shot GKE Cutover, `gcpckms` Migration & `vps-k3s` Repurposing
 
 1. Lower DNS `A` record TTLs for `{auth,pn,health,blog}.nacfson.cloud` to `60s` at least 24h prior.
-2. Provision Zonal GKE Standard cluster in GCP project `nacfson-pipeline` (`--project=nacfson-pipeline --zone=asia-northeast3-a --logging=NONE --monitoring=NONE --enable-dataplane-v2 --workload-pool=nacfson-pipeline.svc.id.goog`) with `ondemand-core` (`1 × e2-medium` + static IPv4 + firewall TCP `80,443`) and `spot-controllers` (`1 × e2-small --spot`).
+2. Provision the GKE environment with [`docs/runbooks/gke-terraform.md`](../../docs/runbooks/gke-terraform.md) (Spec 015: Terraform in `infra/gcp/`, Parts 1 and 3) up to the checkpoint "ready for restore". This replaces the earlier one-off `gcloud` commands.
    - **Before step 3 (open item from the PR 149 review):** run `kubectl get endpoints kubernetes -n default` and check the API server address. A private address (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`) is already allowed by `openbao-ingress-policy`. A public address is not: add it as an `ipBlock` `/32` on TCP `:443` to the `openbao-ingress-policy` patch in `clusters/gke/layers.yaml` first, otherwise OpenBao TokenReview is dropped and every `auth/kubernetes` login fails.
 3. Bootstrap FluxCD pointing at `clusters/gke/`, pre-seed `edge-tls-secrets.yaml`, quiesce `vps-k3s` writes, run final `./scripts/cutover-bundle.sh export` + `restore --target gke --migrate-kms`.
-4. Verify HTTPS SNI + login via `curl --resolve` and `./scripts/smoke-auth-chain.sh` (`SC-004`), then flip DNS `A` records to Node 1's static IPv4.
+4. Verify HTTPS SNI + login via `curl --resolve` and `./scripts/smoke-auth-chain.sh` (`SC-004`), then flip DNS `A` records to `terraform -chdir=infra/gcp/gke output -raw ingress_ip` (the load balancer address).
 5. Migrate `openbao-0` seal from Shamir to GCP Cloud KMS (`project=nacfson-pipeline`, `region=asia-northeast3`, `bao operator unseal -migrate`) and verify unattended unseal across a `kubectl delete pod -n vault openbao-0` restart.
 6. Within the same cutover window, shrink/recreate the former `vps-k3s` OCI VM into Kafka Broker VM 1 (`1 OCPU / 5 GB`) for Spec 013 and retire `clusters/vps-k3s/`.

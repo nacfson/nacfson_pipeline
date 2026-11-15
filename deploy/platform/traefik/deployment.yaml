@@ -8,7 +8,7 @@ metadata:
     app.kubernetes.io/part-of: platform
 spec:
   replicas: 1
-  # Recreate prevents hostPort 80/443 scheduling deadlocks on the single ondemand-core node.
+  # Recreate keeps rollouts within the 1/n reservation (no surge).
   strategy:
     type: Recreate
   selector:
@@ -48,11 +48,9 @@ spec:
           ports:
             - name: web
               containerPort: 8000
-              hostPort: 80
               protocol: TCP
             - name: websecure
               containerPort: 8443
-              hostPort: 443
               protocol: TCP
             - name: ping
               containerPort: 8082

@@ -2,21 +2,21 @@
 
 This document summarizes the runtime topology, GitOps reconciliation layers, security boundaries, and request flows of **`nacfson_pipeline`**.
 
-For supreme governance rules, read [`.specify/memory/constitution.md`](.specify/memory/constitution.md) (`v2.3.0`). For deep-dive subsystem docs, see [`INDEX.md`](INDEX.md).
+For supreme governance rules, read [`.specify/memory/constitution.md`](.specify/memory/constitution.md) (`v2.3.1`). For deep-dive subsystem docs, see [`INDEX.md`](INDEX.md).
 
 ---
 
 ## 1. High-Level Runtime Topology
 
 The platform runs across cloud-agnostic Kubernetes environments:
-- **`clusters/gke/` (Primary Cloud Target — Spec 012 Design 1)**: Zonal GKE Standard in GCP project **`nacfson-pipeline`**, zone **`asia-northeast3-a`** (`1 × e2-medium` On-Demand `ondemand-core` hosting all 24/7 stateful/auth/tenant workloads + `1 × e2-small` Spot `spot-controllers` hosting stateless `cert-manager` & `flux-system` controllers, `--logging=NONE --monitoring=NONE`, `Traefik v3.3.4` `hostPort: 80/443` with zero GCP LoadBalancer).
+- **`clusters/gke/` (Primary Cloud Target — Spec 012 Design 1)**: Zonal GKE Standard in GCP project **`nacfson-pipeline`**, zone **`asia-northeast3-a`** (`1 × e2-medium` On-Demand `ondemand-core` hosting all 24/7 stateful/auth/tenant workloads + `1 × e2-small` Spot `spot-controllers` hosting stateless `cert-manager` & `flux-system` controllers, `--logging=NONE --monitoring=NONE`, `Traefik v3.3.4` behind a single GKE L4 pass-through LoadBalancer on the Terraform-reserved address `gke-ingress-ip` (Spec 015); infrastructure in `infra/gcp/`).
 - **`clusters/local-k3s/` (Lockstep Local Verification Target)**: Single-node Linux K3s (`v1.35.9+k3s1`) running Cilium eBPF CNI and in-cluster VictoriaLogs.
 - **`clusters/vps-k3s/` (Transitional Until Gate 4 Cutover)**: Legacy Oracle Cloud ARM64 K3s node, repurposed into OCI Kafka Broker VM 1 (`10.200.0.11`) immediately after Gate 4 DNS cutover.
 
 ```mermaid
 flowchart TD
     Browser["🌐 User Browser"]
-    Traefik["Traefik Ingress Controller (:80 -> :443)<br/>[hostPort 80/443 on GKE · Platform TLSStore: auth/pn/health/blog-tls]"]
+    Traefik["Traefik Ingress Controller (:80 -> :443)<br/>[GKE: behind one L4 pass-through LB · Platform TLSStore: auth/pn/health/blog-tls]"]
 
     subgraph PlatformIdentity["Identity Namespace (identity)"]
         Gateway["Go Auth Gateway (Stdlib Only)<br/>[/oauth/start, /oauth/callback, /auth/logout]"]
@@ -129,9 +129,9 @@ flowchart LR
 
 ## 3. Core Architectural Subsystems
 
-### 3.1 Edge TLS Termination & Zero-LoadBalancer Ingress (Constitution Principle V, Specs 008 & 012)
+### 3.1 Edge TLS Termination & Single L4 LoadBalancer Ingress (Constitution Principle V, Specs 008, 012 & 015)
 - **Platform-Owned Certificate Inventory**: All public TLS certificates (`auth-tls`, `pn-tls`, `health-tls`, `blog-tls`) and the default Traefik `TLSStore` reside exclusively in the `platform` namespace ([`deploy/platform/tls/`](deploy/platform/tls/)).
-- **Zero-Cost GKE Edge Ingress (`deploy/platform/traefik/`)**: On GKE, non-root `Traefik v3.3.4` (`UID 65532`, `ClusterIP` Service, `Recreate` strategy) binds `hostPort: 80` and `hostPort: 443` on `ondemand-core` Node 1's static IPv4 address. `scripts/platform-preflight.py` and `scripts/render-invariants.py` reject `Service` `type: LoadBalancer` in `clusters/gke/` to prevent \$18/mo forwarding rules.
+- **GKE Edge Ingress (`deploy/platform/traefik/`, Spec 015)**: On GKE, non-root `Traefik v3.3.4` (`UID 65532`, `Recreate` strategy, no `hostPort`, no `hostNetwork`) runs on `ondemand-core` and is exposed by exactly one `LoadBalancer` Service, `platform/traefik` (`loadBalancerClass: networking.gke.io/l4-regional-external`, `externalTrafficPolicy: Local`, reserved address `gke-ingress-ip` named by annotation; about \$18/mo). Google passes TCP through without decrypting; TLS terminates at Traefik. The address and the web firewall rule are owned by Terraform (`infra/gcp/gke`); GKE builds the forwarding rule and health check. `scripts/platform-preflight.py` and `scripts/render-invariants.py` (shared rules in `scripts/gke_edge.py`) reject every other `LoadBalancer`, any `NodePort`, and project `LoadBalancer` Services. Contract: [`specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md`](specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md).
 - **Zero Project TLS Objects**: Hosted projects MUST NOT declare `Certificate`, `Issuer`, `TLSStore`, `TLSOptions`, or TLS `Secret` resources. Project `IngressRoute` manifests specify `tls: {}` and select their certificate automatically by SNI.
 - **Edge Key Exception**: Only edge TLS keys in `platform` and ACME account keys in `cert-manager` may exist as Kubernetes `Secret` objects; all backend credentials remain strictly inside OpenBao.
 - **Reference**: [`docs/tls-certificates.md`](docs/tls-certificates.md) | [`specs/008-platform-tls-termination/`](specs/008-platform-tls-termination/)

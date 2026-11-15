@@ -170,7 +170,7 @@ All infrastructure and application changes are made declaratively:
 2. Commit manifest modifications or patches.
 3. Open a Pull Request targeting `main`.
 4. Ensure all required GitHub Actions checks pass:
-   - `render-validate`: validates schemas, layers, portable `NetworkPolicy`, and zero-`LoadBalancer` invariants.
+   - `render-validate`: validates schemas, layers, portable `NetworkPolicy`, and the single L4 `LoadBalancer` (`platform/traefik` only) invariant on `gke`.
    - `platform-preflight`: validates QoS (`requests == limits`), memory freeze, multi-node pool placement, and $1/n$ capacity budgeting.
 5. Review and merge the Pull Request.
 6. Flux detects the merge within 1 minute and reconciles changes without human intervention.
@@ -394,15 +394,11 @@ Rehearse the complete production backup and identity-preserving restore locally 
 
 Execute only after Gate 2 and Gate 3 pass:
 
-1. **Provision GCP prerequisites (`nacfson-pipeline`, `asia-northeast3-a`)**:
-   - Create Artifact Registry `nacfson-public` in `asia-northeast3`, apply `deploy/gcp/gar-cleanup-policy.json`, and run `deploy/gcp/cloudbuild.yaml` to publish pinned `@sha256` multi-arch images.
-   - Create Cloud KMS key `projects/nacfson-pipeline/locations/asia-northeast3/keyRings/nacfson-vault/cryptoKeys/openbao-unseal` and IAM service account `openbao-kms@nacfson-pipeline.iam.gserviceaccount.com` with:
-     - `roles/cloudkms.cryptoKeyEncrypterDecrypter` on the `openbao-unseal` key, and
-     - `roles/iam.workloadIdentityUser` bound to `serviceAccount:nacfson-pipeline.svc.id.goog[vault/openbao]`.
-   - Provision Zonal GKE Standard cluster (`--zone asia-northeast3-a`, `--workload-pool=nacfson-pipeline.svc.id.goog`, `--enable-network-policy`, `--logging=NONE`, `--monitoring=NONE`) with Design 1 pools:
-     - `ondemand-core`: `1 × e2-medium` (`pd-balanced` `20 GB`, standard provisioning).
-     - `spot-controllers`: `1 × e2-small` (`pd-standard` `20 GB`, `--spot`, taint `cloud.google.com/gke-spot=true:NoSchedule`).
-   - Assign a reserved static external IPv4 address to `ondemand-core` Node 1 and open a VPC firewall rule permitting inbound TCP `80` and `443` to `ondemand-core` (`Traefik` `hostPort: 80/443`, zero GCP LoadBalancer).
+1. **Provision GCP prerequisites (`nacfson-pipeline`, `asia-northeast3-a`) with Terraform (Spec 015)**:
+   - Follow [`docs/runbooks/gke-terraform.md`](runbooks/gke-terraform.md) Part 1 from Cloud Shell: `infra/gcp/bootstrap` → `project` → `gke`, each with `plan -out` and `apply <saved plan>`.
+   - It creates the dedicated VPC (Private Google Access), the zonal cluster and both Design 1 pools, the Artifact Registry `nacfson-public` with `deploy/gcp/gar-cleanup-policy.json`, the Cloud KMS key `nacfson-vault/openbao-unseal` with `openbao-kms@nacfson-pipeline.iam.gserviceaccount.com` and its Workload Identity binding, and the reserved web address `gke-ingress-ip`.
+   - No node static IP or manual firewall rule: web traffic enters through the single L4 pass-through load balancer that GKE builds from `Service/platform/traefik` (contract `specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md`).
+   - Run `deploy/gcp/cloudbuild.yaml` to publish pinned `@sha256` multi-arch images.
 2. **Measure live GKE node pools & bootstrap Flux**:
    - Verify `kubectl get nodes -o jsonpath` allocatable values match `clusters/gke/capacity.yaml` (`1880m / 4408Mi`).
    - Apply `clusters/gke/flux-system/` so Flux reconciles `clusters/gke/layers.yaml`.

@@ -1,6 +1,6 @@
 # nacfson_pipeline: Personal Project Platform
 
-[![Constitution](https://img.shields.io/badge/governance-constitution%20v2.3.0-blue.svg)](.specify/memory/constitution.md)
+[![Constitution](https://img.shields.io/badge/governance-constitution%20v2.3.1-blue.svg)](.specify/memory/constitution.md)
 [![Specs](https://img.shields.io/badge/specs-001--012-success.svg)](specs/)
 [![Security Profile](https://img.shields.io/badge/pod--security-restricted-green.svg)](.specify/memory/constitution.md)
 [![Secrets Model](https://img.shields.io/badge/secrets-zero--plaintext%20vault-critical.svg)](specs/002-internal-cluster-vault/spec.md)
@@ -129,6 +129,89 @@ All hosted projects and authentication handoffs MUST derive project names, retur
 
 > **Non-Negotiable Rule**: Project backends calling `http://gateway.identity.svc:8080/auth/exchange` or `http://gateway.identity.svc:8080/auth` MUST resolve their effective host from their configured `PUBLIC_APP_URL` (`<project-slug>.<main-domain>`) rather than raw `r.Host` headers. Using an internal service name (such as `pn-backend`) produces `project-pn-backend` instead of `project-pn` and causes session confirmation to fail. See [`TROUBLESHOOTING.md`](TROUBLESHOOTING.md) §10 for full details.
 
+### 3.2 GKE Infrastructure as Code (Terraform, Spec 015)
+
+The Google Cloud resources that `clusters/gke/` runs on are defined with Terraform in [`infra/gcp/`](infra/gcp/). There are three folders ("roots"), applied in order from Cloud Shell. CI only checks them; it holds no Google credentials and never applies anything. Step-by-step guide: [`docs/runbooks/gke-terraform.md`](docs/runbooks/gke-terraform.md).
+
+**How the code is organized and applied:**
+
+```mermaid
+flowchart LR
+    SV["infra/gcp/shared-values.json<br/>(names, region, CIDRs, pools)"]
+
+    subgraph Roots["infra/gcp/ — applied in this order"]
+        direction TB
+        B["① bootstrap/<br/>state bucket<br/>(local state, never committed)"]
+        P["② project/<br/>Google APIs + $80 budget"]
+        G["③ gke/<br/>network, cluster, pools,<br/>address, KMS, registry"]
+        B --> P --> G
+    end
+
+    Bucket[("GCS bucket<br/>nacfson-pipeline-tfstate<br/>(versioned)")]
+    Op["Operator in Cloud Shell<br/>plan -out → read → apply"]
+    CI["CI job terraform-validate<br/>fmt · validate · no credentials"]
+    Check["scripts/check-gcp-shared-values.py<br/>(11 offline checks)"]
+    Repo["clusters/gke/ · deploy/platform/<br/>deploy/gcp/"]
+
+    SV --> B & P & G
+    B -->|"creates"| Bucket
+    P -. "state: prefix project" .-> Bucket
+    G -. "state: prefix gke" .-> Bucket
+    Op -->|"runs"| Roots
+    CI -->|"checks"| Roots
+    Check -->|"compares"| SV
+    Check -->|"with"| Repo
+```
+
+**What `gke/` creates, and who owns each part:**
+
+```mermaid
+flowchart TB
+    Internet["🌐 Visitors"]
+
+    subgraph TF["Created by Terraform (infra/gcp/gke)"]
+        Addr["Reserved address<br/>gke-ingress-ip"]
+        FW["Firewall rule nacfson-gke-allow-web<br/>TCP 80/443 → that address only"]
+        subgraph VPC["VPC nacfson-gke · subnet with Private Google Access"]
+            subgraph Cluster["GKE cluster nacfson-gke (zonal, asia-northeast3-a)"]
+                OD["Pool ondemand-core<br/>1 × e2-medium"]
+                SP["Pool spot-controllers<br/>1 × e2-small Spot (tainted)"]
+            end
+        end
+        NodeSA["Service account gke-nodes"]
+        KMS["KMS key nacfson-vault / openbao-unseal"]
+        GSA["Service account openbao-kms"]
+        GAR["Artifact Registry nacfson-public<br/>(public read)"]
+    end
+
+    subgraph FL["Created by Flux from Git (clusters/gke)"]
+        Svc["Service platform/traefik<br/>type LoadBalancer"]
+        Traefik["Traefik (TLS) → projects"]
+        Bao["OpenBao (vault/openbao)"]
+    end
+
+    LB["L4 pass-through load balancer<br/>(built by GKE from the Service)"]
+
+    Internet -->|"80/443"| LB
+    FW -. "lets in" .-> LB
+    LB -->|"uses"| Addr
+    Svc -->|"GKE builds"| LB
+    LB --> Traefik
+    Traefik -. "runs on" .-> OD
+    OD & SP -. "run as" .-> NodeSA
+    Bao -->|"Workload Identity"| GSA
+    GSA -->|"encrypt / decrypt"| KMS
+
+    classDef tf fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;
+    classDef flux fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef gke fill:#fff3e0,stroke:#ef6c00,stroke-width:2px;
+    class TF tf;
+    class FL flux;
+    class LB gke;
+```
+
+Terraform stops at an empty cluster. Flux creates everything inside it, and the Spec 012 restore (run from the control center) brings the data over. Terraform also owns the only internet firewall opening (TCP 80/443 to the reserved address); GKE's automatic load balancer firewall rule is turned off, so every opening is reviewed in Git. The cluster, KMS key, registry and state bucket are protected against deletion; the address and firewall rule are not, so a rehearsal can be removed without leaving charges.
+
 ---
 
 ## 4. Master Specification & Contract Index
@@ -198,10 +281,11 @@ The table below maps constitutional requirements to contracts, code modules, and
 │   └── projects/              #   └── tenant projects (pn, health, blog)
 ├── docs/                      # Operations runbooks, conceptual guides & HTML architecture handbook
 ├── gateway/                   # Go standard-library authentication gateway service
+├── infra/gcp/                 # Terraform for the GKE environment (bootstrap, project, gke roots; Spec 015)
 ├── services/                  # Cluster auxiliary services
 │   └── vault-proxies/         #   └── Zero-plaintext ai-proxy, db-proxy, notify-proxy & registry-proxy
 ├── scripts/                   # Operator release, rotation, observability, and validation scripts
-├── specs/                     # Formal SpecKit specifications (001 through 012)
+├── specs/                     # Formal SpecKit specifications (001 through 015)
 └── tests/                     # Preflight, observability, skills, review-cycle, hooks & vault test suites
 ```
 
