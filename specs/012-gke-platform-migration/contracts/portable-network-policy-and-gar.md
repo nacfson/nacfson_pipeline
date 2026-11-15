@@ -19,7 +19,7 @@ Each of the three external-API caller policies (`proj-pn/pn-backend-translation-
    - `172.16.0.0/12`
    - `192.168.0.0/16`
    - `169.254.169.254/32` (blocks GCE/cloud instance metadata & Workload Identity token server from tenant/proxy pods)
-4. DNS egress (`UDP/TCP 53`) is restricted to `kube-system` / `k8s-app: kube-dns`.
+4. DNS egress (`UDP/TCP 53`) is restricted to `kube-system` pods matching `k8s-app In [kube-dns, node-local-dns]`.
 
 ### 1.2 `openbao` API Server & GKE Cloud KMS Egress (`vault/openbao-ingress-policy`)
 

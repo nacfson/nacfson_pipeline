@@ -97,6 +97,21 @@ case "$joined" in
   "get configmap cutover-restore-state -n vault -o jsonpath="*)
     [[ -f "$STATE/marker" ]] && cat "$STATE/marker"
     ;;
+  "get deployment vault-db-proxy -n vault -o jsonpath="*)
+    [[ -f "$STATE/db-proxy-avail" ]] && cat "$STATE/db-proxy-avail"
+    ;;
+  "get deployment vault-ai-proxy -n vault -o jsonpath="*)
+    [[ -f "$STATE/ai-avail" ]] && cat "$STATE/ai-avail"
+    ;;
+  "get deployment vault-notify-proxy -n vault -o jsonpath="*)
+    [[ -f "$STATE/notify-avail" ]] && cat "$STATE/notify-avail"
+    ;;
+  "get job postgres-init-job -n identity -o jsonpath="*)
+    [[ -f "$STATE/init-job-failed" ]] && cat "$STATE/init-job-failed"
+    ;;
+  "get pod postgres-0 -n identity -o jsonpath="*)
+    [[ -f "$STATE/pg-ready" ]] && cat "$STATE/pg-ready"
+    ;;
   "create configmap cutover-restore-state "*)
     for a in "${args[@]}"; do
       [[ "$a" == --from-literal=bundle-sha256=* ]] && printf 'bundle-sha256: %s\n' "${a#--from-literal=bundle-sha256=}"
@@ -160,7 +175,18 @@ def _make_bundle(bundle_dir):
 
 
 class CutoverRestoreOrderTest(unittest.TestCase):
-    def _run_restore(self, target, extra_args=(), bao_state="uninitialized", marker=None):
+    def _run_restore(
+        self,
+        target,
+        extra_args=(),
+        bao_state="uninitialized",
+        marker=None,
+        db_proxy_avail=None,
+        ai_avail=None,
+        notify_avail=None,
+        init_job_failed=None,
+        pg_ready=None,
+    ):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         repo = os.path.join(tmp, "repo")
@@ -177,6 +203,16 @@ class CutoverRestoreOrderTest(unittest.TestCase):
         if marker is not None:
             with open(os.path.join(state, "marker"), "w", encoding="utf-8") as fh:
                 fh.write(marker)
+        for fname, val in (
+            ("db-proxy-avail", db_proxy_avail),
+            ("ai-avail", ai_avail),
+            ("notify-avail", notify_avail),
+            ("init-job-failed", init_job_failed),
+            ("pg-ready", pg_ready),
+        ):
+            if val is not None:
+                with open(os.path.join(state, fname), "w", encoding="utf-8") as fh:
+                    fh.write(val)
         for helper in ("db-migrate-dump.sh", "vault-configure-k8s-auth.sh", "vault-reconcile.sh"):
             _write_executable(os.path.join(scripts, helper), HELPER_STUB.replace("__STATE__", state))
         bin_dir = os.path.join(tmp, "bin")
@@ -323,6 +359,68 @@ class CutoverRestoreOrderTest(unittest.TestCase):
         self.assertFalse(any("unseal -migrate" in c for c in calls), calls)
         self.assertLess(self._index(calls, "wait kustomization/database -n flux-system --for=condition=Ready"),
                         self._index(calls, "db-migrate-dump.sh --keycloak"))
+
+    def test_step5_recovers_failed_init_job_and_crashlooping_workloads(self):
+        result, calls, _ = self._run_restore(
+            "gke",
+            bao_state="unsealed-auto",
+            db_proxy_avail="False",
+            ai_avail="False",
+            notify_avail="True",
+            init_job_failed="True",
+            pg_ready="False",
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        idx = lambda needle: self._index(calls, needle)
+        wait_vault = idx("wait kustomization/vault -n flux-system --for=condition=Ready")
+        delete_init_job = idx("delete job postgres-init-job -n identity --cascade=background --ignore-not-found")
+        restart_pg = idx("rollout restart statefulset/postgres -n identity")
+        reconcile_db = idx("annotate kustomization database -n flux-system")
+        rollout_pg = idx("rollout status statefulset/postgres -n identity --timeout=600s")
+        restart_db_proxy = idx("rollout restart deployment/vault-db-proxy -n vault")
+        restart_ai_proxy = idx("rollout restart deployment/vault-ai-proxy -n vault")
+        reconcile_proxies = idx("annotate kustomization vault-proxies -n flux-system")
+        rollout_db_proxy = idx("rollout status deployment/vault-db-proxy -n vault --timeout=300s")
+        rollout_ai_proxy = idx("rollout status deployment/vault-ai-proxy -n vault --timeout=300s")
+        wait_proxies = idx("wait kustomization/vault-proxies -n flux-system --for=condition=Ready")
+        first_db_load = idx("db-migrate-dump.sh --keycloak")
+        self.assertLess(wait_vault, delete_init_job)
+        self.assertLess(delete_init_job, reconcile_db)
+        self.assertLess(wait_vault, restart_pg)
+        self.assertLess(restart_pg, reconcile_db)
+        self.assertLess(rollout_pg, restart_db_proxy)
+        self.assertLess(restart_db_proxy, reconcile_proxies)
+        self.assertLess(rollout_pg, restart_ai_proxy)
+        self.assertLess(restart_ai_proxy, reconcile_proxies)
+        self.assertLess(reconcile_proxies, rollout_db_proxy)
+        self.assertLess(reconcile_proxies, rollout_ai_proxy)
+        self.assertLess(rollout_db_proxy, wait_proxies)
+        self.assertLess(rollout_ai_proxy, wait_proxies)
+        self.assertLess(wait_proxies, first_db_load)
+        self.assertFalse(any("rollout restart deployment/vault-notify-proxy" in c for c in calls), calls)
+        self.assertFalse(any("rollout status deployment/vault-notify-proxy" in c for c in calls), calls)
+
+    def test_step5_skips_recovery_when_workloads_are_healthy(self):
+        result, calls, _ = self._run_restore(
+            "gke",
+            bao_state="unsealed-auto",
+            db_proxy_avail="True",
+            ai_avail="True",
+            notify_avail="True",
+            init_job_failed="False",
+            pg_ready="True",
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertFalse(
+            any(
+                "rollout restart deployment/vault-" in c
+                or "annotate kustomization vault-proxies" in c
+                or "delete job postgres-init-job" in c
+                or "rollout restart statefulset/postgres" in c
+                for c in calls
+            ),
+            calls,
+        )
 
 
 if __name__ == "__main__":

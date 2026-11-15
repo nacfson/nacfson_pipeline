@@ -30,7 +30,7 @@ Zero CNI-specific `cilium.io/v2` `CiliumNetworkPolicy` manifests exist in `deplo
   - From `platform` namespace (`Deployment/traefik` on GKE) and `kube-system` (`app.kubernetes.io/name: traefik` on K3s) on declared door ports (`80`, `8080`).
   - Intra-namespace from `<slug>-frontend` to `<slug>-backend` on port `8080`.
 - **Egress**:
-  - To `kube-system/kube-dns` on UDP/TCP port `53`.
+  - To `kube-system` pods matching `k8s-app In [kube-dns, node-local-dns]` on UDP/TCP port `53` (covering K3s CoreDNS and GKE Dataplane V2 NodeLocal DNSCache), enforced across all non-`flux-system` `NetworkPolicy` manifests by [`scripts/platform-preflight.py`](../scripts/platform-preflight.py).
   - To `vault/vault-db-proxy` on TCP port `5432` (**never** directly to `identity/postgres`).
   - To `vault/vault-ai-proxy` (`Service/ai-gateway.vault.svc`) on TCP port `8080` (**never** directly to `generativelanguage.googleapis.com` or admin port `8081`).
   - To `identity/gateway` on TCP port `8080` **only** when `signIn: shared` is declared in `sign-in.yaml`.
