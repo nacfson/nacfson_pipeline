@@ -117,6 +117,8 @@ Run the automated zero-data-loss recovery script:
 
 ## 5. `{"error":"unsigned_in","message":"Sign-in service unreachable"}` After OpenBao Reset or Secret Rotation
 
+The gateway returns this message for any failed code exchange, not only secret drift. To test every cause, run [`scripts/debug-signin.py`](scripts/debug-signin.py) ([`docs/debug-signin.md`](docs/debug-signin.md)).
+
 ### Symptoms
 - During Google OIDC sign-in on `https://pn.nacfson.cloud`, redirecting back to `https://auth.nacfson.cloud/oauth/callback?code=...&state=...` returns HTTP `503 Service Unavailable`:
   ```json

@@ -74,3 +74,5 @@ victoria-logs-data.tar.gz
 terraform.tfvars
 *.auto.tfvars
 crash.log
+
+signin-trace*/
