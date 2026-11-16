@@ -133,6 +133,7 @@ Each directory under `specs/` is a SpecKit feature package containing `spec.md` 
 - [`scripts/open-victorialogs-ui.sh`](scripts/open-victorialogs-ui.sh) — Private loopback port-forward (`http://127.0.0.1:9428/select/vmui/`) and `--verify` for VictoriaLogs. Runbook section 15.
 - [`scripts/open-observe.sh`](scripts/open-observe.sh) — One workstation session for `ssh oracleCloud`: API forward on `127.0.0.1:16443`, then Hubble `127.0.0.1:12000` and VictoriaLogs `127.0.0.1:9428`.
 - [`scripts/smoke-auth-chain.sh`](scripts/smoke-auth-chain.sh) — End-to-end smoke test for the sign-in redirect and auth routing chain.
+- [`scripts/debug-signin.py`](scripts/debug-signin.py) — Cause-by-cause diagnosis of the `/oauth/callback` `Sign-in service unreachable` failure (network, config, secret drift, log evidence, session lifespan, parallel sign-in race, Keycloak trace). Runbook: [`docs/debug-signin.md`](docs/debug-signin.md).
 - [`scripts/vault-*.sh`](scripts/) — `vault-init.sh`, `vault-seed-inventory.sh`, `vault-reconcile.sh`, `vault-rotate.sh`, `vault-configure-k8s-auth.sh`, `vault-set-google-oauth.sh`, `vault-reset-unseal-key.sh`.
 - [`scripts/verify-*.sh`](scripts/) — Live cluster verification suites: `verify-platform.sh`, `verify-isolation.sh`, `verify-identity.sh`, `verify-persistence.sh`, `verify-revocation.sh`, `verify-backup.sh`, `verify-tls.sh`.
 - [`tests/preflight/`](tests/preflight/) — Unit and contract tests (`test_platform_preflight.py`, portable `NetworkPolicy`, AI gateway, and notify gateway) plus YAML fixtures (`tests/preflight/fixtures/`).
