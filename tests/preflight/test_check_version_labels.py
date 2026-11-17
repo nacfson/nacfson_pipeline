@@ -5,6 +5,8 @@ import sys
 import unittest
 from unittest.mock import patch, MagicMock
 
+import yaml
+
 BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 SCRIPT_PATH = os.path.join(BASE, "scripts", "check-version-labels.py")
 
@@ -123,16 +125,20 @@ class TestCheckVersionLabels(unittest.TestCase):
 
     @patch("subprocess.run")
     def test_cli_main_success(self, mock_run):
+        pn_dir = os.path.join(BASE, "deploy", "projects", "pn")
+        with open(os.path.join(pn_dir, "workloads", "backend-deployment.yaml")) as f:
+            pinned = yaml.safe_load(f)["spec"]["template"]["metadata"]["labels"][
+                "app.kubernetes.io/version"
+            ]
         mock_run.return_value = MagicMock(
             returncode=0,
             stdout=json.dumps({
                 "Labels": {
-                    "org.opencontainers.image.version": "v0.0.0-6da82e5",
+                    "org.opencontainers.image.version": pinned,
                 }
             }),
             stderr="",
         )
-        pn_dir = os.path.join(BASE, "deploy", "projects", "pn")
         with patch.object(
             sys,
             "argv",
