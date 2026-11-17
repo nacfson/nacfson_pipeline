@@ -1,6 +1,6 @@
 # Platform Operations & Incident Troubleshooting Guide (`TROUBLESHOOTING.md`)
 
-This runbook documents production incidents, root causes, diagnostic commands, and permanent fixes for `nacfson_pipeline` on `vps-k3s` (Oracle Cloud 2-OCPU ARM64) and `local-k3s`, including OAuth sign-in failures between project backends and the platform gateway (§10).
+This runbook documents production incidents, root causes, diagnostic commands, and permanent fixes for `nacfson_pipeline` on `gke`, `vps-k3s` (Oracle Cloud 2-OCPU ARM64), and `local-k3s`, including OAuth sign-in failures (§10, §11).
 
 ---
 
@@ -401,3 +401,97 @@ To guarantee this issue cannot recur when adding new projects or updating servic
 #### Rule 4: Explicit Per-Field Error Messages & Post-Merge Image Digest Pinning
 * Never collapse multiple validation checks into `ident == nil` with a generic `"gateway returned invalid identity claims"` message. Log the exact field that failed (`audience mismatch: got X want Y`, `missing X-User-Email`, `issuer mismatch`).
 * When modifying `gateway/` source code, wait for `.github/workflows/build-images.yaml` to publish the new multi-arch image on `main`, then pin the resulting `@sha256:<digest>` in [`deploy/platform/identity/gateway-deployment.yaml`](deploy/platform/identity/gateway-deployment.yaml).
+
+---
+
+## 11. Every Sign-In Project Fails With Google Error 401 `deleted_client` After Database Restore, and Keycloak Restart Hits `404` / `Init:Error` (`403`) After 48 Hours on GKE
+
+### Symptoms
+- Clicking Sign In on every `signIn: shared` project (`https://pn.nacfson.cloud` and `https://health.nacfson.cloud`) redirects to `https://accounts.google.com/signin/oauth/error` with `Error 401: deleted_client` ("The OAuth client was deleted"). Meanwhile, `https://blog.nacfson.cloud` (`signIn: "none"`) continues serving normally.
+- Both [`scripts/smoke-auth-chain.sh`](scripts/smoke-auth-chain.sh) and [`scripts/debug-signin.py`](scripts/debug-signin.py) report passing checks, and `kubectl logs -n identity deploy/keycloak` records zero `LOGIN_ERROR` or `CODE_TO_TOKEN_ERROR` events.
+- Restarting `deployment/keycloak` on `gke` more than 48 hours after [`scripts/vault-configure-k8s-auth.sh`](scripts/vault-configure-k8s-auth.sh) last ran leaves the replacement pod stuck in `Init:Error` with `curl: (22) The requested URL returned error: 403` inside `secret-fetcher`. Because [`deploy/platform/identity/keycloak-deployment.yaml`](deploy/platform/identity/keycloak-deployment.yaml) sets `maxSurge: 0` and `maxUnavailable: 1`, `endpoints/keycloak-service` drops to zero ready pods during that stall and Traefik returns `404 page not found` on `https://auth.nacfson.cloud/realms/platform/...`.
+
+### Root Cause
+1. **Shared Google Identity Provider funnel**
+   Hosted projects carry zero OAuth credentials. Every `signIn: shared` project redirects `/api/auth/login` through `identity/gateway` (`client_id=gateway-client` and `kc_idp_hint=google`) into the single `google` Identity Provider inside Keycloak. One deleted Google OAuth client therefore stops sign-in across all `signIn: shared` projects. Because Google blocks the visitor on `accounts.google.com` before returning to `/realms/platform/broker/google/endpoint`, Keycloak writes zero error events.
+2. **OpenBao and PostgreSQL split-brain after `keycloak.dump.gz` restore**
+   OpenBao (`kv/identity/google-oauth`) already held the active `nacfson-pipeline` Google OAuth credential (`<active-project-number>-<hash>.apps.googleusercontent.com`), which `secret-fetcher` mounted into `/opt/keycloak/conf/secrets/google_client_*`. Restoring an older `keycloak.dump.gz` backup into `identity/postgres-0` during [`scripts/cutover-bundle.sh`](scripts/cutover-bundle.sh) step `[6/7]` overwrote `identity_provider_config` with a client ID (`<deleted-project-number>-<hash>.apps.googleusercontent.com`) from an older GCP project in `DELETE_REQUESTED` state. Because `kc.sh start --import-realm` hardcodes `Strategy: IGNORE_EXISTING` and skips `platform-realm.json` whenever the `platform` realm already exists, Keycloak ignored `/opt/keycloak/conf/secrets/google_client_*` and continued serving the deleted `clientId` from PostgreSQL and its Infinispan cache.
+3. **Diagnostic gap in existing scripts**
+   [`scripts/smoke-auth-chain.sh`](scripts/smoke-auth-chain.sh) and [`scripts/debug-signin.py`](scripts/debug-signin.py) stop after the first `302` redirect from `/oauth/start` to Keycloak and never follow the second hop to `accounts.google.com`. Also, `SECRET_MAP` in [`scripts/debug-signin.py`](scripts/debug-signin.py) hashes only internal `client` secrets and skips `identity_provider_config`.
+4. **GKE 48-hour cap on static `token_reviewer_jwt`**
+   [`scripts/vault-configure-k8s-auth.sh`](scripts/vault-configure-k8s-auth.sh) requests `--duration=87600h` for `openbao-token-reviewer` in `vault`, and GKE caps `kubectl create token` lifetimes at 48 hours. Once 48 hours pass, OpenBao's `TokenReview` call to the GKE API server fails and `/v1/auth/kubernetes/login` returns `403 permission denied` for `openbao-daily-snapshot` and any restarting pod.
+
+### Diagnostic Commands
+Run these read-only checks to catch both the Google OAuth drift and an expired OpenBao reviewer token:
+
+```bash
+# 1. Follow all 4 redirect hops to accounts.google.com for both sign-in projects
+for proj in pn.nacfson.cloud health.nacfson.cloud; do
+  echo "=== $proj ==="
+  CJ=$(mktemp)
+  curl -sS -c "$CJ" -b "$CJ" -L --max-redirs 4 -D - -o /dev/null \
+    "https://auth.nacfson.cloud/oauth/start?return=https://$proj/" \
+    | grep -iE '^(HTTP/|location:)'
+  rm -f "$CJ"
+done
+
+# 2. Compare PostgreSQL identity_provider_config against OpenBao files mounted in Keycloak
+DB_GID=$(kubectl exec -n identity postgres-0 -c postgres -- psql -U postgres -d keycloak -At -c "
+  SELECT ipc.value FROM identity_provider_config ipc
+  JOIN identity_provider ip ON ip.internal_id = ipc.identity_provider_id
+  JOIN realm r ON r.id = ip.realm_id
+  WHERE r.name = 'platform' AND ip.provider_alias = 'google' AND ipc.name = 'clientId';")
+DB_GSEC=$(kubectl exec -n identity postgres-0 -c postgres -- psql -U postgres -d keycloak -At -c "
+  SELECT substring(encode(sha256(convert_to(ipc.value,'UTF8')),'hex'),1,10) FROM identity_provider_config ipc
+  JOIN identity_provider ip ON ip.internal_id = ipc.identity_provider_id
+  JOIN realm r ON r.id = ip.realm_id
+  WHERE r.name = 'platform' AND ip.provider_alias = 'google' AND ipc.name = 'clientSecret';")
+POD_GID=$(kubectl exec -n identity deploy/keycloak -c keycloak -- cat /opt/keycloak/conf/secrets/google_client_id)
+POD_GSEC=$(kubectl exec -n identity deploy/keycloak -c keycloak -- bash -c 'sha256sum < /opt/keycloak/conf/secrets/google_client_secret | cut -c1-10')
+printf "Postgres : clientId=%s  secret_sha256=%s\nOpenBao  : clientId=%s  secret_sha256=%s\n" \
+  "$DB_GID" "$DB_GSEC" "$POD_GID" "$POD_GSEC"
+
+# 3. Inspect rollout endpoints and initContainer failures when Traefik returns 404
+kubectl get pods,endpoints -n identity
+kubectl logs -n identity -l app.kubernetes.io/name=keycloak -c secret-fetcher --tail=10
+```
+
+### Fix (applied 2026-11-17)
+1. **Sync PostgreSQL `identity_provider_config` from OpenBao in place**
+   Copy `/opt/keycloak/conf/secrets/google_client_id` and `/opt/keycloak/conf/secrets/google_client_secret` into PostgreSQL so existing `user_entity` and `federated_identity` rows remain intact. If rotating to brand-new credentials from Google Cloud Console instead, run [`scripts/vault-set-google-oauth.sh`](scripts/vault-set-google-oauth.sh) and never run [`scripts/vault-rotate.sh`](scripts/vault-rotate.sh) on `google-oauth-broker-secret`:
+
+```bash
+GID=$(kubectl exec -n identity deploy/keycloak -c keycloak -- cat /opt/keycloak/conf/secrets/google_client_id)
+GSEC=$(kubectl exec -n identity deploy/keycloak -c keycloak -- cat /opt/keycloak/conf/secrets/google_client_secret)
+
+kubectl exec -i -n identity postgres-0 -c postgres -- \
+  psql -U postgres -d keycloak -v ON_ERROR_STOP=1 -v gid="$GID" -v gsec="$GSEC" <<'SQL'
+UPDATE identity_provider_config SET value = :'gid'
+ WHERE name = 'clientId'
+   AND identity_provider_id IN (SELECT internal_id FROM identity_provider WHERE provider_alias = 'google');
+UPDATE identity_provider_config SET value = :'gsec'
+ WHERE name = 'clientSecret'
+   AND identity_provider_id IN (SELECT internal_id FROM identity_provider WHERE provider_alias = 'google');
+SQL
+unset GID GSEC
+```
+
+2. **Refresh the OpenBao Kubernetes reviewer token if `secret-fetcher` hits `403` on GKE**
+
+```bash
+./scripts/vault-configure-k8s-auth.sh
+```
+
+3. **Restart Keycloak under break-glass and verify readiness and public redirects**
+   Wait about 60 seconds for Quarkus to boot, confirm `keycloak-service` has a pod endpoint, and verify Hop 4 lands on `https://accounts.google.com/v3/signin/identifier`:
+
+```bash
+kubectl --as="break-glass:$USER" --as-group=platform:break-glass \
+  rollout restart deployment/keycloak -n identity
+kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=keycloak -n identity --timeout=180s
+./scripts/smoke-auth-chain.sh https://pn.nacfson.cloud https://auth.nacfson.cloud
+```
+
+### Open Follow-up
+- Bind `openbao-auth-delegator` ([`deploy/platform/governance/openbao-rbac.yaml`](deploy/platform/governance/openbao-rbac.yaml)) to `ServiceAccount/openbao` and omit static `token_reviewer_jwt` in [`scripts/vault-configure-k8s-auth.sh`](scripts/vault-configure-k8s-auth.sh) when `/var/run/secrets/kubernetes.io/serviceaccount/token` is mounted so OpenBao uses Kubelet's auto-rotated pod token on GKE instead of expiring after 48 hours.
+- Extend [`scripts/debug-signin.py`](scripts/debug-signin.py) and [`scripts/smoke-auth-chain.sh`](scripts/smoke-auth-chain.sh) to check `identity_provider_config` parity and follow the Keycloak-to-Google redirect hop.
