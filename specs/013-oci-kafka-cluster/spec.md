@@ -30,6 +30,7 @@ Oracle's current Always Free page (checked 2026-11-17) gives Ampere A1 an allowa
 - Q: Inside the WireGuard tunnel, should Kafka also check who each client is and what it may do? → A: Yes. Mutual TLS for every Kafka connection (clients, brokers, controllers) with certificates from a private certificate authority, plus Kafka permission rules (ACLs) that deny by default: GKE producers may only write the two `logs.proj.*` topics, and Spec 014 consumers may only read the topics they are granted. The tunnel and the certificates are two independent layers.
 - Q: How long should Kafka keep project logs before deleting them? → A: 7 days or the size cap, whichever comes first. Kafka is a short buffer, not the log archive; the size cap guarantees no broker disk fills. Logs older than 7 days that Spec 014 has not read by then are gone, and that gap is accepted.
 - Q: At cutover, is the `vps-k3s` VM reused in place as A1-1, or deleted and recreated? → A: Deleted and recreated. After GKE has taken over production (Spec 012 Gate 4), `vps-k3s` and its k3s setup are retired entirely; nothing on it is kept (its data already moved to GKE through the Spec 012 cutover bundle). The tenancy is a pay-as-you-go account, which makes Oracle's "out of host capacity" refusals for A1 rare, so Terraform creates A1-1 fresh like the other three VMs. Reusing the VM in place was rejected because it would keep the old network attachment and need a hand-built VM imported into Terraform.
+- Q: Is alerting on events enough to observe health? → A: No. Health must also be tracked continuously as metrics, with a live view and trends, because slow problems build up before any event fires (FR-028, FR-030). Story 3 was also restated: the value is a rehearsed rebuild drill, since building from Git alone does not prove a rebuilt VM rejoins the cluster.
 - Q: Must this design allow moving Kafka into GKE later? → A: Yes. Moving is not part of this feature, but nothing here may block it: the cluster's settings, identities, and alerting must not depend on Kafka running on OCI VMs, except in the layer that creates and configures those VMs (FR-025).
 - Q: When the Kafka cluster is degraded, how is the operator alerted? → A: Layered event alerts. An event agent on each OCI VM writes what it observes (Kafka log events, process failures, disk and certificate threshold crossings, and a heartbeat every 60 seconds) to a small `ops.platform.events` topic. An always-on alert relay in GKE reads it, sends one Discord message per state change through `vault-notify-proxy`, treats 3 minutes without a heartbeat as a silent VM, and alerts directly when its own connection to Kafka is lost for 60 seconds. Alerts must arrive within 10 minutes and every incident must be reported, even one that recovers quickly. A scheduled check (misses short outages), direct pushes from the VMs (no history, still blind to a dead VM, deleted after a move to GKE), and a full monitoring stack were rejected.
 
@@ -68,34 +69,37 @@ As the platform operator, I want ingestion to continue without intervention whil
 
 ---
 
-### User Story 3 - Rebuild a lost machine from Git (Priority: P2)
+### User Story 3 - Losing a VM is a rehearsed repair (Priority: P2)
 
-As the platform operator, I want to replace a destroyed broker machine using only what is in Git and the documented runbook, so that losing a VM is a routine repair rather than a rebuild from memory.
+As the platform operator, I want rebuilding a lost VM to be a procedure I have already practised, so that a real loss is a timed, known repair while the cluster runs on two copies, not an experiment.
 
-**Why this priority**: Always Free capacity can be reclaimed or fail. A cluster that cannot be rebuilt reproducibly is not production-grade.
+**Why this priority**: Building the VMs from Git (FR-010, FR-013) does not prove that a rebuilt broker rejoins the existing cluster. A rebuild can fail in ways the first build never exercises: a freshly generated cluster ID, a reused node identity, a controller that has to be swapped in the controller quorum, or a VM that starts without a signed certificate or tunnel peers. Until the rebuild finishes, one more failure stops writes.
 
-**Independent Test**: Destroy one broker VM and its disk, recreate it from the declarations in Git, and confirm it rejoins under its original identity and address and the cluster returns to fully replicated with no lost records.
+**Independent Test**: As a drill, destroy one broker-only VM (Micro-1) and, separately, one controller-only VM (Micro-2). Rebuild each by following the runbook, and record the time taken and any lost records.
 
 **Acceptance Scenarios**:
 
-1. **Given** one broker VM and its disk are gone, **When** the operator recreates it from Git, **Then** it rejoins with the same broker identity and private address, copies its partitions from the other two, and no producer configuration changes.
-2. **Given** the whole cluster is recreated from Git with empty disks, **When** it starts, **Then** both topics exist with the declared settings before any producer connects, and no topic is created implicitly by a producer.
+1. **Given** Micro-1 and its disk are gone, **When** the operator follows the runbook, **Then** the new VM rejoins as broker 3 of the same cluster, the other two brokers copy its partitions back, Fluent Bit needs no change, and no acknowledged record is lost.
+2. **Given** Micro-2 and its disk are gone, **When** the operator follows the runbook, **Then** the lost voter is removed from the controller quorum and the rebuilt controller is added back, and writes continue throughout.
+3. **Given** a rebuilt VM, **When** it starts, **Then** it has a newly signed certificate and its WireGuard peers before it accepts traffic, and it never forms a separate cluster.
+4. **Given** the whole cluster is recreated with empty disks, **When** it starts, **Then** all topics exist with the declared settings before any producer connects, and no topic is created implicitly by a producer.
 
 ---
 
-### User Story 4 - Operator can see cluster health privately (Priority: P2)
+### User Story 4 - Operator sees cluster health continuously (Priority: P2)
 
-As the platform operator, I want to check broker membership, controller quorum, under-replicated partitions, disk use, and how far behind any consumer is, without exposing any management interface publicly.
+As the platform operator, I want the cluster's health tracked all the time, both as a live view and as trends over time, not only as alerts when something breaks, and without exposing any management interface publicly.
 
-**Why this priority**: Replication only protects data if a degraded state is noticed before a second failure.
+**Why this priority**: Replication only protects data if a degraded state is noticed before a second failure. Many problems (a filling disk, growing consumer lag, rising memory, slower writes, a filling Fluent Bit buffer) build up slowly before any event fires.
 
-**Independent Test**: Stop one broker and confirm the documented health check reports the missing broker and the under-replicated partitions, then reports healthy after it returns, using only the private operator access path.
+**Independent Test**: Watch the live health view during normal ingestion, stop one broker, and confirm that the view shows the missing broker and the partitions with fewer copies within 60 seconds, that the last hour of metric history can be read, and that the view returns to healthy after the broker returns.
 
 **Acceptance Scenarios**:
 
-1. **Given** the cluster is degraded, **When** the operator runs the documented health check, **Then** it names the missing broker, the affected partitions, and the remaining free disk on each broker.
-2. **Given** someone on the public internet, **When** they scan the broker machines, **Then** no management, metrics, or controller port answers.
-3. **Given** the cluster was healthy, **When** one broker stops, **Then** one Discord message naming the missing broker arrives within 10 minutes, no further message is sent while it stays down, and one "recovered" message arrives within 10 minutes of it returning to full replication.
+1. **Given** normal operation, **When** the operator opens the live health view, **Then** it shows, each value no older than 60 seconds: brokers and controllers present, partitions with fewer than three copies, write latency and throughput, disk use per broker, Kafka memory use, Fluent Bit buffer fill per GKE node, tunnel handshake age per key slot, certificate days left, and consumer lag once Spec 014 consumers exist.
+2. **Given** a metric trending toward a limit, **When** at its current rate it would cross the limit within 3 days, **Then** one warning message is sent under the FR-023 rules.
+3. **Given** someone on the public internet, **When** they scan the broker machines, **Then** no management, metrics, or controller port answers.
+4. **Given** the cluster was healthy, **When** one broker stops, **Then** one Discord message naming the missing broker arrives within 10 minutes, no further message is sent while it stays down, and one "recovered" message arrives within 10 minutes of it returning to full replication.
 
 ---
 
@@ -142,7 +146,7 @@ As the platform operator, I want a local three-broker rehearsal that uses the sa
 - **FR-019**: The four VMs' boot and block volumes together MUST fit the 200 GB Always Free storage allowance. The plan MUST divide that space between Kafka data, the operating systems, and the Spec 014 workloads on the A1 VMs, and set Kafka retention size from the smallest broker disk.
 - **FR-020**: The A1 VMs MUST reserve memory and CPU headroom for Spec 014 (Flink, VictoriaLogs, viewer). The plan MUST give a per-VM memory table showing Kafka, Spec 014, and the operating system fitting in 6 GB and 1 GB respectively.
 - **FR-003**: Topics `logs.proj.valid` and `logs.proj.quarantine` MUST be declared in Git with replication factor 3 and minimum in-sync replicas 2, and created from that declaration. Automatic topic creation MUST be off. Changing a topic setting MUST happen only through a merged change to the declaration.
-- **FR-004**: The brokers MUST accept the producer settings already in `clusters/gke/observability/fluent-bit-kafka.conf` (`acks=-1`, idempotent producer, unlimited retries, JSON records with `_time` in ISO 8601), so that a retried batch is stored once. The only change this feature makes to that file is adding the TLS client settings and client certificate required by FR-024; broker addresses, topics, acknowledgement mode, idempotence, retries, buffer limits, and record format MUST stay as they are.
+- **FR-004**: The brokers MUST accept the producer settings already in `clusters/gke/observability/fluent-bit-kafka.conf` (`acks=-1`, idempotent producer, unlimited retries, JSON records with `_time` in ISO 8601), so that a retried batch is stored once. The only changes this feature makes to that file are adding the TLS client settings and client certificate required by FR-024 and turning on zstd compression, so records cross the cloud link and sit on broker disks compressed; broker addresses, topics, acknowledgement mode, idempotence, retries, buffer limits, and record format MUST stay as they are.
 - **FR-005**: Each broker MUST be reachable from GKE at a stable private address in `10.200.0.11`–`10.200.0.13` on port 9092, which accepts only mutual-TLS connections (no plaintext listener exists), and those addresses MUST survive a VM rebuild. The controller-only VM is not a producer address and is not reachable from GKE.
 - **FR-006**: Retention MUST be set per topic by both time and size, and the size limit MUST leave every broker disk with at least 20% free when every partition is full. `logs.proj.valid` and `logs.proj.quarantine` MUST keep records for 7 days or until their size limit, whichever comes first; the size limit is the hard backstop and MUST be set from Micro-1's disk, the smallest broker. Brokers SHOULD store the topics compressed so 7 days fit inside the size limit at the measured log rate. The plan MUST measure the current log rate from `vps-k3s` VictoriaLogs data and show the arithmetic against each machine's real disk, including how many days actually fit.
 - **FR-007**: The cluster MUST tolerate the loss of any one machine without losing an acknowledged record and without stopping writes, and MUST refuse writes rather than accept them with a single copy when two machines are lost.
@@ -158,6 +162,9 @@ As the platform operator, I want a local three-broker rehearsal that uses the sa
   2. **Topic**: `ops.platform.events` MUST have 1 partition, 3 copies, a minimum of 1 in-sync copy (so alerts flow while the cluster is at its weakest), 30-day retention, the event subject as message key, and broker-assigned timestamps. Its event format MUST be a versioned contract in `contracts/`.
   3. **Alert relay**: One always-on relay in a GKE platform namespace MUST read the topic with an identity that may only read it and describe the cluster. It MUST keep a state per subject (OK, DOWN, WARN) and message only on a change; group all events from a VM with an open incident into that incident; treat 3 minutes without a heartbeat as a silent VM, and use cluster membership to say whether the VM's broker is down or only its agent is silent; alert directly through `vault-notify-proxy`, not through Kafka, when its own connection to Kafka has failed for 60 seconds, and then report one unreachable incident instead of silent VMs; wait one 3-minute window after starting before declaring any VM silent; rebuild its state on start by re-reading the last 24 hours of the topic; and alert on Kubernetes Events from the slot agents (no free slot, stale tunnel handshake). Its resources MUST be counted by `platform-preflight`, and its network policy MUST allow only the tunnel range on 9092 and `vault-notify-proxy`.
   4. **Tests**: The relay's rules MUST be tested with Kafka log lines captured from the pinned Kafka version, not hand-written samples.
+- **FR-028**: The alert relay MUST provide a live health view as a `status` command reachable only through `kubectl exec` into the relay pod. It shows the latest FR-030 values, every open incident, and the time of the last event and metric received. No Service, port, or route exposes it outside the pod.
+- **FR-029**: An operator Kafka identity, `ops-cli`, MUST exist that may only describe the cluster, topics, and consumer groups and may not read or write any topic. Its key is generated on each OCI VM and never leaves it. The runbook's VM-side health commands use it, as the fallback when GKE or the relay is unavailable.
+- **FR-030**: Health MUST be tracked continuously as metrics, not only as events. Every 30 seconds, each OCI VM MUST sample Kafka's own metrics (through an exporter bound to localhost only) and its operating system figures (memory, disk, CPU), and write them to `ops.platform.metrics` (1 partition, 3 copies, minimum 1 in-sync copy, 7-day retention). The GKE slot agents MUST report Fluent Bit buffer fill per node and WireGuard handshake age per slot at the same interval. The relay MUST keep the latest value of every metric for FR-028 and evaluate trend rules (for example, days until a disk crosses its limit) that raise FR-023 warnings. The metric record format MUST be part of the same `contracts/` document as the ops events. The exporter's memory MUST be counted in FR-012.
 - **FR-026**: Because the tenancy can be charged, Terraform MUST declare an OCI budget for this tenancy with an alert at $1 per month of actual spend that notifies the operator, so any resource outside the Always Free allowance (a larger disk, an extra VM, a paid shape) is noticed within a day. Every VM, disk, and network resource MUST be one Oracle lists as Always Free.
 - **FR-027**: `vps-k3s` MUST be deleted, not reused, once Spec 012's cutover has passed, and the runbook MUST confirm before deletion that GKE serves all public traffic and that the cutover bundle restored successfully. Spec 012 FR-011 ("shrunk or recreated") is narrowed to "recreated" by this feature.
 - **FR-025**: The design MUST keep a later move of Kafka into GKE possible without changing producers, consumers, or client identities beyond one address setting:
@@ -182,9 +189,10 @@ As the platform operator, I want a local three-broker rehearsal that uses the sa
 - **Producer Contract**: What the GKE Fluent Bit output expects from the cluster: broker addresses, topic names, acknowledgement mode, idempotence, record format. Kept in step with the Topic Declaration by FR-015.
 - **WireGuard Key Slot**: One pre-made tunnel identity. Attributes: slot number, public key, tunnel address, current holder (GKE node name or free), lock expiry. The private key exists only inside the cluster.
 - **Ops Event**: One record on `ops.platform.events`. Attributes: schema version, time (assigned by the broker), kind, state (down, up, warn, ok), subject (the thing that is healthy or not; also the message key), VM, observed by, source, detail.
+- **Health Metric Sample**: One record on `ops.platform.metrics`. Attributes: schema version, time (assigned by the broker), source (VM or GKE node), metric name, value, unit.
 - **Alert Incident**: The relay's open problem for one subject or VM. Attributes: subject, state, opened at, events grouped into it, messages sent.
 - **Kafka Client Identity**: A certificate subject that ACLs refer to. Attributes: name (for example the GKE producer, or a Spec 014 consumer), where its key lives, certificate expiry, granted topics and actions.
-- **Cluster Health Report**: The operator's view of brokers present, quorum leader, under-replicated partitions, disk use per broker, and consumer lag.
+- **Cluster Health Report**: The FR-028 live view: latest metric values, open incidents, and the age of the newest event and metric.
 
 ## Success Criteria *(mandatory)*
 
@@ -202,6 +210,7 @@ As the platform operator, I want a local three-broker rehearsal that uses the sa
 - **SC-010**: From inside the tunnel, a connection without a certificate from the cluster's authority is refused, the producer identity cannot read any topic or write any undeclared topic, and all three refusals are visible in broker logs.
 - **SC-011**: In every SC-002 test, the operator receives exactly one degraded message within 10 minutes of the stop and exactly one recovered message within 10 minutes of full replication returning.
 - **SC-013**: A broker process that is stopped and comes back within 2 minutes produces exactly one degraded and one recovered message. Stopping only the event agent on a VM for 4 minutes produces one "agent silent, broker healthy" message and no broker-down message. Cutting the tunnel produces one unreachable message and no silent-VM messages.
+- **SC-014**: During every SC-002 test, the live health view shows the stopped broker and its partitions with fewer copies within 60 seconds; the last hour of metrics for every VM can be read from `ops.platform.metrics`; and a simulated disk fill rate that would reach the limit within 3 days produces exactly one warning.
 - **SC-012**: The offline check renders the topic, ACL, and client identity declarations both as the OCI VM configuration and as Kubernetes Kafka-operator resources that pass schema validation, and fails when the two would disagree.
 
 ## Assumptions
