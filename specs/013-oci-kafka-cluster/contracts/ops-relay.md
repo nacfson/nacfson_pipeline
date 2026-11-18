@@ -10,6 +10,8 @@
 | Cluster membership | Kafka Admin describe-cluster every 30 s on the same connection | `ops-relay` |
 | `oci-link` Events and Leases | Kubernetes watch | ServiceAccount `ops-relay`, Role: events/leases get/list/watch in `oci-link` |
 
+The `oci-link` Events include the slot agent's (`NoFreeSlot`, `TunnelStale`, `TunnelRecovered`) and the Ansible runner's (`DeployOK`, `DeployFailed`, `DeployBlocked`, see [ansible-runner.md](ansible-runner.md#result-events)).
+
 ## Output: notifications
 
 Sent through the existing `vault-notify-proxy` API exactly as `error-detector` sends today (shared `internal/notify` package). One message per state transition:
@@ -20,6 +22,8 @@ Sent through the existing `vault-notify-proxy` API exactly as `error-detector` s
 [kafka] WARN  disk/a1-2 — 23% free, at the current rate crosses 20% in 2.4 days
 [kafka] DOWN  cluster/unreachable — no working Kafka connection from GKE for 60 s (sent directly)
 [kafka] DOWN  vm/micro-2 — agent silent for 3 min, controller quorum 2/3
+[kafka] DOWN  deploy/site.yml — 4f2c9e1 failed on micro-1 at kafka/restart
+[kafka] OK    deploy/site.yml — 7a10b3d applied to 4 VMs in 31 min
 ```
 
 Delayed messages (sent after a relay restart) are prefixed `(delayed, event at 09:12 UTC)`.
@@ -44,6 +48,6 @@ incidents none open
 
 ## Process rules
 
-- Readiness: true after state has been rebuilt from the last 24 h of `ops.platform.events`. Liveness: process only (Constitution VII spirit; no peer checks).
+- Readiness: true after state has been rebuilt from the last 24 h of `ops.platform.events` and the last 6 h of `ops.platform.metrics` (so trend rules work right after a restart). Liveness: process only (Constitution VII spirit; no peer checks).
 - Requests = limits 10m / 64Mi. `NetworkPolicy`: egress to `10.200.0.11-13/32:9092`, `vault-notify-proxy:8080`, the Kubernetes API, and DNS. No ingress.
 - One replica. Restarts lose no messages, because they are rebuilt from the topic (data-model §7).

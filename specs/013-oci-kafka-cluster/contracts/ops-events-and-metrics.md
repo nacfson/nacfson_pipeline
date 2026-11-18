@@ -81,6 +81,7 @@ GKE-side values, read by the relay from Lease annotations and shown in the same 
 | Rule | Input | Fires |
 |---|---|---|
 | VM silent | no `agent.heartbeat` for `vm/<vm>` for 180 s (not within 180 s of relay start; not while `cluster/unreachable` is DOWN) | DOWN for `vm/<vm>`, labelled "broker down" if `kafka.brokers.active` dropped, otherwise "agent silent, broker healthy" |
-| Disk trend | `os.disk.free_ratio` slope over the last 6 h projects crossing 0.20 within 72 h | WARN `disk/<vm>` |
+| Disk trend | `os.disk.free_ratio` slope over the last 6 h projects crossing 0.20 within 72 h (needs 6 h of samples from that VM, so a rebuilt VM is covered only by `disk.low` until then) | WARN `disk/<vm>` |
 | Buffer filling | `fluentbit.buffer.bytes` above 50% of 256 MiB on any node | WARN `gke/<node>/buffer` |
-| Tunnel stale | `wireguard.handshake_age` above 180 s | DOWN `gke/<node>/tunnel` |
+
+Tunnel alerts come only from the slot agent's `TunnelStale` and `TunnelRecovered` Events (DOWN and OK for `gke/<node>/tunnel`), and are held back while `cluster/unreachable` is DOWN. `wireguard.handshake_age` is shown in the live view and raises nothing.

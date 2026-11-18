@@ -45,7 +45,7 @@ Declared in `infra/kafka/cluster.yaml` (`identities:`). ACLs are listed under ea
 | Field | Rule |
 |---|---|
 | `name` | certificate CN and Kafka principal (`User:<name>`) |
-| `key_location` | `vm:<node>` or `cluster:<namespace>/<secret>`; never `git` |
+| `key_location` | `vm:<node>`, `vm:all` (a separate key on every VM; only `ops-cli`), or `cluster:<namespace>/<secret>`; never `git` |
 | `grants` | list of (resource type, name or prefix, operations); anything not listed is denied |
 | `super_user` | true only for `broker-*` and `controller-*` |
 
@@ -59,7 +59,7 @@ The private keys are in Secret `oci-link/wg-slot-keys`, the public keys and addr
 
 | Field | Rule |
 |---|---|
-| `slot` | 0–3 |
+| `slot` | a number listed in ConfigMap `oci-link/wg-slot-pool` (declared in Git), within 0–13; `0,1,2,3` at start |
 | `address` | `10.201.0.<n+1>/32` |
 | `public_key` | copied into `infra/oci/ansible/group_vars/brokers/wg_slots.yml` through a pull request |
 | `holder` | GKE node name, or empty |
@@ -94,7 +94,7 @@ GKE-side samples come from Lease annotations and do not pass through Kafka. The 
 
 ## 7. Alert Incident (relay memory)
 
-Held in the relay's memory and rebuilt from 24 hours of events on start.
+Held in the relay's memory and rebuilt on start from 24 hours of events and 6 hours of metrics.
 
 | Field | Rule |
 |---|---|
@@ -107,4 +107,20 @@ Held in the relay's memory and rebuilt from 24 hours of events on start.
 - `OK → WARN`: a warn event, or a trend rule
 - `DOWN → OK`, `WARN → OK`: the clearing event
 
-Repeated events in the same state send nothing. The relay's own `cluster/unreachable` subject goes `OK → DOWN` after 60 s without a working connection. While it is `DOWN`, heartbeat-silence transitions are held back (FR-023).
+Repeated events in the same state send nothing. The relay's own `cluster/unreachable` subject goes `OK → DOWN` after 60 s without a working connection. While it is `DOWN`, heartbeat-silence and stale-tunnel transitions are held back (FR-023).
+
+## 8. Ansible Run (control center)
+
+Held by the control center. Its result reaches this repository's world as a Kubernetes Event ([contracts/ansible-runner.md](contracts/ansible-runner.md)).
+
+| Field | Rule |
+|---|---|
+| `commit` | a commit on `main` whose required checks succeeded |
+| `playbook` | one of the allowlisted playbooks |
+| `trigger` | `merge`, `daily`, or `operator` |
+| `state` | `queued` → `running` → `ok` \| `failed` \| `blocked` |
+| `finished_vms[]`, `failed_vm`, `failed_step` | set as the run progresses |
+
+**Applied commit**: `/etc/nacfson/applied-commit` on each VM, written as the last task on that VM. It's the merge watcher's comparison point.
+
+**Automation state**: `active` or `paused`. It changes only through the operator's passkey step-up.
