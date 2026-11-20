@@ -1,0 +1,96 @@
+schema: 1
+cluster:
+  id: IzXtKbazRM6ZRcObBw5qXA
+  kafka_version: 4.3.2
+  image: docker.io/apache/kafka:4.3.2
+  image_digest: sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7
+nodes:
+  - { name: a1-1, node_id: 1, roles: [broker, controller], address: 10.200.0.11, initial_directory_id: eFwoLaOpTwOL1gI0wJymvA }
+  - { name: a1-2, node_id: 2, roles: [broker, controller], address: 10.200.0.12, initial_directory_id: 49xqtT-RSkOQGsPkD9yruQ }
+  - { name: micro-1, node_id: 3, roles: [broker], address: 10.200.0.13 }
+  - { name: micro-2, node_id: 4, roles: [controller], address: 10.200.0.14, initial_directory_id: YkxbiitTRYiC1W3aHMCsLg }
+listeners:
+  client: { port: 9092, tls: mutual }
+  controller: { port: 9093, tls: mutual }
+broker_settings:
+  auto.create.topics.enable: false
+  compression.type: producer
+  allow.everyone.if.no.acl.found: false
+  default.replication.factor: 3
+  min.insync.replicas: 2
+topics:
+  - name: logs.proj.valid
+    partitions: 3
+    replication_factor: 3
+    min_insync_replicas: 2
+    retention_ms: 604800000
+    retention_bytes: 5368709120
+    segment_bytes: 134217728
+    max_message_bytes: 1048588
+    timestamp_type: CreateTime
+  - name: logs.proj.quarantine
+    partitions: 3
+    replication_factor: 3
+    min_insync_replicas: 2
+    retention_ms: 604800000
+    retention_bytes: 1073741824
+    segment_bytes: 134217728
+    max_message_bytes: 1048588
+    timestamp_type: CreateTime
+  - name: ops.platform.events
+    partitions: 1
+    replication_factor: 3
+    min_insync_replicas: 1
+    retention_ms: 2592000000
+    retention_bytes: 268435456
+    segment_bytes: 134217728
+    max_message_bytes: 1048588
+    timestamp_type: LogAppendTime
+  - name: ops.platform.metrics
+    partitions: 1
+    replication_factor: 3
+    min_insync_replicas: 1
+    retention_ms: 604800000
+    retention_bytes: 268435456
+    segment_bytes: 134217728
+    max_message_bytes: 1048588
+    timestamp_type: LogAppendTime
+identities:
+  - { name: broker-1, key_location: "vm:a1-1", super_user: true, grants: [] }
+  - { name: broker-2, key_location: "vm:a1-2", super_user: true, grants: [] }
+  - { name: broker-3, key_location: "vm:micro-1", super_user: true, grants: [] }
+  - { name: controller-1, key_location: "vm:a1-1", super_user: true, grants: [] }
+  - { name: controller-2, key_location: "vm:a1-2", super_user: true, grants: [] }
+  - { name: controller-4, key_location: "vm:micro-2", super_user: true, grants: [] }
+  - name: fluent-bit-gke
+    key_location: cluster:observability/fluent-bit-kafka-client
+    grants:
+      - { resource: topic, name: logs.proj.valid, ops: [Write, Describe] }
+      - { resource: topic, name: logs.proj.quarantine, ops: [Write, Describe] }
+      - { resource: cluster, ops: [IdempotentWrite] }
+  - name: ops-agent-a1-1
+    key_location: "vm:a1-1"
+    grants: &ops_agent_grants
+      - { resource: topic, name: ops.platform.events, ops: [Write, Describe] }
+      - { resource: topic, name: ops.platform.metrics, ops: [Write, Describe] }
+      - { resource: cluster, ops: [IdempotentWrite] }
+  - { name: ops-agent-a1-2, key_location: "vm:a1-2", grants: *ops_agent_grants }
+  - { name: ops-agent-micro-1, key_location: "vm:micro-1", grants: *ops_agent_grants }
+  - { name: ops-agent-micro-2, key_location: "vm:micro-2", grants: *ops_agent_grants }
+  - name: ops-relay
+    key_location: cluster:observability/ops-relay-kafka-client
+    grants:
+      - { resource: topic, name: ops.platform.events, ops: [Read, Describe] }
+      - { resource: topic, name: ops.platform.metrics, ops: [Read, Describe] }
+      - { resource: group, name: ops-relay, ops: [Read] }
+      - { resource: cluster, ops: [Describe, DescribeConfigs] }
+      - { resource: topic, name: "*", ops: [Describe, DescribeConfigs] }
+  - name: ops-cli
+    key_location: "vm:all"
+    grants:
+      - { resource: cluster, ops: [Describe, DescribeConfigs] }
+      - { resource: topic, name: "*", ops: [Describe, DescribeConfigs] }
+      - { resource: group, name: "*", ops: [Describe] }
+bootstrap:
+  gke: [10.200.0.11:9092, 10.200.0.12:9092, 10.200.0.13:9092]
+  rehearsal: [broker-1:9092, broker-2:9092, broker-3:9092]

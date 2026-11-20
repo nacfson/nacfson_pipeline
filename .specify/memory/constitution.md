@@ -21,6 +21,8 @@ Initial persistent database storage MUST be operated via a standard PostgreSQL i
 **Edge TLS key exception.** Private keys that the platform ingress presents for public TLS (edge certificate keys) and certificate-authority account keys (ACME account keys) are ingress material, not backend credentials. They MAY be stored as Kubernetes Secrets, only in the `platform` namespace (edge certificate keys) and the `cert-manager` namespace (ACME account keys). They MUST be generated and rotated inside the cluster by the certificate manager and MUST NEVER be committed to Git. They MUST NOT be created in, copied to, or mounted by any project namespace or project pod. Only platform components (the ingress controller, the certificate manager, and the reconciler) and the break-glass group may read them; project workloads and read-only operator access MUST NOT be able to read them. This exception covers no other credential.
 *Rationale:* The ingress controller needs the key in memory for every TLS handshake and cannot call Vault per connection. A Vault sync would still produce a Kubernetes Secret, and would make public HTTPS depend on manual Vault unseal. Edge keys are short-lived, rotated on every renewal, and revocable.
 
+**Kafka transport key exception (Amendment 2.5.0).** Key material that carries log traffic to the OCI Kafka cluster (Spec 013) is transport material, not a backend credential. It MAY be held as Kubernetes Secrets only as follows: WireGuard slot private keys in Secret `oci-link/wg-slot-keys`, created in the cluster by the `wg-slot-keygen` Job; Kafka client keys for `fluent-bit-gke` and `ops-relay` as cert-manager Secrets in `observability`; and the Kafka CA key in `cert-manager`. All of them MUST be generated inside the cluster, MUST NEVER be committed to Git, and MUST NOT be created in, copied to, or mounted by any project namespace or project pod. Keys for the Kafka VMs are generated on each VM and never leave it; only their signing requests reach the cluster.
+
 **Cloud KMS seal wrapper exception.** On managed cloud Kubernetes environments where worker nodes undergo automatic operating-system upgrades (such as GKE), the internal cluster Vault (`openbao` in namespace `vault`) MAY wrap its master seal key with a single external Cloud KMS symmetric key (`seal "gcpckms"` or cloud equivalent) solely to enable unattended auto-unseal across node restarts. Authentication to the Cloud KMS endpoint MUST use keyless pod identity (such as GKE Workload Identity bound exclusively to `ServiceAccount/openbao`) over restricted internal or Private Google Access endpoints; static cloud service-account keys, KMS credentials in Kubernetes Secrets, or `0.0.0.0/0` internet egress on the Vault pod remain strictly prohibited. All platform and project backend secrets continue to reside encrypted inside the self-hosted cluster Vault.
 *Rationale:* Managed Kubernetes node pools periodically cordon, drain, and reboot worker nodes for kernel security patches. Without an envelope seal wrapper, a reboot leaves the cluster Vault sealed and causes a full platform outage until manual operator intervention.
 
@@ -185,4 +187,32 @@ The log collector in the platform namespace `observability` may mount `/var/log/
 
 **Maintainer approval**: Requested by the repository maintainer on 2026-11-15. Merging this clarification's pull request records approval.
 
-**Version**: 2.4.1 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-11-15
+## Amendment 2.5.0
+
+**Rationale**: Spec 013 runs a replicated Kafka cluster on four OCI Always Free VMs and feeds it from GKE over WireGuard with mutual TLS. Six platform exceptions are needed that the constitution did not allow: a GKE component in the node's network namespace for the tunnel, transport keys held as Kubernetes Secrets, an emergency `hostNetwork` fallback if pod source NAT fails under Dataplane V2, and an automated path that applies Ansible to the OCI VMs, which Clarification 2.4.1 says requires an amendment. Every key involved is generated where it is used, and no project namespace gains anything.
+
+**Exceptions**:
+
+1. `DaemonSet/wg-slot-agent` in the platform namespace `oci-link` MAY use `hostNetwork: true`, the single added capability `NET_ADMIN`, and one read-only `hostPath` (`/var/lib/fluent-bit-state`). `platform-preflight` admits these rights on that DaemonSet only and rejects them on any other workload, name, or namespace.
+2. WireGuard slot private keys MAY be held as Secret `oci-link/wg-slot-keys`, created in the cluster by `Job/wg-slot-keygen` and never in Git (Principle V, Kafka transport key exception).
+3. Kafka client keys for `fluent-bit-gke` and `ops-relay` MAY be held as cert-manager Secrets in `observability`, and the Kafka CA key in `cert-manager` (Principle V, Kafka transport key exception). `platform-preflight` admits only those two Certificates in `observability`, each with its own name as the common name, issuer `ClusterIssuer/kafka-mtls-ca`, no DNS names, `isCA` unset, client-authentication usages only, and the declared Secret name.
+4. If spike S1 (Spec 013 quickstart Scenario 0) shows that pod source NAT does not work under Dataplane V2, `DaemonSet/fluent-bit` and `Deployment/ops-relay` in `observability` MAY use `hostNetwork: true`. No other `observability` workload may.
+5. **Automated Ansible path** (the amendment Clarification 2.4.1 requires). The control center (`nacfson-control-center`) applies the OCI VM configuration:
+   - **Identity**: Google service account `cc-kafka-runner` in GKE, and user and group `kafka-runner` in OCI.
+   - **Scope**: the allowlisted playbooks in `infra/oci/ansible/` against the four Kafka VMs only.
+   - **Approval**: a merge to `main` whose required checks passed. Operator-started actions (rolling patch, rebuild, controller replacement) also require the control center's passkey step-up.
+   - **Triggers**: merges that change `infra/kafka/` or `infra/oci/ansible/`, and a daily certificate renewal.
+   - **Limits**: the runner cannot create, change, or delete OCI resources; its OCI policy allows only managed SSH sessions on the one Kafka Bastion as user `ubuntu`. Terraform stays operator-run from a reviewed saved plan. Every run first refuses a degraded cluster and changes one VM at a time.
+6. The runner identity MAY create `CertificateRequest`s and Events in `oci-link`. Its private keys are created on the control center and kept there, never in Git. A `ValidatingAdmissionPolicy` limits every `CertificateRequest` in `oci-link` to issuer `ClusterIssuer/kafka-mtls-ca`, `isCA` unset, a duration of at most 2160h, and the usages digital signature, client authentication, and server authentication. The policy cannot read the subject or SANs inside the request, and the runner legitimately requests broker and controller certificates, so the runner can obtain a certificate for any Kafka principal, super users included. The runner also holds root on the Kafka VMs through the Bastion. A leak of either runner credential is therefore handled as a compromise of those VMs and of the Kafka CA's issued certificates.
+
+**Impact**:
+
+- Security: Project namespaces are unchanged. The new host rights are bound to one DaemonSet in one platform namespace, and the transport keys to named Secrets in platform namespaces. The runner is the first automated path outside the cluster that changes infrastructure configuration; it is limited as item 5 describes. Admission policy bounds its certificate requests' issuer, CA flag, lifetime, and usages, but not the identity requested (item 6).
+- Resource quota: the GKE platform reservation grows by `ops-relay` (10m / 64Mi) and `wg-slot-agent` (10m / 32Mi per node). `platform-preflight` still passes the Interim Memory Limit Freeze; each project's slice moves from 815 to 762 MiB.
+- Portability: the `oci-link` namespace and the runner exist only while Kafka runs on OCI. Moving Kafka into GKE (Spec 013 FR-025) deletes them.
+
+**Migration**: None for existing projects. `scripts/platform-preflight.py`, `deploy/platform/governance/manual-change-policy.yaml`, and `contracts/CONTRACT_ISOLATION_BUDGET.md` carry the exceptions. The slot agent and relay are wired into Flux after their images are published.
+
+**Maintainer approval**: Approved by the repository maintainer on 2026-11-20 (Spec 013 task T003, the six items of `specs/013-oci-kafka-cluster/research.md` R19). Merging this amendment's pull request records formal approval of version 2.5.0.
+
+**Version**: 2.5.0 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-11-20

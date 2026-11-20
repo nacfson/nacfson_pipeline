@@ -1,0 +1,9 @@
+[Interface]
+ListenPort = {{ wireguard_port }}
+PostUp = wg set %i private-key /etc/wireguard/private.key
+{% for s in wireguard_slots if s.public_key %}
+
+[Peer]
+PublicKey = {{ s.public_key }}
+AllowedIPs = 10.201.0.{{ s.slot + 1 }}/32
+{% endfor %}

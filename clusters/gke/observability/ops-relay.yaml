@@ -1,0 +1,159 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ops-relay
+  namespace: observability
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ops-relay
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: platform
+spec:
+  secretName: ops-relay-kafka-client
+  commonName: ops-relay
+  duration: 2160h
+  renewBefore: 720h
+  usages:
+    - digital signature
+    - client auth
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: kafka-mtls-ca
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ops-relay
+  namespace: observability
+  labels:
+    app.kubernetes.io/name: ops-relay
+    app.kubernetes.io/part-of: platform-observability
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: ops-relay
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: ops-relay
+        app.kubernetes.io/part-of: platform-observability
+    spec:
+      serviceAccountName: ops-relay
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        fsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ops-relay
+          image: ghcr.io/nacfson/ops-relay
+          args: ["serve"]
+          env:
+            - name: KAFKA_BROKERS
+              value: 10.200.0.11:9092,10.200.0.12:9092,10.200.0.13:9092
+            - name: NOTIFY_CHANNEL
+              value: kafka
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          readinessProbe:
+            exec:
+              command: ["/ops-relay", "ready"]
+            periodSeconds: 15
+            timeoutSeconds: 10
+          startupProbe:
+            exec:
+              command: ["/ops-relay", "status"]
+            periodSeconds: 10
+            failureThreshold: 30
+          livenessProbe:
+            exec:
+              command: ["/ops-relay", "status"]
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 4
+          volumeMounts:
+            - name: run
+              mountPath: /run/ops-relay
+            - name: kafka-tls
+              mountPath: /etc/kafka-tls
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 10m
+              memory: 64Mi
+      volumes:
+        - name: run
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
+        - name: kafka-tls
+          secret:
+            secretName: ops-relay-kafka-client
+            defaultMode: 0440
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: ops-relay-egress
+  namespace: observability
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: ops-relay
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress: []
+  egress:
+    - to:
+        - ipBlock:
+            cidr: 10.200.0.11/32
+        - ipBlock:
+            cidr: 10.200.0.12/32
+        - ipBlock:
+            cidr: 10.200.0.13/32
+      ports:
+        - protocol: TCP
+          port: 9092
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vault
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: vault-notify-proxy
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - ipBlock:
+            cidr: 10.0.0.0/8
+        - ipBlock:
+            cidr: 172.16.0.0/12
+        - ipBlock:
+            cidr: 192.168.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 6443

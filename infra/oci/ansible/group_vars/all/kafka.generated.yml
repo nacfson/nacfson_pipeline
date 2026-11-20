@@ -1,0 +1,364 @@
+---
+kafka_cluster_id: IzXtKbazRM6ZRcObBw5qXA
+kafka_version: 4.3.2
+kafka_image: docker.io/apache/kafka:4.3.2@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7
+kafka_client_port: 9092
+kafka_log4j_opts: -Dlog4j2.configurationFile=/etc/kafka-node/log4j2.yaml
+kafka_controller_port: 9093
+kafka_bootstrap_servers: 10.200.0.11:9092,10.200.0.12:9092,10.200.0.13:9092
+kafka_controller_bootstrap_servers: 10.200.0.11:9093,10.200.0.12:9093,10.200.0.14:9093
+kafka_controllers:
+  - node_id: 1
+    name: a1-1
+    address: 10.200.0.11
+  - node_id: 2
+    name: a1-2
+    address: 10.200.0.12
+  - node_id: 4
+    name: micro-2
+    address: 10.200.0.14
+kafka_nodes:
+  a1-1:
+    node_id: 1
+    roles:
+      - broker
+      - controller
+    address: 10.200.0.11
+    identities:
+      - broker-1
+      - controller-1
+      - ops-agent-a1-1
+      - ops-cli
+    server_properties:
+      node.id: '1'
+      process.roles: broker,controller
+      listeners: CLIENT://10.200.0.11:9092,CONTROLLER://10.200.0.11:9093
+      advertised.listeners: CLIENT://10.200.0.11:9092,CONTROLLER://10.200.0.11:9093
+      listener.security.protocol.map: CLIENT:SSL,CONTROLLER:SSL
+      controller.listener.names: CONTROLLER
+      controller.quorum.bootstrap.servers: 10.200.0.11:9093,10.200.0.12:9093,10.200.0.14:9093
+      log.dirs: /var/lib/kafka/data
+      ssl.client.auth: required
+      ssl.keystore.type: PEM
+      ssl.keystore.location: /etc/kafka-node/tls/broker-1.pem
+      ssl.truststore.type: PEM
+      ssl.truststore.location: /etc/kafka-node/tls/ca.crt
+      ssl.principal.mapping.rules: RULE:^CN=([^,]+)$/$1/,DEFAULT
+      authorizer.class.name: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+      super.users: User:broker-1;User:broker-2;User:broker-3;User:controller-1;User:controller-2;User:controller-4
+      inter.broker.listener.name: CLIENT
+      listener.name.controller.ssl.keystore.location: /etc/kafka-node/tls/controller-1.pem
+      auto.create.topics.enable: 'false'
+      compression.type: producer
+      allow.everyone.if.no.acl.found: 'false'
+      default.replication.factor: '3'
+      min.insync.replicas: '2'
+    format_args_bootstrap:
+      - format
+      - --cluster-id
+      - IzXtKbazRM6ZRcObBw5qXA
+      - --config
+      - /etc/kafka-node/server.properties
+      - --initial-controllers
+      - 1@10.200.0.11:9093:eFwoLaOpTwOL1gI0wJymvA,2@10.200.0.12:9093:49xqtT-RSkOQGsPkD9yruQ,4@10.200.0.14:9093:YkxbiitTRYiC1W3aHMCsLg
+    format_args_join:
+      - format
+      - --cluster-id
+      - IzXtKbazRM6ZRcObBw5qXA
+      - --config
+      - /etc/kafka-node/server.properties
+      - --no-initial-controllers
+  a1-2:
+    node_id: 2
+    roles:
+      - broker
+      - controller
+    address: 10.200.0.12
+    identities:
+      - broker-2
+      - controller-2
+      - ops-agent-a1-2
+      - ops-cli
+    server_properties:
+      node.id: '2'
+      process.roles: broker,controller
+      listeners: CLIENT://10.200.0.12:9092,CONTROLLER://10.200.0.12:9093
+      advertised.listeners: CLIENT://10.200.0.12:9092,CONTROLLER://10.200.0.12:9093
+      listener.security.protocol.map: CLIENT:SSL,CONTROLLER:SSL
+      controller.listener.names: CONTROLLER
+      controller.quorum.bootstrap.servers: 10.200.0.11:9093,10.200.0.12:9093,10.200.0.14:9093
+      log.dirs: /var/lib/kafka/data
+      ssl.client.auth: required
+      ssl.keystore.type: PEM
+      ssl.keystore.location: /etc/kafka-node/tls/broker-2.pem
+      ssl.truststore.type: PEM
+      ssl.truststore.location: /etc/kafka-node/tls/ca.crt
+      ssl.principal.mapping.rules: RULE:^CN=([^,]+)$/$1/,DEFAULT
+      authorizer.class.name: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+      super.users: User:broker-1;User:broker-2;User:broker-3;User:controller-1;User:controller-2;User:controller-4
+      inter.broker.listener.name: CLIENT
+      listener.name.controller.ssl.keystore.location: /etc/kafka-node/tls/controller-2.pem
+      auto.create.topics.enable: 'false'
+      compression.type: producer
+      allow.everyone.if.no.acl.found: 'false'
+      default.replication.factor: '3'
+      min.insync.replicas: '2'
+    format_args_bootstrap:
+      - format
+      - --cluster-id
+      - IzXtKbazRM6ZRcObBw5qXA
+      - --config
+      - /etc/kafka-node/server.properties
+      - --initial-controllers
+      - 1@10.200.0.11:9093:eFwoLaOpTwOL1gI0wJymvA,2@10.200.0.12:9093:49xqtT-RSkOQGsPkD9yruQ,4@10.200.0.14:9093:YkxbiitTRYiC1W3aHMCsLg
+    format_args_join:
+      - format
+      - --cluster-id
+      - IzXtKbazRM6ZRcObBw5qXA
+      - --config
+      - /etc/kafka-node/server.properties
+      - --no-initial-controllers
+  micro-1:
+    node_id: 3
+    roles:
+      - broker
+    address: 10.200.0.13
+    identities:
+      - broker-3
+      - ops-agent-micro-1
+      - ops-cli
+    server_properties:
+      node.id: '3'
+      process.roles: broker
+      listeners: CLIENT://10.200.0.13:9092
+      advertised.listeners: CLIENT://10.200.0.13:9092
+      listener.security.protocol.map: CLIENT:SSL,CONTROLLER:SSL
+      controller.listener.names: CONTROLLER
+      controller.quorum.bootstrap.servers: 10.200.0.11:9093,10.200.0.12:9093,10.200.0.14:9093
+      log.dirs: /var/lib/kafka/data
+      ssl.client.auth: required
+      ssl.keystore.type: PEM
+      ssl.keystore.location: /etc/kafka-node/tls/broker-3.pem
+      ssl.truststore.type: PEM
+      ssl.truststore.location: /etc/kafka-node/tls/ca.crt
+      ssl.principal.mapping.rules: RULE:^CN=([^,]+)$/$1/,DEFAULT
+      authorizer.class.name: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+      super.users: User:broker-1;User:broker-2;User:broker-3;User:controller-1;User:controller-2;User:controller-4
+      inter.broker.listener.name: CLIENT
+      auto.create.topics.enable: 'false'
+      compression.type: producer
+      allow.everyone.if.no.acl.found: 'false'
+      default.replication.factor: '3'
+      min.insync.replicas: '2'
+    format_args_bootstrap:
+      - format
+      - --cluster-id
+      - IzXtKbazRM6ZRcObBw5qXA
+      - --config
+      - /etc/kafka-node/server.properties
+      - --no-initial-controllers
+    format_args_join:
+      - format
+      - --cluster-id
+      - IzXtKbazRM6ZRcObBw5qXA
+      - --config
+      - /etc/kafka-node/server.properties
+      - --no-initial-controllers
+  micro-2:
+    node_id: 4
+    roles:
+      - controller
+    address: 10.200.0.14
+    identities:
+      - controller-4
+      - ops-agent-micro-2
+      - ops-cli
+    server_properties:
+      node.id: '4'
+      process.roles: controller
+      listeners: CONTROLLER://10.200.0.14:9093
+      advertised.listeners: CONTROLLER://10.200.0.14:9093
+      listener.security.protocol.map: CLIENT:SSL,CONTROLLER:SSL
+      controller.listener.names: CONTROLLER
+      controller.quorum.bootstrap.servers: 10.200.0.11:9093,10.200.0.12:9093,10.200.0.14:9093
+      log.dirs: /var/lib/kafka/data
+      ssl.client.auth: required
+      ssl.keystore.type: PEM
+      ssl.keystore.location: /etc/kafka-node/tls/controller-4.pem
+      ssl.truststore.type: PEM
+      ssl.truststore.location: /etc/kafka-node/tls/ca.crt
+      ssl.principal.mapping.rules: RULE:^CN=([^,]+)$/$1/,DEFAULT
+      authorizer.class.name: org.apache.kafka.metadata.authorizer.StandardAuthorizer
+      super.users: User:broker-1;User:broker-2;User:broker-3;User:controller-1;User:controller-2;User:controller-4
+      auto.create.topics.enable: 'false'
+      compression.type: producer
+      allow.everyone.if.no.acl.found: 'false'
+      default.replication.factor: '3'
+      min.insync.replicas: '2'
+    format_args_bootstrap:
+      - format
+      - --cluster-id
+      - IzXtKbazRM6ZRcObBw5qXA
+      - --config
+      - /etc/kafka-node/server.properties
+      - --initial-controllers
+      - 1@10.200.0.11:9093:eFwoLaOpTwOL1gI0wJymvA,2@10.200.0.12:9093:49xqtT-RSkOQGsPkD9yruQ,4@10.200.0.14:9093:YkxbiitTRYiC1W3aHMCsLg
+    format_args_join:
+      - format
+      - --cluster-id
+      - IzXtKbazRM6ZRcObBw5qXA
+      - --config
+      - /etc/kafka-node/server.properties
+      - --no-initial-controllers
+kafka_topics:
+  - name: logs.proj.valid
+    partitions: 3
+    replication_factor: 3
+    min_insync_replicas: 2
+    retention_ms: 604800000
+    retention_bytes: 5368709120
+    segment_bytes: 134217728
+    max_message_bytes: 1048588
+    timestamp_type: CreateTime
+  - name: logs.proj.quarantine
+    partitions: 3
+    replication_factor: 3
+    min_insync_replicas: 2
+    retention_ms: 604800000
+    retention_bytes: 1073741824
+    segment_bytes: 134217728
+    max_message_bytes: 1048588
+    timestamp_type: CreateTime
+  - name: ops.platform.events
+    partitions: 1
+    replication_factor: 3
+    min_insync_replicas: 1
+    retention_ms: 2592000000
+    retention_bytes: 268435456
+    segment_bytes: 134217728
+    max_message_bytes: 1048588
+    timestamp_type: LogAppendTime
+  - name: ops.platform.metrics
+    partitions: 1
+    replication_factor: 3
+    min_insync_replicas: 1
+    retention_ms: 604800000
+    retention_bytes: 268435456
+    segment_bytes: 134217728
+    max_message_bytes: 1048588
+    timestamp_type: LogAppendTime
+kafka_identities:
+  - name: broker-1
+    key_location: vm:a1-1
+    super_user: true
+    grants: []
+  - name: broker-2
+    key_location: vm:a1-2
+    super_user: true
+    grants: []
+  - name: broker-3
+    key_location: vm:micro-1
+    super_user: true
+    grants: []
+  - name: controller-1
+    key_location: vm:a1-1
+    super_user: true
+    grants: []
+  - name: controller-2
+    key_location: vm:a1-2
+    super_user: true
+    grants: []
+  - name: controller-4
+    key_location: vm:micro-2
+    super_user: true
+    grants: []
+  - name: fluent-bit-gke
+    key_location: cluster:observability/fluent-bit-kafka-client
+    super_user: false
+    grants:
+      - resource: topic
+        name: logs.proj.valid
+        ops:
+          - Write
+          - Describe
+      - resource: topic
+        name: logs.proj.quarantine
+        ops:
+          - Write
+          - Describe
+      - resource: cluster
+        ops:
+          - IdempotentWrite
+  - name: ops-agent-a1-1
+    key_location: vm:a1-1
+    super_user: false
+    grants: &id001
+      - resource: topic
+        name: ops.platform.events
+        ops:
+          - Write
+          - Describe
+      - resource: topic
+        name: ops.platform.metrics
+        ops:
+          - Write
+          - Describe
+      - resource: cluster
+        ops:
+          - IdempotentWrite
+  - name: ops-agent-a1-2
+    key_location: vm:a1-2
+    super_user: false
+    grants: *id001
+  - name: ops-agent-micro-1
+    key_location: vm:micro-1
+    super_user: false
+    grants: *id001
+  - name: ops-agent-micro-2
+    key_location: vm:micro-2
+    super_user: false
+    grants: *id001
+  - name: ops-relay
+    key_location: cluster:observability/ops-relay-kafka-client
+    super_user: false
+    grants:
+      - resource: topic
+        name: ops.platform.events
+        ops:
+          - Read
+          - Describe
+      - resource: topic
+        name: ops.platform.metrics
+        ops:
+          - Read
+          - Describe
+      - resource: group
+        name: ops-relay
+        ops:
+          - Read
+      - resource: cluster
+        ops:
+          - Describe
+          - DescribeConfigs
+      - resource: topic
+        name: '*'
+        ops:
+          - Describe
+          - DescribeConfigs
+  - name: ops-cli
+    key_location: vm:all
+    super_user: false
+    grants:
+      - resource: cluster
+        ops:
+          - Describe
+          - DescribeConfigs
+      - resource: topic
+        name: '*'
+        ops:
+          - Describe
+          - DescribeConfigs
+      - resource: group
+        name: '*'
+        ops:
+          - Describe

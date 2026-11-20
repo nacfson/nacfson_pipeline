@@ -109,6 +109,11 @@ jobs:
             terraform -chdir="infra/gcp/${root}" validate
             echo "::endgroup::"
           done
+          echo "::group::infra/oci/terraform"
+          terraform -chdir=infra/oci/terraform fmt -check -recursive
+          terraform -chdir=infra/oci/terraform init -backend=false -lockfile=readonly -input=false
+          terraform -chdir=infra/oci/terraform validate
+          echo "::endgroup::"
 
       - name: Set up Python 3.12
         uses: actions/setup-python@v5
@@ -119,3 +124,85 @@ jobs:
         run: |
           pip install -r scripts/requirements-preflight.txt
           python3 scripts/check-gcp-shared-values.py
+
+  kafka-declarations:
+    runs-on: ubuntu-latest
+    env:
+      KUBECONFORM_VERSION: "v0.6.7"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install -r scripts/requirements-preflight.txt
+          curl -sL https://github.com/yannh/kubeconform/releases/download/${{ env.KUBECONFORM_VERSION }}/kubeconform-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin kubeconform
+
+      - name: Check declarations
+        run: python3 scripts/kafka-declarations.py check
+
+      - name: Declaration tests
+        run: python3 -m unittest discover tests/infra
+
+      - name: Committed renders are current
+        run: |
+          python3 scripts/kafka-declarations.py render --target ansible
+          python3 scripts/kafka-declarations.py render --target compose
+          changed=$(git status --porcelain -- infra/oci/ansible/group_vars/all/kafka.generated.yml tests/kafka/rehearsal/)
+          if [ -n "$changed" ]; then echo "$changed"; git diff; exit 1; fi
+
+  oci-ansible:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned Ansible tools and collections
+        run: |
+          pip install -r bootstrap/requirements.txt ansible-lint==26.10.1
+          ansible-galaxy collection install -r infra/oci/ansible/requirements.yml
+
+      - name: Syntax check every playbook
+        working-directory: infra/oci/ansible
+        run: |
+          for pb in *.yml; do
+            [ "$pb" = requirements.yml ] && continue
+            ansible-playbook --syntax-check "$pb"
+          done
+
+      - name: ansible-lint
+        working-directory: infra/oci/ansible
+        run: ansible-lint --offline .
+
+  kafka-go-services:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.9'
+
+      - name: wg-slot-agent
+        working-directory: services/wg-slot-agent
+        run: |
+          go test ./...
+          go vet ./...
+
+      - name: error-pipeline
+        working-directory: services/error-pipeline
+        run: |
+          go test ./...
+          go vet ./...

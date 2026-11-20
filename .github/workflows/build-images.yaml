@@ -6,6 +6,7 @@ on:
     paths:
       - "services/vault-proxies/**"
       - "services/error-pipeline/**"
+      - "services/wg-slot-agent/**"
       - "gateway/**"
       - ".github/workflows/build-images.yaml"
   workflow_dispatch:
@@ -38,10 +39,18 @@ jobs:
             context: services/error-pipeline
             dockerfile: services/error-pipeline/Dockerfile.error-detector
             image_name: error-detector
+          - name: ops-relay
+            context: services/error-pipeline
+            dockerfile: services/error-pipeline/Dockerfile.ops-relay
+            image_name: ops-relay
           - name: logcheck
             context: services/error-pipeline
             dockerfile: services/error-pipeline/Dockerfile.logcheck
             image_name: logcheck
+          - name: wg-slot-agent
+            context: services/wg-slot-agent
+            dockerfile: services/wg-slot-agent/Dockerfile
+            image_name: wg-slot-agent
           - name: platform-auth-gateway
             context: gateway
             dockerfile: gateway/Dockerfile

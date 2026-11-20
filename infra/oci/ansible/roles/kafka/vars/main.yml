@@ -1,0 +1,10 @@
+kafka_podman_run:
+  - podman
+  - run
+  - --rm
+  - --network=host
+  - "--user={{ kafka_uid }}:{{ kafka_uid }}"
+  - "--volume={{ kafka_config_file }}:{{ kafka_container_config }}:ro"
+  - "--volume={{ kafka_tls_dir }}:{{ kafka_container_tls_dir }}:ro"
+  - "--volume={{ kafka_data_dir }}:/var/lib/kafka/data"
+  - --env=LOG_DIR=/tmp

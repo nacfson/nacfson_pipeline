@@ -1,0 +1,33 @@
+- name: Refuse to change a degraded cluster
+  ansible.builtin.import_playbook: preflight.yml
+
+- name: Renew certificates with 30 days or fewer left, one VM at a time
+  hosts: controllers:brokers
+  serial: 1
+  any_errors_fatal: true
+  become: true
+  roles:
+    - role: certs
+  post_tasks:
+    - name: Restart Kafka on renewal
+      ansible.builtin.systemd_service:
+        name: kafka
+        state: restarted
+      when: certs_changed
+
+    - name: Refresh the ops agent's copy of its certificate
+      ansible.builtin.include_role:
+        name: ops_agent
+        tasks_from: tls
+      when: certs_changed
+
+    - name: Restart the ops agent on renewal
+      ansible.builtin.systemd_service:
+        name: ops-agent
+        state: restarted
+      when: certs_changed
+      failed_when: false
+
+    - name: Wait for full replication after a restart
+      ansible.builtin.include_tasks: tasks/wait-healthy.yml
+      when: certs_changed

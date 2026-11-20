@@ -1,0 +1,36 @@
+- name: Rebuild one broker-only VM after it was lost
+  hosts: "{{ target | default('none') }}"
+  serial: 1
+  any_errors_fatal: true
+  become: true
+  pre_tasks:
+    - name: Only a broker-only VM is rebuilt here; controllers use replace-controller.yml
+      ansible.builtin.assert:
+        that:
+          - ansible_play_hosts_all | length == 1
+          - inventory_hostname in groups['brokers']
+          - inventory_hostname not in groups['controllers']
+        fail_msg: "rebuild-node.yml takes exactly one broker-only host (target=micro-1); use replace-controller.yml for a controller"
+  roles:
+    - role: base
+    - role: wireguard
+    - role: certs
+    - role: kafka
+  post_tasks:
+    - name: Remind the operator of the wg-peers pull request
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }} has a new WireGuard key ({{ wireguard_public_key.stdout }}). GKE reaches this broker
+          again only after clusters/gke/oci-link/wg-peers.json carries it; the other two brokers serve meanwhile.
+
+    - name: Wait up to 60 minutes until every partition is fully replicated again
+      ansible.builtin.include_tasks: tasks/wait-healthy.yml
+      vars:
+        wait_retries: 360
+
+    - name: Record the applied commit
+      ansible.builtin.copy:
+        content: "{{ applied_commit }}\n"
+        dest: /etc/nacfson/applied-commit
+        mode: "0644"
+      when: applied_commit is defined

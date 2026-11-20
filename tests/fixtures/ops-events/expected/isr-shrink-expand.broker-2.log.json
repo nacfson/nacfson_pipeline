@@ -1,0 +1,92 @@
+[
+  {
+    "detail": "[2026-11-19 12:47:02,964] INFO [QuorumController id=2] Fencing broker 3 at epoch 14 because its session has timed out. (org.apache.kafka.controller.ReplicationControlManager)",
+    "kind": "broker.fenced",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "kafka-controller-log",
+    "state": "down",
+    "subject": "kafka/broker-3",
+    "vm": "micro-1"
+  },
+  {
+    "detail": "[2026-11-19 12:47:02,965] INFO [QuorumController id=2] Replayed BrokerRegistrationChangeRecord modifying the registration for broker 3: BrokerRegistrationChangeRecord(brokerId=3, brokerEpoch=14, fenced=1, inControlledShutdown=0, logDirs=[], cordonedLogDirs=null) (org.apache.kafka.controller.ClusterControlManager)",
+    "kind": "broker.fenced",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "kafka-controller-log",
+    "state": "down",
+    "subject": "kafka/broker-3",
+    "vm": "micro-1"
+  },
+  {
+    "detail": "[2026-11-19 12:47:19,054] INFO [QuorumController id=2] The request from broker 3 to unfence has been granted because it has caught up with the offset of its register broker record 14. (org.apache.kafka.controller.BrokerHeartbeatManager)",
+    "kind": "broker.unfenced",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "kafka-controller-log",
+    "state": "up",
+    "subject": "kafka/broker-3",
+    "vm": "micro-1"
+  },
+  {
+    "detail": "[2026-11-19 12:47:19,054] INFO [QuorumController id=2] Replayed BrokerRegistrationChangeRecord modifying the registration for broker 3: BrokerRegistrationChangeRecord(brokerId=3, brokerEpoch=14, fenced=-1, inControlledShutdown=0, logDirs=[], cordonedLogDirs=null) (org.apache.kafka.controller.ClusterControlManager)",
+    "kind": "broker.unfenced",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "kafka-controller-log",
+    "state": "up",
+    "subject": "kafka/broker-3",
+    "vm": "micro-1"
+  },
+  {
+    "detail": "[2026-11-19 12:47:19,584] INFO [Partition logs.proj.valid-0 broker=2] ISR updated to 2,3,1  and version updated to 10 (kafka.cluster.Partition)",
+    "kind": "partition.isr_expand",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "kafka-broker-log",
+    "state": "up",
+    "subject": "kafka/partition/logs.proj.valid-0",
+    "vm": "a1-1"
+  },
+  {
+    "detail": "[2026-11-19 12:47:19,614] INFO [Partition logs.proj.quarantine-1 broker=2] ISR updated to 2,3,1  and version updated to 10 (kafka.cluster.Partition)",
+    "kind": "partition.isr_expand",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "kafka-broker-log",
+    "state": "up",
+    "subject": "kafka/partition/logs.proj.quarantine-1",
+    "vm": "a1-1"
+  },
+  {
+    "detail": "[2026-11-19 12:47:19,614] INFO [Partition logs.proj.quarantine-2 broker=2] ISR updated to 2,3,1  and version updated to 10 (kafka.cluster.Partition)",
+    "kind": "partition.isr_expand",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "kafka-broker-log",
+    "state": "up",
+    "subject": "kafka/partition/logs.proj.quarantine-2",
+    "vm": "a1-1"
+  },
+  {
+    "detail": "[2026-11-19 12:47:19,614] INFO [Partition ops.platform.events-0 broker=2] ISR updated to 2,3,1  and version updated to 10 (kafka.cluster.Partition)",
+    "kind": "partition.isr_expand",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "kafka-broker-log",
+    "state": "up",
+    "subject": "kafka/partition/ops.platform.events-0",
+    "vm": "a1-1"
+  },
+  {
+    "detail": "[2026-11-19 12:47:19,615] INFO [Partition logs.proj.valid-2 broker=2] ISR updated to 2,3,1  and version updated to 10 (kafka.cluster.Partition)",
+    "kind": "partition.isr_expand",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "kafka-broker-log",
+    "state": "up",
+    "subject": "kafka/partition/logs.proj.valid-2",
+    "vm": "a1-1"
+  }
+]

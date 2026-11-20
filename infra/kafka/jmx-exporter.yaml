@@ -1,0 +1,34 @@
+lowercaseOutputName: true
+includeObjectNames:
+  - "kafka.controller:type=KafkaController,name=ActiveBrokerCount"
+  - "kafka.controller:type=KafkaController,name=FencedBrokerCount"
+  - "kafka.controller:type=KafkaController,name=ActiveControllerCount"
+  - "kafka.controller:type=KafkaController,name=OfflinePartitionsCount"
+  - "kafka.server:type=ReplicaManager,name=UnderReplicatedPartitions"
+  - "kafka.server:type=ReplicaManager,name=UnderMinIsrPartitionCount"
+  - "kafka.network:type=RequestMetrics,name=TotalTimeMs,request=Produce"
+  - "kafka.server:type=BrokerTopicMetrics,name=BytesInPerSec"
+  - "kafka.server:type=BrokerTopicMetrics,name=BytesOutPerSec"
+  - "java.lang:type=Memory"
+  - "java.lang:type=GarbageCollector,name=*"
+rules:
+  - pattern: "kafka.controller<type=KafkaController, name=(ActiveBrokerCount|FencedBrokerCount|ActiveControllerCount|OfflinePartitionsCount)><>Value"
+    name: kafka_controller_$1
+    type: GAUGE
+  - pattern: "kafka.server<type=ReplicaManager, name=(UnderReplicatedPartitions|UnderMinIsrPartitionCount)><>Value"
+    name: kafka_server_$1
+    type: GAUGE
+  - pattern: "kafka.network<type=RequestMetrics, name=TotalTimeMs, request=Produce><>99thPercentile"
+    name: kafka_produce_total_time_ms_p99
+    type: GAUGE
+  - pattern: "kafka.server<type=BrokerTopicMetrics, name=(BytesInPerSec|BytesOutPerSec)><>OneMinuteRate"
+    name: kafka_server_$1_one_minute_rate
+    type: GAUGE
+  - pattern: "java.lang<type=Memory><HeapMemoryUsage>used"
+    name: jvm_heap_used_bytes
+    type: GAUGE
+  - pattern: "java.lang<name=(.+), type=GarbageCollector><>CollectionTime"
+    name: jvm_gc_collection_time_ms
+    labels:
+      gc: $1
+    type: COUNTER

@@ -91,6 +91,55 @@ class TerraformProtectionTests(unittest.TestCase):
         self.assertNotIn("master_authorized_networks_config", body)
 
 
+
+class OciTerraformTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.oci = load_resources(REPO_ROOT / "infra" / "oci" / "terraform")
+
+    def test_reserved_broker_ips_are_protected(self):
+        body = self.oci[("oci_core_public_ip", "broker")]
+        self.assertRegex(body, r'lifetime\s*=\s*"RESERVED"')
+        self.assertTrue(has_prevent_destroy(body))
+
+    def test_only_wireguard_is_open_to_the_internet(self):
+        body = self.oci[("oci_core_security_list", "kafka")]
+        ingress = re.findall(r"ingress_security_rules\s*\{(.*?)\n  \}", body, re.S)
+        self.assertEqual(len(ingress), 3)
+        public = [r for r in ingress if '"0.0.0.0/0"' in r]
+        self.assertEqual(len(public), 1)
+        self.assertRegex(public[0], r'protocol\s*=\s*"17"')
+        self.assertIn("local.wireguard_port", public[0])
+        internal = [r for r in ingress if "local.subnet_cidr" in r]
+        self.assertEqual(len(internal), 2)
+        ports = sorted(re.findall(r"min\s*=\s*(\d+)", " ".join(internal)))
+        self.assertEqual(ports, ["22", "9092"])
+        ssh = next(r for r in internal if re.search(r"min\s*=\s*22\b", r))
+        self.assertRegex(ssh, r"max\s*=\s*22\b")
+        self.assertNotIn("0.0.0.0/0", ssh)
+
+    def test_budget_guard_is_one_dollar_on_actual_spend(self):
+        self.assertRegex(self.oci[("oci_budget_budget", "free_tier_guard")], r"amount\s*=\s*1\b")
+        rule = self.oci[("oci_budget_alert_rule", "actual_spend")]
+        self.assertRegex(rule, r'type\s*=\s*"ACTUAL"')
+        self.assertRegex(rule, r"threshold\s*=\s*100\b")
+
+    def test_runner_policy_is_bastion_sessions_only(self):
+        body = self.oci[("oci_identity_policy", "kafka_runner")]
+        verbs = re.findall(r"to (\w+) ([\w-]+) in", body)
+        self.assertEqual(sorted({v for v, _ in verbs}), ["manage", "read", "use"])
+        self.assertEqual([r for v, r in verbs if v == "manage"], ["bastion-session"])
+        self.assertEqual([r for v, r in verbs if v == "use"], ["bastion"])
+        self.assertIn("target.bastion-session.username", body)
+
+    def test_instances_follow_declared_nodes(self):
+        locals_text = (REPO_ROOT / "infra" / "oci" / "terraform" / "locals.tf").read_text(encoding="utf-8")
+        self.assertIn('file("${path.module}/../../kafka/cluster.yaml")', locals_text)
+        body = self.oci[("oci_core_instance", "node")]
+        self.assertIn("for_each            = local.nodes", body)
+        self.assertIn("private_ip       = each.value.address", body)
+        self.assertRegex(locals_text, r"boot_volume_gbs\s*=\s*50")
+
 class RunbookTargetTests(unittest.TestCase):
 
     def test_removal_targets_exist(self):

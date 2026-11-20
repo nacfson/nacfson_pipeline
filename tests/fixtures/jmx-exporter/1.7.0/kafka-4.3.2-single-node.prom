@@ -1,0 +1,228 @@
+# HELP jmx_config_reload_failure_total Number of times configuration have failed to be reloaded.
+# TYPE jmx_config_reload_failure_total counter
+jmx_config_reload_failure_total 0.0
+# HELP jmx_config_reload_success_total Number of times configuration have successfully been reloaded.
+# TYPE jmx_config_reload_success_total counter
+jmx_config_reload_success_total 0.0
+# HELP jmx_exporter_build_info JMX Exporter build information
+# TYPE jmx_exporter_build_info gauge
+jmx_exporter_build_info{name="jmx_prometheus_javaagent",version="1.7.0"} 1
+# HELP jmx_http_requests_rejected_total Total number of HTTP requests rejected due to pool saturation.
+# TYPE jmx_http_requests_rejected_total counter
+jmx_http_requests_rejected_total 0.0
+# HELP jmx_scrape_cached_beans Number of beans with their matching rule cached
+# TYPE jmx_scrape_cached_beans gauge
+jmx_scrape_cached_beans 0.0
+# HELP jmx_scrape_duration_seconds Time this JMX scrape took, in seconds.
+# TYPE jmx_scrape_duration_seconds gauge
+jmx_scrape_duration_seconds 0.009
+# HELP jmx_scrape_error Non-zero if this scrape failed.
+# TYPE jmx_scrape_error gauge
+jmx_scrape_error 0.0
+# HELP jvm_buffer_pool_capacity_bytes Bytes capacity of a given JVM buffer pool.
+# TYPE jvm_buffer_pool_capacity_bytes gauge
+jvm_buffer_pool_capacity_bytes{pool="direct"} 66468.0
+jvm_buffer_pool_capacity_bytes{pool="mapped"} 2.0971516E7
+jvm_buffer_pool_capacity_bytes{pool="mapped - 'non-volatile memory'"} 0.0
+# HELP jvm_buffer_pool_used_buffers Used buffers of a given JVM buffer pool.
+# TYPE jvm_buffer_pool_used_buffers gauge
+jvm_buffer_pool_used_buffers{pool="direct"} 10.0
+jvm_buffer_pool_used_buffers{pool="mapped"} 2.0
+jvm_buffer_pool_used_buffers{pool="mapped - 'non-volatile memory'"} 0.0
+# HELP jvm_buffer_pool_used_bytes Used bytes of a given JVM buffer pool.
+# TYPE jvm_buffer_pool_used_bytes gauge
+jvm_buffer_pool_used_bytes{pool="direct"} 66468.0
+jvm_buffer_pool_used_bytes{pool="mapped"} 2.0971516E7
+jvm_buffer_pool_used_bytes{pool="mapped - 'non-volatile memory'"} 0.0
+# HELP jvm_classes_currently_loaded The number of classes that are currently loaded in the JVM
+# TYPE jvm_classes_currently_loaded gauge
+jvm_classes_currently_loaded 8524.0
+# HELP jvm_classes_loaded_total The total number of classes that have been loaded since the JVM has started execution
+# TYPE jvm_classes_loaded_total counter
+jvm_classes_loaded_total 8524.0
+# HELP jvm_classes_unloaded_total The total number of classes that have been unloaded since the JVM has started execution
+# TYPE jvm_classes_unloaded_total counter
+jvm_classes_unloaded_total 0.0
+# HELP jvm_compilation_time_seconds_total The total time in seconds taken for HotSpot class compilation
+# TYPE jvm_compilation_time_seconds_total counter
+jvm_compilation_time_seconds_total 2.467
+# HELP jvm_gc_collection_seconds Time spent in a given JVM garbage collector in seconds.
+# TYPE jvm_gc_collection_seconds summary
+jvm_gc_collection_seconds_count{gc="G1 Concurrent GC"} 0
+jvm_gc_collection_seconds_sum{gc="G1 Concurrent GC"} 0.0
+jvm_gc_collection_seconds_count{gc="G1 Old Generation"} 0
+jvm_gc_collection_seconds_sum{gc="G1 Old Generation"} 0.0
+jvm_gc_collection_seconds_count{gc="G1 Young Generation"} 1
+jvm_gc_collection_seconds_sum{gc="G1 Young Generation"} 0.008
+# HELP jvm_gc_collection_time_ms_total java.lang:name=G1 Concurrent GC,type=GarbageCollector,attribute=CollectionTime
+# TYPE jvm_gc_collection_time_ms_total counter
+jvm_gc_collection_time_ms_total{gc="G1 Concurrent GC"} 0.0
+jvm_gc_collection_time_ms_total{gc="G1 Old Generation"} 0.0
+jvm_gc_collection_time_ms_total{gc="G1 Young Generation"} 8.0
+# HELP jvm_heap_used_bytes java.lang.management.MemoryUsage java.lang:name=null,type=Memory,attribute=used
+# TYPE jvm_heap_used_bytes gauge
+jvm_heap_used_bytes 2.03678464E8
+# HELP jvm_memory_committed_bytes Committed (bytes) of a given JVM memory area.
+# TYPE jvm_memory_committed_bytes gauge
+jvm_memory_committed_bytes{area="heap"} 1.073741824E9
+jvm_memory_committed_bytes{area="nonheap"} 2.752512E7
+# HELP jvm_memory_init_bytes Initial bytes of a given JVM memory area.
+# TYPE jvm_memory_init_bytes gauge
+jvm_memory_init_bytes{area="heap"} 1.073741824E9
+jvm_memory_init_bytes{area="nonheap"} 7667712.0
+# HELP jvm_memory_max_bytes Max (bytes) of a given JVM memory area.
+# TYPE jvm_memory_max_bytes gauge
+jvm_memory_max_bytes{area="heap"} 1.073741824E9
+jvm_memory_max_bytes{area="nonheap"} -1.0
+# HELP jvm_memory_objects_pending_finalization The number of objects waiting in the finalizer queue.
+# TYPE jvm_memory_objects_pending_finalization gauge
+jvm_memory_objects_pending_finalization 0.0
+# HELP jvm_memory_pool_allocated_bytes_total Total bytes allocated in a given JVM memory pool. Only updated after GC, not continuously.
+# TYPE jvm_memory_pool_allocated_bytes_total counter
+jvm_memory_pool_allocated_bytes_total{pool="CodeHeap 'non-nmethods'"} 3599232.0
+jvm_memory_pool_allocated_bytes_total{pool="CodeHeap 'non-profiled nmethods'"} 1122048.0
+jvm_memory_pool_allocated_bytes_total{pool="CodeHeap 'profiled nmethods'"} 6135680.0
+jvm_memory_pool_allocated_bytes_total{pool="Compressed Class Space"} 667248.0
+jvm_memory_pool_allocated_bytes_total{pool="G1 Eden Space"} 5.3477376E7
+jvm_memory_pool_allocated_bytes_total{pool="G1 Old Gen"} 2.0177664E7
+jvm_memory_pool_allocated_bytes_total{pool="G1 Survivor Space"} 7340032.0
+jvm_memory_pool_allocated_bytes_total{pool="Metaspace"} 6139784.0
+# HELP jvm_memory_pool_collection_committed_bytes Committed after last collection bytes of a given JVM memory pool.
+# TYPE jvm_memory_pool_collection_committed_bytes gauge
+jvm_memory_pool_collection_committed_bytes{pool="G1 Eden Space"} 4.9283072E7
+jvm_memory_pool_collection_committed_bytes{pool="G1 Old Gen"} 0.0
+jvm_memory_pool_collection_committed_bytes{pool="G1 Survivor Space"} 7340032.0
+# HELP jvm_memory_pool_collection_init_bytes Initial after last collection bytes of a given JVM memory pool.
+# TYPE jvm_memory_pool_collection_init_bytes gauge
+jvm_memory_pool_collection_init_bytes{pool="G1 Eden Space"} 5.3477376E7
+jvm_memory_pool_collection_init_bytes{pool="G1 Old Gen"} 1.020264448E9
+jvm_memory_pool_collection_init_bytes{pool="G1 Survivor Space"} 0.0
+# HELP jvm_memory_pool_collection_max_bytes Max bytes after last collection of a given JVM memory pool.
+# TYPE jvm_memory_pool_collection_max_bytes gauge
+jvm_memory_pool_collection_max_bytes{pool="G1 Eden Space"} -1.0
+jvm_memory_pool_collection_max_bytes{pool="G1 Old Gen"} 1.073741824E9
+jvm_memory_pool_collection_max_bytes{pool="G1 Survivor Space"} -1.0
+# HELP jvm_memory_pool_collection_used_bytes Used bytes after last collection of a given JVM memory pool.
+# TYPE jvm_memory_pool_collection_used_bytes gauge
+jvm_memory_pool_collection_used_bytes{pool="G1 Eden Space"} 0.0
+jvm_memory_pool_collection_used_bytes{pool="G1 Old Gen"} 0.0
+jvm_memory_pool_collection_used_bytes{pool="G1 Survivor Space"} 7340032.0
+# HELP jvm_memory_pool_committed_bytes Committed bytes of a given JVM memory pool.
+# TYPE jvm_memory_pool_committed_bytes gauge
+jvm_memory_pool_committed_bytes{pool="CodeHeap 'non-nmethods'"} 3932160.0
+jvm_memory_pool_committed_bytes{pool="CodeHeap 'non-profiled nmethods'"} 2555904.0
+jvm_memory_pool_committed_bytes{pool="CodeHeap 'profiled nmethods'"} 9502720.0
+jvm_memory_pool_committed_bytes{pool="Compressed Class Space"} 1376256.0
+jvm_memory_pool_committed_bytes{pool="G1 Eden Space"} 4.9283072E7
+jvm_memory_pool_committed_bytes{pool="G1 Old Gen"} 1.01711872E9
+jvm_memory_pool_committed_bytes{pool="G1 Survivor Space"} 7340032.0
+jvm_memory_pool_committed_bytes{pool="Metaspace"} 1.015808E7
+# HELP jvm_memory_pool_init_bytes Initial bytes of a given JVM memory pool.
+# TYPE jvm_memory_pool_init_bytes gauge
+jvm_memory_pool_init_bytes{pool="CodeHeap 'non-nmethods'"} 2555904.0
+jvm_memory_pool_init_bytes{pool="CodeHeap 'non-profiled nmethods'"} 2555904.0
+jvm_memory_pool_init_bytes{pool="CodeHeap 'profiled nmethods'"} 2555904.0
+jvm_memory_pool_init_bytes{pool="Compressed Class Space"} 0.0
+jvm_memory_pool_init_bytes{pool="G1 Eden Space"} 5.3477376E7
+jvm_memory_pool_init_bytes{pool="G1 Old Gen"} 1.020264448E9
+jvm_memory_pool_init_bytes{pool="G1 Survivor Space"} 0.0
+jvm_memory_pool_init_bytes{pool="Metaspace"} 0.0
+# HELP jvm_memory_pool_max_bytes Max bytes of a given JVM memory pool.
+# TYPE jvm_memory_pool_max_bytes gauge
+jvm_memory_pool_max_bytes{pool="CodeHeap 'non-nmethods'"} 7606272.0
+jvm_memory_pool_max_bytes{pool="CodeHeap 'non-profiled nmethods'"} 1.22028032E8
+jvm_memory_pool_max_bytes{pool="CodeHeap 'profiled nmethods'"} 1.22023936E8
+jvm_memory_pool_max_bytes{pool="Compressed Class Space"} 1.073741824E9
+jvm_memory_pool_max_bytes{pool="G1 Eden Space"} -1.0
+jvm_memory_pool_max_bytes{pool="G1 Old Gen"} 1.073741824E9
+jvm_memory_pool_max_bytes{pool="G1 Survivor Space"} -1.0
+jvm_memory_pool_max_bytes{pool="Metaspace"} -1.0
+# HELP jvm_memory_pool_used_bytes Used bytes of a given JVM memory pool.
+# TYPE jvm_memory_pool_used_bytes gauge
+jvm_memory_pool_used_bytes{pool="CodeHeap 'non-nmethods'"} 2085760.0
+jvm_memory_pool_used_bytes{pool="CodeHeap 'non-profiled nmethods'"} 2013568.0
+jvm_memory_pool_used_bytes{pool="CodeHeap 'profiled nmethods'"} 9435264.0
+jvm_memory_pool_used_bytes{pool="Compressed Class Space"} 1126744.0
+jvm_memory_pool_used_bytes{pool="G1 Eden Space"} 3.9845888E7
+jvm_memory_pool_used_bytes{pool="G1 Old Gen"} 1.55443968E8
+jvm_memory_pool_used_bytes{pool="G1 Survivor Space"} 7340032.0
+jvm_memory_pool_used_bytes{pool="Metaspace"} 9537816.0
+# HELP jvm_memory_used_bytes Used bytes of a given JVM memory area.
+# TYPE jvm_memory_used_bytes gauge
+jvm_memory_used_bytes{area="heap"} 2.03678464E8
+jvm_memory_used_bytes{area="nonheap"} 2.4203184E7
+# HELP jvm_runtime_info JVM runtime info
+# TYPE jvm_runtime_info gauge
+jvm_runtime_info{runtime="OpenJDK Runtime Environment",vendor="Eclipse Adoptium",version="21.0.12.1+1-LTS"} 1
+# HELP jvm_threads_current Current thread count of a JVM
+# TYPE jvm_threads_current gauge
+jvm_threads_current 97.0
+# HELP jvm_threads_daemon Daemon thread count of a JVM
+# TYPE jvm_threads_daemon gauge
+jvm_threads_daemon 42.0
+# HELP jvm_threads_deadlocked Cycles of JVM-threads that are in deadlock waiting to acquire object monitors or ownable synchronizers
+# TYPE jvm_threads_deadlocked gauge
+jvm_threads_deadlocked 0.0
+# HELP jvm_threads_deadlocked_monitor Cycles of JVM-threads that are in deadlock waiting to acquire object monitors
+# TYPE jvm_threads_deadlocked_monitor gauge
+jvm_threads_deadlocked_monitor 0.0
+# HELP jvm_threads_peak Peak thread count of a JVM
+# TYPE jvm_threads_peak gauge
+jvm_threads_peak 97.0
+# HELP jvm_threads_started_total Started thread count of a JVM
+# TYPE jvm_threads_started_total counter
+jvm_threads_started_total 97.0
+# HELP jvm_threads_state Current count of threads by state
+# TYPE jvm_threads_state gauge
+jvm_threads_state{state="BLOCKED"} 0.0
+jvm_threads_state{state="NEW"} 0.0
+jvm_threads_state{state="RUNNABLE"} 23.0
+jvm_threads_state{state="TERMINATED"} 0.0
+jvm_threads_state{state="TIMED_WAITING"} 56.0
+jvm_threads_state{state="UNKNOWN"} 0.0
+jvm_threads_state{state="WAITING"} 18.0
+# HELP kafka_controller_activebrokercount Attribute exposed for management kafka.controller:name=ActiveBrokerCount,type=KafkaController,attribute=Value
+# TYPE kafka_controller_activebrokercount gauge
+kafka_controller_activebrokercount 1.0
+# HELP kafka_controller_activecontrollercount Attribute exposed for management kafka.controller:name=ActiveControllerCount,type=KafkaController,attribute=Value
+# TYPE kafka_controller_activecontrollercount gauge
+kafka_controller_activecontrollercount 1.0
+# HELP kafka_controller_fencedbrokercount Attribute exposed for management kafka.controller:name=FencedBrokerCount,type=KafkaController,attribute=Value
+# TYPE kafka_controller_fencedbrokercount gauge
+kafka_controller_fencedbrokercount 0.0
+# HELP kafka_controller_offlinepartitionscount Attribute exposed for management kafka.controller:name=OfflinePartitionsCount,type=KafkaController,attribute=Value
+# TYPE kafka_controller_offlinepartitionscount gauge
+kafka_controller_offlinepartitionscount 0.0
+# HELP kafka_produce_total_time_ms_p99 Attribute exposed for management kafka.network:name=TotalTimeMs,type=RequestMetrics,attribute=99thPercentile
+# TYPE kafka_produce_total_time_ms_p99 gauge
+kafka_produce_total_time_ms_p99 0.0
+# HELP kafka_server_bytesinpersec_one_minute_rate Attribute exposed for management kafka.server:name=BytesInPerSec,type=BrokerTopicMetrics,attribute=OneMinuteRate
+# TYPE kafka_server_bytesinpersec_one_minute_rate gauge
+kafka_server_bytesinpersec_one_minute_rate 0.0
+# HELP kafka_server_bytesoutpersec_one_minute_rate Attribute exposed for management kafka.server:name=BytesOutPerSec,type=BrokerTopicMetrics,attribute=OneMinuteRate
+# TYPE kafka_server_bytesoutpersec_one_minute_rate gauge
+kafka_server_bytesoutpersec_one_minute_rate 0.0
+# HELP kafka_server_underminisrpartitioncount Attribute exposed for management kafka.server:name=UnderMinIsrPartitionCount,type=ReplicaManager,attribute=Value
+# TYPE kafka_server_underminisrpartitioncount gauge
+kafka_server_underminisrpartitioncount 0.0
+# HELP kafka_server_underreplicatedpartitions Attribute exposed for management kafka.server:name=UnderReplicatedPartitions,type=ReplicaManager,attribute=Value
+# TYPE kafka_server_underreplicatedpartitions gauge
+kafka_server_underreplicatedpartitions 0.0
+# HELP process_cpu_seconds_total Total user and system CPU time spent in seconds.
+# TYPE process_cpu_seconds_total counter
+process_cpu_seconds_total 4.0
+# HELP process_max_fds Maximum number of open file descriptors.
+# TYPE process_max_fds gauge
+process_max_fds 524288.0
+# HELP process_open_fds Number of open file descriptors.
+# TYPE process_open_fds gauge
+process_open_fds 170.0
+# HELP process_resident_memory_bytes Resident memory size in bytes.
+# TYPE process_resident_memory_bytes gauge
+process_resident_memory_bytes 3.60726528E8
+# HELP process_start_time_seconds Start time of the process since unix epoch in seconds.
+# TYPE process_start_time_seconds gauge
+process_start_time_seconds 1.795093497526E9
+# HELP process_virtual_memory_bytes Virtual memory size in bytes.
+# TYPE process_virtual_memory_bytes gauge
+process_virtual_memory_bytes 2.929102848E9

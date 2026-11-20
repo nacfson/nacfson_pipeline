@@ -196,9 +196,8 @@ def main():
             ns = doc.get("metadata", {}).get("namespace", "")
             if kind not in ALLOWED_PROJECT_KINDS:
                 errors.append(f"Invariant 6 violation: Project layer rendered forbidden kind {kind} ({name})")
-    deploy_dir = os.path.join(base_dir, "deploy")
     deploy_namespaces = set()
-    for root, _, files in os.walk(deploy_dir):
+    for root, _, files in (w for d in ("deploy", "clusters") for w in os.walk(os.path.join(base_dir, d))):
         for file in files:
             if file.endswith((".yaml", ".yml")):
                 for doc in load_yaml_docs(os.path.join(root, file)):
@@ -257,7 +256,7 @@ def main():
         if val_set != expected_selector_namespaces:
             errors.append(
                 f"Invariant 8 violation: gitops-managed-namespaces namespaceSelector values {sorted(val_set)} "
-                f"do not match expected {{default, flux-system}} ∪ deploy/ namespaces {sorted(expected_selector_namespaces)}"
+                f"do not match expected {{default, flux-system}} ∪ deploy/ and clusters/ namespaces {sorted(expected_selector_namespaces)}"
             )
 
         leaked_forbidden = val_set & forbidden_selector_namespaces

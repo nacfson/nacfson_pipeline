@@ -1,0 +1,23 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: fluent-bit-gke
+  namespace: observability
+  labels:
+    app.kubernetes.io/part-of: platform
+spec:
+  secretName: fluent-bit-kafka-client
+  commonName: fluent-bit-gke
+  duration: 2160h
+  renewBefore: 720h
+  usages:
+    - digital signature
+    - client auth
+  privateKey:
+    algorithm: ECDSA
+    size: 256
+    rotationPolicy: Always
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: kafka-mtls-ca

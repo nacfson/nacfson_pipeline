@@ -1,0 +1,10 @@
+[Unit]
+Description=Check certificate expiry for the ops agent
+
+[Service]
+Type=oneshot
+User=kafka
+Group=kafka
+Environment=OPS_VM={{ inventory_hostname }}
+Environment=OPS_TLS_DIR={{ kafka_tls_dir }}
+ExecStart=/usr/local/lib/ops-agent/ops-certs.sh

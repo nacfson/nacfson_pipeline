@@ -1,0 +1,5 @@
+__consumer_offsets
+logs.proj.quarantine
+logs.proj.valid
+ops.platform.events
+ops.platform.metrics

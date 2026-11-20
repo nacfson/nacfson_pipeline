@@ -1,0 +1,57 @@
+- name: Refuse to change a degraded cluster
+  ansible.builtin.import_playbook: preflight.yml
+
+- name: Configure the Kafka VMs one at a time, controllers first
+  hosts: controllers:brokers
+  serial: 1
+  any_errors_fatal: true
+  become: true
+  roles:
+    - role: base
+    - role: wireguard
+      when: inventory_hostname in groups['brokers']
+    - role: certs
+    - role: kafka
+  post_tasks:
+    - name: Wait until every broker is back and fully replicated
+      ansible.builtin.include_tasks: tasks/cluster-health.yml
+      when: not hostvars['localhost'].site_first_build
+
+    - name: Retry the health check for up to 15 minutes
+      ansible.builtin.include_tasks: tasks/wait-healthy.yml
+      when: not hostvars['localhost'].site_first_build and not cluster_healthy
+
+    - name: Record the applied commit
+      ansible.builtin.copy:
+        content: "{{ applied_commit }}\n"
+        dest: /etc/nacfson/applied-commit
+        mode: "0644"
+      when: applied_commit is defined
+
+- name: Converge topics and ACLs once, as broker-1
+  hosts: a1-1
+  become: true
+  gather_facts: false
+  pre_tasks:
+    - name: Every broker must be registered before topics with three replicas exist
+      ansible.builtin.import_tasks: tasks/wait-brokers.yml
+  roles:
+    - role: topics_acls
+
+- name: Start the ops agent on every VM
+  hosts: controllers:brokers
+  become: true
+  roles:
+    - role: samplers
+    - role: ops_agent
+
+- name: Record that the cluster has been built
+  hosts: controllers:brokers
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Leave the first-build marker
+      ansible.builtin.copy:
+        content: "built\n"
+        dest: "{{ cluster_built_marker }}"
+        mode: "0644"

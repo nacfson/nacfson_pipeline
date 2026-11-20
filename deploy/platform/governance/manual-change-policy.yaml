@@ -30,6 +30,29 @@ spec:
           request.namespace in ['platform', 'cert-manager'] &&
           request.resource.group in ['', 'cert-manager.io', 'acme.cert-manager.io', 'networking.k8s.io', 'events.k8s.io'] &&
           request.resource.resource in ['secrets', 'events', 'pods', 'services', 'ingresses', 'certificates', 'certificaterequests', 'orders', 'challenges']) ||
+        (request.userInfo.username.startsWith('system:serviceaccount:cert-manager:') &&
+          request.namespace == 'observability' &&
+          request.resource.group in ['', 'cert-manager.io', 'events.k8s.io'] &&
+          request.resource.resource in ['secrets', 'events', 'certificates', 'certificaterequests']) ||
+        (request.userInfo.username.startsWith('system:serviceaccount:cert-manager:') &&
+          request.namespace == 'oci-link' &&
+          request.resource.group in ['', 'cert-manager.io', 'events.k8s.io'] &&
+          request.resource.resource in ['events', 'certificaterequests']) ||
+        (request.userInfo.username == 'system:serviceaccount:oci-link:wg-slot-agent' &&
+          request.namespace == 'oci-link' &&
+          ((request.resource.group == 'coordination.k8s.io' && request.resource.resource == 'leases' && request.operation in ['CREATE', 'UPDATE']) ||
+           (request.resource.group in ['', 'events.k8s.io'] && request.resource.resource == 'events' && request.operation == 'CREATE'))) ||
+        (request.userInfo.username == 'system:serviceaccount:oci-link:wg-slot-keygen' &&
+          request.namespace == 'oci-link' &&
+          request.operation in ['CREATE', 'UPDATE'] &&
+          request.resource.group == '' &&
+          ((request.resource.resource == 'secrets' && request.name == 'wg-slot-keys') ||
+           (request.resource.resource == 'configmaps' && request.name == 'wg-slot-public'))) ||
+        (request.userInfo.username == 'cc-kafka-runner@nacfson-pipeline.iam.gserviceaccount.com' &&
+          request.namespace == 'oci-link' &&
+          request.operation == 'CREATE' &&
+          ((request.resource.group == 'cert-manager.io' && request.resource.resource == 'certificaterequests') ||
+           (request.resource.group in ['', 'events.k8s.io'] && request.resource.resource == 'events'))) ||
         'platform:break-glass' in request.userInfo.groups ||
         (request.resource.resource == 'pods' && (!has(request.subResource) || request.subResource == '') && request.operation == 'DELETE') ||
         (request.resource.resource == 'pods' && has(request.subResource) && request.subResource == 'eviction') ||
@@ -63,6 +86,7 @@ spec:
             - proj-blog
             - cert-manager
             - observability
+            - oci-link
 ---
 apiVersion: admissionregistration.k8s.io/v1
 kind: ValidatingAdmissionPolicy

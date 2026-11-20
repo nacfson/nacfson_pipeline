@@ -1,0 +1,6 @@
+format
+--cluster-id
+IzXtKbazRM6ZRcObBw5qXA
+--config
+/etc/kafka-node/server.properties
+--no-initial-controllers

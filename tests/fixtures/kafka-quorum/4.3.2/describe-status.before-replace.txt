@@ -1,0 +1,8 @@
+ClusterId:              IzXtKbazRM6ZRcObBw5qXA
+LeaderId:               1
+LeaderEpoch:            8
+HighWatermark:          10299
+MaxFollowerLag:         0
+MaxFollowerLagTimeMs:   0
+CurrentVoters:          [{"id": 1, "directoryId": "eFwoLaOpTwOL1gI0wJymvA", "endpoints": ["CONTROLLER://node-1:9093"]}, {"id": 2, "directoryId": "49xqtT-RSkOQGsPkD9yruQ", "endpoints": ["CONTROLLER://node-2:9093"]}, {"id": 4, "directoryId": "YkxbiitTRYiC1W3aHMCsLg", "endpoints": ["CONTROLLER://node-4:9093"]}]
+CurrentObservers:       [{"id": 3, "directoryId": "7bOaZIvJl_0wqX6abxnI3A"}, {"id": 3, "directoryId": "jmFKPfpn4qgZRpUjJBRSSQ"}]

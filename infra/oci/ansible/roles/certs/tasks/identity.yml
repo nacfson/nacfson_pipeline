@@ -1,0 +1,80 @@
+- name: "Key for {{ certs_identity }}"
+  community.crypto.openssl_privatekey:
+    path: "{{ kafka_tls_dir }}/{{ certs_identity }}.key"
+    type: ECC
+    curve: secp256r1
+    format: pkcs8
+    owner: kafka
+    group: kafka
+    mode: "0600"
+
+- name: "Current certificate of {{ certs_identity }}"
+  community.crypto.x509_certificate_info:
+    path: "{{ kafka_tls_dir }}/{{ certs_identity }}.crt"
+    valid_at:
+      renew: "+{{ kafka_cert_renew_days }}d"
+  register: certs_current
+  failed_when: false
+
+- name: "Renew {{ certs_identity }}"
+  when: force_renew | bool or certs_current.valid_at is not defined or not certs_current.valid_at.renew
+  block:
+    - name: "CSR for {{ certs_identity }}"
+      community.crypto.openssl_csr_pipe:
+        privatekey_path: "{{ kafka_tls_dir }}/{{ certs_identity }}.key"
+        common_name: "{{ certs_identity }}"
+        subject_alt_name: "{{ certs_server_sans if certs_identity is match('^(broker|controller)-') else omit }}"
+      register: certs_csr
+
+    - name: "CertificateRequest for {{ certs_identity }}"
+      ansible.builtin.command:
+        argv: [kubectl, create, -n, "{{ kafka_runner_namespace }}", -o, "jsonpath={.metadata.name}", -f, "-"]
+        stdin: "{{ lookup('ansible.builtin.template', 'certificaterequest.yaml.j2') }}"
+      delegate_to: localhost
+      become: false
+      register: certs_request
+      changed_when: true
+
+    - name: "Wait for the signed certificate of {{ certs_identity }}"
+      ansible.builtin.command:
+        argv: [kubectl, get, -n, "{{ kafka_runner_namespace }}", "certificaterequest/{{ certs_request.stdout }}", -o, json]
+      delegate_to: localhost
+      become: false
+      register: certs_signed
+      changed_when: false
+      until: (certs_signed.stdout | from_json).status.certificate is defined
+      retries: 36
+      delay: 5
+
+    - name: "Install the certificate of {{ certs_identity }}"
+      ansible.builtin.copy:
+        content: "{{ (certs_signed.stdout | from_json).status.certificate | b64decode }}"
+        dest: "{{ kafka_tls_dir }}/{{ certs_identity }}.crt"
+        owner: kafka
+        group: kafka
+        mode: "0640"
+
+    - name: Install the CA certificate
+      ansible.builtin.copy:
+        content: "{{ (certs_signed.stdout | from_json).status.ca | b64decode }}"
+        dest: "{{ kafka_tls_dir }}/ca.crt"
+        owner: kafka
+        group: kafka
+        mode: "0644"
+
+    - name: "Record the renewal of {{ certs_identity }}"
+      ansible.builtin.set_fact:
+        certs_renewed: "{{ certs_renewed | default([]) + [certs_identity] }}"
+
+- name: "Build the PEM keystore of {{ certs_identity }}"
+  ansible.builtin.shell: >-
+    set -o pipefail &&
+    cat {{ kafka_tls_dir }}/{{ certs_identity }}.key {{ kafka_tls_dir }}/{{ certs_identity }}.crt
+    | install -o kafka -g kafka -m 0600 /dev/stdin {{ kafka_tls_dir }}/{{ certs_identity }}.pem.new
+    && if cmp -s {{ kafka_tls_dir }}/{{ certs_identity }}.pem.new {{ kafka_tls_dir }}/{{ certs_identity }}.pem;
+    then rm {{ kafka_tls_dir }}/{{ certs_identity }}.pem.new; echo same;
+    else mv {{ kafka_tls_dir }}/{{ certs_identity }}.pem.new {{ kafka_tls_dir }}/{{ certs_identity }}.pem; fi
+  args:
+    executable: /bin/bash
+  register: certs_pem
+  changed_when: certs_pem.stdout != 'same'

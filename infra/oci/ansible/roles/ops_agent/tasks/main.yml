@@ -1,0 +1,58 @@
+- name: Create the ops agent directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: kafka
+    group: kafka
+    mode: "0750"
+  loop:
+    - /etc/ops-agent
+    - /var/lib/ops-agent
+    - /var/lib/ops-agent/buffer
+    - /var/lib/ops-agent/samples
+
+- name: Give the agent its own TLS files
+  ansible.builtin.import_tasks: tls.yml
+
+- name: Write the agent config
+  ansible.builtin.template:
+    src: fluent-bit.conf.j2
+    dest: /etc/ops-agent/fluent-bit.conf
+    owner: kafka
+    group: kafka
+    mode: "0640"
+  notify: Restart ops-agent
+
+- name: Install the event rules and parsers
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/etc/ops-agent/{{ item }}"
+    owner: kafka
+    group: kafka
+    mode: "0644"
+  loop:
+    - ops_events.lua
+    - parsers.conf
+  notify: Restart ops-agent
+
+- name: Look up the host's systemd-journal group
+  ansible.builtin.getent:
+    database: group
+    key: systemd-journal
+
+- name: Write the Quadlet unit
+  ansible.builtin.template:
+    src: ops-agent.container.j2
+    dest: /etc/containers/systemd/ops-agent.container
+    mode: "0644"
+  notify:
+    - Reload systemd for the ops agent
+    - Restart ops-agent
+
+- name: Apply unit changes before starting
+  ansible.builtin.meta: flush_handlers
+
+- name: Start the ops agent
+  ansible.builtin.systemd_service:
+    name: ops-agent
+    state: started

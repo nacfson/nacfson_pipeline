@@ -67,8 +67,25 @@ func (c *Client) Send(ctx context.Context, channel string, n Notification) error
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusAccepted {
 		b, _ := io.ReadAll(io.LimitReader(resp.Body, errBodyLimit))
-		return fmt.Errorf("notify: channel %s: unexpected status %d: %s",
-			channel, resp.StatusCode, strings.TrimSpace(string(b)))
+		return &StatusError{Channel: channel, Code: resp.StatusCode, Body: strings.TrimSpace(string(b))}
 	}
 	return nil
+}
+
+type StatusError struct {
+	Channel string
+	Code    int
+	Body    string
+}
+
+func (e *StatusError) Error() string {
+	return fmt.Sprintf("notify: channel %s: unexpected status %d: %s", e.Channel, e.Code, e.Body)
+}
+
+func (e *StatusError) Permanent() bool {
+	switch e.Code {
+	case http.StatusBadRequest, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity:
+		return true
+	}
+	return false
 }

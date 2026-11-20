@@ -1,0 +1,9 @@
+- name: Issue certificates for this VM's identities
+  ansible.builtin.include_tasks: identity.yml
+  loop: "{{ kafka_nodes[inventory_hostname].identities }}"
+  loop_control:
+    loop_var: certs_identity
+
+- name: Collect identities whose certificate changed
+  ansible.builtin.set_fact:
+    certs_changed: "{{ certs_renewed | default([]) | length > 0 }}"

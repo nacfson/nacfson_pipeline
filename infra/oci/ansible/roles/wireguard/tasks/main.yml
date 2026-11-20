@@ -1,0 +1,32 @@
+- name: Create the WireGuard directory
+  ansible.builtin.file:
+    path: /etc/wireguard
+    state: directory
+    mode: "0700"
+
+- name: Generate the VM's WireGuard key on the VM
+  ansible.builtin.shell: umask 077 && wg genkey > /etc/wireguard/private.key
+  args:
+    creates: /etc/wireguard/private.key
+
+- name: Read the VM's WireGuard public key
+  ansible.builtin.shell: wg pubkey < /etc/wireguard/private.key
+  register: wireguard_public_key
+  changed_when: false
+
+- name: Show the public key for the wg-peers pull request
+  ansible.builtin.debug:
+    msg: "{{ inventory_hostname }} WireGuard public key: {{ wireguard_public_key.stdout }}"
+
+- name: Write wg0.conf
+  ansible.builtin.template:
+    src: wg0.conf.j2
+    dest: /etc/wireguard/wg0.conf
+    mode: "0600"
+  notify: Restart wg0
+
+- name: Enable wg0
+  ansible.builtin.systemd_service:
+    name: wg-quick@wg0
+    enabled: true
+    state: started

@@ -1,0 +1,12 @@
+- name: Wait until this controller is a voter with no lag
+  kafka_quorum:
+    admin: "{{ kafka_admin }}"
+    admin_args: "{{ kafka_admin_args }}"
+  register: quorum_now
+  until: >-
+    quorum_now.quorum.replication
+    | selectattr('node_id', 'equalto', kafka_nodes[inventory_hostname].node_id)
+    | selectattr('status', 'in', ['Leader', 'Follower'])
+    | selectattr('lag', 'equalto', 0) | list | length == 1
+  retries: 60
+  delay: 5

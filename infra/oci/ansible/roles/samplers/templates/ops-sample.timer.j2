@@ -1,0 +1,10 @@
+[Unit]
+Description=Sample metrics every 30 s
+
+[Timer]
+OnBootSec=30s
+OnUnitActiveSec=30s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,124 @@
+- name: Read the quorum from a surviving controller
+  hosts: "{{ groups['controllers'] | difference([target | default('')]) | first }}"
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Only one controller is replaced at a time
+      ansible.builtin.assert:
+        that: (target | default('')) in groups['controllers']
+        fail_msg: "replace-controller.yml takes one controller host (target=a1-1, a1-2, or micro-2)"
+
+    - name: Read the quorum
+      kafka_quorum:
+        admin: "{{ kafka_admin }}"
+        admin_args: "{{ kafka_admin_args }}"
+      register: replace_before
+
+    - name: Record the old voter's directory ID
+      ansible.builtin.set_fact:
+        replace_node_id: "{{ kafka_nodes[target].node_id }}"
+        replace_old_directory: >-
+          {{ replace_before.quorum.voters | selectattr('id', 'equalto', kafka_nodes[target].node_id)
+             | map(attribute='directory_id') | first | default('') }}
+
+- name: Stop the old voter if it still runs
+  hosts: "{{ target | default('none') }}"
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Stop Kafka on the target
+      ansible.builtin.systemd_service:
+        name: kafka
+        state: stopped
+      failed_when: false
+
+- name: Remove the old voter from the quorum
+  hosts: "{{ groups['controllers'] | difference([target | default('')]) | first }}"
+  become: true
+  gather_facts: false
+  tasks:
+    - name: Remove controller {{ replace_node_id }}
+      ansible.builtin.command:
+        argv: "{{ kafka_admin + ['/opt/kafka/bin/kafka-metadata-quorum.sh'] + replace_remove }}"
+      vars:
+        replace_remove:
+          - --bootstrap-server
+          - "{{ kafka_bootstrap_servers }}"
+          - --command-config
+          - /etc/kafka-node/clients/admin.properties
+          - remove-controller
+          - --controller-id
+          - "{{ replace_node_id }}"
+          - --controller-directory-id
+          - "{{ replace_old_directory }}"
+      when: replace_old_directory | length > 0
+      changed_when: true
+
+- name: Rebuild the controller and add it back
+  hosts: "{{ target | default('none') }}"
+  any_errors_fatal: true
+  become: true
+  roles:
+    - role: base
+    - role: wireguard
+      when: inventory_hostname in groups['brokers']
+    - role: certs
+    - role: kafka
+  post_tasks:
+    - name: Write the add-controller client config
+      ansible.builtin.copy:
+        content: "{{ lookup('ansible.builtin.template', 'roles/kafka/templates/server.properties.j2') }}security.protocol=SSL\n"
+        dest: /etc/kafka/clients/add-controller.properties
+        owner: kafka
+        group: kafka
+        mode: "0640"
+
+    - name: Wait until the new controller has caught up as an observer
+      kafka_quorum:
+        admin: "{{ kafka_admin }}"
+        admin_args: "{{ kafka_admin_args }}"
+      register: replace_observer
+      until: >-
+        replace_observer.quorum.replication
+        | selectattr('node_id', 'equalto', kafka_nodes[inventory_hostname].node_id)
+        | rejectattr('directory_id', 'equalto', hostvars[groups['controllers'] | difference([target]) | first].replace_old_directory)
+        | selectattr('status', 'equalto', 'Observer') | selectattr('lag', 'equalto', 0) | list | length == 1
+      retries: 60
+      delay: 5
+
+    - name: Add this controller to the quorum
+      ansible.builtin.command:
+        argv: "{{ kafka_admin + replace_add_controller }}"
+      vars:
+        replace_add_controller:
+          - /opt/kafka/bin/kafka-metadata-quorum.sh
+          - --bootstrap-controller
+          - "{{ kafka_controller_bootstrap_servers }}"
+          - --command-config
+          - /etc/kafka-node/clients/add-controller.properties
+          - add-controller
+      changed_when: true
+
+    - name: Wait for three voters with no lag
+      kafka_quorum:
+        admin: "{{ kafka_admin }}"
+        admin_args: "{{ kafka_admin_args }}"
+      register: replace_after
+      until: >-
+        (replace_after.quorum.voters | length) == 3 and
+        (replace_after.quorum.voters | selectattr('id', 'equalto', kafka_nodes[inventory_hostname].node_id) | list | length) == 1 and
+        (replace_after.quorum.replication | selectattr('status', 'in', ['Leader', 'Follower']) | map(attribute='lag') | max) == 0
+      retries: 60
+      delay: 5
+
+    - name: Wait until every partition is fully replicated again
+      ansible.builtin.include_tasks: tasks/wait-healthy.yml
+      vars:
+        wait_retries: 360
+
+    - name: Record the applied commit
+      ansible.builtin.copy:
+        content: "{{ applied_commit }}\n"
+        dest: /etc/nacfson/applied-commit
+        mode: "0644"
+      when: applied_commit is defined

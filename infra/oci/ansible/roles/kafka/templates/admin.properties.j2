@@ -1,0 +1,5 @@
+security.protocol=SSL
+ssl.keystore.type=PEM
+ssl.keystore.location={{ kafka_container_tls_dir }}/{{ kafka_nodes[inventory_hostname].identities | select('match', '^broker-') | first }}.pem
+ssl.truststore.type=PEM
+ssl.truststore.location={{ kafka_container_tls_dir }}/ca.crt
