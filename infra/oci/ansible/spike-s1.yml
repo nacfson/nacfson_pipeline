@@ -1,0 +1,49 @@
+- name: Spike S1, WireGuard source NAT under Dataplane V2 (quickstart Scenario 0)
+  hosts: micro-1
+  become: true
+  vars:
+    spike_slot: "{{ wireguard_slots | selectattr('slot', 'equalto', 0) | first }}"
+  tasks:
+    - name: Require slot 0's public key
+      ansible.builtin.assert:
+        that: spike_slot.public_key | length > 0
+        fail_msg: "Copy slot-0.pub from oci-link/wg-slot-public into group_vars/brokers/wireguard_slots.yml first"
+
+    - name: Install WireGuard tools
+      ansible.builtin.apt:
+        name: "wireguard-tools={{ base_packages['wireguard-tools'] }}"
+        update_cache: true
+
+    - name: Bring up wg0 with slot 0's peer
+      ansible.builtin.include_role:
+        name: wireguard
+      vars:
+        wireguard_slots: ["{{ spike_slot }}"]
+
+    - name: Open UDP 51820 and TCP 9092 on wg0 past the image's iptables rules
+      ansible.builtin.command:
+        argv: "{{ ['iptables', '-I', 'INPUT'] + item }}"
+      loop:
+        - [-p, udp, --dport, "{{ wireguard_port }}", -j, ACCEPT]
+        - [-i, wg0, -p, tcp, --dport, "9092", -j, ACCEPT]
+      changed_when: true
+
+    - name: Install the spike listener
+      ansible.builtin.copy:
+        dest: /usr/local/bin/spike-s1-listener
+        mode: "0755"
+        content: |
+          #!/usr/bin/python3
+          import socket
+          import sys
+          s = socket.socket()
+          s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+          s.bind((sys.argv[1], 9092))
+          s.listen(8)
+          while True:
+              s.accept()[0].close()
+
+    - name: Listen on 10.200.0.13:9092 with a plain TCP listener
+      ansible.builtin.command:
+        argv: [systemd-run, --unit=spike-s1, --collect, /usr/local/bin/spike-s1-listener, "{{ ansible_host }}"]
+      changed_when: true

@@ -1,0 +1,55 @@
+Current ACLs for resource `ResourcePattern(resourceType=TOPIC, name=ops.platform.events, patternType=LITERAL)`:
+	(principal=User:ops-agent-micro-2, host=*, operation=DESCRIBE, permissionType=ALLOW)
+	(principal=User:ops-agent-micro-1, host=*, operation=DESCRIBE, permissionType=ALLOW)
+	(principal=User:ops-agent-a1-1, host=*, operation=WRITE, permissionType=ALLOW)
+	(principal=User:ops-agent-a1-2, host=*, operation=WRITE, permissionType=ALLOW)
+	(principal=User:ops-agent-a1-2, host=*, operation=DESCRIBE, permissionType=ALLOW)
+	(principal=User:ops-agent-a1-1, host=*, operation=DESCRIBE, permissionType=ALLOW)
+	(principal=User:ops-agent-micro-2, host=*, operation=WRITE, permissionType=ALLOW)
+	(principal=User:ops-agent-micro-1, host=*, operation=WRITE, permissionType=ALLOW)
+	(principal=User:ops-relay, host=*, operation=READ, permissionType=ALLOW)
+	(principal=User:ops-relay, host=*, operation=DESCRIBE, permissionType=ALLOW)
+
+Current ACLs for resource `ResourcePattern(resourceType=TOPIC, name=logs.proj.quarantine, patternType=LITERAL)`:
+	(principal=User:fluent-bit-gke, host=*, operation=WRITE, permissionType=ALLOW)
+	(principal=User:fluent-bit-gke, host=*, operation=DESCRIBE, permissionType=ALLOW)
+
+Current ACLs for resource `ResourcePattern(resourceType=GROUP, name=*, patternType=LITERAL)`:
+	(principal=User:ops-cli, host=*, operation=DESCRIBE, permissionType=ALLOW)
+
+Current ACLs for resource `ResourcePattern(resourceType=GROUP, name=ops-relay, patternType=LITERAL)`:
+	(principal=User:ops-relay, host=*, operation=READ, permissionType=ALLOW)
+
+Current ACLs for resource `ResourcePattern(resourceType=CLUSTER, name=kafka-cluster, patternType=LITERAL)`:
+	(principal=User:ops-agent-a1-1, host=*, operation=IDEMPOTENT_WRITE, permissionType=ALLOW)
+	(principal=User:ops-agent-a1-2, host=*, operation=IDEMPOTENT_WRITE, permissionType=ALLOW)
+	(principal=User:fluent-bit-gke, host=*, operation=IDEMPOTENT_WRITE, permissionType=ALLOW)
+	(principal=User:ops-relay, host=*, operation=DESCRIBE_CONFIGS, permissionType=ALLOW)
+	(principal=User:ops-cli, host=*, operation=DESCRIBE_CONFIGS, permissionType=ALLOW)
+	(principal=User:ops-cli, host=*, operation=DESCRIBE, permissionType=ALLOW)
+	(principal=User:ops-agent-micro-2, host=*, operation=IDEMPOTENT_WRITE, permissionType=ALLOW)
+	(principal=User:ops-agent-micro-1, host=*, operation=IDEMPOTENT_WRITE, permissionType=ALLOW)
+	(principal=User:ops-relay, host=*, operation=DESCRIBE, permissionType=ALLOW)
+
+Current ACLs for resource `ResourcePattern(resourceType=TOPIC, name=*, patternType=LITERAL)`:
+	(principal=User:ops-relay, host=*, operation=DESCRIBE_CONFIGS, permissionType=ALLOW)
+	(principal=User:ops-cli, host=*, operation=DESCRIBE_CONFIGS, permissionType=ALLOW)
+	(principal=User:ops-cli, host=*, operation=DESCRIBE, permissionType=ALLOW)
+	(principal=User:ops-relay, host=*, operation=DESCRIBE, permissionType=ALLOW)
+
+Current ACLs for resource `ResourcePattern(resourceType=TOPIC, name=logs.proj.valid, patternType=LITERAL)`:
+	(principal=User:fluent-bit-gke, host=*, operation=WRITE, permissionType=ALLOW)
+	(principal=User:fluent-bit-gke, host=*, operation=DESCRIBE, permissionType=ALLOW)
+
+Current ACLs for resource `ResourcePattern(resourceType=TOPIC, name=ops.platform.metrics, patternType=LITERAL)`:
+	(principal=User:ops-agent-micro-2, host=*, operation=DESCRIBE, permissionType=ALLOW)
+	(principal=User:ops-agent-micro-1, host=*, operation=DESCRIBE, permissionType=ALLOW)
+	(principal=User:ops-agent-a1-1, host=*, operation=WRITE, permissionType=ALLOW)
+	(principal=User:ops-agent-a1-2, host=*, operation=WRITE, permissionType=ALLOW)
+	(principal=User:ops-agent-a1-2, host=*, operation=DESCRIBE, permissionType=ALLOW)
+	(principal=User:ops-agent-a1-1, host=*, operation=DESCRIBE, permissionType=ALLOW)
+	(principal=User:ops-agent-micro-2, host=*, operation=WRITE, permissionType=ALLOW)
+	(principal=User:ops-agent-micro-1, host=*, operation=WRITE, permissionType=ALLOW)
+	(principal=User:ops-relay, host=*, operation=READ, permissionType=ALLOW)
+	(principal=User:ops-relay, host=*, operation=DESCRIBE, permissionType=ALLOW)
+

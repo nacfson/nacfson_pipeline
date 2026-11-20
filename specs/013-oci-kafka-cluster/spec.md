@@ -53,7 +53,7 @@ As the platform operator, I want every log record that Fluent Bit sends from GKE
 
 **Why this priority**: Without a receiving cluster, the GKE Fluent Bit buffers fill (256 MiB per node) and then drop the oldest logs. Nothing else in the log pipeline works without this.
 
-**Independent Test**: With the GKE Fluent Bit output changed only to add its TLS client settings, write a known sequence of numbered log lines from a test `proj-*` container, then read both topics from the beginning and confirm every line appears exactly once, in order per pod, with each partition stored on three machines.
+**Independent Test**: With the GKE Fluent Bit output changed only to add its TLS client settings, write a known sequence of numbered log lines from a test `proj-*` container, then read both topics from the beginning and confirm every line appears exactly once, in order per pod within each partition, with each partition stored on three machines.
 
 **Acceptance Scenarios**:
 

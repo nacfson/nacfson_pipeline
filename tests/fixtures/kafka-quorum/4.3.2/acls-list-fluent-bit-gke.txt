@@ -1,0 +1,12 @@
+ACLs for principal `User:fluent-bit-gke`
+Current ACLs for resource `ResourcePattern(resourceType=TOPIC, name=logs.proj.valid, patternType=LITERAL)`:
+	(principal=User:fluent-bit-gke, host=*, operation=WRITE, permissionType=ALLOW)
+	(principal=User:fluent-bit-gke, host=*, operation=DESCRIBE, permissionType=ALLOW)
+
+Current ACLs for resource `ResourcePattern(resourceType=CLUSTER, name=kafka-cluster, patternType=LITERAL)`:
+	(principal=User:fluent-bit-gke, host=*, operation=IDEMPOTENT_WRITE, permissionType=ALLOW)
+
+Current ACLs for resource `ResourcePattern(resourceType=TOPIC, name=logs.proj.quarantine, patternType=LITERAL)`:
+	(principal=User:fluent-bit-gke, host=*, operation=WRITE, permissionType=ALLOW)
+	(principal=User:fluent-bit-gke, host=*, operation=DESCRIBE, permissionType=ALLOW)
+

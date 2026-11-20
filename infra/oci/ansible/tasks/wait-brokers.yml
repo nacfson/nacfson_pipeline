@@ -1,0 +1,10 @@
+- name: Wait until every broker is registered
+  ansible.builtin.command:
+    argv: "{{ kafka_admin + ['/opt/kafka/bin/kafka-broker-api-versions.sh'] + kafka_admin_args }}"
+  register: wait_brokers
+  changed_when: false
+  until: >-
+    wait_brokers.rc == 0 and
+    (wait_brokers.stdout | regex_findall('\\(id: \\d+') | length) == (groups['brokers'] | length)
+  retries: 60
+  delay: 10

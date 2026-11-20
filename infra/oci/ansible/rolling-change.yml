@@ -1,0 +1,73 @@
+- name: Refuse to change a degraded cluster
+  ansible.builtin.import_playbook: preflight.yml
+  tags: [always]
+
+- name: Change one VM at a time, controllers first
+  hosts: controllers:brokers
+  serial: 1
+  any_errors_fatal: true
+  become: true
+  tasks:
+    - name: Confirm full replication before touching this VM
+      ansible.builtin.include_tasks:
+        file: tasks/wait-healthy.yml
+        apply:
+          tags: [always]
+      tags: [always]
+
+    - name: Install the pinned package versions
+      ansible.builtin.apt:
+        name: "{{ base_packages | dict2items | map(attribute='key') | zip(base_packages | dict2items | map(attribute='value')) | map('join', '=') | list }}"
+        update_cache: true
+        allow_downgrade: false
+        allow_change_held_packages: true
+      tags: [never, patch]
+
+    - name: Hold the pinned packages so the upgrade leaves them alone
+      ansible.builtin.dpkg_selections:
+        name: "{{ item }}"
+        selection: hold
+      loop: "{{ base_packages.keys() | list }}"
+      tags: [never, patch]
+
+    - name: Upgrade every package that is not pinned
+      ansible.builtin.apt:
+        upgrade: dist
+      tags: [never, patch]
+
+    - name: Restart Kafka
+      ansible.builtin.systemd_service:
+        name: kafka
+        state: restarted
+      when: "'reboot' not in ansible_run_tags"
+      tags: [always]
+
+    - name: Reboot the VM
+      ansible.builtin.reboot:
+        reboot_timeout: 900
+      tags: [never, reboot]
+
+    - name: Wait until the node is registered and the cluster is fully replicated
+      ansible.builtin.include_tasks:
+        file: tasks/wait-healthy.yml
+        apply:
+          tags: [always]
+      tags: [always]
+
+    - name: Wait for no partition under its minimum in-sync replicas
+      ansible.builtin.command:
+        argv: "{{ kafka_admin + ['/opt/kafka/bin/kafka-topics.sh'] + kafka_admin_args + ['--describe', '--under-min-isr-partitions'] }}"
+      register: rolling_under_min_isr
+      changed_when: false
+      until: rolling_under_min_isr.rc == 0 and (rolling_under_min_isr.stdout | trim) == ''
+      retries: 60
+      delay: 5
+      tags: [always]
+
+    - name: Wait for this controller to catch up
+      ansible.builtin.include_tasks:
+        file: tasks/wait-quorum.yml
+        apply:
+          tags: [always]
+      when: inventory_hostname in groups['controllers']
+      tags: [always]

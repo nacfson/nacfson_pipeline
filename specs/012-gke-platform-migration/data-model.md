@@ -113,4 +113,4 @@ Local operator staging directory (`chmod 0700`, never inside the Git worktree) p
 | `proj_pn.dump.gz` | `postgres-0` (`db-migrate-dump.sh --project pn --export`) | `postgres-0` (`db-migrate-dump.sh --project pn --file`) | SHA-256 + `\dt` table count as `user_pn` |
 | `proj_health.dump.gz` | `postgres-0` (`db-migrate-dump.sh --project health --export`) | `postgres-0` (`db-migrate-dump.sh --project health --file`) | SHA-256 + `\dt` table count as `user_health` |
 | `edge-tls-secrets.yaml` | `platform/{auth,pn,health,blog}-tls` + `cert-manager/letsencrypt-prod-account` (stripped of `uid`/`resourceVersion`) | Applied to `platform` & `cert-manager` via `platform:break-glass` before DNS flip | SHA-256 + `openssl x509 -noout -subject -dates` + HTTPS SNI check |
-| `victoria-logs-data.tar.gz` | `victorialogs-0:/victoria-logs-data` | Verified at Gate 3/4; imported onto OCI VM 4 in Spec 013 | SHA-256 + `tar -tzf` integrity check |
+| `victoria-logs-data.tar.gz` | `victorialogs-0:/victoria-logs-data` | Verified at Gate 3/4; imported onto the shared A1 VMs in Spec 014 (no separate OCI VM 4) | SHA-256 + `tar -tzf` integrity check |

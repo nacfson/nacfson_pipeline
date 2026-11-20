@@ -1,0 +1,119 @@
+- name: Remove automatic upgrades and the image's iptables rules
+  ansible.builtin.apt:
+    name:
+      - unattended-upgrades
+      - iptables-persistent
+      - netfilter-persistent
+    state: absent
+    purge: true
+
+- name: Stop the apt timers so packages change only through the patch run
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    state: stopped
+    enabled: false
+    masked: true
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+
+- name: Install pinned packages
+  ansible.builtin.apt:
+    name: "{{ base_packages | dict2items | map(attribute='key') | zip(base_packages | dict2items | map(attribute='value')) | map('join', '=') | list }}"
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+    allow_downgrade: false
+    allow_change_held_packages: true
+
+- name: Hold the pinned packages so only a pin change in Git moves them
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop: "{{ base_packages.keys() | list }}"
+
+- name: Create the swap file on micro VMs
+  when: inventory_hostname in groups['micros']
+  block:
+    - name: Create and format /swapfile
+      ansible.builtin.shell: fallocate -l 1G /swapfile && chmod 0600 /swapfile && mkswap /swapfile
+      args:
+        creates: /swapfile
+
+    - name: Mount swap at boot
+      ansible.posix.mount:
+        path: none
+        src: /swapfile
+        fstype: swap
+        opts: sw
+        state: present
+
+    - name: Enable swap now
+      ansible.builtin.command: swapon --show=NAME --noheadings
+      register: base_swap_active
+      changed_when: false
+
+    - name: Turn on /swapfile
+      ansible.builtin.command: swapon /swapfile
+      when: "'/swapfile' not in base_swap_active.stdout"
+      changed_when: true
+
+    - name: Prefer RAM over swap
+      ansible.posix.sysctl:
+        name: vm.swappiness
+        value: "1"
+        sysctl_file: /etc/sysctl.d/90-nacfson.conf
+
+- name: Stop a spike listener left over from quickstart Scenario 0
+  ansible.builtin.systemd_service:
+    name: spike-s1
+    state: stopped
+  failed_when: false
+
+- name: Write the host firewall
+  ansible.builtin.template:
+    src: nftables.conf.j2
+    dest: /etc/nftables.conf
+    mode: "0644"
+    validate: nft -c -f %s
+  notify: Reload nftables
+
+- name: Enable nftables
+  ansible.builtin.systemd_service:
+    name: nftables
+    enabled: true
+    state: started
+
+- name: Create the kafka group
+  ansible.builtin.group:
+    name: kafka
+    gid: "{{ kafka_uid }}"
+    system: true
+
+- name: Create the kafka user
+  ansible.builtin.user:
+    name: kafka
+    uid: "{{ kafka_uid }}"
+    group: kafka
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Create Kafka directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: kafka
+    group: kafka
+    mode: "0700"
+  loop:
+    - /var/lib/kafka
+    - "{{ kafka_data_dir }}"
+    - /etc/kafka
+    - "{{ kafka_tls_dir }}"
+
+- name: Create the applied-commit directory
+  ansible.builtin.file:
+    path: /etc/nacfson
+    state: directory
+    mode: "0755"

@@ -1,0 +1,46 @@
+- name: Create the sampler state directory
+  ansible.builtin.file:
+    path: /var/lib/ops-agent/state
+    state: directory
+    owner: kafka
+    group: kafka
+    mode: "0750"
+
+- name: Create the sampler script directory
+  ansible.builtin.file:
+    path: /usr/local/lib/ops-agent
+    state: directory
+    mode: "0755"
+
+- name: Install the sampler scripts
+  ansible.builtin.copy:
+    src: "{{ item }}"
+    dest: "/usr/local/lib/ops-agent/{{ item }}"
+    mode: "0755"
+  loop:
+    - ops-sample.sh
+    - ops-certs.sh
+
+- name: Write the sampler units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop:
+    - ops-sample.service
+    - ops-sample.timer
+    - ops-certs.service
+    - ops-certs.timer
+  notify: Reload systemd for the samplers
+
+- name: Apply unit changes before enabling
+  ansible.builtin.meta: flush_handlers
+
+- name: Enable the sampler timers
+  ansible.builtin.systemd_service:
+    name: "{{ item }}"
+    enabled: true
+    state: started
+  loop:
+    - ops-sample.timer
+    - ops-certs.timer

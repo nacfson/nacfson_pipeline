@@ -1,0 +1,52 @@
+[
+  {
+    "detail": "Started ops-fixture-unit.service - [systemd-run] /usr/bin/sh -c \"sleep 1; exit 3\".",
+    "kind": "unit.active",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "systemd",
+    "state": "up",
+    "subject": "unit/a1-1/ops-fixture-unit.service",
+    "vm": "a1-1"
+  },
+  {
+    "detail": "ops-fixture-unit.service: Failed with result 'exit-code'.",
+    "kind": "unit.failed",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "systemd",
+    "state": "down",
+    "subject": "unit/a1-1/ops-fixture-unit.service",
+    "vm": "a1-1"
+  },
+  {
+    "detail": "Started ops-fixture-unit.service - [systemd-run] /usr/bin/sh -c \"sleep 1\".",
+    "kind": "unit.active",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "systemd",
+    "state": "up",
+    "subject": "unit/a1-1/ops-fixture-unit.service",
+    "vm": "a1-1"
+  },
+  {
+    "detail": "Started ops-fixture-stop.service - [systemd-run] /usr/bin/sleep 300.",
+    "kind": "unit.active",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "systemd",
+    "state": "up",
+    "subject": "unit/a1-1/ops-fixture-stop.service",
+    "vm": "a1-1"
+  },
+  {
+    "detail": "Stopped ops-fixture-stop.service - [systemd-run] /usr/bin/sleep 300.",
+    "kind": "unit.failed",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "systemd",
+    "state": "down",
+    "subject": "unit/a1-1/ops-fixture-stop.service",
+    "vm": "a1-1"
+  }
+]

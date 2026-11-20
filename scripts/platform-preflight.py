@@ -19,7 +19,24 @@ STATUS_REJECTED_UNBOUNDED = "REJECTED_UNBOUNDED"
 STATUS_REJECTED_MEMORY_SHRINK = "REJECTED_MEMORY_SHRINK"
 STATUS_REJECTED_OVER_BUDGET = "REJECTED_OVER_BUDGET"
 
-PLATFORM_NAMESPACES = {"flux-system", "platform", "vault", "identity", "governance", "kube-system", "cert-manager", "observability"}
+PLATFORM_NAMESPACES = {"flux-system", "platform", "vault", "identity", "governance", "kube-system", "cert-manager", "observability", "oci-link"}
+
+HOST_NETWORK_WORKLOADS = {
+    ("oci-link", "DaemonSet", "wg-slot-agent"),
+    ("observability", "DaemonSet", "fluent-bit"),
+    ("observability", "Deployment", "ops-relay"),
+}
+
+OCI_LINK_HOST_RIGHTS = {
+    ("DaemonSet", "wg-slot-agent"): {"capabilities": {"NET_ADMIN"}, "read_only_host_paths": {"/var/lib/fluent-bit-state"}},
+}
+NO_HOST_RIGHTS = {"capabilities": set(), "read_only_host_paths": set()}
+
+KAFKA_CLIENT_CERTIFICATES = {
+    ("observability", "fluent-bit-gke"): "fluent-bit-kafka-client",
+    ("observability", "ops-relay"): "ops-relay-kafka-client",
+}
+KAFKA_CLIENT_USAGES = {"digital signature", "client auth"}
 
 
 def parse_cpu(val):
@@ -895,6 +912,56 @@ def check_ai_gateway_contract(projects_dict, platform_docs):
 
 
 
+def check_host_rights(platform_docs):
+    violations = []
+
+    def fail(obj, detail):
+        violations.append({"rule": 2, "object": obj, "detail": detail})
+
+    for doc in platform_docs:
+        if not isinstance(doc, dict):
+            continue
+        pod_spec, _ = get_pod_spec_and_meta(doc)
+        if not pod_spec:
+            continue
+        meta = doc.get("metadata") or {}
+        ns = meta.get("namespace", "")
+        kind = doc.get("kind", "")
+        name = meta.get("name", "")
+        obj = f"{ns}/{kind}/{name}"
+        if ns == "kube-system":
+            continue
+        if pod_spec.get("hostNetwork") and (ns, kind, name) not in HOST_NETWORK_WORKLOADS:
+            fail(obj, "hostNetwork is admitted only on oci-link/DaemonSet/wg-slot-agent and the observability S1 fallback (DaemonSet/fluent-bit, Deployment/ops-relay)")
+        if ns != "oci-link":
+            continue
+        rights = OCI_LINK_HOST_RIGHTS.get((kind, name), NO_HOST_RIGHTS)
+        if pod_spec.get("hostPID") or pod_spec.get("hostIPC"):
+            fail(obj, "hostPID/hostIPC prohibited in oci-link")
+        host_vols = {}
+        for vol in pod_spec.get("volumes") or []:
+            if isinstance(vol, dict) and "hostPath" in vol:
+                path = str((vol.get("hostPath") or {}).get("path") or "").strip()
+                host_vols[vol.get("name")] = path
+                if path not in rights["read_only_host_paths"]:
+                    fail(obj, f"hostPath {path!r} is not admitted in oci-link")
+        for c in (pod_spec.get("containers") or []) + (pod_spec.get("initContainers") or []):
+            if not isinstance(c, dict):
+                continue
+            c_obj = f"{obj}:{c.get('name', '')}"
+            sc = c.get("securityContext") or {}
+            if sc.get("privileged") is True:
+                fail(c_obj, "privileged: true prohibited in oci-link")
+            added = set((sc.get("capabilities") or {}).get("add") or [])
+            extra = sorted(added - rights["capabilities"])
+            if extra:
+                fail(c_obj, f"capability {', '.join(extra)} is not admitted in oci-link")
+            for vm in c.get("volumeMounts") or []:
+                if isinstance(vm, dict) and vm.get("name") in host_vols and vm.get("readOnly") is not True:
+                    fail(c_obj, f"hostPath mount {vm.get('mountPath')!r} in oci-link must set readOnly: true")
+    return violations
+
+
 def check_edge_tls(project_docs, platform_docs):
     violations = []
     kept = "; last accepted door is not replaced"
@@ -1108,7 +1175,18 @@ def check_edge_tls(project_docs, platform_docs):
                 c_ns = doc.get("metadata", {}).get("labels", {}).get("kustomize.toolkit.fluxcd.io/namespace", "")
             c_name = (doc.get("metadata") or {}).get("name", "")
             is_ca = (doc.get("spec") or {}).get("isCA") is True
-            if c_ns and c_ns != "platform" and c_ns in PLATFORM_NAMESPACES and not (c_ns == "cert-manager" and is_ca):
+            spec = doc.get("spec") or {}
+            is_kafka_client = (
+                (c_ns, c_name) in KAFKA_CLIENT_CERTIFICATES
+                and (spec.get("issuerRef") or {}).get("name") == "kafka-mtls-ca"
+                and (spec.get("issuerRef") or {}).get("kind") == "ClusterIssuer"
+                and not spec.get("dnsNames")
+                and spec.get("commonName") == c_name
+                and spec.get("isCA") is not True
+                and spec.get("secretName") == KAFKA_CLIENT_CERTIFICATES[(c_ns, c_name)]
+                and set(spec.get("usages") or []) <= KAFKA_CLIENT_USAGES
+            )
+            if c_ns and c_ns != "platform" and c_ns in PLATFORM_NAMESPACES and not (c_ns == "cert-manager" and is_ca) and not is_kafka_client:
                 violations.append({
                     "rule": 2,
                     "object": f"{c_ns}/Certificate/{c_name}",
@@ -1319,6 +1397,11 @@ def get_pod_spec_and_meta(doc):
         return spec, doc.get("metadata", {})
     return None, None
 
+
+SPOT_ALLOWED_DAEMONSETS = frozenset({
+    ("observability", "fluent-bit"),
+    ("oci-link", "wg-slot-agent"),
+})
 
 SPOT_ALLOWED_DEPLOYMENTS = frozenset({
     ("cert-manager", "cert-manager"),
@@ -1547,7 +1630,7 @@ def main():
                                 "object": obj_name,
                                 "detail": f"Workload {obj_name} mounts a ReadWriteOnce PVC and cannot schedule onto spot node pool",
                             })
-                        elif kind == "DaemonSet" and (ns, name) == ("observability", "fluent-bit"):
+                        elif kind == "DaemonSet" and (ns, name) in SPOT_ALLOWED_DAEMONSETS:
                             ns_sel = pod_spec.get("nodeSelector") or {}
                             if ns_sel.get("cloud.google.com/gke-spot") == "true" or ns_sel.get("cloud.google.com/gke-provisioning") == "spot":
                                 violations.append({
@@ -1787,6 +1870,14 @@ def main():
             status = STATUS_REJECTED_ISOLATION
             if not rejection_reason:
                 rejection_reason = ai_gw_violations[0]["detail"]
+            exit_code = 1
+
+        host_violations = check_host_rights(platform_docs)
+        if host_violations:
+            violations.extend(host_violations)
+            status = STATUS_REJECTED_ISOLATION
+            if not rejection_reason:
+                rejection_reason = host_violations[0]["detail"]
             exit_code = 1
 
         notify_gw_violations = check_notify_gateway_contract(platform_docs)

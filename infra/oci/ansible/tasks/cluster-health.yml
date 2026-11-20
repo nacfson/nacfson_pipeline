@@ -1,0 +1,24 @@
+- name: Count registered brokers
+  ansible.builtin.command:
+    argv: "{{ kafka_admin + ['/opt/kafka/bin/kafka-broker-api-versions.sh'] + kafka_admin_args }}"
+  register: health_brokers
+  changed_when: false
+  failed_when: false
+
+- name: List under-replicated and unavailable partitions
+  ansible.builtin.command:
+    argv: "{{ kafka_admin + ['/opt/kafka/bin/kafka-topics.sh'] + kafka_admin_args + ['--describe', item] }}"
+  loop:
+    - --under-replicated-partitions
+    - --unavailable-partitions
+  register: health_partitions
+  changed_when: false
+  failed_when: false
+
+- name: Summarise cluster health
+  ansible.builtin.set_fact:
+    cluster_healthy: >-
+      {{ health_brokers.rc == 0
+         and (health_brokers.stdout | regex_findall('\(id: \d+') | length) == (groups['brokers'] | length)
+         and (health_partitions.results | map(attribute='rc') | max) == 0
+         and (health_partitions.results | map(attribute='stdout') | join('') | trim) == '' }}

@@ -1,0 +1,26 @@
+Configuration:
+  Properties:
+    Property:
+      - name: logPattern
+        value: "[%d] %p %m (%c)%n"
+  Appenders:
+    Console:
+      name: STDOUT
+      PatternLayout:
+        pattern: "${logPattern}"
+  Loggers:
+    Root:
+      level: INFO
+      AppenderRef:
+        - ref: STDOUT
+    Logger:
+      - name: kafka.request.logger
+        level: WARN
+      - name: kafka.network.RequestChannel$
+        level: WARN
+      - name: org.apache.kafka.controller
+        level: INFO
+      - name: state.change.logger
+        level: INFO
+      - name: kafka.authorizer.logger
+        level: INFO

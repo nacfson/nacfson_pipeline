@@ -10,13 +10,16 @@ Each item records a decision, why it was made, and what was rejected. Items mark
 - **Rationale**:
   - Kafka 4.x is KRaft-only, which FR-002 requires.
   - 4.3.2 was released on 2026-10-20, more than two weeks ago, and is the newest patch of the 4.3 line.
-  - Strimzi 1.2.0, the newest Strimzi release, supports Kafka 4.3.x. FR-025 renders the same declarations as Strimzi resources, so the OCI cluster and a future GKE cluster stay on a version both can run.
+  - Strimzi 1.3.1 lists Kafka 4.3.2 in its supported versions (1.2.0 and 1.3.0 stop at 4.3.1). FR-025 renders the same declarations as Strimzi resources, so the OCI cluster and a future GKE cluster stay on a version both can run.
   - One image for both ARM64 (A1) and x86_64 (micro) satisfies FR-011 without managing two Java installs.
 - **Alternatives considered**:
   - Kafka 4.4.0 (released 2026-10-13): no Strimzi release supports it yet, which would break the FR-025 portability render.
   - Apache tarball plus a distribution JDK: two architectures, two JDK package pins, and no single digest to record.
   - `apache/kafka-native` (GraalVM): smaller, but upstream marks it as not for production.
 - **Verify at implementation**: Confirm on Docker Hub that `apache/kafka:4.3.2` publishes `linux/amd64` and `linux/arm64`, and record the index digest. Confirm the newest Strimzi release's Kafka support at kafka.apache.org/downloads and the Strimzi release notes.
+- **Verified 2026-11-18**:
+  - `apache/kafka:4.3.2` index digest `sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7`, pushed 2026-10-20, platforms `linux/amd64` and `linux/arm64`.
+  - Strimzi 1.3.1 (released 2026-11-04) is the first release whose `kafka-versions.yaml` lists 4.3.2. The render schemas are pinned to 1.3.1.
 - Sources: [endoflife.date: Apache Kafka](https://endoflife.date/apache-kafka), [Strimzi releases](https://github.com/strimzi/strimzi-kafka-operator/releases).
 
 ## R2: Runtime on the VMs
@@ -54,7 +57,7 @@ Each item records a decision, why it was made, and what was rejected. Items mark
 - **Decision**:
   - One VCN `10.200.0.0/16` with one public subnet `10.200.0.0/24`. Each VM has a fixed private IP (R4) and a public IP.
   - A1-1, A1-2, and Micro-1 have **reserved** public IPs, so the WireGuard endpoints survive a rebuild. Micro-2 has an ephemeral public IP used only for outbound image and package downloads.
-  - The security list allows inbound UDP 51820 (WireGuard) to the three brokers from anywhere, and TCP 9092–9093 only from inside `10.200.0.0/24`. Nothing else is inbound. **No TCP 22.**
+  - The security list allows inbound UDP 51820 (WireGuard) to the three brokers from anywhere, and TCP 9092–9093 and TCP 22 only from inside `10.200.0.0/24`. Nothing else is inbound. **No TCP 22 from the internet**: SSH arrives only from the OCI Bastion's private endpoint, which sits in the same subnet (found by review on 2026-11-20; without this rule no managed session could reach a VM).
   - SSH for the operator and for the control-center runner (R22) uses the **OCI Bastion service** with time-limited managed SSH sessions. Ansible connects through it with a `ProxyCommand`. Managed sessions need the Oracle Cloud Agent's Bastion plugin turned on in each instance.
   - Each VM's host firewall (nftables) allows only 9092 on `wg0` and drops everything else arriving on it.
 - **Rationale**:
@@ -82,7 +85,7 @@ Each item records a decision, why it was made, and what was rejected. Items mark
 - **Decision**:
   - `wg-slot-agent` is a Go program using only the standard library, matching `services/vault-proxies`. It runs as a DaemonSet in `oci-link` with `hostNetwork: true`, the capability `NET_ADMIN`, and read-only `hostPath: /var/lib/fluent-bit-state` (to measure buffer fill).
   - It calls the Kubernetes API (Leases, Nodes, Events) with its ServiceAccount token, and drives `wg` and `nft` from `wireguard-tools` and `nftables` in its image.
-  - **Key generation**: A Flux-managed Job `wg-slot-keygen` reads the slot list in `wg-slot-pool`. It creates a private key in Secret `wg-slot-keys` for each listed slot that has none, never overwrites an existing key, and removes the keys of slots no longer listed once they are free. It writes the public keys and addresses to ConfigMap `wg-slot-public`. Flux re-runs the Job whenever the slot list changes. This makes resizing and key rotation a merged change (FR-022). The operator copies the public keys into the Ansible variables through a pull request (`infra/oci/ansible/group_vars/brokers/wg_slots.yml`).
+  - **Key generation**: A Flux-managed Job `wg-slot-keygen` reads the slot list in `wg-slot-pool`. It creates a private key in Secret `wg-slot-keys` for each listed slot that has none, never overwrites an existing key, and removes the keys of slots no longer listed once they are free. It writes the public keys and addresses to ConfigMap `wg-slot-public`. Flux re-runs the Job whenever the slot list changes. This makes resizing and key rotation a merged change (FR-022). The operator copies the public keys into the Ansible variables through a pull request (`infra/oci/ansible/group_vars/brokers/wireguard_slots.yml`).
 - **Rationale**: Private keys are created in the cluster and only public keys leave it (FR-009). No third-party Go modules are needed for the Kubernetes calls.
 - **Alternatives considered**: client-go (heavy dependency for four API calls); generating keys on the operator's machine (the private keys would leave their place of use).
 
@@ -123,7 +126,7 @@ Each item records a decision, why it was made, and what was rejected. Items mark
 - **Decision**: One location-neutral file, `infra/kafka/cluster.yaml`, holds the cluster ID, node IDs and roles, topics, identities, ACLs, broker settings, and per-environment bootstrap lists. `scripts/kafka-declarations.py` renders it three ways:
   - `ansible`: variables for the OCI VMs
   - `compose`: the local rehearsal (R15)
-  - `strimzi`: `Kafka`, `KafkaNodePool`, `KafkaTopic`, and `KafkaUser` YAML. This is never applied; kubeconform validates it against pinned Strimzi 1.2.0 JSON schemas.
+  - `strimzi`: `Kafka`, `KafkaNodePool`, `KafkaTopic`, and `KafkaUser` YAML. This is never applied; kubeconform validates it against pinned Strimzi 1.3.1 JSON schemas.
 
   The `check` subcommand implements FR-015 and SC-012. It fails on:
   - a Fluent Bit broker list or topic that differs from the declarations
@@ -142,6 +145,8 @@ Each item records a decision, why it was made, and what was rejected. Items mark
   - The `replace-controller.yml` playbook scripts these steps. The Story 3 drill exercises both cases.
 - **Rationale**: A static voter list cannot safely replace a controller whose disk was lost, and Story 3 requires that repair.
 - **Verify at implementation**: Run the full controller replacement on the local rehearsal (quickstart Scenario 4) and capture the real command output as test fixtures.
+- **Format flags (verified 2026-11-19 with `kafka-storage.sh format --help` in `docker.io/apache/kafka:4.3.2`)**: `format --cluster-id <id> --config <file>` plus exactly one of `--standalone`, `--no-initial-controllers`, or `--initial-controllers <id@host:port:directory-id,...>`. The three voters use `--initial-controllers` with the same list on each; the broker-only node uses `--no-initial-controllers`. The renderer writes these arguments per node (`format_args`), and the directory IDs are `initial_directory_id` in `infra/kafka/cluster.yaml`.
+- **Image facts (same check)**: Java 21.0.12, default user `appuser` (uid 1000), `/opt/kafka` writable only by that user, `/var/lib/kafka/data` present. Podman needs the fully qualified name `docker.io/apache/kafka`, because Ubuntu's and Debian's `registries.conf` define no search registries.
 - Sources: [KIP-853](https://cwiki.apache.org/confluence/display/KAFKA/KIP-853:+KRaft+Controller+Membership+Changes), [Kafka 4.3 KRaft operations](https://kafka.apache.org/43/operations/kraft/).
 
 ## R12: Storage, retention, and how many days fit
@@ -150,14 +155,14 @@ Each item records a decision, why it was made, and what was rejected. Items mark
 
   | Topic | Partitions | `retention.ms` | `retention.bytes` per partition | Per broker |
   |---|---|---|---|---|
-  | `logs.proj.valid` | 3 | 7 days | 5.5 GB | 16.5 GB |
+  | `logs.proj.valid` | 3 | 7 days | 5 GB | 15 GB |
   | `logs.proj.quarantine` | 3 | 7 days | 1 GB | 3 GB |
   | `ops.platform.events` | 1 | 30 days | 256 MB | 0.25 GB |
   | `ops.platform.metrics` | 1 | 7 days | 256 MB | 0.25 GB |
 
-  `segment.bytes` is 128 MB, so the active segment overshoots its limit by at most 128 MB per partition. Fluent Bit compresses with zstd (FR-004), and brokers keep `compression.type=producer`, so they never re-compress, which saves the micro VMs' CPU.
+  `segment.bytes` is 128 MB, so the active segment overshoots its limit by at most 128 MB per partition. Eight partitions add up to 1 GB, so the worst case per broker is 19.5 GB, inside the 20 GB budget. (The first draft gave `logs.proj.valid` 5.5 GB per partition, which reaches 21 GB with the overshoot and fails check rule 7.) Sizes here are binary: 1 GB = 2^30 bytes. Fluent Bit compresses with zstd (FR-004), and brokers keep `compression.type=producer`, so they never re-compress, which saves the micro VMs' CPU.
 - **Arithmetic**: A 50 GB volume minus about 6 GB for the OS and images, minus 20 GB for Kafka, leaves about 24 GB. The 20% free rule (10 GB) leaves **about 14 GB on each A1 VM for Spec 014** and nothing else needed on the micros. Spec 014 must fit VictoriaLogs and Flink state in that space, or use OCI Object Storage. This is recorded as a handoff.
-- **How many days fit**: `days = 16.5 GB ÷ (raw bytes per day ÷ zstd ratio)`. With JSON logs at a zstd ratio of 5, 16.5 GB holds 7 days for up to about 11.8 GB of raw logs per day.
+- **How many days fit**: `days = 15 GB ÷ (raw bytes per day ÷ zstd ratio)`. With JSON logs at a zstd ratio of 5, 15 GB holds 7 days for up to about 10.7 GB of raw logs per day.
 - **Measurement (operator, read-only, before tasks are cut)**: With `scripts/open-observe.sh` running, query the current store's last 30 days:
 
   ```bash
@@ -179,6 +184,7 @@ Each item records a decision, why it was made, and what was rejected. Items mark
 - **Rationale**:
   - The official Fluent Bit image is distroless, so the `exec` input has no shell to run. Timers outside the container write samples that the agent tails, which keeps the image unchanged.
   - Using the same Fluent Bit version as GKE means one set of known behaviours.
+- **Pin (verified 2026-11-18)**: `fluent/fluent-bit:4.2.8` index digest `sha256:6806769c10acf11b41d14083b3101a24433b4ca113a1ab7a6b1a1b7cad86a7e8`, platforms `linux/amd64`, `linux/arm64`, `linux/arm`. The GKE DaemonSet uses the same tag.
 - **Test fixtures**: Kafka log lines (broker fenced and unfenced, ISR shrink and expand, controller changes) are captured from `apache/kafka:4.3.2` during the local rehearsal (Scenario 2), never typed by hand. This follows the repository's lesson from the Spec 012 cutover: guessed stubs let three bugs through.
 - **Alternatives considered**:
   - Fluent Bit metrics inputs with OTLP output to Kafka: the 5.0 documentation lists OTLP metrics support for the Kafka output, but 4.2.8's support is unconfirmed, and it would split the record format in two.
@@ -198,6 +204,7 @@ Each item records a decision, why it was made, and what was rejected. Items mark
 - **Rationale**: The exporter is the standard way to read Kafka's JMX metrics without exposing JMX. Bound to localhost, nothing new listens publicly (SC-005).
 - **Cost**: About 20–40 MB inside each Kafka JVM, counted in R16.
 - **Verify at implementation**: Pin the newest JMX exporter 1.x release that is at least two weeks old, and confirm it supports Java 21.
+- **Pin (verified 2026-11-18)**: JMX exporter **1.7.0** (released 2026-10-06; 1.7.x has no later release). `jmx_prometheus_javaagent-1.7.0.jar` SHA-256 `0ad843261c567d1924a017d542e14c40f2afff523d940c25ee000742fde4b3a9`. The project supports Java 8 and newer, which covers Java 21.
 
 ## R15: Local rehearsal (FR-016)
 
@@ -222,11 +229,12 @@ Each item records a decision, why it was made, and what was rejected. Items mark
 - **GKE**: `ops-relay` requests and limits 10m / 64Mi (one replica). `wg-slot-agent` 10m / 32Mi per node. The `wg-slot-keygen` Job uses 10m / 32Mi and runs only when the slot list changes. All are added to the platform reservation in `clusters/gke/capacity.yaml`.
 - **Risk**: Micro-1 has the least headroom. If the measured resident memory leaves less than 50 MB, the ops agent on Micro-1 is replaced by a `kcat`-based shipper with the same contract (a task gate).
 - **Verify at implementation**: `platform-preflight` must still pass the Interim Memory Limit Freeze with the larger GKE reservation. If it does not, the overage is resolved before the merge.
+- **Verified 2026-11-18**: `platform-preflight` derives the platform reservation from the rendered workloads, so `clusters/gke/capacity.yaml` keeps only node measurements and needs no edit. The GKE render plus the `oci-link` workloads and a 10m/64Mi `ops-relay` passes, freeze included. The platform reservation grows from 1900m/4712Mi to 1940m/4872Mi, and the per-project slice shrinks from 323m/815Mi to 310m/762Mi.
 
 ## R17: Alert relay (FR-023, FR-028)
 
 - **Decision**: The relay is `services/error-pipeline/cmd/ops-relay`, in the same Go module as `error-detector`, reusing its `notify` package for `vault-notify-proxy`. Spec 014 moves `error-detector` to Kafka, so both share one Kafka client.
-  - **Kafka client**: `github.com/twmb/franz-go`, pinned to its newest release that is at least two weeks old. Go's standard library has no Kafka protocol.
+  - **Kafka client**: `github.com/twmb/franz-go`, pinned to its newest release that is at least two weeks old. Go's standard library has no Kafka protocol. Verified 2026-11-18: **v1.22.2** (2026-10-13). v1.22.3 (2026-11-09) is too new. v1.22.x requires Go 1.26 and v1.21.x Go 1.25, so the `error-pipeline` module moves from Go 1.22, which has had no security fixes since Go 1.24 shipped, to Go 1.26: `go 1.26.0` in its `go.mod`, `golang:1.26.9-alpine` builders, and Go 1.26.9 in its CI jobs. The other Go modules stay on 1.22.
   - **Behaviour**: a state per subject, incident grouping, timers (3-minute heartbeat silence, 60-second connection loss, 3-minute start-up wait), rebuilding state from 24 hours of `ops.platform.events` and 6 hours of `ops.platform.metrics`, a Kubernetes watch on `oci-link` Events and Leases, and trend rules on metrics.
   - **Live view**: `ops-relay status` talks to a Unix socket inside the pod (FR-028).
   - **Probes**: liveness is the process only. Readiness means state has been rebuilt.
@@ -255,7 +263,7 @@ Each item records a decision, why it was made, and what was rejected. Items mark
 
   Project namespaces are unchanged.
 - **`manual-change-policy`**:
-  - allow `system:serviceaccount:oci-link:wg-slot-agent` to update Leases and create Events in `oci-link` only
+  - allow `system:serviceaccount:oci-link:wg-slot-agent` to create and update Leases and create Events in `oci-link` only
   - allow `system:serviceaccount:oci-link:wg-slot-keygen` to create Secret `wg-slot-keys` and ConfigMap `wg-slot-public` only
   - allow the `cc-kafka-runner` Google service account to `CREATE` `certificaterequests` and `events` in `oci-link` only
 - **`platform-preflight`**: add `oci-link` to `PLATFORM_NAMESPACES`, add a rule that admits those host rights only on that DaemonSet, and extend the observability rule for the S1 fallback.
@@ -303,3 +311,20 @@ Each item records a decision, why it was made, and what was rejected. Items mark
   - `ansible-pull` on the VMs: forbidden by FR-013.
   - Fully event-driven runs from Flux notifications: they add a second trigger path without removing the poll.
 - **Verify at implementation**: the exact OCI policy statements for managed SSH sessions, from the current Bastion documentation, and that the control center's e2-micro runs `ansible-core` against four hosts within its memory (expected 100–200 MB).
+- **Policy (verified 2026-11-18 against the OCI "Bastion IAM Policies" page)**: the documented example for creating, connecting to, and ending sessions, narrowed to this Bastion and the `ubuntu` user with the `target.bastion.ocid` and `target.bastion-session.username` variables. `infra/oci/terraform/iam.tf` holds it:
+  - `use bastion` and `manage bastion-session`, both only where `target.bastion.ocid` is the Kafka Bastion, and the session only for user `ubuntu`
+  - `read` on `instances`, `vcn`, `subnets`, `instance-agent-plugins`, `vnic-attachments`, and `vnics` in the compartment
+
+  It grants no `manage` or `use` on any compute, network, or volume resource.
+
+## R23: Record order across partitions
+
+- **Decision** (2026-11-19, after the Story 1 rehearsal): keep Fluent Bit's Kafka output without a message key. Each `logs.*` topic has 3 partitions, so one pod's lines spread over all three. Order holds inside each partition, and each line carries its timestamp (`_time`).
+- **Rationale**:
+  - Writes spread evenly over the three brokers, which matters on the 1 GB micro VMs.
+  - Kafka has no index by pod under any option, so queries go to the Spec 014 log store, which indexes by stream and time and returns a pod's lines in time order.
+  - Direct reads for debugging seek by timestamp in each partition and merge by `_time`.
+  - FR-004 stays as written: the output changes only for TLS and zstd.
+- **Alternatives considered**: a pod key (strict per-pod order, but a chatty pod makes one hot partition, and FR-004 would change); a project key (more uneven); one partition (one broker takes every write); reordering in Flink (Spec 014 can add it later if a consumer needs strict order).
+- **Evidence**: `tests/kafka/test_story1.py` proves exactly-once delivery and order per pod within each partition, including through a paused partition leader.
+

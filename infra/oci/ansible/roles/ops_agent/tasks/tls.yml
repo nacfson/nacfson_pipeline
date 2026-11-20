@@ -1,0 +1,27 @@
+- name: Remove the old link to the whole Kafka TLS directory
+  ansible.builtin.file:
+    path: "{{ ops_agent_tls_dir }}"
+    state: absent
+  when: ops_agent_tls_dir is link
+
+- name: Create the agent's own TLS directory
+  ansible.builtin.file:
+    path: "{{ ops_agent_tls_dir }}"
+    state: directory
+    owner: kafka
+    group: kafka
+    mode: "0750"
+
+- name: Copy only the agent's certificate, key, and the CA
+  ansible.builtin.copy:
+    src: "{{ kafka_tls_dir }}/{{ item.name }}"
+    dest: "{{ ops_agent_tls_dir }}/{{ item.name }}"
+    remote_src: true
+    owner: kafka
+    group: kafka
+    mode: "{{ item.mode }}"
+  loop:
+    - {name: ca.crt, mode: "0644"}
+    - {name: "{{ ops_agent_identity }}.crt", mode: "0640"}
+    - {name: "{{ ops_agent_identity }}.key", mode: "0600"}
+  notify: Restart ops-agent

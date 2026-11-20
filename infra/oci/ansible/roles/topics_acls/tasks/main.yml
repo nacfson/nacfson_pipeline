@@ -1,0 +1,10 @@
+- name: Converge topics, topic configs, and ACLs to the declarations
+  kafka_declared:
+    topics: "{{ kafka_topics }}"
+    identities: "{{ kafka_identities }}"
+    admin: "{{ kafka_admin }}"
+    admin_args:
+      - --bootstrap-server
+      - "{{ kafka_bootstrap_servers }}"
+      - --command-config
+      - /etc/kafka-node/clients/admin.properties

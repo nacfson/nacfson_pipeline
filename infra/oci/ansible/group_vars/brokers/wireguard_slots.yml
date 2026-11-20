@@ -1,0 +1,10 @@
+wireguard_port: 51820
+wireguard_slots:
+  - slot: 0
+    public_key: ""
+  - slot: 1
+    public_key: ""
+  - slot: 2
+    public_key: ""
+  - slot: 3
+    public_key: ""

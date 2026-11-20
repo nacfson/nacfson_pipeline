@@ -960,5 +960,157 @@ spec:
         self.assertNotIn("|| true", script)
 
 
+    WG_SLOT_AGENT = """
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: wg-slot-agent
+  namespace: oci-link
+spec:
+  selector:
+    matchLabels:
+      app: wg-slot-agent
+  template:
+    metadata:
+      labels:
+        app: wg-slot-agent
+    spec:
+      hostNetwork: true
+      volumes:
+        - name: fluent-bit-state
+          hostPath:
+            path: /var/lib/fluent-bit-state
+            type: Directory
+      containers:
+        - name: wg-slot-agent
+          image: ghcr.io/nacfson/wg-slot-agent@sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+              add:
+                - NET_ADMIN
+          volumeMounts:
+            - name: fluent-bit-state
+              mountPath: /var/lib/fluent-bit-state
+              readOnly: true
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 10m
+              memory: 32Mi
+"""
+
+    def assert_isolation_rejected(self, text, needle):
+        rc, data = self._run_yaml(text)
+        self.assertEqual(rc, 1, data)
+        self.assertEqual(data["validationStatus"], "REJECTED_ISOLATION")
+        self.assertIn(needle, json.dumps(data.get("violations", [])))
+
+    def test_32_oci_link_slot_agent_admitted(self):
+        rc, data = self._run_yaml(self.WG_SLOT_AGENT)
+        self.assertEqual(rc, 0, data.get("rejectionReason"))
+        self.assertEqual(data["validationStatus"], "PASSED")
+
+    def test_32a_slot_agent_runs_on_spot_nodes_too(self):
+        with open(os.path.join(BASE_DIR, "clusters", "gke", "capacity.yaml"), encoding="utf-8") as fh:
+            gke_cap = fh.read()
+        spot = self.WG_SLOT_AGENT.replace(
+            "      hostNetwork: true\n",
+            "      hostNetwork: true\n      tolerations:\n        - key: cloud.google.com/gke-spot\n          operator: Equal\n          value: \"true\"\n          effect: NoSchedule\n",
+        )
+        rc, data = self._run_with_custom_capacity(spot, gke_cap)
+        self.assertEqual(rc, 0, data.get("rejectionReason"))
+
+    def test_32b_slot_agent_host_rights_bound_to_name_and_namespace(self):
+        renamed = self.WG_SLOT_AGENT.replace("name: wg-slot-agent\n  namespace", "name: other-agent\n  namespace")
+        self.assert_isolation_rejected(renamed, "hostNetwork")
+        moved = self.WG_SLOT_AGENT.replace("namespace: oci-link", "namespace: platform")
+        self.assert_isolation_rejected(moved, "hostNetwork")
+
+    def test_32c_slot_agent_extra_rights_rejected(self):
+        cases = {
+            "capability": self.WG_SLOT_AGENT.replace("                - NET_ADMIN\n", "                - NET_ADMIN\n                - SYS_ADMIN\n"),
+            "readOnly": self.WG_SLOT_AGENT.replace("readOnly: true", "readOnly: false"),
+            "hostPath": self.WG_SLOT_AGENT.replace("path: /var/lib/fluent-bit-state", "path: /var/lib/kubelet"),
+            "privileged": self.WG_SLOT_AGENT.replace("allowPrivilegeEscalation: false", "privileged: true"),
+        }
+        for needle, text in cases.items():
+            with self.subTest(case=needle):
+                self.assert_isolation_rejected(text, needle)
+
+    def test_32d_observability_host_network_only_for_s1_fallback(self):
+        relay = """
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ops-relay
+  namespace: observability
+spec:
+  selector:
+    matchLabels:
+      app: ops-relay
+  template:
+    metadata:
+      labels:
+        app: ops-relay
+    spec:
+      hostNetwork: true
+      containers:
+        - name: ops-relay
+          image: ghcr.io/nacfson/ops-relay@sha256:abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 10m
+              memory: 64Mi
+"""
+        rc, data = self._run_yaml(relay)
+        self.assertEqual(rc, 0, data.get("rejectionReason"))
+        self.assert_isolation_rejected(relay.replace("ops-relay", "error-detector"), "hostNetwork")
+
+
+    KAFKA_CLIENT_CERT = """
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: fluent-bit-gke
+  namespace: observability
+spec:
+  secretName: fluent-bit-kafka-client
+  commonName: fluent-bit-gke
+  usages:
+    - digital signature
+    - client auth
+  issuerRef:
+    group: cert-manager.io
+    kind: ClusterIssuer
+    name: kafka-mtls-ca
+"""
+
+    def test_33_kafka_client_certificate_admitted_in_observability(self):
+        rc, data = self._run_yaml(self.KAFKA_CLIENT_CERT)
+        self.assertEqual(rc, 0, data.get("rejectionReason"))
+
+    def test_33b_other_observability_certificates_rejected(self):
+        cases = {
+            "unlisted name": self.KAFKA_CLIENT_CERT.replace("name: fluent-bit-gke", "name: error-detector"),
+            "other issuer": self.KAFKA_CLIENT_CERT.replace("name: kafka-mtls-ca", "name: letsencrypt-prod"),
+            "dns names": self.KAFKA_CLIENT_CERT.replace("  commonName: fluent-bit-gke\n", "  commonName: fluent-bit-gke\n  dnsNames:\n    - logs.example.com\n"),
+            "super-user name": self.KAFKA_CLIENT_CERT.replace("commonName: fluent-bit-gke", "commonName: broker-1"),
+            "CA certificate": self.KAFKA_CLIENT_CERT.replace("  commonName: fluent-bit-gke\n", "  commonName: fluent-bit-gke\n  isCA: true\n"),
+            "server usage": self.KAFKA_CLIENT_CERT.replace("    - client auth\n", "    - client auth\n    - server auth\n"),
+            "other secret": self.KAFKA_CLIENT_CERT.replace("secretName: fluent-bit-kafka-client", "secretName: elsewhere"),
+        }
+        for case, text in cases.items():
+            with self.subTest(case=case):
+                self.assert_isolation_rejected(text, "outside platform namespace")
+
+
 if __name__ == "__main__":
     unittest.main()

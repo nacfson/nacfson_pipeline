@@ -1,0 +1,6 @@
+NodeId	DirectoryId           	LogEndOffset	Lag	LastFetchTimestamp	LastCaughtUpTimestamp	Status  	
+1     	eFwoLaOpTwOL1gI0wJymvA	10302       	0  	1795099610485     	1795099610485        	Leader  	
+2     	49xqtT-RSkOQGsPkD9yruQ	10302       	0  	1795099610292     	1795099610292        	Follower	
+4     	YkxbiitTRYiC1W3aHMCsLg	10302       	0  	1795099610292     	1795099610292        	Follower	
+3     	7bOaZIvJl_0wqX6abxnI3A	10302       	0  	1795099610292     	1795099610292        	Observer	
+3     	jmFKPfpn4qgZRpUjJBRSSQ	10048       	254	1795099549786     	1795099549786        	Observer	

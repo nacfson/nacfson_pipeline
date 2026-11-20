@@ -1,0 +1,9 @@
+[Unit]
+Description=Sample Kafka and OS metrics for the ops agent
+
+[Service]
+Type=oneshot
+User=kafka
+Group=kafka
+Environment=OPS_VM={{ inventory_hostname }}
+ExecStart=/usr/local/lib/ops-agent/ops-sample.sh

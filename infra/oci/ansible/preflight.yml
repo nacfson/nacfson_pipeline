@@ -1,0 +1,50 @@
+- name: Find out whether the first build has finished
+  hosts: controllers:brokers
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  tasks:
+    - name: Look for the marker a finished first build leaves
+      ansible.builtin.stat:
+        path: "{{ cluster_built_marker }}"
+      register: preflight_built
+
+    - name: Look for a running Kafka container
+      ansible.builtin.command: podman container exists kafka
+      register: preflight_container
+      changed_when: false
+      failed_when: false
+
+    - name: Decide whether this is the first build, and which broker answers health checks
+      ansible.builtin.set_fact:
+        site_first_build: >-
+          {{ groups['controllers'] | union(groups['brokers']) | map('extract', hostvars)
+             | map(attribute='preflight_built.stat.exists') | select | list | length == 0 }}
+        preflight_health_host: >-
+          {{ groups['brokers'] | map('extract', hostvars) | selectattr('preflight_container', 'defined')
+             | selectattr('preflight_container.rc', 'equalto', 0) | map(attribute='inventory_hostname') | first | default('') }}
+      delegate_to: localhost
+      delegate_facts: true
+
+- name: Refuse to change a degraded cluster
+  hosts: brokers
+  become: true
+  gather_facts: false
+  any_errors_fatal: true
+  vars:
+    preflight_first_build: "{{ hostvars['localhost'].site_first_build | bool }}"
+    preflight_health_host: "{{ hostvars['localhost'].preflight_health_host }}"
+  tasks:
+    - name: Block when the cluster was built but no broker runs Kafka
+      ansible.builtin.fail:
+        msg: "DeployBlocked: the cluster was built but no broker is running Kafka, so no VM is changed"
+      when: not preflight_first_build and preflight_health_host == ''
+
+    - name: Read cluster health
+      ansible.builtin.include_tasks: tasks/cluster-health.yml
+      when: not preflight_first_build and inventory_hostname == preflight_health_host
+
+    - name: Block the run when the cluster is not fully replicated
+      ansible.builtin.fail:
+        msg: "DeployBlocked: the cluster is not fully replicated, so no VM is changed"
+      when: not preflight_first_build and inventory_hostname == preflight_health_host and not cluster_healthy

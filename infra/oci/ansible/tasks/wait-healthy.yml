@@ -1,0 +1,16 @@
+- name: Wait for full replication
+  ansible.builtin.command:
+    argv: "{{ kafka_admin + ['/opt/kafka/bin/kafka-topics.sh'] + kafka_admin_args + ['--describe', '--under-replicated-partitions'] }}"
+  register: wait_under_replicated
+  changed_when: false
+  until: wait_under_replicated.rc == 0 and (wait_under_replicated.stdout | trim) == ''
+  retries: "{{ wait_retries | default(90) }}"
+  delay: 10
+
+- name: Re-read cluster health
+  ansible.builtin.import_tasks: cluster-health.yml
+
+- name: Stop when a broker is still missing
+  ansible.builtin.assert:
+    that: cluster_healthy
+    fail_msg: "{{ inventory_hostname }} did not bring the cluster back to full replication within 15 minutes"

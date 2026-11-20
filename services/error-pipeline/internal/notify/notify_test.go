@@ -796,3 +796,11 @@ func TestDrainWaitingHonoursContext(t *testing.T) {
 	close(release)
 	<-done
 }
+
+func TestStatusErrorPermanentOnlyForClientErrors(t *testing.T) {
+	for code, want := range map[int]bool{400: true, 413: true, 422: true, 403: false, 404: false, 408: false, 429: false, 500: false, 502: false, 503: false} {
+		if got := (&StatusError{Code: code}).Permanent(); got != want {
+			t.Errorf("status %d permanent = %v, want %v", code, got, want)
+		}
+	}
+}

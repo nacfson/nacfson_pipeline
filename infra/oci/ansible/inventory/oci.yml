@@ -1,0 +1,44 @@
+all:
+  vars:
+    ansible_user: ubuntu
+    ansible_ssh_private_key_file: "{{ bastion_ssh_key }}"
+    ansible_ssh_common_args: >-
+      -o UserKnownHostsFile=~/.ssh/known_hosts_oci_kafka
+      -o StrictHostKeyChecking=accept-new
+      -o ProxyCommand="ssh
+      -i {{ bastion_ssh_key }}
+      -o UserKnownHostsFile=~/.ssh/known_hosts_oci_bastion
+      -o StrictHostKeyChecking=accept-new
+      -W %h:%p -p 22
+      {{ bastion_sessions[inventory_hostname] }}@host.bastion.{{ oci_region }}.oci.oraclecloud.com"
+  children:
+    brokers:
+      hosts:
+        a1-1:
+        a1-2:
+        micro-1:
+    controllers:
+      hosts:
+        a1-1:
+        a1-2:
+        micro-2:
+    a1:
+      hosts:
+        a1-1:
+          ansible_host: 10.200.0.11
+          kafka_heap: 1g
+          kafka_memory_max: 1600M
+        a1-2:
+          ansible_host: 10.200.0.12
+          kafka_heap: 1g
+          kafka_memory_max: 1600M
+    micros:
+      hosts:
+        micro-1:
+          ansible_host: 10.200.0.13
+          kafka_heap: 384m
+          kafka_memory_max: 680M
+        micro-2:
+          ansible_host: 10.200.0.14
+          kafka_heap: 256m
+          kafka_memory_max: 480M

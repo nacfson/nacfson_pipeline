@@ -1,0 +1,106 @@
+[SERVICE]
+    Flush 1
+    Log_Level warn
+    Parsers_File /fluent-bit/etc/parsers.conf
+    storage.path /var/lib/ops-agent/buffer
+    storage.sync normal
+    storage.max_chunks_up 16
+
+{% if ops_agent_input == 'journal' %}
+[INPUT]
+    Name systemd
+    Tag kafka
+    Systemd_Filter _SYSTEMD_UNIT=kafka.service
+    Read_From_Tail On
+    DB /var/lib/ops-agent/journal-kafka.db
+    storage.type filesystem
+
+[INPUT]
+    Name systemd
+    Tag unit
+    Systemd_Filter UNIT=kafka.service
+    Systemd_Filter UNIT=wg-quick@wg0.service
+    Systemd_Filter UNIT=ops-agent.service
+    Systemd_Filter_Type Or
+    Read_From_Tail On
+    DB /var/lib/ops-agent/journal-unit.db
+    storage.type filesystem
+
+[INPUT]
+    Name tail
+    Tag sample.events
+    Path /var/lib/ops-agent/samples/events.jsonl
+    Parser json
+    DB /var/lib/ops-agent/tail-events.db
+    storage.type filesystem
+
+[INPUT]
+    Name tail
+    Tag sample.metrics
+    Path /var/lib/ops-agent/samples/metrics.jsonl
+    Parser json
+    DB /var/lib/ops-agent/tail-metrics.db
+    storage.type filesystem
+{% else %}
+[INPUT]
+    Name stdin
+    Tag kafka
+    Parser raw_line
+{% endif %}
+
+[INPUT]
+    Name dummy
+    Tag heartbeat
+    Dummy {"kind":"agent.heartbeat"}
+    Interval_Sec {{ ops_agent_heartbeat_seconds }}
+    Interval_NSec 0
+
+[FILTER]
+    Name lua
+    Match kafka
+    script /fluent-bit/etc/ops_events.lua
+    call kafka_line
+
+[FILTER]
+    Name lua
+    Match unit
+    script /fluent-bit/etc/ops_events.lua
+    call unit_record
+
+[FILTER]
+    Name lua
+    Match heartbeat
+    script /fluent-bit/etc/ops_events.lua
+    call heartbeat
+
+[OUTPUT]
+    Name kafka
+    Match_Regex ^(kafka|unit|heartbeat|sample\.events)$
+    Brokers {{ ops_agent_brokers }}
+    Topics ops.platform.events
+    Message_Key_Field subject
+    Format json
+    rdkafka.request.required.acks -1
+    rdkafka.enable.idempotence true
+    rdkafka.security.protocol ssl
+    rdkafka.ssl.ca.location {{ ops_agent_tls_dir }}/ca.crt
+    rdkafka.ssl.certificate.location {{ ops_agent_tls_dir }}/{{ ops_agent_identity }}.crt
+    rdkafka.ssl.key.location {{ ops_agent_tls_dir }}/{{ ops_agent_identity }}.key
+    Retry_Limit False
+    storage.total_limit_size 48M
+
+[OUTPUT]
+    Name kafka
+    Match sample.metrics
+    Brokers {{ ops_agent_brokers }}
+    Topics ops.platform.metrics
+    Message_Key_Field source
+    Format json
+    rdkafka.request.required.acks -1
+    rdkafka.enable.idempotence true
+    rdkafka.security.protocol ssl
+    rdkafka.ssl.ca.location {{ ops_agent_tls_dir }}/ca.crt
+    rdkafka.ssl.certificate.location {{ ops_agent_tls_dir }}/{{ ops_agent_identity }}.crt
+    rdkafka.ssl.key.location {{ ops_agent_tls_dir }}/{{ ops_agent_identity }}.key
+    Retry_Limit False
+    storage.total_limit_size 16M

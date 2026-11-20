@@ -1,0 +1,2 @@
+Topic: ops.platform.events	TopicId: NCNE5RtWSha_HKByfaJJ2w	PartitionCount: 1	ReplicationFactor: 3	Configs: compression.type=producer,min.insync.replicas=1,segment.bytes=134217728,retention.ms=2592000000,max.message.bytes=1048588,message.timestamp.type=LogAppendTime,retention.bytes=268435456
+	Topic: ops.platform.events	Partition: 0	Leader: 1	Replicas: 1,2,3	Isr: 1,2,3	Elr: 	LastKnownElr: 

@@ -1,0 +1,22 @@
+flush ruleset
+
+table inet nacfson {
+	chain input {
+		type filter hook input priority filter; policy drop;
+		ct state established,related accept
+		ct state invalid drop
+		iif "lo" accept
+		ip protocol icmp accept
+		udp dport 68 accept
+		iifname "wg0" ip daddr {{ ansible_host }} tcp dport {{ kafka_client_port }} accept
+		iifname "wg0" drop
+		ip saddr {{ kafka_vcn_cidr }} tcp dport { 22, {{ kafka_client_port }}, {{ kafka_controller_port }} } accept
+{% if inventory_hostname in groups['brokers'] %}
+		udp dport {{ wireguard_port }} accept
+{% endif %}
+	}
+
+	chain forward {
+		type filter hook forward priority filter; policy drop;
+	}
+}

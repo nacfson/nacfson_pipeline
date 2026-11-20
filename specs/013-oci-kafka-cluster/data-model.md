@@ -61,7 +61,7 @@ The private keys are in Secret `oci-link/wg-slot-keys`, the public keys and addr
 |---|---|
 | `slot` | a number listed in ConfigMap `oci-link/wg-slot-pool` (declared in Git), within 0–13; `0,1,2,3` at start |
 | `address` | `10.201.0.<n+1>/32` |
-| `public_key` | copied into `infra/oci/ansible/group_vars/brokers/wg_slots.yml` through a pull request |
+| `public_key` | copied into `infra/oci/ansible/group_vars/brokers/wireguard_slots.yml` through a pull request |
 | `holder` | GKE node name, or empty |
 | `lease_duration` / `renew_interval` | 90 s / 30 s |
 | `annotations` | `oci-link.nacfson.io/fluent-bit-buffer-bytes`, `oci-link.nacfson.io/handshake-age-seconds`, written each renewal (R14) |

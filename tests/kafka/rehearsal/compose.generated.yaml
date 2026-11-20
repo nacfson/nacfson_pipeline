@@ -1,0 +1,97 @@
+---
+name: kafka-rehearsal
+services:
+  node-1:
+    image: docker.io/apache/kafka:4.3.2@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7
+    container_name: kafka-rehearsal-node-1
+    hostname: node-1
+    entrypoint:
+      - /opt/kafka/bin/kafka-server-start.sh
+    command:
+      - /etc/kafka-node/server.properties
+    networks:
+      kafka:
+        aliases:
+          - node-1
+          - broker-1
+    volumes:
+      - ./nodes/node-1.properties:/etc/kafka-node/server.properties:ro,Z
+      - ./.run/tls/node-1:/etc/kafka-node/tls:ro,Z
+      - ./.run/clients:/etc/kafka-node/clients:ro,Z
+      - ../../../infra/kafka/log4j2.yaml:/etc/kafka-node/log4j2.yaml:ro,Z
+      - node-1-data:/var/lib/kafka/data
+    environment:
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx256m
+      KAFKA_LOG4J_OPTS: -Dlog4j2.configurationFile=/etc/kafka-node/log4j2.yaml
+  node-2:
+    image: docker.io/apache/kafka:4.3.2@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7
+    container_name: kafka-rehearsal-node-2
+    hostname: node-2
+    entrypoint:
+      - /opt/kafka/bin/kafka-server-start.sh
+    command:
+      - /etc/kafka-node/server.properties
+    networks:
+      kafka:
+        aliases:
+          - node-2
+          - broker-2
+    volumes:
+      - ./nodes/node-2.properties:/etc/kafka-node/server.properties:ro,Z
+      - ./.run/tls/node-2:/etc/kafka-node/tls:ro,Z
+      - ./.run/clients:/etc/kafka-node/clients:ro,Z
+      - ../../../infra/kafka/log4j2.yaml:/etc/kafka-node/log4j2.yaml:ro,Z
+      - node-2-data:/var/lib/kafka/data
+    environment:
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx256m
+      KAFKA_LOG4J_OPTS: -Dlog4j2.configurationFile=/etc/kafka-node/log4j2.yaml
+  node-3:
+    image: docker.io/apache/kafka:4.3.2@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7
+    container_name: kafka-rehearsal-node-3
+    hostname: node-3
+    entrypoint:
+      - /opt/kafka/bin/kafka-server-start.sh
+    command:
+      - /etc/kafka-node/server.properties
+    networks:
+      kafka:
+        aliases:
+          - node-3
+          - broker-3
+    volumes:
+      - ./nodes/node-3.properties:/etc/kafka-node/server.properties:ro,Z
+      - ./.run/tls/node-3:/etc/kafka-node/tls:ro,Z
+      - ./.run/clients:/etc/kafka-node/clients:ro,Z
+      - ../../../infra/kafka/log4j2.yaml:/etc/kafka-node/log4j2.yaml:ro,Z
+      - node-3-data:/var/lib/kafka/data
+    environment:
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx256m
+      KAFKA_LOG4J_OPTS: -Dlog4j2.configurationFile=/etc/kafka-node/log4j2.yaml
+  node-4:
+    image: docker.io/apache/kafka:4.3.2@sha256:852a0d49fc4e656b022e7f23785411802c9a088c78a7c5e39f33969de9c227a7
+    container_name: kafka-rehearsal-node-4
+    hostname: node-4
+    entrypoint:
+      - /opt/kafka/bin/kafka-server-start.sh
+    command:
+      - /etc/kafka-node/server.properties
+    networks:
+      kafka:
+        aliases:
+          - node-4
+    volumes:
+      - ./nodes/node-4.properties:/etc/kafka-node/server.properties:ro,Z
+      - ./.run/tls/node-4:/etc/kafka-node/tls:ro,Z
+      - ./.run/clients:/etc/kafka-node/clients:ro,Z
+      - ../../../infra/kafka/log4j2.yaml:/etc/kafka-node/log4j2.yaml:ro,Z
+      - node-4-data:/var/lib/kafka/data
+    environment:
+      KAFKA_HEAP_OPTS: -Xms256m -Xmx256m
+      KAFKA_LOG4J_OPTS: -Dlog4j2.configurationFile=/etc/kafka-node/log4j2.yaml
+networks:
+  kafka: {}
+volumes:
+  node-1-data: {}
+  node-2-data: {}
+  node-3-data: {}
+  node-4-data: {}

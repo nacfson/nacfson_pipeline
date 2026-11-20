@@ -44,7 +44,7 @@ python3 scripts/check-arch-doc-sync.py --worktree
 ./scripts/kafka-rehearsal.sh capture-logs
 ```
 
-**Expected**: 100,000 numbered lines written by a fake `proj-*` source are read back exactly once, in order per pod. Each `logs.*` partition reports 3 replicas, with ISR 3. `capture-logs` writes the real broker and controller log lines to `tests/fixtures/kafka-logs/4.3.2/`, and the Lua rule tests then pass against them.
+**Expected**: 100,000 numbered lines written by a fake `proj-*` source are read back exactly once, in order per pod within each partition. Each `logs.*` partition reports 3 replicas, with ISR 3. `capture-logs` writes the real broker and controller log lines to `tests/fixtures/kafka-logs/4.3.2/`, and the Lua rule tests then pass against them.
 
 ## Scenario 3: Rehearsal failover (Story 2, SC-002, SC-003, SC-011, SC-013, SC-014)
 

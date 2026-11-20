@@ -1,0 +1,3 @@
+{% for key, value in kafka_nodes[inventory_hostname].server_properties.items() %}
+{{ key }}={{ value }}
+{% endfor %}

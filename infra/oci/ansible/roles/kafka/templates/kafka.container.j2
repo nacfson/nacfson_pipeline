@@ -1,0 +1,37 @@
+[Unit]
+Description=Kafka node {{ kafka_nodes[inventory_hostname].node_id }} ({{ kafka_nodes[inventory_hostname].roles | join(', ') }})
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+Image={{ kafka_image }}
+ContainerName=kafka
+Network=host
+User={{ kafka_uid }}
+Group={{ kafka_uid }}
+ReadOnly=true
+Tmpfs=/tmp:rw,size=64m
+Volume={{ kafka_config_file }}:{{ kafka_container_config }}:ro
+Volume={{ kafka_tls_dir }}:{{ kafka_container_tls_dir }}:ro
+Volume={{ kafka_data_dir }}:/var/lib/kafka/data
+Volume=/etc/kafka/clients:/etc/kafka-node/clients:ro
+Volume=/etc/kafka/log4j2.yaml:/etc/kafka-node/log4j2.yaml:ro
+Volume=/etc/kafka/jmx-exporter.yaml:/etc/kafka-node/jmx-exporter.yaml:ro
+Volume={{ jmx_exporter_dir }}/jmx_prometheus_javaagent.jar:/opt/jmx-exporter/jmx_prometheus_javaagent.jar:ro
+Environment=KAFKA_HEAP_OPTS=-Xms{{ kafka_heap }} -Xmx{{ kafka_heap }}
+Environment=LOG_DIR=/tmp
+Environment=KAFKA_LOG4J_OPTS={{ kafka_log4j_opts }}
+Environment=KAFKA_OPTS=-javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=127.0.0.1:7071:/etc/kafka-node/jmx-exporter.yaml
+PodmanArgs=--entrypoint=/opt/kafka/bin/kafka-server-start.sh
+Exec={{ kafka_container_config }}
+
+[Service]
+Restart=always
+TimeoutStopSec=120
+MemoryMin={{ kafka_memory_max }}
+MemoryMax={{ kafka_memory_max }}
+OOMScoreAdjust=-900
+CPUWeight=1000
+
+[Install]
+WantedBy=multi-user.target

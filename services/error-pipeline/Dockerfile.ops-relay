@@ -1,0 +1,25 @@
+FROM --platform=$BUILDPLATFORM golang:1.26.9-alpine AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
+
+WORKDIR /src
+
+COPY go.mod go.sum ./
+RUN go mod download
+COPY cmd/ cmd/
+COPY internal/ internal/
+
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
+    -ldflags="-w -s" \
+    -o /bin/ops-relay \
+    ./cmd/ops-relay
+
+FROM gcr.io/distroless/static@sha256:d62067879de890a1def9da0e7766b7d20810a5e5555cef8506b752437d7a3e88
+
+COPY --from=builder /bin/ops-relay /ops-relay
+
+USER 65532:65532
+
+ENTRYPOINT ["/ops-relay"]
+CMD ["serve"]

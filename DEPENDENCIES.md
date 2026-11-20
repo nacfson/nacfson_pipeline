@@ -12,10 +12,11 @@ Per [Constitution Principle III](.specify/memory/constitution.md) and Security C
 | :--- | :--- | :--- | :--- | :--- |
 | `nacfson_pipeline/gateway` | [`gateway/go.mod`](gateway/go.mod) | `go 1.22` | **None** (`0` `require` directives) | `platform-auth-gateway` |
 | `nacfson_pipeline/services/vault-proxies` | [`services/vault-proxies/go.mod`](services/vault-proxies/go.mod) | `go 1.22` | **None** (`0` `require` directives) | `vault-db-proxy`, `vault-ai-proxy`, `vault-notify-proxy` *(Spec 012 retired `vault-registry-proxy`)* |
-| `nacfson_pipeline/services/error-pipeline` | [`services/error-pipeline/go.mod`](services/error-pipeline/go.mod) | `go 1.22` | **None** (`0` `require` directives) | `error-detector` |
+| `nacfson_pipeline/services/error-pipeline` | [`services/error-pipeline/go.mod`](services/error-pipeline/go.mod) | `go 1.26.0` (builder `golang:1.26.9-alpine`) | **Only** `github.com/twmb/franz-go` `v1.22.2` and its `pkg/kmsg` (Spec 013, `ops-relay`'s Kafka client; Go has no Kafka protocol in its standard library). Approved in `specs/013-oci-kafka-cluster/plan.md` Complexity Tracking and research R17 | `error-detector`, `logcheck`, `ops-relay` |
+| `nacfson_pipeline/services/wg-slot-agent` | [`services/wg-slot-agent/go.mod`](services/wg-slot-agent/go.mod) | `go 1.22` (builder `golang:1.26.9-alpine`) | **None** (`0` `require` directives) | `wg-slot-agent` (Spec 013) |
 
 > [!IMPORTANT]
-> Never run `go get <third-party-pkg>` or introduce external gateway frameworks, OAuth2 Proxy, or Redis into [`gateway/`](gateway/), [`services/vault-proxies/`](services/vault-proxies/), or [`services/error-pipeline/`](services/error-pipeline/).
+> Never run `go get <third-party-pkg>` or introduce external gateway frameworks, OAuth2 Proxy, or Redis into [`gateway/`](gateway/), [`services/vault-proxies/`](services/vault-proxies/), or [`services/wg-slot-agent/`](services/wg-slot-agent/). [`services/error-pipeline/`](services/error-pipeline/) may use only the franz-go client listed above; any other module needs its own spec approval.
 
 ---
 

@@ -76,3 +76,11 @@ terraform.tfvars
 crash.log
 
 signin-trace*/
+
+infra/oci/terraform/.terraform/
+infra/oci/terraform/*.tfstate*
+infra/oci/terraform/tfplan
+infra/oci/terraform/*.tfvars
+infra/oci/ansible/inventory/bastion.local.yml
+build/strimzi/
+tests/kafka/rehearsal/.run/

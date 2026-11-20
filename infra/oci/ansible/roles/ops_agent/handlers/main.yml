@@ -1,0 +1,8 @@
+- name: Reload systemd for the ops agent
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart ops-agent
+  ansible.builtin.systemd_service:
+    name: ops-agent
+    state: restarted

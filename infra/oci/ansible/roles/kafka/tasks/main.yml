@@ -1,0 +1,112 @@
+- name: Write server.properties
+  ansible.builtin.template:
+    src: server.properties.j2
+    dest: "{{ kafka_config_file }}"
+    owner: kafka
+    group: kafka
+    mode: "0640"
+  notify: Restart kafka
+
+- name: Send every Kafka log line, controller included, to the journal
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../kafka/log4j2.yaml"
+    dest: /etc/kafka/log4j2.yaml
+    owner: kafka
+    group: kafka
+    mode: "0644"
+  notify: Restart kafka
+
+- name: Create the JMX exporter directory
+  ansible.builtin.file:
+    path: "{{ jmx_exporter_dir }}"
+    state: directory
+    mode: "0755"
+
+- name: Download the pinned JMX exporter
+  ansible.builtin.get_url:
+    url: "https://github.com/prometheus/jmx_exporter/releases/download/{{ jmx_exporter_version }}/jmx_prometheus_javaagent-{{ jmx_exporter_version }}.jar"
+    dest: "{{ jmx_exporter_dir }}/jmx_prometheus_javaagent.jar"
+    checksum: "sha256:{{ jmx_exporter_sha256 }}"
+    mode: "0644"
+  notify: Restart kafka
+
+- name: Install the JMX exporter allowlist
+  ansible.builtin.copy:
+    src: "{{ playbook_dir }}/../../kafka/jmx-exporter.yaml"
+    dest: /etc/kafka/jmx-exporter.yaml
+    owner: kafka
+    group: kafka
+    mode: "0644"
+  notify: Restart kafka
+
+- name: Create the client config directory
+  ansible.builtin.file:
+    path: /etc/kafka/clients
+    state: directory
+    owner: kafka
+    group: kafka
+    mode: "0750"
+
+- name: Write the ops-cli client config
+  ansible.builtin.template:
+    src: ops-cli.properties.j2
+    dest: /etc/kafka/clients/ops-cli.properties
+    owner: kafka
+    group: kafka
+    mode: "0640"
+
+- name: Write the admin client config on brokers
+  ansible.builtin.template:
+    src: admin.properties.j2
+    dest: /etc/kafka/clients/admin.properties
+    owner: kafka
+    group: kafka
+    mode: "0640"
+  when: inventory_hostname in groups['brokers']
+
+- name: Check whether storage is formatted
+  ansible.builtin.stat:
+    path: "{{ kafka_data_dir }}/meta.properties"
+  register: kafka_meta
+
+- name: Choose how to format, bootstrapping the quorum only on the first build
+  ansible.builtin.set_fact:
+    kafka_format_args: >-
+      {{ kafka_nodes[inventory_hostname].format_args_bootstrap
+         if (hostvars['localhost'].site_first_build | default(false))
+         else kafka_nodes[inventory_hostname].format_args_join }}
+
+- name: Format storage
+  ansible.builtin.command:
+    argv: "{{ kafka_podman_run + ['--entrypoint', '/opt/kafka/bin/kafka-storage.sh', kafka_image] + kafka_format_args }}"
+  when: not kafka_meta.stat.exists
+  changed_when: true
+
+- name: Read meta.properties
+  ansible.builtin.slurp:
+    src: "{{ kafka_data_dir }}/meta.properties"
+  register: kafka_meta_content
+
+- name: Storage belongs to the declared cluster and node
+  ansible.builtin.assert:
+    that:
+      - ("cluster.id=" ~ kafka_cluster_id) in (kafka_meta_content.content | b64decode)
+      - ("node.id=" ~ kafka_nodes[inventory_hostname].node_id) in (kafka_meta_content.content | b64decode)
+    fail_msg: "{{ kafka_data_dir }} holds another cluster or node; refusing to start"
+
+- name: Write the Quadlet unit
+  ansible.builtin.template:
+    src: kafka.container.j2
+    dest: /etc/containers/systemd/kafka.container
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart kafka
+
+- name: Apply unit changes before starting
+  ansible.builtin.meta: flush_handlers
+
+- name: Start Kafka
+  ansible.builtin.systemd_service:
+    name: kafka
+    state: started

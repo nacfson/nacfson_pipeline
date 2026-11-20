@@ -1,0 +1,6 @@
+broker-3:9092 (id: 3 rack: null isFenced: false) -> (
+)
+broker-2:9092 (id: 2 rack: null isFenced: false) -> (
+)
+broker-1:9092 (id: 1 rack: null isFenced: false) -> (
+)

@@ -32,14 +32,14 @@ Operator-started actions use the control center's passkey step-up, like its exis
 
 1. **One run at a time.** A run takes the lock, and others wait.
 2. **Commit**: the checkout is the read-only clone at the exact commit being applied. Local changes are refused.
-3. **Pre-flight play**: fails with exit code `3` when a broker is missing or any partition is under-replicated. The runner reports that as `DeployBlocked`, not `DeployFailed`.
+3. **Pre-flight**: the runner first runs `infra/oci/ansible/preflight.yml`. It fails when a broker is missing or any partition is under-replicated, or when a VM cannot be reached. The runner reports any failure of it as `DeployBlocked`, not `DeployFailed`, and does not start the playbook. Every playbook also imports it, so a run started by hand stops the same way. (Ansible's own exit code 3 already means an unreachable host, so the result is read from which playbook failed, not from a custom exit code.)
 4. **Plays**: use `serial: 1` and `any_errors_fatal: true`, with the full-replication wait between VMs.
 5. **Last task on each VM**: writes the applied commit to `/etc/nacfson/applied-commit`.
 6. **Run log**: kept in the control center's UI for 30 days.
 
 ## Result events
 
-The runner creates one Kubernetes Event in `oci-link` per run. The `involvedObject` is the namespace `oci-link`, and the `reportingController` is `nacfson-control-center/kafka-runner`.
+The runner creates one Kubernetes Event in `oci-link` per run. The `involvedObject` is `{kind: Namespace, name: oci-link, namespace: oci-link}`: the API server rejects an Event in `oci-link` whose `involvedObject.namespace` is empty. `source.component` is `kafka-runner`, and the `reportingController` is `nacfson-control-center/kafka-runner`.
 
 | `reason` | `type` | When | `message` |
 |---|---|---|---|

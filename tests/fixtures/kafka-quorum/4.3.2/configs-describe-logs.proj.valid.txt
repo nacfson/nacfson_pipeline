@@ -1,0 +1,7 @@
+Dynamic configs for topic logs.proj.valid are:
+  max.message.bytes=1048588 sensitive=false synonyms={DYNAMIC_TOPIC_CONFIG:max.message.bytes=1048588, DEFAULT_CONFIG:message.max.bytes=1048588}
+  message.timestamp.type=CreateTime sensitive=false synonyms={DYNAMIC_TOPIC_CONFIG:message.timestamp.type=CreateTime, DEFAULT_CONFIG:log.message.timestamp.type=CreateTime}
+  min.insync.replicas=2 sensitive=false synonyms={DYNAMIC_TOPIC_CONFIG:min.insync.replicas=2, DYNAMIC_DEFAULT_BROKER_CONFIG:min.insync.replicas=2, STATIC_BROKER_CONFIG:min.insync.replicas=2, DEFAULT_CONFIG:min.insync.replicas=1}
+  retention.bytes=5368709120 sensitive=false synonyms={DYNAMIC_TOPIC_CONFIG:retention.bytes=5368709120, DEFAULT_CONFIG:log.retention.bytes=-1}
+  retention.ms=604800000 sensitive=false synonyms={DYNAMIC_TOPIC_CONFIG:retention.ms=604800000}
+  segment.bytes=134217728 sensitive=false synonyms={DYNAMIC_TOPIC_CONFIG:segment.bytes=134217728, DEFAULT_CONFIG:log.segment.bytes=1073741824}

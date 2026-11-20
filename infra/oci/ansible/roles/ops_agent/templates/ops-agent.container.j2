@@ -1,0 +1,31 @@
+[Unit]
+Description=Kafka ops agent (events, metrics, heartbeat)
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+Image={{ ops_agent_image }}
+ContainerName=ops-agent
+Network=host
+User={{ kafka_uid }}
+Group={{ kafka_uid }}
+GroupAdd={{ ansible_facts.getent_group['systemd-journal'][1] }}
+ReadOnly=true
+Volume=/etc/ops-agent:/fluent-bit/etc:ro
+Volume={{ ops_agent_tls_dir }}:{{ ops_agent_tls_dir }}:ro
+Volume=/var/lib/ops-agent:/var/lib/ops-agent
+Volume=/var/log/journal:/var/log/journal:ro
+Volume=/run/log/journal:/run/log/journal:ro
+Volume=/etc/machine-id:/etc/machine-id:ro
+Environment=OPS_VM={{ inventory_hostname }}
+Environment=OPS_NODES={{ kafka_nodes | dict2items | map(attribute='value') | map(attribute='node_id') | zip(kafka_nodes.keys()) | map('join', '=') | join(',') }}
+Environment=OPS_REPLICATION=3
+Exec=/fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf
+
+[Service]
+Restart=always
+MemoryMax={{ ops_agent_memory_max }}
+OOMScoreAdjust=-500
+
+[Install]
+WantedBy=multi-user.target

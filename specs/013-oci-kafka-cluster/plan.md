@@ -24,7 +24,7 @@ Topics, identities, and ACLs are declared once in `infra/kafka/cluster.yaml`. Th
 ## Technical Context
 
 **Language/Version**:
-- Go 1.22 for `ops-relay` and `wg-slot-agent`
+- Go 1.26 for `ops-relay` (the `error-pipeline` module moves from 1.22, because franz-go needs it) and Go 1.22 for `wg-slot-agent`
 - Python 3.11+ for `scripts/kafka-declarations.py`, the rehearsal runner, and tests
 - HCL for Terraform `>= 1.9.0, < 2.0.0`
 - Ansible (`ansible-core` pinned in `bootstrap/requirements.txt`)
@@ -39,8 +39,10 @@ Topics, identities, and ACLs are declared once in `infra/kafka/cluster.yaml`. Th
 - Podman with Quadlet, WireGuard, and nftables on Ubuntu 24.04 Minimal (R2, R3)
 - `oracle/oci` Terraform provider, minor version pinned, with lock files for `linux_amd64` and `linux_arm64`
 - cert-manager (existing) for the Kafka CA (R8)
-- Strimzi 1.2.0 JSON schemas for render-only validation (R10)
+- Strimzi 1.3.1 JSON schemas for render-only validation (R10)
 - The control center (private repository `nacfson-control-center`, Go standard library, GCP e2-micro), extended with Kafka actions and the automation of R22. It runs `ansible-core` at the version pinned in `bootstrap/requirements.txt`.
+
+**Record size**: Fluent Bit's Kafka output does not set `message.max.bytes`, so librdkafka's default of 1,000,000 bytes caps every record it sends, including joined multiline records. Larger records fail in the producer, not on the broker. Each topic's `max_message_bytes` is 1,048,588 (Kafka's default), which is above that cap plus the record-batch overhead.
 
 **Storage**: Kafka data on each VM's 50 GB boot volume (`/var/lib/kafka`), within a 20 GB per-broker budget (R12). Terraform state for `infra/oci/terraform` lives in Spec 015's existing GCS bucket `nacfson-pipeline-tfstate`, prefix `oci` (R21). There are no other stores, and the relay keeps state in memory, rebuilt from the topic.
 
@@ -167,7 +169,7 @@ infra/oci/
     ├── spike-s1.yml                     # Scenario 0 only
     ├── inventory/oci.yml                # Bastion ProxyCommand, no secrets
     ├── group_vars/all/kafka.generated.yml
-    ├── group_vars/brokers/wg_slots.yml  # slot public keys and addresses
+    ├── group_vars/brokers/wireguard_slots.yml  # slot public keys and addresses
     └── roles/
         ├── base/                        # packages, swap on micros, sysctl, nftables, podman
         ├── wireguard/

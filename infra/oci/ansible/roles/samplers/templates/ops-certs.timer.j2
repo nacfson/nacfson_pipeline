@@ -1,0 +1,10 @@
+[Unit]
+Description=Check certificate expiry daily
+
+[Timer]
+OnBootSec=2min
+OnCalendar=daily
+Persistent=true
+
+[Install]
+WantedBy=timers.target

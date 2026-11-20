@@ -5,6 +5,7 @@ namespace: observability
 
 resources:
   - ../../../deploy/platform/observability
+  - fluent-bit-kafka-tls.yaml
 
 configMapGenerator:
   - name: fluent-bit-config
@@ -16,6 +17,28 @@ generatorOptions:
   disableNameSuffixHash: true
 
 patches:
+  - target:
+      kind: DaemonSet
+      name: fluent-bit
+    patch: |-
+      apiVersion: apps/v1
+      kind: DaemonSet
+      metadata:
+        name: fluent-bit
+      spec:
+        template:
+          spec:
+            containers:
+              - name: fluent-bit
+                volumeMounts:
+                  - name: kafka-tls
+                    mountPath: /etc/kafka-tls
+                    readOnly: true
+            volumes:
+              - name: kafka-tls
+                secret:
+                  secretName: fluent-bit-kafka-client
+                  defaultMode: 0440
   - target:
       kind: StatefulSet
       name: victorialogs

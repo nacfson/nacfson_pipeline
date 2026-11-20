@@ -1,0 +1,32 @@
+[
+  {
+    "detail": "[2026-11-19 12:47:02,995] INFO [QuorumController id=1] Replayed BrokerRegistrationChangeRecord modifying the registration for broker 3: BrokerRegistrationChangeRecord(brokerId=3, brokerEpoch=14, fenced=1, inControlledShutdown=0, logDirs=[], cordonedLogDirs=null) (org.apache.kafka.controller.ClusterControlManager)",
+    "kind": "broker.fenced",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "kafka-controller-log",
+    "state": "down",
+    "subject": "kafka/broker-3",
+    "vm": "micro-1"
+  },
+  {
+    "detail": "[2026-11-19 12:47:19,084] INFO [QuorumController id=1] Replayed BrokerRegistrationChangeRecord modifying the registration for broker 3: BrokerRegistrationChangeRecord(brokerId=3, brokerEpoch=14, fenced=-1, inControlledShutdown=0, logDirs=[], cordonedLogDirs=null) (org.apache.kafka.controller.ClusterControlManager)",
+    "kind": "broker.unfenced",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "kafka-controller-log",
+    "state": "up",
+    "subject": "kafka/broker-3",
+    "vm": "micro-1"
+  },
+  {
+    "detail": "[2026-11-19 12:47:19,649] INFO [Partition logs.proj.valid-1 broker=1] ISR updated to 2,1,3  and version updated to 11 (kafka.cluster.Partition)",
+    "kind": "partition.isr_expand",
+    "observed_by": "a1-1",
+    "schema": 1,
+    "source": "kafka-broker-log",
+    "state": "up",
+    "subject": "kafka/partition/logs.proj.valid-1",
+    "vm": "a1-1"
+  }
+]
