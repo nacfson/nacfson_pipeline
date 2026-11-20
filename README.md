@@ -220,6 +220,13 @@ flowchart TB
 
 Terraform stops at an empty cluster. Flux creates everything inside it, and the Spec 012 restore (run from the control center) brings the data over. Terraform also owns the only internet firewall opening (TCP 80/443 to the reserved address); GKE's automatic load balancer firewall rule is turned off, so every opening is reviewed in Git. The cluster, KMS key, registry and state bucket are protected against deletion; the address and firewall rule are not, so a rehearsal can be removed without leaving charges.
 
+### 3.3 Planned Observability & Private UI Access Direction (Spec 014)
+
+Beyond the Spec 013 OCI Kafka cluster, the planned observability layer ([`docs/designs/spec014-observability-and-ai-proxy.md`](docs/designs/spec014-observability-and-ai-proxy.md)) keeps one self-hosted, vendor-neutral OSS architecture focused on error detection and incident triage:
+- **Kafka as Source of Truth & Loki as Observation Store:** OCI Kafka retains 7 days of durable logs; Vector on OCI `A1-2` routes Kafka streams into single-binary Grafana Loki (fixed `10 GiB` loopback local filesystem, 14-day default retention, native mTLS on `:3100`, no OCI Object Storage); Grafana on OCI `A1-1` queries `A1-2` Loki over VCN mTLS for both logs and low-cardinality `ops.platform.metrics`.
+- **Direct Kafka Error Detection & Vault-Backed Discord Relay (`alerts.errors`):** `error-detector` on OCI `A1-2` consumes `logs.proj.valid` and `logs.proj.quarantine` directly from local OCI Kafka `:9092` (catching delayed logs, raw non-JSON crashes, and quarantine lines), caches signatures (ignoring timestamp) in bounded RAM for 10 minutes, and publishes redacted alert envelopes to Kafka `alerts.errors` (`64 MiB` retention). GKE `ops-relay` (on `ondemand-core`) consumes `alerts.errors` over its existing `wg0:9092` link and posts through GKE OpenBao `vault-notify-proxy` (zero Discord webhooks on OCI; zero GKE-to-OCI Loki polling).
+- **Private Grafana Access (Raw WireGuard First, Revisable):** Spec 014 uses the **raw WireGuard protocol** directly (avoiding third-party SaaS VPN dependencies, with `nftables` restricting operator peer IPs `10.201.1.0/28` to Grafana `:3000` on `A1-1` and `$0` GCP outbound egress) with local admin password mounted read-only via `GF_SECURITY_ADMIN_PASSWORD__FILE` (`/etc/grafana/admin-password`, `0400`). If static per-device WireGuard key management becomes an operational bottleneck (>3 devices or mobile clients), it will migrate to OCI Bastion + Keycloak PKCE OIDC.
+
 ---
 
 ## 4. Master Specification & Contract Index
