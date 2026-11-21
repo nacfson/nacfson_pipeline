@@ -28,6 +28,8 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r scripts/requirements-preflight.txt
+          curl -sL https://github.com/yannh/kubeconform/releases/download/${{ env.KUBECONFORM_VERSION }}/kubeconform-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin kubeconform
+          kubeconform -v
 
       - name: Run preflight unit tests
         run: |
