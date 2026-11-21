@@ -105,7 +105,7 @@ class OciTerraformTests(unittest.TestCase):
     def test_only_wireguard_is_open_to_the_internet(self):
         body = self.oci[("oci_core_security_list", "kafka")]
         ingress = re.findall(r"ingress_security_rules\s*\{(.*?)\n  \}", body, re.S)
-        self.assertEqual(len(ingress), 3)
+        self.assertEqual(len(ingress), 4)
         public = [r for r in ingress if '"0.0.0.0/0"' in r]
         self.assertEqual(len(public), 1)
         self.assertRegex(public[0], r'protocol\s*=\s*"17"')
@@ -117,6 +117,12 @@ class OciTerraformTests(unittest.TestCase):
         ssh = next(r for r in internal if re.search(r"min\s*=\s*22\b", r))
         self.assertRegex(ssh, r"max\s*=\s*22\b")
         self.assertNotIn("0.0.0.0/0", ssh)
+        loki = [r for r in ingress if '"10.200.0.11/32"' in r]
+        self.assertEqual(len(loki), 1)
+        self.assertRegex(loki[0], r'protocol\s*=\s*"6"')
+        self.assertRegex(loki[0], r"min\s*=\s*3100\b")
+        self.assertRegex(loki[0], r"max\s*=\s*3100\b")
+        self.assertNotIn("0.0.0.0/0", loki[0])
 
     def test_budget_guard_is_one_dollar_on_actual_spend(self):
         self.assertRegex(self.oci[("oci_budget_budget", "free_tier_guard")], r"amount\s*=\s*1\b")

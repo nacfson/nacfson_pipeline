@@ -1992,3 +1992,369 @@ func TestQuarantineAlertRedactsSecrets(t *testing.T) {
 		t.Errorf("expected redaction marker in quarantine alert body: %q", got[0].n.Body)
 	}
 }
+
+type fakeNotifySender struct {
+	mu      sync.Mutex
+	sent    []notify.Notification
+	failErr error
+}
+
+func (f *fakeNotifySender) Send(_ context.Context, _ string, n notify.Notification) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.failErr != nil {
+		return f.failErr
+	}
+	f.sent = append(f.sent, n)
+	return nil
+}
+
+func (f *fakeNotifySender) snapshot() []notify.Notification {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]notify.Notification, len(f.sent))
+	copy(out, f.sent)
+	return out
+}
+
+func (f *fakeNotifySender) setErr(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.failErr = err
+}
+
+type fakeLogSource struct {
+	mu       sync.Mutex
+	readyErr error
+	runFn    func(ctx context.Context, onRecord func(classify.Record) error, onQuarantine func(vlogs.QuarantineRecord) error) error
+}
+
+func (f *fakeLogSource) setReadyErr(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.readyErr = err
+}
+
+func (f *fakeLogSource) Ready(_ context.Context) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.readyErr
+}
+
+func (f *fakeLogSource) Run(ctx context.Context, onRecord func(classify.Record) error, onQuarantine func(vlogs.QuarantineRecord) error) error {
+	if f.runFn != nil {
+		return f.runFn(ctx, onRecord, onQuarantine)
+	}
+	<-ctx.Done()
+	return ctx.Err()
+}
+
+func TestDisklessKafkaSourceSyncOutboxCrashesOutOfOrderAndDedup(t *testing.T) {
+	now := time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
+	clk := newFakeClock(now)
+	sender := &fakeNotifySender{}
+	src := &fakeLogSource{readyErr: errors.New("connecting")}
+
+	d, err := New(Config{
+		Source:             src,
+		Notify:             sender,
+		StateDisabled:      true,
+		SyncNotify:         true,
+		QuarantineThrottle: 5 * time.Second,
+		GrafanaBaseURL:     "http://10.200.0.11:3000",
+		Group: group.Config{
+			Window:     0,
+			Cooldown:   10 * time.Minute,
+			Retention:  20 * time.Minute,
+			MaxSamples: 5,
+			MaxEntries: 10000,
+		},
+		Now: clk.Now,
+	})
+	if err != nil {
+		t.Fatalf("New diskless kafka detector: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- d.Run(ctx) }()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for !d.started.Load() && time.Now().Before(deadline) {
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	w := httptest.NewRecorder()
+	d.Mux().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("readyz before kafka ready = %d, want 503", w.Code)
+	}
+
+	src.setReadyErr(nil)
+	w = httptest.NewRecorder()
+	d.Mux().ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if w.Code != http.StatusOK {
+		t.Fatalf("readyz after kafka ready = %d, want 200", w.Code)
+	}
+
+	if err := d.Ingest(classify.Record{
+		Time:      now,
+		Project:   "proj-pn",
+		Container: "backend",
+		Pod:       "pn-1",
+		Parsed:    true,
+		Level:     "error",
+		Msg:       "db pool exhausted for id 1234",
+		Message:   "db pool exhausted for id 1234",
+	}); err != nil {
+		t.Fatalf("Ingest first: %v", err)
+	}
+	if len(sender.snapshot()) != 1 {
+		t.Fatalf("expected immediate sync delivery, got %d", len(sender.snapshot()))
+	}
+
+	if err := d.Ingest(classify.Record{
+		Time:      now.Add(-2 * time.Minute),
+		Project:   "proj-pn",
+		Container: "backend",
+		Pod:       "pn-1",
+		Parsed:    true,
+		Level:     "error",
+		Msg:       "delayed out-of-order failure",
+		Message:   "delayed out-of-order failure",
+	}); err != nil {
+		t.Fatalf("Ingest delayed: %v", err)
+	}
+	if len(sender.snapshot()) != 2 {
+		t.Fatalf("out-of-order delayed error did not alert, got %d", len(sender.snapshot()))
+	}
+
+	clk.Set(now.Add(5 * time.Minute))
+	if err := d.Ingest(classify.Record{
+		Time:      now.Add(5 * time.Minute),
+		Project:   "proj-pn",
+		Container: "backend",
+		Pod:       "pn-1",
+		Parsed:    true,
+		Level:     "error",
+		Msg:       "db pool exhausted for id 9999",
+		Message:   "db pool exhausted for id 9999",
+	}); err != nil {
+		t.Fatalf("Ingest duplicate: %v", err)
+	}
+	if len(sender.snapshot()) != 2 {
+		t.Fatalf("duplicate inside 10m ttl alerted, got %d", len(sender.snapshot()))
+	}
+
+	clk.Set(now.Add(10 * time.Minute))
+	if err := d.Ingest(classify.Record{
+		Time:      now.Add(10 * time.Minute),
+		Project:   "proj-pn",
+		Container: "backend",
+		Pod:       "pn-1",
+		Parsed:    true,
+		Level:     "error",
+		Msg:       "db pool exhausted for id 4242",
+		Message:   "db pool exhausted for id 4242",
+	}); err != nil {
+		t.Fatalf("Ingest after ttl: %v", err)
+	}
+	if len(sender.snapshot()) != 3 {
+		t.Fatalf("error at exact 10m ttl did not re-alert, got %d", len(sender.snapshot()))
+	}
+
+	if err := d.Ingest(classify.Record{
+		Time:      now.Add(10 * time.Minute),
+		Project:   "proj-pn",
+		Container: "frontend",
+		Pod:       "fe-1",
+		Parsed:    false,
+		Message:   "2026/11/21 12:10:00 [error] 10#0: *1 upstream refused connection",
+	}); err != nil {
+		t.Fatalf("Ingest nginx: %v", err)
+	}
+	if len(sender.snapshot()) != 4 {
+		t.Fatalf("raw nginx error did not alert, got %d", len(sender.snapshot()))
+	}
+
+	if err := d.Ingest(classify.Record{
+		Time:      now.Add(10 * time.Minute),
+		Project:   "proj-pn",
+		Container: "worker",
+		Pod:       "w-1",
+		Parsed:    false,
+		Message:   "panic: runtime error: nil pointer token=secret123",
+	}); err != nil {
+		t.Fatalf("Ingest crash: %v", err)
+	}
+	clk.Set(now.Add(10*time.Minute + 15*time.Second))
+	d.tick()
+
+	if err := d.IngestQuarantine(vlogs.QuarantineRecord{
+		Time:      now.Add(10*time.Minute + 15*time.Second),
+		Project:   "proj-health",
+		Container: "api",
+		Message:   "broken non-json line password=hidden",
+	}); err != nil {
+		t.Fatalf("IngestQuarantine: %v", err)
+	}
+
+	sent := sender.snapshot()
+	if len(sent) != 6 {
+		t.Fatalf("total alerts = %d, want 6", len(sent))
+	}
+	crashAlert := sent[4]
+	if strings.Contains(crashAlert.Body, "secret123") || !strings.Contains(crashAlert.Body, "panic:") {
+		t.Errorf("crash alert body = %q", crashAlert.Body)
+	}
+	quarantineAlert := sent[5]
+	if strings.Contains(quarantineAlert.Body, "hidden") || strings.Contains(quarantineAlert.Body, "tenant 0:1") {
+		t.Errorf("quarantine alert body = %q", quarantineAlert.Body)
+	}
+	hasGrafana := false
+	for _, f := range sent[0].Fields {
+		if f.Name == "Grafana" && strings.HasPrefix(f.Value, "http://10.200.0.11:3000/explore?") {
+			hasGrafana = true
+		}
+	}
+	if !hasGrafana {
+		t.Errorf("alert missing Grafana Explore field: %+v", sent[0].Fields)
+	}
+
+	cancel()
+	if err := <-done; err != nil {
+		t.Fatalf("Run shutdown err = %v", err)
+	}
+}
+
+func TestSyncNotifyRetriesWithoutLeakingBurstQuotaAndShutdownFlushesRecentCrash(t *testing.T) {
+	now := time.Date(2026, 11, 21, 12, 0, 0, 0, time.UTC)
+	clk := newFakeClock(now)
+
+	var attempts atomic.Int32
+	var sent []notify.Notification
+	var mu sync.Mutex
+	flakySender := &flakyNotifySender{
+		sendFn: func(_ context.Context, _ string, n notify.Notification) error {
+			if attempts.Add(1) <= 15 {
+				return errors.New("transient kafka outbox outage")
+			}
+			mu.Lock()
+			sent = append(sent, n)
+			mu.Unlock()
+			return nil
+		},
+	}
+
+	var committed atomic.Int32
+	src := &commitTrackSource{
+		onCommitPending: func() { committed.Add(1) },
+	}
+
+	d, err := New(Config{
+		Source:         src,
+		Notify:         flakySender,
+		StateDisabled:  true,
+		SyncNotify:     true,
+		SyncRetryMin:   time.Millisecond,
+		SyncRetryMax:   2 * time.Millisecond,
+		GrafanaBaseURL: "http://10.200.0.11:3000",
+		Group:          group.Config{Window: 0, Cooldown: 10 * time.Minute, Retention: 20 * time.Minute, MaxSamples: 5, MaxEntries: 10000},
+		Now:            clk.Now,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	delayedAt := now.Add(-2 * time.Hour)
+	rec := classify.Record{
+		Time:      delayedAt,
+		Project:   "proj-pn",
+		Container: "backend",
+		Pod:       "pn-1",
+		Parsed:    true,
+		Level:     "error",
+		Msg:       "transient outbox failure beyond burst cap",
+		Message:   "transient outbox failure beyond burst cap",
+	}
+	if err := d.Ingest(rec); err != nil {
+		t.Fatalf("Ingest failed after retries: %v", err)
+	}
+	if attempts.Load() != 16 {
+		t.Fatalf("attempts = %d, want 16 (15 failures > burstPerMinute=10 + 1 success)", attempts.Load())
+	}
+	mu.Lock()
+	if len(sent) != 1 {
+		t.Fatalf("sent = %d, want 1", len(sent))
+	}
+	wantFrom := delayedAt.Add(-15 * time.Minute).UnixMilli()
+	var grafanaURL string
+	for _, f := range sent[0].Fields {
+		if f.Name == "Grafana" {
+			grafanaURL = f.Value
+		}
+	}
+	mu.Unlock()
+	if !strings.Contains(grafanaURL, fmt.Sprintf("%d", wantFrom)) {
+		t.Errorf("Explore URL %q did not center on delayed log observed_time (%d)", grafanaURL, wantFrom)
+	}
+
+	if err := d.Ingest(classify.Record{
+		Time:      now,
+		Project:   "proj-pn",
+		Container: "worker",
+		Pod:       "w-1",
+		Parsed:    false,
+		Message:   "panic: recent crash right before shutdown",
+	}); err != nil {
+		t.Fatalf("Ingest recent crash: %v", err)
+	}
+	if d.CanCommit() {
+		t.Fatal("CanCommit must be false while crash is buffered in Assembler")
+	}
+
+	if err := d.shutdown(); err != nil {
+		t.Fatalf("shutdown: %v", err)
+	}
+	mu.Lock()
+	totalSent := len(sent)
+	mu.Unlock()
+	if totalSent != 2 {
+		t.Fatalf("shutdown did not flush recent crash (<2s old), totalSent = %d, want 2", totalSent)
+	}
+	if committed.Load() != 1 {
+		t.Fatalf("shutdown did not commit pending offsets after FlushAll, committed = %d", committed.Load())
+	}
+
+	if _, err := New(Config{
+		Source:         &fakeLogSource{},
+		Notify:         &fakeNotifySender{},
+		StateDisabled:  true,
+		GrafanaBaseURL: "http://admin:secret@10.200.0.11:3000",
+	}); err == nil {
+		t.Fatal("New accepted GrafanaBaseURL with embedded credentials")
+	}
+}
+
+type flakyNotifySender struct {
+	sendFn func(ctx context.Context, channel string, n notify.Notification) error
+}
+
+func (f *flakyNotifySender) Send(ctx context.Context, channel string, n notify.Notification) error {
+	return f.sendFn(ctx, channel, n)
+}
+
+type commitTrackSource struct {
+	fakeLogSource
+	canCommit       func() bool
+	onCommitPending func()
+}
+
+func (c *commitTrackSource) SetCanCommit(fn func() bool) { c.canCommit = fn }
+
+func (c *commitTrackSource) CommitPending(_ context.Context) error {
+	if c.onCommitPending != nil {
+		c.onCommitPending()
+	}
+	return nil
+}

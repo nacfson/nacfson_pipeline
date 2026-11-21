@@ -73,13 +73,34 @@ var retryInterval = 30 * time.Second
 
 var handoffBackoff = [...]time.Duration{time.Second, 2 * time.Second}
 
+type LogSource interface {
+	Ready(ctx context.Context) error
+	Run(ctx context.Context, onRecord func(classify.Record) error, onQuarantine func(vlogs.QuarantineRecord) error) error
+}
+
+type NotifySender interface {
+	Send(ctx context.Context, channel string, n notify.Notification) error
+}
+
+type commitControlledSource interface {
+	SetCanCommit(fn func() bool)
+	CommitPending(ctx context.Context) error
+}
+
 type Config struct {
-	VLogs           *vlogs.Client
-	Notify          *notify.Client
-	InvestigatorURL string
-	StatePath       string
-	Group           group.Config
-	Now             func() time.Time
+	VLogs              *vlogs.Client
+	Source             LogSource
+	Notify             NotifySender
+	InvestigatorURL    string
+	StatePath          string
+	StateDisabled      bool
+	SyncNotify         bool
+	SyncRetryMin       time.Duration
+	SyncRetryMax       time.Duration
+	QuarantineThrottle time.Duration
+	GrafanaBaseURL     string
+	Group              group.Config
+	Now                func() time.Time
 }
 
 type outbox struct {
@@ -99,9 +120,14 @@ type Detector struct {
 	http     *http.Client
 	mux      http.Handler
 
-	started  atomic.Bool
-	tailing  atomic.Bool
-	tailSeen atomic.Int64
+	started      atomic.Bool
+	tailing      atomic.Bool
+	tailSeen     atomic.Int64
+	syncFlushing atomic.Int32
+	syncFailed   atomic.Bool
+
+	ctxMu  sync.RWMutex
+	runCtx context.Context
 
 	wake       chan struct{}
 	senderDone chan struct{}
@@ -149,18 +175,31 @@ func settleKey(g group.Group) string {
 }
 
 func New(cfg Config) (*Detector, error) {
-	if cfg.VLogs == nil {
+	if cfg.Source == nil && cfg.VLogs == nil {
 		return nil, errors.New("detector: VLogs client is required")
 	}
 	if cfg.Notify == nil {
 		return nil, errors.New("detector: Notify client is required")
 	}
-	if strings.TrimSpace(cfg.StatePath) == "" {
+	if !cfg.StateDisabled && strings.TrimSpace(cfg.StatePath) == "" {
 		return nil, errors.New("detector: StatePath is required")
 	}
 	cfg.InvestigatorURL = strings.TrimSpace(cfg.InvestigatorURL)
 	if err := validateInvestigatorURL(cfg.InvestigatorURL); err != nil {
 		return nil, err
+	}
+	cfg.GrafanaBaseURL = strings.TrimRight(strings.TrimSpace(cfg.GrafanaBaseURL), "/")
+	if err := validateGrafanaBaseURL(cfg.GrafanaBaseURL); err != nil {
+		return nil, err
+	}
+	if cfg.QuarantineThrottle <= 0 {
+		cfg.QuarantineThrottle = time.Hour
+	}
+	if cfg.SyncRetryMin <= 0 {
+		cfg.SyncRetryMin = backoffMin
+	}
+	if cfg.SyncRetryMax <= 0 {
+		cfg.SyncRetryMax = backoffMax
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -176,6 +215,7 @@ func New(cfg Config) (*Detector, error) {
 		tracker:     group.NewTracker(cfg.Group),
 		limiter:     notify.NewLimiter(burstPerMinute),
 		handoffs:    make(chan group.Group, handoffQueue),
+		runCtx:      context.Background(),
 		wake:        make(chan struct{}, 1),
 		senderDone:  make(chan struct{}),
 		handoffWake: make(chan struct{}, 1),
@@ -194,7 +234,37 @@ func New(cfg Config) (*Detector, error) {
 		d.log.Warn(fmt.Sprintf(format, args...))
 	})
 	d.mux = d.buildMux()
+	if ctrl, ok := cfg.Source.(commitControlledSource); ok {
+		ctrl.SetCanCommit(d.CanCommit)
+	}
 	return d, nil
+}
+
+func (d *Detector) CanCommit() bool {
+	d.mu.Lock()
+	open := d.asm.OpenCount() > 0
+	d.mu.Unlock()
+	return !open && d.syncFlushing.Load() == 0 && !d.syncFailed.Load()
+}
+
+func validateGrafanaBaseURL(raw string) error {
+	if raw == "" {
+		return nil
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return fmt.Errorf("detector: GrafanaBaseURL: %w", err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return fmt.Errorf("detector: GrafanaBaseURL %q must be http or https", raw)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("detector: GrafanaBaseURL %q has no host", raw)
+	}
+	if u.User != nil {
+		return fmt.Errorf("detector: GrafanaBaseURL %q must not contain credentials", raw)
+	}
+	return nil
 }
 
 func validateInvestigatorURL(raw string) error {
@@ -237,12 +307,20 @@ func (d *Detector) handleReadyz(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "state not loaded yet"})
 		return
 	}
+	ctx, cancel := context.WithTimeout(r.Context(), probeTimeout)
+	defer cancel()
+	if d.cfg.Source != nil {
+		if err := d.cfg.Source.Ready(ctx); err != nil {
+			writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"status": "READY"})
+		return
+	}
 	if !d.tailLive() {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "no live VictoriaLogs tail"})
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), probeTimeout)
-	defer cancel()
 	if err := d.cfg.VLogs.Ready(ctx); err != nil {
 		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": err.Error()})
 		return
@@ -272,20 +350,34 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 }
 
 func (d *Detector) Run(ctx context.Context) error {
-	d.loadState()
-	d.sweepTemp()
+	d.ctxMu.Lock()
+	d.runCtx = ctx
+	d.ctxMu.Unlock()
+
+	if !d.cfg.StateDisabled {
+		d.loadState()
+		d.sweepTemp()
+	}
 	d.started.Store(true)
 
 	collected := make(chan struct{})
-	go func() {
-		defer close(collected)
-		d.collect(ctx)
-	}()
 	quarantineDone := make(chan struct{})
-	go func() {
-		defer close(quarantineDone)
-		d.collectQuarantine(ctx)
-	}()
+	if d.cfg.Source != nil {
+		go func() {
+			defer close(collected)
+			d.collectSource(ctx)
+		}()
+		close(quarantineDone)
+	} else {
+		go func() {
+			defer close(collected)
+			d.collect(ctx)
+		}()
+		go func() {
+			defer close(quarantineDone)
+			d.collectQuarantine(ctx)
+		}()
+	}
 	go d.sender(ctx)
 	go d.handoffWorker(ctx)
 
@@ -303,6 +395,36 @@ func (d *Detector) Run(ctx context.Context) error {
 			return d.shutdown()
 		case <-ticker.C:
 			d.tick()
+		}
+	}
+}
+
+func (d *Detector) activeCtx() context.Context {
+	d.ctxMu.RLock()
+	ctx := d.runCtx
+	d.ctxMu.RUnlock()
+	if ctx == nil {
+		return context.Background()
+	}
+	return ctx
+}
+
+func (d *Detector) collectSource(ctx context.Context) {
+	backoff := backoffMin
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+		err := d.cfg.Source.Run(ctx, d.ingest, d.ingestQuarantine)
+		if ctx.Err() != nil {
+			return
+		}
+		d.log.Warn("source ended, reconnecting", "error", errorString(err), "in", backoff.String())
+		if !sleep(ctx, backoff) {
+			return
+		}
+		if backoff *= 2; backoff > backoffMax {
+			backoff = backoffMax
 		}
 	}
 }
@@ -429,8 +551,9 @@ func (d *Detector) ingestQuarantine(q vlogs.QuarantineRecord) error {
 	var toAlert bool
 	var count int
 	var line string
+	prev := *st
 
-	if !st.firstAlertSent || now.Sub(st.lastAlert) >= time.Hour {
+	if !st.firstAlertSent || now.Sub(st.lastAlert) >= d.cfg.QuarantineThrottle {
 		toAlert = true
 		count = st.pendingCount + 1
 		line = q.Message
@@ -451,7 +574,13 @@ func (d *Detector) ingestQuarantine(q vlogs.QuarantineRecord) error {
 
 	if toAlert {
 		n := notify.RenderQuarantineAlert(q.Project, q.Container, count, line, q.Time)
-		d.dispatch(outbox{notifications: []notify.Notification{n}})
+		n = notify.AttachExploreLink(n, d.cfg.GrafanaBaseURL, "quarantine", q.Project, q.Container, q.Time)
+		if err := d.dispatchSync(d.activeCtx(), outbox{notifications: []notify.Notification{n}}); err != nil {
+			d.quarantineMu.Lock()
+			*st = prev
+			d.quarantineMu.Unlock()
+			return err
+		}
 	}
 	return nil
 }
@@ -525,22 +654,30 @@ func (d *Detector) ingest(r classify.Record) error {
 	}
 	d.mu.Unlock()
 
-	d.dispatch(out)
+	if err := d.dispatchSync(d.activeCtx(), out); err != nil {
+		return err
+	}
 	return nil
 }
 
 func (d *Detector) absorb(c classify.Classified, now time.Time, out *outbox) {
 	for _, a := range d.tracker.Observe(c, now) {
-		d.route(a, now, out)
+		d.route(a, c.Record.Time, now, out)
 	}
 }
 
-func (d *Detector) route(a group.Action, now time.Time, out *outbox) {
+func (d *Detector) route(a group.Action, observedAt, now time.Time, out *outbox) {
 	switch a.Type {
 	case group.NotifyNew:
 
 		if d.allowBurst(now, out) {
-			out.notifications = append(out.notifications, notify.RenderNewAction(a))
+			linkAt := observedAt
+			if linkAt.IsZero() {
+				linkAt = a.Group.FirstSeen
+			}
+			n := notify.RenderNewAction(a)
+			n = notify.AttachExploreLink(n, d.cfg.GrafanaBaseURL, "proj", a.Group.Project, a.Group.Container, linkAt)
+			out.notifications = append(out.notifications, n)
 		}
 	case group.Handoff:
 		if d.cfg.InvestigatorURL == "" {
@@ -595,21 +732,25 @@ func (d *Detector) tick() {
 		d.absorb(c, now, &out)
 	}
 	for _, a := range d.tracker.Tick(now) {
-		d.route(a, now, &out)
+		d.route(a, time.Time{}, now, &out)
 	}
 	if n, ok := d.takeOverflow(now, false); ok {
 		out.notifications = append(out.notifications, n)
 	}
-	if d.lastSave.IsZero() || now.Sub(d.lastSave) >= saveInterval {
+	if !d.cfg.StateDisabled && (d.lastSave.IsZero() || now.Sub(d.lastSave) >= saveInterval) {
 		save = true
 		d.lastSave = now
 		snap = state.Snapshot{Cursor: d.cursor, Groups: d.snapshotGroups()}
+	}
+	syncPending := d.cfg.SyncNotify && len(out.notifications) > 0
+	if syncPending {
+		d.syncFlushing.Add(1)
 	}
 	d.mu.Unlock()
 
 	d.quarantineMu.Lock()
 	for key, st := range d.quarantine {
-		if st.pendingCount > 0 && now.Sub(st.lastAlert) >= time.Hour {
+		if st.pendingCount > 0 && now.Sub(st.lastAlert) >= d.cfg.QuarantineThrottle {
 			parts := strings.SplitN(key, "/", 2)
 			proj, cont := parts[0], ""
 			if len(parts) > 1 {
@@ -620,6 +761,7 @@ func (d *Detector) tick() {
 				line = "(multiple quarantined lines)"
 			}
 			n := notify.RenderQuarantineAlert(proj, cont, st.pendingCount, line, now)
+			n = notify.AttachExploreLink(n, d.cfg.GrafanaBaseURL, "quarantine", proj, cont, now)
 			out.notifications = append(out.notifications, n)
 			st.lastAlert = now
 			st.pendingCount = 0
@@ -655,8 +797,18 @@ func (d *Detector) tick() {
 	if d.tailing.Load() {
 		d.tailSeen.Store(time.Now().UnixNano())
 	}
-	d.dispatch(out)
-	if save {
+	if d.cfg.SyncNotify {
+		if err := d.dispatchSync(d.activeCtx(), out); err != nil {
+			d.syncFailed.Store(true)
+			d.log.Warn("sync notify aborted on tick", "error", err.Error())
+		}
+		if syncPending {
+			d.syncFlushing.Add(-1)
+		}
+	} else {
+		d.dispatch(out)
+	}
+	if save && !d.cfg.StateDisabled {
 		d.saveState(snap)
 	}
 }
@@ -745,6 +897,43 @@ func (d *Detector) dispatch(out outbox) {
 	if len(out.notifications) > 0 {
 		d.wakeSender()
 	}
+}
+
+func (d *Detector) sendSync(ctx context.Context, n notify.Notification) error {
+	sctx, cancel := context.WithTimeout(ctx, sendTimeout)
+	defer cancel()
+	return d.cfg.Notify.Send(sctx, channelErrors, n)
+}
+
+func (d *Detector) dispatchSync(ctx context.Context, out outbox) error {
+	if !d.cfg.SyncNotify {
+		d.dispatch(out)
+		return nil
+	}
+	for _, n := range out.notifications {
+		backoff := d.cfg.SyncRetryMin
+		for {
+			err := d.sendSync(ctx, n)
+			if err == nil {
+				break
+			}
+			if ctx.Err() != nil {
+				return ctx.Err()
+			}
+			d.log.Warn("sync notify failed, retrying", "error", err.Error(), "in", backoff.String())
+			if !sleep(ctx, backoff) {
+				return ctx.Err()
+			}
+			backoff *= 2
+			if backoff > d.cfg.SyncRetryMax {
+				backoff = d.cfg.SyncRetryMax
+			}
+		}
+	}
+	for _, g := range out.handoffs {
+		d.enqueueHandoff(g)
+	}
+	return nil
 }
 
 func (d *Detector) enqueueHandoff(g group.Group) {
@@ -1000,6 +1189,9 @@ func (d *Detector) postGroup(ctx context.Context, endpoint string, body []byte) 
 }
 
 func (d *Detector) saveState(snap state.Snapshot) {
+	if d.cfg.StateDisabled {
+		return
+	}
 	if err := state.Save(d.cfg.StatePath, snap); err != nil {
 		d.log.Error("state save failed", "path", d.cfg.StatePath, "error", err.Error())
 		return
@@ -1014,7 +1206,7 @@ func (d *Detector) shutdown() error {
 
 	d.mu.Lock()
 
-	for _, c := range d.asm.Flush(now) {
+	for _, c := range d.asm.FlushAll() {
 		d.absorb(c, now, &out)
 	}
 	if n, ok := d.takeOverflow(now, true); ok {
@@ -1022,8 +1214,10 @@ func (d *Detector) shutdown() error {
 	}
 	d.mu.Unlock()
 
-	for _, n := range out.notifications {
-		d.queue.Push(n)
+	if !d.cfg.SyncNotify {
+		for _, n := range out.notifications {
+			d.queue.Push(n)
+		}
 	}
 	for _, g := range out.handoffs {
 		d.enqueueHandoff(g)
@@ -1040,13 +1234,27 @@ func (d *Detector) shutdown() error {
 	d.mu.Lock()
 	snap := state.Snapshot{Cursor: d.cursor, Groups: d.snapshotGroups()}
 	d.mu.Unlock()
-	d.saveState(snap)
+	if !d.cfg.StateDisabled {
+		d.saveState(snap)
+	}
 	if n := d.uncoveredGroups(); n > 0 {
 		d.log.Warn("shutdown with groups saved as not investigated", "groups", n)
 	}
 
 	notifyCtx, cancelNotify := context.WithTimeout(context.Background(), shutdownNotify)
 	defer cancelNotify()
+	if d.cfg.SyncNotify {
+		if err := d.dispatchSync(notifyCtx, out); err != nil {
+			d.syncFailed.Store(true)
+			d.log.Warn("shutdown sync notify incomplete", "error", err.Error())
+		} else if !d.syncFailed.Load() {
+			if ctrl, ok := d.cfg.Source.(commitControlledSource); ok {
+				if err := ctrl.CommitPending(notifyCtx); err != nil {
+					d.log.Warn("shutdown commit pending failed", "error", err.Error())
+				}
+			}
+		}
+	}
 	d.queue.Drain(notifyCtx)
 	if n := d.queue.Len(); n > 0 {
 		d.log.Warn("shutdown with undelivered notifications", "queued", n)

@@ -74,6 +74,29 @@ func (a *Assembler) Feed(r Record) []Classified {
 	return out
 }
 
+func (a *Assembler) OpenCount() int {
+	return len(a.open)
+}
+
+func (a *Assembler) FlushAll() []Classified {
+	keys := make([]string, 0, len(a.open))
+	for k := range a.open {
+		keys = append(keys, k)
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		ci, cj := a.open[keys[i]], a.open[keys[j]]
+		if !ci.rec.Time.Equal(cj.rec.Time) {
+			return ci.rec.Time.Before(cj.rec.Time)
+		}
+		return keys[i] < keys[j]
+	})
+	var out []Classified
+	for _, k := range keys {
+		out = append(out, a.close(k))
+	}
+	return out
+}
+
 func (a *Assembler) Flush(now time.Time) []Classified {
 	cutoff := now.Add(-a.maxAge)
 	var keys []string

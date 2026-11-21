@@ -69,6 +69,29 @@ func NewAdmin(c Config) (*kgo.Client, error) {
 	return kgo.NewClient(opts...)
 }
 
+func NewProducer(c Config) (*kgo.Client, error) {
+	opts, err := c.options()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, kgo.RequiredAcks(kgo.AllISRAcks()))
+	return kgo.NewClient(opts...)
+}
+
+func NewGroupConsumer(c Config, group string, topics ...string) (*kgo.Client, error) {
+	opts, err := c.options()
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts,
+		kgo.ConsumerGroup(group),
+		kgo.ConsumeTopics(topics...),
+		kgo.DisableAutoCommit(),
+		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
+	)
+	return kgo.NewClient(opts...)
+}
+
 func listOffsets(ctx context.Context, cl *kgo.Client, topic string, timestamp int64) (map[int32]int64, error) {
 	meta := kmsg.NewPtrMetadataRequest()
 	mt := kmsg.NewMetadataRequestTopic()

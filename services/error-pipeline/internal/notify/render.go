@@ -1,8 +1,11 @@
 package notify
 
 import (
+	"encoding/json"
 	"fmt"
+	"net/url"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -125,9 +128,67 @@ func RenderQuarantineAlert(project, container string, count int, firstLine strin
 		{Name: "Count", Value: fmt.Sprint(count)},
 		{Name: "Observed", Value: observed.UTC().Format(time.RFC3339)},
 	}
-	out.Body = "Log lines from this container were non-conforming and routed to quarantine (tenant 0:1), " +
+	out.Body = "Log lines from this container were non-conforming and routed to quarantine (logs.proj.quarantine), " +
 		"where normal error alerting cannot see them.\n\n" + fenced([]string{redact.String(firstLine)})
 	return finalize(out)
+}
+
+func ExploreURL(baseURL, tenant, namespace, container string, at time.Time) string {
+	base := strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if base == "" {
+		return ""
+	}
+	parsed, err := url.Parse(base)
+	if err != nil || (parsed.Scheme != "http" && parsed.Scheme != "https") || parsed.Host == "" || parsed.User != nil {
+		return ""
+	}
+	parsed.RawQuery = ""
+	parsed.Fragment = ""
+	base = strings.TrimRight(parsed.String(), "/")
+	if tenant == "" {
+		tenant = "proj"
+	}
+	expr := fmt.Sprintf(`{k8s_namespace_name=%q,k8s_container_name=%q}`, namespace, container)
+	fromStr, toStr := "now-15m", "now"
+	if !at.IsZero() {
+		fromStr = strconv.FormatInt(at.Add(-15*time.Minute).UnixMilli(), 10)
+		toStr = strconv.FormatInt(at.Add(15*time.Minute).UnixMilli(), 10)
+	}
+	type exploreQuery struct {
+		RefID string `json:"refId"`
+		Expr  string `json:"expr"`
+	}
+	type exploreRange struct {
+		From string `json:"from"`
+		To   string `json:"to"`
+	}
+	type exploreLeft struct {
+		Datasource string         `json:"datasource"`
+		Queries    []exploreQuery `json:"queries"`
+		Range      exploreRange   `json:"range"`
+	}
+	payload, err := json.Marshal(exploreLeft{
+		Datasource: "loki-" + tenant,
+		Queries:    []exploreQuery{{RefID: "A", Expr: expr}},
+		Range:      exploreRange{From: fromStr, To: toStr},
+	})
+	if err != nil {
+		return ""
+	}
+	q := url.Values{
+		"orgId": {"1"},
+		"left":  {string(payload)},
+	}
+	return base + "/explore?" + q.Encode()
+}
+
+func AttachExploreLink(n Notification, baseURL, tenant, namespace, container string, at time.Time) Notification {
+	link := ExploreURL(baseURL, tenant, namespace, container, at)
+	if link == "" {
+		return n
+	}
+	n.Fields = append(n.Fields, Field{Name: "Grafana", Value: link})
+	return finalize(n)
 }
 
 func RenderRedactionMarkerAlert(project, container, release, kind string, observed time.Time) Notification {
@@ -188,12 +249,30 @@ func RenderViolationDigest(violations map[string]map[string]int, since, until ti
 	return finalize(out)
 }
 
-func finalize(n Notification) Notification {
+func Sanitize(n Notification) Notification {
 	n.Title = clamp(n.Title, maxTitleRunes)
-	for i := range n.Fields {
-		n.Fields[i].Value = clamp(n.Fields[i].Value, maxFieldRunes)
+	if len(n.Fields) > 0 {
+		fields := make([]Field, len(n.Fields))
+		for i, f := range n.Fields {
+			fields[i] = Field{
+				Name:  clamp(f.Name, maxTitleRunes),
+				Value: clamp(f.Value, maxFieldRunes),
+			}
+		}
+		n.Fields = fields
+	}
+	n.Body = redact.String(n.Body)
+	if n.Attachment != nil {
+		att := *n.Attachment
+		att.Name = clamp(att.Name, maxTitleRunes)
+		att.Content = redact.String(att.Content)
+		n.Attachment = &att
 	}
 	return n
+}
+
+func finalize(n Notification) Notification {
+	return Sanitize(n)
 }
 
 func clamp(s string, max int) string {

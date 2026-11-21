@@ -29,6 +29,14 @@ kafka_nodes:
       - controller-1
       - ops-agent-a1-1
       - ops-cli
+    tls_identities:
+      - name: grafana-a1-1
+        vm: a1-1
+        server_auth: false
+        server_sans: []
+        dest_dir: /etc/grafana/tls
+        owner_uid: 472
+        reload_unit: grafana.service
     server_properties:
       node.id: '1'
       process.roles: broker,controller
@@ -53,6 +61,8 @@ kafka_nodes:
       allow.everyone.if.no.acl.found: 'false'
       default.replication.factor: '3'
       min.insync.replicas: '2'
+      offsets.topic.num.partitions: '3'
+      offsets.topic.segment.bytes: '16777216'
     format_args_bootstrap:
       - format
       - --cluster-id
@@ -77,8 +87,21 @@ kafka_nodes:
     identities:
       - broker-2
       - controller-2
+      - error-detector-a1-2
       - ops-agent-a1-2
       - ops-cli
+      - vector-a1-2
+    tls_identities:
+      - name: loki-a1-2
+        vm: a1-2
+        server_auth: true
+        server_sans:
+          - IP:10.200.0.12
+          - IP:127.0.0.1
+          - DNS:a1-2
+        dest_dir: /etc/loki/tls
+        owner_uid: 10001
+        reload_unit: loki.service
     server_properties:
       node.id: '2'
       process.roles: broker,controller
@@ -103,6 +126,8 @@ kafka_nodes:
       allow.everyone.if.no.acl.found: 'false'
       default.replication.factor: '3'
       min.insync.replicas: '2'
+      offsets.topic.num.partitions: '3'
+      offsets.topic.segment.bytes: '16777216'
     format_args_bootstrap:
       - format
       - --cluster-id
@@ -127,6 +152,7 @@ kafka_nodes:
       - broker-3
       - ops-agent-micro-1
       - ops-cli
+    tls_identities: []
     server_properties:
       node.id: '3'
       process.roles: broker
@@ -150,6 +176,8 @@ kafka_nodes:
       allow.everyone.if.no.acl.found: 'false'
       default.replication.factor: '3'
       min.insync.replicas: '2'
+      offsets.topic.num.partitions: '3'
+      offsets.topic.segment.bytes: '16777216'
     format_args_bootstrap:
       - format
       - --cluster-id
@@ -173,6 +201,7 @@ kafka_nodes:
       - controller-4
       - ops-agent-micro-2
       - ops-cli
+    tls_identities: []
     server_properties:
       node.id: '4'
       process.roles: controller
@@ -195,6 +224,8 @@ kafka_nodes:
       allow.everyone.if.no.acl.found: 'false'
       default.replication.factor: '3'
       min.insync.replicas: '2'
+      offsets.topic.num.partitions: '3'
+      offsets.topic.segment.bytes: '16777216'
     format_args_bootstrap:
       - format
       - --cluster-id
@@ -246,6 +277,15 @@ kafka_topics:
     retention_bytes: 268435456
     segment_bytes: 134217728
     max_message_bytes: 1048588
+    timestamp_type: LogAppendTime
+  - name: alerts.errors
+    partitions: 1
+    replication_factor: 3
+    min_insync_replicas: 2
+    retention_ms: 604800000
+    retention_bytes: 67108864
+    segment_bytes: 16777216
+    max_message_bytes: 1048576
     timestamp_type: LogAppendTime
 kafka_identities:
   - name: broker-1
@@ -332,6 +372,11 @@ kafka_identities:
         ops:
           - Read
           - Describe
+      - resource: topic
+        name: alerts.errors
+        ops:
+          - Read
+          - Describe
       - resource: group
         name: ops-relay
         ops:
@@ -345,6 +390,60 @@ kafka_identities:
         ops:
           - Describe
           - DescribeConfigs
+  - name: vector-a1-2
+    key_location: vm:a1-2
+    super_user: false
+    grants:
+      - resource: topic
+        name: logs.proj.valid
+        ops:
+          - Read
+          - Describe
+      - resource: topic
+        name: logs.proj.quarantine
+        ops:
+          - Read
+          - Describe
+      - resource: topic
+        name: ops.platform.events
+        ops:
+          - Read
+          - Describe
+      - resource: topic
+        name: ops.platform.metrics
+        ops:
+          - Read
+          - Describe
+      - resource: group
+        name: vector-loki
+        ops:
+          - Read
+  - name: error-detector-a1-2
+    key_location: vm:a1-2
+    super_user: false
+    grants:
+      - resource: topic
+        name: logs.proj.valid
+        ops:
+          - Read
+          - Describe
+      - resource: topic
+        name: logs.proj.quarantine
+        ops:
+          - Read
+          - Describe
+      - resource: group
+        name: error-detector
+        ops:
+          - Read
+      - resource: topic
+        name: alerts.errors
+        ops:
+          - Write
+          - Describe
+      - resource: cluster
+        ops:
+          - IdempotentWrite
   - name: ops-cli
     key_location: vm:all
     super_user: false
@@ -362,3 +461,21 @@ kafka_identities:
         name: '*'
         ops:
           - Describe
+kafka_tls_identities:
+  - name: grafana-a1-1
+    vm: a1-1
+    server_auth: false
+    server_sans: []
+    dest_dir: /etc/grafana/tls
+    owner_uid: 472
+    reload_unit: grafana.service
+  - name: loki-a1-2
+    vm: a1-2
+    server_auth: true
+    server_sans:
+      - IP:10.200.0.12
+      - IP:127.0.0.1
+      - DNS:a1-2
+    dest_dir: /etc/loki/tls
+    owner_uid: 10001
+    reload_unit: loki.service

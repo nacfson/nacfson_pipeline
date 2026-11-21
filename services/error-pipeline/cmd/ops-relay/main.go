@@ -191,7 +191,20 @@ func serve(socket string) error {
 		r.out.ready.Broadcast()
 		r.out.mu.Unlock()
 	}()
-	go sender(ctx, &notify.Client{BaseURL: env("NOTIFY_URL", "http://notify-gateway.vault.svc:8080")}, env("NOTIFY_CHANNEL", "kafka"), r.out)
+	var relayWG sync.WaitGroup
+	notifyURL := env("NOTIFY_URL", "http://notify-gateway.vault.svc:8080")
+	go sender(ctx, &notify.Client{BaseURL: notifyURL}, env("NOTIFY_CHANNEL", "kafka"), r.out)
+	if alertsTopic := strings.TrimSpace(os.Getenv("ALERTS_ERRORS_TOPIC")); alertsTopic != "" {
+		relayWG.Add(1)
+		go func() {
+			defer relayWG.Done()
+			opsrelay.RunErrorsRelayLoop(ctx, kc, opsrelay.ErrorsRelayConfig{
+				Topic:   alertsTopic,
+				Group:   env("ALERTS_ERRORS_GROUP", opsrelay.DefaultErrorsGroup),
+				Channel: env("ALERTS_ERRORS_CHANNEL", opsrelay.DefaultErrorsChannel),
+			}, &notify.Client{BaseURL: notifyURL})
+		}()
+	}
 	go statusServer(ctx, socket, r)
 	go rebuildThenConsume(ctx, kc, r, env("READY_FILE", "/run/ops-relay/ready"))
 	go clusterLoop(ctx, kc, r)
@@ -205,6 +218,7 @@ func serve(socket string) error {
 	for {
 		select {
 		case <-ctx.Done():
+			relayWG.Wait()
 			return nil
 		case fn := <-r.tasks:
 			fn()

@@ -244,3 +244,62 @@ func TestNodeSlotEntriesClearWhenTheNodeLeaves(t *testing.T) {
 		}
 	}
 }
+
+func TestObservabilityUnitAndLokiDiskEmitObsWithoutSuppressingKafkaISR(t *testing.T) {
+	e := NewEngine(vms, 3, t0)
+
+	e.Event(Event{Kind: "unit.failed", State: "down", Subject: "unit/a1-2/loki.service", VM: "a1-2", ObservedBy: "a1-2", Time: t0})
+	e.Event(Event{Kind: "unit.failed", State: "down", Subject: "unit/a1-1/grafana.service", VM: "a1-1", ObservedBy: "a1-1", Time: t0.Add(time.Second)})
+	e.Event(Event{Kind: "loki.disk.low", State: "warn", Subject: "loki/disk", VM: "a1-2", ObservedBy: "a1-2", Detail: "free space on /var/lib/loki below 15%", Time: t0.Add(2 * time.Second)})
+	e.Event(Event{Kind: "partition.isr_shrink", State: "down", Subject: "kafka/partition/logs.proj.valid-0", VM: "a1-1", ObservedBy: "a1-1", Time: t0.Add(3 * time.Second)})
+
+	msgs := e.Drain()
+	assertMessages(t, msgs,
+		"DOWN obs/a1-2/loki.service",
+		"DOWN obs/a1-1/grafana.service",
+		"WARN obs/a1-2/loki/disk",
+		"DOWN kafka/partition/logs.proj.valid-0",
+	)
+	if !strings.HasPrefix(msgs[0].String(), "[obs] DOWN  obs/a1-2/loki.service") {
+		t.Errorf("loki msg = %q", msgs[0].String())
+	}
+	if !strings.HasPrefix(msgs[1].String(), "[obs] DOWN  obs/a1-1/grafana.service") {
+		t.Errorf("grafana msg = %q", msgs[1].String())
+	}
+	if !strings.HasPrefix(msgs[2].String(), "[obs] WARN  obs/a1-2/loki/disk") {
+		t.Errorf("loki disk msg = %q", msgs[2].String())
+	}
+	if !strings.HasPrefix(msgs[3].String(), "[kafka] DOWN  kafka/partition/logs.proj.valid-0") {
+		t.Errorf("isr msg = %q", msgs[3].String())
+	}
+
+	e.Event(Event{Kind: "unit.active", State: "up", Subject: "unit/a1-2/loki.service", VM: "a1-2", ObservedBy: "a1-2", Time: t0.Add(time.Minute)})
+	e.Event(Event{Kind: "loki.disk.ok", State: "ok", Subject: "loki/disk", VM: "a1-2", ObservedBy: "a1-2", Detail: "free space on /var/lib/loki recovered", Time: t0.Add(2 * time.Minute)})
+
+	recovered := e.Drain()
+	assertMessages(t, recovered,
+		"OK obs/a1-2/loki.service",
+		"OK obs/a1-2/loki/disk",
+	)
+	if !strings.HasPrefix(recovered[0].String(), "[obs] OK    obs/a1-2/loki.service") {
+		t.Errorf("loki recovery = %q", recovered[0].String())
+	}
+	if !strings.HasPrefix(recovered[1].String(), "[obs] OK    obs/a1-2/loki/disk") {
+		t.Errorf("loki disk recovery = %q", recovered[1].String())
+	}
+}
+
+func TestObservabilityRebuildPreservesObsPrefix(t *testing.T) {
+	e := NewEngine(vms, 3, t0.Add(time.Hour))
+	e.Rebuild([]Event{
+		{Kind: "unit.failed", State: "down", Subject: "unit/a1-2/vector.service", VM: "a1-2", ObservedBy: "a1-2", Time: t0},
+		{Kind: "loki.disk.low", State: "warn", Subject: "loki/disk", VM: "a1-2", ObservedBy: "a1-2", Detail: "10% free", Time: t0.Add(time.Minute)},
+	}, nil)
+	msgs := e.Drain()
+	assertMessages(t, msgs, "WARN obs/a1-2/loki/disk", "DOWN obs/a1-2/vector.service")
+	for _, m := range msgs {
+		if !strings.Contains(m.String(), "[obs]") {
+			t.Errorf("rebuilt obs message missing [obs] tag: %q", m.String())
+		}
+	}
+}
