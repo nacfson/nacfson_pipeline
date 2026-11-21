@@ -582,7 +582,7 @@ class TestLayerWiring(unittest.TestCase):
         )
         gke_spec = gke_obs["spec"]
         self.assertEqual(gke_spec["path"], "./clusters/gke/observability")
-        self.assertEqual([item["name"] for item in gke_spec["dependsOn"]], ["governance"])
+        self.assertEqual([item["name"] for item in gke_spec["dependsOn"]], ["governance", "kafka-ca"])
         gke_checks = {
             (item["kind"], item["name"], item["namespace"])
             for item in gke_spec["healthChecks"]
