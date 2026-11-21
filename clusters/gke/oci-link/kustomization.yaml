@@ -23,4 +23,4 @@ configMapGenerator:
 
 images:
   - name: ghcr.io/nacfson/wg-slot-agent
-    digest: sha256:0000000000000000000000000000000000000000000000000000000000000000
+    digest: sha256:2da6b7084460d80d15142fd0f4e863e427c40e2eaacb6c00cff9832e2ada32d8
