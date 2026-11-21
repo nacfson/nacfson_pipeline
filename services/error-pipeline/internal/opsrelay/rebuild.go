@@ -52,6 +52,6 @@ func (e *Engine) Replay(fn func()) {
 			continue
 		}
 		s.sent = s.level
-		e.out = append(e.out, Message{Level: s.level, Subject: key, Text: s.text, At: s.since, Delayed: true})
+		e.out = append(e.out, Message{Level: s.level, Subject: key, Text: s.text, At: s.since, Delayed: true, Tag: s.tag})
 	}
 }

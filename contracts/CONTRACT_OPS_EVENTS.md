@@ -1,8 +1,8 @@
 # Contract: Ops Events and Health Metrics
 
-**Topics**: `ops.platform.events`, `ops.platform.metrics` | **Version**: schema 1 | **Implements**: Spec 013 FR-023, FR-030
+**Topics**: `ops.platform.events`, `ops.platform.metrics` | **Version**: schema 1 | **Implements**: Spec 013 FR-023, FR-030; Spec 014
 
-This is the live copy of the contract designed in [Spec 013](../specs/013-oci-kafka-cluster/contracts/ops-events-and-metrics.md). Producers are the OCI event agents; the GKE-side metrics come from Lease annotations. The consumer is `ops-relay`, and later Spec 014. A field rename or removal is a new schema number and a pull request that changes this contract, the Lua rules, and the relay together.
+This is the live copy of the contract designed in [Spec 013](../specs/013-oci-kafka-cluster/contracts/ops-events-and-metrics.md) and extended by [Spec 014](../docs/designs/spec014-observability-and-ai-proxy.md). Producers are the OCI event agents; the GKE-side metrics come from Lease annotations. Consumers are `ops-relay` and OCI `Vector`. A field rename or removal is a new schema number and a pull request that changes this contract, the Lua rules, and the relay together.
 
 ## Common rules
 
@@ -40,9 +40,10 @@ This is the live copy of the contract designed in [Spec 013](../specs/013-oci-ka
 |---|---|---|---|
 | `broker.fenced` | down | controller log: broker session timed out or broker shut down | `broker.unfenced` (up) |
 | `partition.isr_shrink` | down | leader log: ISR shrink for a partition | `partition.isr_expand` (up) |
-| `unit.failed` | down | systemd: `kafka.service` or `wg-quick@wg0.service` left `active` | `unit.active` (up) |
+| `unit.failed` | down | systemd: host-watched unit left `active` (`kafka.service`, `wg-quick@wg0.service`; plus `grafana.service` on `a1-1` and `vector.service`, `loki.service`, `error-detector.service` on `a1-2`) | `unit.active` (up) |
 | `disk.low` | warn | free space on `/var/lib/kafka` crossed below 20% | `disk.ok` (ok) |
-| `cert.expiring` | warn | a local certificate has fewer than 14 days left | `cert.renewed` (ok) |
+| `loki.disk.low` | warn | free space on `/var/lib/loki` loopback mount on `a1-2` crossed below 15% (subject `loki/disk`) | `loki.disk.ok` (ok) |
+| `cert.expiring` | warn | a local certificate (`/etc/kafka/tls/*.crt`, `/etc/loki/tls/*.crt`, `/etc/grafana/tls/*.crt`) has fewer than 14 days left | `cert.renewed` (ok) |
 | `agent.heartbeat` | ok | every 60 s | (none) |
 
 The exact Kafka log lines that map to `broker.fenced`, `broker.unfenced`, `partition.isr_shrink`, and `partition.isr_expand` are captured from `apache/kafka:4.3.2` during the rehearsal and stored under [`tests/fixtures/kafka-logs/4.3.2/`](../tests/fixtures/kafka-logs/4.3.2/). The Lua rules are tested against those files only.
@@ -66,8 +67,9 @@ The exact Kafka log lines that map to `broker.fenced`, `broker.unfenced`, `parti
 | `kafka.heap.used` / `kafka.gc.time` | bytes / ms per min | JMX exporter |
 | `os.mem.available` | bytes | `/proc/meminfo` |
 | `os.disk.free_ratio` | ratio | `df /var/lib/kafka` |
+| `loki.disk.free_ratio` | ratio | `df -P /var/lib/loki` on `a1-2` (when mounted) |
 | `os.cpu.steal` | ratio | `/proc/stat` |
-| `cert.days_left.min` | days | certificate check |
+| `cert.days_left.min` | days | certificate check (`/etc/kafka/tls`, `/etc/loki/tls`, `/etc/grafana/tls`) |
 
 GKE-side values, read by the relay from Lease annotations and shown in the same view with `source = gke/<node>`:
 
@@ -83,5 +85,6 @@ GKE-side values, read by the relay from Lease annotations and shown in the same 
 | VM silent | no `agent.heartbeat` for `vm/<vm>` for 180 s (not within 180 s of relay start; not while `cluster/unreachable` is DOWN) | DOWN for `vm/<vm>`, labelled "broker down" if `kafka.brokers.active` dropped, otherwise "agent silent, broker healthy" |
 | Disk trend | `os.disk.free_ratio` slope over the last 6 h projects crossing 0.20 within 72 h (needs 6 h of samples from that VM, so a rebuilt VM is covered only by `disk.low` until then) | WARN `disk/<vm>` |
 | Buffer filling | `fluentbit.buffer.bytes` above 50% of 256 MiB on any node | WARN `gke/<node>/buffer` |
+| Observability self-health | `unit.failed` / `unit.active` for `grafana.service`, `vector.service`, `loki.service`, `error-detector.service`, or `loki.disk.low` / `loki.disk.ok` (`subject: loki/disk`) | Independent `[obs]` alert on `obs/<vm>/<unit>` or `obs/<vm>/loki/disk`; never marks `vm/<vm>` DOWN and never suppresses Kafka `partition.isr_shrink` alerts |
 
 Tunnel alerts come only from the slot agent's `TunnelStale` and `TunnelRecovered` Events (DOWN and OK for `gke/<node>/tunnel`), and are held back while `cluster/unreachable` is DOWN. `wireguard.handshake_age` is shown in the live view and raises nothing.

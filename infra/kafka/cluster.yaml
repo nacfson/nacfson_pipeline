@@ -18,6 +18,8 @@ broker_settings:
   allow.everyone.if.no.acl.found: false
   default.replication.factor: 3
   min.insync.replicas: 2
+  offsets.topic.num.partitions: 3
+  offsets.topic.segment.bytes: 16777216
 topics:
   - name: logs.proj.valid
     partitions: 3
@@ -55,6 +57,15 @@ topics:
     segment_bytes: 134217728
     max_message_bytes: 1048588
     timestamp_type: LogAppendTime
+  - name: alerts.errors
+    partitions: 1
+    replication_factor: 3
+    min_insync_replicas: 2
+    retention_ms: 604800000
+    retention_bytes: 67108864
+    segment_bytes: 16777216
+    max_message_bytes: 1048576
+    timestamp_type: LogAppendTime
 identities:
   - { name: broker-1, key_location: "vm:a1-1", super_user: true, grants: [] }
   - { name: broker-2, key_location: "vm:a1-2", super_user: true, grants: [] }
@@ -82,15 +93,49 @@ identities:
     grants:
       - { resource: topic, name: ops.platform.events, ops: [Read, Describe] }
       - { resource: topic, name: ops.platform.metrics, ops: [Read, Describe] }
+      - { resource: topic, name: alerts.errors, ops: [Read, Describe] }
       - { resource: group, name: ops-relay, ops: [Read] }
       - { resource: cluster, ops: [Describe, DescribeConfigs] }
       - { resource: topic, name: "*", ops: [Describe, DescribeConfigs] }
+  - name: vector-a1-2
+    key_location: "vm:a1-2"
+    grants:
+      - { resource: topic, name: logs.proj.valid, ops: [Read, Describe] }
+      - { resource: topic, name: logs.proj.quarantine, ops: [Read, Describe] }
+      - { resource: topic, name: ops.platform.events, ops: [Read, Describe] }
+      - { resource: topic, name: ops.platform.metrics, ops: [Read, Describe] }
+      - { resource: group, name: vector-loki, ops: [Read] }
+  - name: error-detector-a1-2
+    key_location: "vm:a1-2"
+    grants:
+      - { resource: topic, name: logs.proj.valid, ops: [Read, Describe] }
+      - { resource: topic, name: logs.proj.quarantine, ops: [Read, Describe] }
+      - { resource: group, name: error-detector, ops: [Read] }
+      - { resource: topic, name: alerts.errors, ops: [Write, Describe] }
+      - { resource: cluster, ops: [IdempotentWrite] }
   - name: ops-cli
     key_location: "vm:all"
     grants:
       - { resource: cluster, ops: [Describe, DescribeConfigs] }
       - { resource: topic, name: "*", ops: [Describe, DescribeConfigs] }
       - { resource: group, name: "*", ops: [Describe] }
+tls_identities:
+  - name: loki-a1-2
+    vm: a1-2
+    server_auth: true
+    server_sans:
+      - IP:10.200.0.12
+      - IP:127.0.0.1
+      - DNS:a1-2
+    dest_dir: /etc/loki/tls
+    owner_uid: 10001
+    reload_unit: loki.service
+  - name: grafana-a1-1
+    vm: a1-1
+    server_auth: false
+    dest_dir: /etc/grafana/tls
+    owner_uid: 472
+    reload_unit: grafana.service
 bootstrap:
   gke: [10.200.0.11:9092, 10.200.0.12:9092, 10.200.0.13:9092]
   rehearsal: [broker-1:9092, broker-2:9092, broker-3:9092]

@@ -50,6 +50,7 @@ type Message struct {
 	At      time.Time
 	Delayed bool
 	Direct  bool
+	Tag     string
 }
 
 func (m Message) String() string {
@@ -57,7 +58,11 @@ func (m Message) String() string {
 	if m.Delayed {
 		prefix = fmt.Sprintf("(delayed, event at %s UTC) ", m.At.UTC().Format("15:04"))
 	}
-	return fmt.Sprintf("%s[kafka] %-5s %s — %s", prefix, m.Level, m.Subject, m.Text)
+	tag := m.Tag
+	if tag == "" {
+		tag = "kafka"
+	}
+	return fmt.Sprintf("%s[%s] %-5s %s — %s", prefix, tag, m.Level, m.Subject, m.Text)
 }
 
 type subject struct {
@@ -65,6 +70,7 @@ type subject struct {
 	since time.Time
 	text  string
 	sent  Level
+	tag   string
 }
 
 type incident struct {
@@ -134,11 +140,15 @@ func (e *Engine) get(key string) *subject {
 }
 
 func (e *Engine) set(key string, level Level, text string, at time.Time, direct bool) {
+	e.setTagged(key, "kafka", level, text, at, direct)
+}
+
+func (e *Engine) setTagged(key, tag string, level Level, text string, at time.Time, direct bool) {
 	s := e.get(key)
 	if s.level == level {
 		return
 	}
-	s.level, s.since, s.text = level, at, text
+	s.level, s.since, s.text, s.tag = level, at, text, tag
 	if e.replaying {
 		e.touched[key] = true
 		return
@@ -147,7 +157,15 @@ func (e *Engine) set(key string, level Level, text string, at time.Time, direct 
 		return
 	}
 	s.sent = level
-	e.out = append(e.out, Message{Level: level, Subject: key, Text: text, At: at, Direct: direct})
+	e.out = append(e.out, Message{Level: level, Subject: key, Text: text, At: at, Direct: direct, Tag: tag})
+}
+
+func isObservabilityUnit(unit string) bool {
+	switch unit {
+	case "grafana.service", "vector.service", "loki.service", "error-detector.service":
+		return true
+	}
+	return false
 }
 
 func (e *Engine) Drain() []Message {
@@ -244,10 +262,38 @@ func (e *Engine) Event(ev Event) {
 		}
 	case strings.HasPrefix(ev.Kind, "unit."):
 		unit := ev.Subject[strings.LastIndex(ev.Subject, "/")+1:]
+		if isObservabilityUnit(unit) {
+			obsKey := "obs/" + ev.VM + "/" + unit
+			if levelOf(ev.State) == Down || ev.Kind == "unit.failed" {
+				e.setTagged(obsKey, "obs", Down, fmt.Sprintf("%s left active", unit), at, false)
+			} else {
+				e.setTagged(obsKey, "obs", OK, fmt.Sprintf("%s is active", unit), at, false)
+			}
+			return
+		}
 		if levelOf(ev.State) == Down {
 			e.causeDown(ev.VM, ev.Subject, fmt.Sprintf("%s left active", unit), at)
 		} else {
 			e.causeUp(ev.VM, ev.Subject, at)
+		}
+	case ev.Kind == "loki.disk.low" || ev.Kind == "loki.disk.ok":
+		subj := ev.Subject
+		if subj == "" {
+			subj = "loki/disk"
+		}
+		obsKey := "obs/" + ev.VM + "/" + subj
+		if ev.Kind == "loki.disk.low" {
+			text := shortDetail(ev.Detail)
+			if text == "" {
+				text = "loki disk free space below 15%"
+			}
+			e.setTagged(obsKey, "obs", Warn, text, at, false)
+		} else {
+			text := shortDetail(ev.Detail)
+			if text == "" {
+				text = "loki disk free space recovered"
+			}
+			e.setTagged(obsKey, "obs", OK, text, at, false)
 		}
 	case strings.HasPrefix(ev.Kind, "partition."):
 		level := levelOf(ev.State)

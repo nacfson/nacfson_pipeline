@@ -1,6 +1,7 @@
 package group
 
 import (
+	"container/list"
 	"sort"
 	"sync"
 	"time"
@@ -33,6 +34,7 @@ type Config struct {
 	Cooldown   time.Duration
 	Retention  time.Duration
 	MaxSamples int
+	MaxEntries int
 }
 
 func DefaultConfig() Config {
@@ -69,13 +71,50 @@ type Action struct {
 }
 
 type Tracker struct {
-	cfg    Config
-	mu     sync.Mutex
-	groups map[string]*Group
+	cfg      Config
+	mu       sync.Mutex
+	groups   map[string]*Group
+	lru      *list.List
+	lruIndex map[string]*list.Element
 }
 
 func NewTracker(cfg Config) *Tracker {
-	return &Tracker{cfg: cfg, groups: map[string]*Group{}}
+	return &Tracker{
+		cfg:      cfg,
+		groups:   map[string]*Group{},
+		lru:      list.New(),
+		lruIndex: map[string]*list.Element{},
+	}
+}
+
+func (t *Tracker) touchLocked(fp string) {
+	if elem, ok := t.lruIndex[fp]; ok {
+		t.lru.MoveToFront(elem)
+		return
+	}
+	t.lruIndex[fp] = t.lru.PushFront(fp)
+}
+
+func (t *Tracker) deleteLocked(fp string) {
+	delete(t.groups, fp)
+	if elem, ok := t.lruIndex[fp]; ok {
+		t.lru.Remove(elem)
+		delete(t.lruIndex, fp)
+	}
+}
+
+func (t *Tracker) evictLocked() {
+	if t.cfg.MaxEntries <= 0 {
+		return
+	}
+	for len(t.groups) >= t.cfg.MaxEntries {
+		back := t.lru.Back()
+		if back == nil {
+			return
+		}
+		fp := back.Value.(string)
+		t.deleteLocked(fp)
+	}
 }
 
 func (t *Tracker) Observe(c classify.Classified, now time.Time) []Action {
@@ -86,11 +125,14 @@ func (t *Tracker) Observe(c classify.Classified, now time.Time) []Action {
 
 	g, ok := t.groups[fp]
 	if !ok {
+		t.evictLocked()
 		g = &Group{Fingerprint: fp}
 		t.groups[fp] = g
+		t.touchLocked(fp)
 		t.start(g, c, now)
 		return []Action{{Type: NotifyNew, Group: clone(*g)}}
 	}
+	t.touchLocked(fp)
 
 	var actions []Action
 	if !g.Handed && !now.Before(g.WindowEnd) {
@@ -134,8 +176,8 @@ func (t *Tracker) Tick(now time.Time) []Action {
 	}
 
 	for fp, g := range t.groups {
-		if g.Handed && g.LastSeen.Add(t.cfg.Retention).Before(now) {
-			delete(t.groups, fp)
+		if g.Handed && t.cfg.Retention > 0 && g.LastSeen.Add(t.cfg.Retention).Before(now) {
+			t.deleteLocked(fp)
 		}
 	}
 	return actions
@@ -158,9 +200,16 @@ func (t *Tracker) Import(gs []Group) {
 	defer t.mu.Unlock()
 
 	t.groups = make(map[string]*Group, len(gs))
-	for _, g := range gs {
+	t.lru = list.New()
+	t.lruIndex = make(map[string]*list.Element, len(gs))
+	ordered := make([]Group, len(gs))
+	copy(ordered, gs)
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].LastSeen.Before(ordered[j].LastSeen) })
+	for _, g := range ordered {
+		t.evictLocked()
 		cp := clone(g)
 		t.groups[cp.Fingerprint] = &cp
+		t.touchLocked(cp.Fingerprint)
 	}
 }
 
