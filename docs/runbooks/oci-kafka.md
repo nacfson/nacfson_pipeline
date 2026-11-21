@@ -25,7 +25,7 @@ Not confirmed yet (task T002). Record the output of `oci iam region-subscription
 ## Prerequisites
 
 - The OCI CLI signed in with an API key in `~/.oci/config`, and Google sign-in for the Terraform state bucket.
-- The control center's Kafka actions and runner identity ([contracts/ansible-runner.md](../../specs/013-oci-kafka-cluster/contracts/ansible-runner.md)). The runner's OCI API key and SSH key are made on the control center. Only the public API key reaches Terraform.
+- Optional for the first build: the control center's Kafka actions and runner identity ([contracts/ansible-runner.md](../../specs/013-oci-kafka-cluster/contracts/ansible-runner.md)). The runner's OCI API key and SSH key are made on the control center. Only the public API key reaches Terraform. Without them, you run Ansible yourself (break-glass) until the control center is ready.
 - The Kafka CA in GKE: Flux layer `kafka-ca` reconciled, and `kubectl get clusterissuer kafka-mtls-ca` shows `Ready`.
 
 ## Enable the GKE side
@@ -55,6 +55,8 @@ image_display_names         = { arm64 = "<exact aarch64 Minimal name>", amd64 = 
 bastion_client_cidrs        = ["<operator public IP>/32", "<control center public IP>/32"]
 kafka_runner_api_public_key = "-----BEGIN PUBLIC KEY-----..."
 ```
+
+`kafka_runner_api_public_key` is optional. Leave the line out until the control center exists: Terraform then creates the runner's user, group, and Bastion policy without an API key, and the runner cannot sign in. Adding the key later is the first step of [Runner keys](#runner-keys).
 
 The budget recipient is passed as `TF_VAR_budget_alert_email`, never written to a file. List the image names with `oci compute image list --compartment-id <c> --operating-system "Canonical Ubuntu" --operating-system-version "24.04 Minimal" --shape VM.Standard.A1.Flex` (and `VM.Standard.E2.1.Micro`), and pick the newest of each.
 
@@ -294,7 +296,7 @@ The relay message names the playbook, the commit, and for a failure the VM and t
 
 ### Runner keys
 
-The runner's OCI API key and SSH key live on the control center under `/var/lib/nacfson-cc/credentials/kafka-runner/` (mode `0600`). Rotate them every 90 days:
+The runner's OCI API key and SSH key live on the control center under `/var/lib/nacfson-cc/credentials/kafka-runner/` (mode `0600`). The first time, create the keys on the control center, put the public API key in `kafka_runner_api_public_key`, then `terraform plan -out tfplan` and `terraform apply tfplan`. The plan adds only the API key. Rotate them every 90 days:
 
 1. Create new keys on the control center.
 2. Put the new public API key in `kafka_runner_api_public_key`, then `terraform plan -out tfplan` and `terraform apply tfplan`. The old key keeps working until removed.

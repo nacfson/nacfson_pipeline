@@ -132,6 +132,12 @@ class OciTerraformTests(unittest.TestCase):
         self.assertEqual([r for v, r in verbs if v == "use"], ["bastion"])
         self.assertIn("target.bastion-session.username", body)
 
+    def test_runner_api_key_is_created_only_when_set(self):
+        variables = (REPO_ROOT / "infra" / "oci" / "terraform" / "variables.tf").read_text(encoding="utf-8")
+        self.assertRegex(variables, r'variable "kafka_runner_api_public_key" \{[^}]*default\s*=\s*null')
+        body = self.oci[("oci_identity_api_key", "kafka_runner")]
+        self.assertRegex(body, r"count\s*=\s*var\.kafka_runner_api_public_key == null \? 0 : 1")
+
     def test_instances_follow_declared_nodes(self):
         locals_text = (REPO_ROOT / "infra" / "oci" / "terraform" / "locals.tf").read_text(encoding="utf-8")
         self.assertIn('file("${path.module}/../../kafka/cluster.yaml")', locals_text)

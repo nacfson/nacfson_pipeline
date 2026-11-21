@@ -16,6 +16,7 @@ resource "oci_identity_user_group_membership" "kafka_runner" {
 }
 
 resource "oci_identity_api_key" "kafka_runner" {
+  count     = var.kafka_runner_api_public_key == null ? 0 : 1
   user_id   = oci_identity_user.kafka_runner.id
   key_value = var.kafka_runner_api_public_key
 }
