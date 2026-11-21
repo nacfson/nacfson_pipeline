@@ -26,5 +26,7 @@ variable "budget_alert_email" {
 }
 
 variable "kafka_runner_api_public_key" {
-  type = string
+  type        = string
+  default     = null
+  description = "The control center runner's public API key. Leave unset until the control center exists; no runner API key is created while it is null."
 }
