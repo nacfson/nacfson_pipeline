@@ -20,7 +20,7 @@ If fewer than 7 days fit, lower `retention_ms` or raise `retention_bytes` within
 
 ## Home region
 
-Not confirmed yet (task T002). Record the output of `oci iam region-subscription list --query 'data[?"is-home-region"]'` here. If it is not `ap-seoul-1`, set `region` in `terraform.tfvars`.
+Confirmed `ap-chuncheon-1` (`region-key: YNY`, `is-home-region: true`, `status: READY`) on 2026-11-22 via `oci iam region-subscription list`. [infra/oci/terraform/variables.tf](../../infra/oci/terraform/variables.tf) defaults `region` to `ap-chuncheon-1`.
 
 ## Prerequisites
 
@@ -76,7 +76,7 @@ Managed SSH sessions last up to 3 hours. Create one per VM with `oci bastion ses
 ```yaml
 all:
   vars:
-    oci_region: ap-seoul-1
+    oci_region: ap-chuncheon-1
     bastion_ssh_key: ~/.ssh/oci-kafka
     bastion_sessions:
       a1-1: ocid1.bastionsession...
