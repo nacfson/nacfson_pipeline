@@ -117,7 +117,7 @@ Each directory under `specs/` is a SpecKit feature package containing `spec.md` 
 - [`services/error-pipeline/cmd/error-detector/`](services/error-pipeline/cmd/error-detector/) — Project error log classifier, fingerprinter, and burst-capped alert emitter.
 
 ### `.github/workflows/` & `config/` — CI/CD & Policy Config
-- [`.github/workflows/`](.github/workflows/) — CI & automation workflows: `build-images.yaml`, `claude-review.yaml`, `gitops.yaml`, `lint.yaml`, `review-gate.yaml`, `secret-scan.yaml`.
+- [`.github/workflows/`](.github/workflows/) — CI & automation workflows: `build-images.yaml`, `gitops.yaml`, `lint.yaml`, `review-gate.yaml`, `secret-scan.yaml`.
 - [`config/image-pin-sources.json`](config/image-pin-sources.json) & [`config/review-policy.json`](config/review-policy.json) — Allowed image-pin source mappings and path-based review risk tiers.
 
 ### `scripts/` & `tests/` — Validation, Preflight & Operations Scripts
