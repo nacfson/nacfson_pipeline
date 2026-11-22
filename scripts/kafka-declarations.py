@@ -91,6 +91,10 @@ class Declarations:
         return self.doc["identities"]
 
     @property
+    def tls_identities(self) -> list[dict]:
+        return self.doc.get("tls_identities", [])
+
+    @property
     def super_users(self) -> list[str]:
         return [i["name"] for i in self.identities if i.get("super_user")]
 
@@ -107,10 +111,39 @@ def load(root: Path) -> Declarations:
         if "broker" in roles:
             broker_index += 1
         nodes.append(Node(raw["name"], int(raw["node_id"]), roles, str(raw["address"]), str(raw.get("initial_directory_id", "")), broker_index if "broker" in roles else 0))
+    node_names = {n.name for n in nodes}
+    kafka_names = set()
     for ident in doc["identities"]:
+        kafka_names.add(ident["name"])
         location = ident.get("key_location", "")
         if location != "vm:all" and not KEY_LOCATION.match(location):
             raise DeclarationError(f"identities[{ident['name']}].key_location: {location!r} is not vm:<node>, vm:all, or cluster:<namespace>/<secret>")
+    tls_seen = set()
+    for ident in doc.get("tls_identities", []):
+        name = ident.get("name", "")
+        if not name:
+            raise DeclarationError("tls_identities: entry missing name")
+        if name in kafka_names or name in tls_seen:
+            raise DeclarationError(f"tls_identities[{name}]: duplicate identity name")
+        tls_seen.add(name)
+        vm = ident.get("vm", "")
+        if vm not in node_names:
+            raise DeclarationError(f"tls_identities[{name}].vm: {vm!r} is not a declared node")
+        server_auth = ident.get("server_auth")
+        if not isinstance(server_auth, bool):
+            raise DeclarationError(f"tls_identities[{name}].server_auth: must be a boolean")
+        sans = ident.get("server_sans", [])
+        if server_auth and (not isinstance(sans, list) or not sans):
+            raise DeclarationError(f"tls_identities[{name}].server_sans: required non-empty list when server_auth is true")
+        dest_dir = ident.get("dest_dir", "")
+        if not isinstance(dest_dir, str) or not dest_dir.startswith("/"):
+            raise DeclarationError(f"tls_identities[{name}].dest_dir: must be an absolute path")
+        owner_uid = ident.get("owner_uid")
+        if isinstance(owner_uid, bool) or not isinstance(owner_uid, int) or owner_uid < 0:
+            raise DeclarationError(f"tls_identities[{name}].owner_uid: must be a non-negative integer")
+        reload_unit = ident.get("reload_unit", "")
+        if not isinstance(reload_unit, str) or not reload_unit:
+            raise DeclarationError(f"tls_identities[{name}].reload_unit: must be a non-empty string")
     return Declarations(doc, tuple(nodes))
 
 
@@ -162,7 +195,7 @@ def check_topics(decl: Declarations) -> list[str]:
         name = t["name"]
         if t["replication_factor"] < 3:
             errors.append(f"topics[{name}].replication_factor: {t['replication_factor']} is below 3")
-        if name.startswith("logs.") and t["min_insync_replicas"] < 2:
+        if name.startswith(("logs.", "alerts.")) and t["min_insync_replicas"] < 2:
             errors.append(f"topics[{name}].min_insync_replicas: {t['min_insync_replicas']} is below 2")
     return errors
 
@@ -206,9 +239,18 @@ def check_nodes(decl: Declarations) -> list[str]:
 
 
 def check_budget(decl: Declarations) -> list[str]:
-    total = sum(t["retention_bytes"] * t["partitions"] + t["segment_bytes"] * t["partitions"] for t in decl.topics)
+    settings = decl.doc["broker_settings"]
+    errors = []
+    for key in ("offsets.topic.num.partitions", "offsets.topic.segment.bytes"):
+        val = settings.get(key)
+        if isinstance(val, bool) or not isinstance(val, int) or val <= 0:
+            errors.append(f"broker_settings.{key}: must be pinned to a positive integer")
+    if errors:
+        return errors
+    offsets_bytes = settings["offsets.topic.num.partitions"] * settings["offsets.topic.segment.bytes"] * 2
+    total = sum(t["retention_bytes"] * t["partitions"] + t["segment_bytes"] * t["partitions"] for t in decl.topics) + offsets_bytes
     if total > BROKER_BUDGET_BYTES:
-        return [f"topics.retention_bytes: retention plus one segment per partition is {total} bytes per broker, above the {BROKER_BUDGET_BYTES} budget"]
+        return [f"topics.retention_bytes: retention plus one segment per partition and __consumer_offsets is {total} bytes per broker, above the {BROKER_BUDGET_BYTES} budget"]
     return []
 
 
@@ -317,6 +359,23 @@ def node_identities(decl: Declarations, node: Node) -> list[str]:
     return sorted(names)
 
 
+def normalize_tls_identity(ident: dict) -> dict:
+    return {
+        "name": ident["name"],
+        "vm": ident["vm"],
+        "server_auth": bool(ident["server_auth"]),
+        "server_sans": list(ident.get("server_sans", [])),
+        "dest_dir": ident["dest_dir"],
+        "owner_uid": int(ident["owner_uid"]),
+        "reload_unit": ident["reload_unit"],
+    }
+
+
+def node_tls_identities(decl: Declarations, node: Node) -> list[dict]:
+    items = [normalize_tls_identity(i) for i in decl.tls_identities if i["vm"] == node.name]
+    return sorted(items, key=lambda item: item["name"])
+
+
 def ansible_files(decl: Declarations) -> dict[Path, str]:
     client_port = decl.doc["listeners"]["client"]["port"]
     controller_port = decl.doc["listeners"]["controller"]["port"]
@@ -337,6 +396,7 @@ def ansible_files(decl: Declarations) -> dict[Path, str]:
                 "roles": list(n.roles),
                 "address": n.address,
                 "identities": node_identities(decl, n),
+                "tls_identities": node_tls_identities(decl, n),
                 "server_properties": node_properties(decl, n, n.address, n.address, n.address, controller_bootstrap),
                 "format_args_bootstrap": format_args(decl, n, lambda c: c.address, bootstrap=True),
                 "format_args_join": format_args(decl, n, lambda c: c.address, bootstrap=False),
@@ -348,6 +408,10 @@ def ansible_files(decl: Declarations) -> dict[Path, str]:
             {"name": i["name"], "key_location": i["key_location"], "super_user": bool(i.get("super_user")), "grants": i.get("grants", [])}
             for i in decl.identities
         ],
+        "kafka_tls_identities": sorted(
+            [normalize_tls_identity(i) for i in decl.tls_identities],
+            key=lambda item: item["name"],
+        ),
     }
     return {ANSIBLE_OUT: dump(data)}
 

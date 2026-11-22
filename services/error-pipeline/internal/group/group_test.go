@@ -362,3 +362,71 @@ func TestConcurrentObserveAndTick(t *testing.T) {
 	}
 	<-done
 }
+
+func TestZeroWindowDeduplicatesForExactCooldown(t *testing.T) {
+	ttl := 10 * time.Minute
+	tr := NewTracker(Config{Window: 0, Cooldown: ttl, Retention: 2 * ttl, MaxSamples: 5, MaxEntries: 10000})
+
+	as := tr.Observe(occ("p1"), t0)
+	if len(as) != 1 || as[0].Type != NotifyNew || as[0].Recurred {
+		t.Fatalf("first observe = %+v, want NotifyNew", as)
+	}
+
+	as = tr.Observe(occ("p1"), t0.Add(time.Second))
+	for _, a := range as {
+		if a.Type == NotifyNew {
+			t.Fatalf("duplicate inside ttl notified: %+v", as)
+		}
+	}
+
+	as = tr.Observe(occ("p1"), t0.Add(ttl-time.Second))
+	if len(as) != 0 {
+		t.Fatalf("duplicate at ttl-1s produced actions: %+v", as)
+	}
+
+	as = tr.Observe(occ("p1"), t0.Add(ttl))
+	if len(as) != 1 || as[0].Type != NotifyNew || !as[0].Recurred {
+		t.Fatalf("at exact ttl want recurred NotifyNew, got %+v", as)
+	}
+	if as[0].Group.SinceLastAlert != 2 {
+		t.Fatalf("since_last_alert = %d, want 2", as[0].Group.SinceLastAlert)
+	}
+}
+
+func TestMaxEntriesLRUEviction(t *testing.T) {
+	tr := NewTracker(Config{Window: 0, Cooldown: 10 * time.Minute, Retention: 20 * time.Minute, MaxSamples: 5, MaxEntries: 3})
+	mk := func(msg string) classify.Classified {
+		c := occ("p1")
+		c.Event.Msg = msg
+		c.Record.Message = msg
+		return c
+	}
+
+	tr.Observe(mk("err-a"), t0)
+	tr.Observe(mk("err-b"), t0.Add(time.Second))
+	tr.Observe(mk("err-c"), t0.Add(2*time.Second))
+	tr.Observe(mk("err-a"), t0.Add(3*time.Second))
+	tr.Observe(mk("err-d"), t0.Add(4*time.Second))
+
+	if got := len(tr.Export()); got != 3 {
+		t.Fatalf("len = %d, want 3", got)
+	}
+
+	if as := tr.Observe(mk("err-b"), t0.Add(5*time.Second)); len(as) != 1 || as[0].Type != NotifyNew || as[0].Recurred {
+		t.Fatalf("evicted LRU err-b should alert as new, got %+v", as)
+	}
+
+	large := NewTracker(Config{Window: 0, Cooldown: 10 * time.Minute, Retention: 20 * time.Minute, MaxSamples: 1, MaxEntries: 10000})
+	for i := 0; i < 10050; i++ {
+		var word [5]byte
+		v := i
+		for p := 4; p >= 0; p-- {
+			word[p] = byte('a' + (v % 26))
+			v /= 26
+		}
+		large.Observe(mk("unique-err-"+string(word[:])), t0)
+	}
+	if got := len(large.Export()); got != 10000 {
+		t.Fatalf("bounded len = %d, want 10000", got)
+	}
+}

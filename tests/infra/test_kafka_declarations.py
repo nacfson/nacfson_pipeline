@@ -112,6 +112,60 @@ class KafkaDeclarationsTests(unittest.TestCase):
         self.mutate_declarations(lambda d: topic(d, "ops.platform.metrics").update(partitions=0))
         self.assert_check_fails("partitions")
 
+    def test_offsets_topic_must_be_pinned(self):
+        for key in ("offsets.topic.num.partitions", "offsets.topic.segment.bytes"):
+            with self.subTest(missing=key):
+                shutil.copy(REPO_ROOT / DECLARATIONS, self.root / DECLARATIONS)
+                self.mutate_declarations(lambda d, k=key: d["broker_settings"].pop(k, None))
+                self.assert_check_fails(key)
+
+    def test_offsets_topic_counts_toward_broker_budget(self):
+        self.mutate_declarations(lambda d: d["broker_settings"].update({"offsets.topic.num.partitions": 50}))
+        self.assert_check_fails("retention_bytes")
+
+    def test_alerts_errors_topic_and_acls(self):
+        doc = yaml.safe_load((REPO_ROOT / DECLARATIONS).read_text(encoding="utf-8"))
+        alerts = topic(doc, "alerts.errors")
+        self.assertEqual(alerts["partitions"], 1)
+        self.assertEqual(alerts["replication_factor"], 3)
+        self.assertEqual(alerts["min_insync_replicas"], 2)
+        self.assertEqual(alerts["timestamp_type"], "LogAppendTime")
+        detector = identity(doc, "error-detector-a1-2")
+        grants = {(g["resource"], g.get("name", ""), op) for g in detector["grants"] for op in g["ops"]}
+        self.assertIn(("cluster", "", "IdempotentWrite"), grants)
+        self.assertIn(("topic", "alerts.errors", "Write"), grants)
+        self.assertIn(("topic", "logs.proj.valid", "Read"), grants)
+        self.assertIn(("topic", "logs.proj.quarantine", "Read"), grants)
+        self.assertIn(("group", "error-detector", "Read"), grants)
+        relay = identity(doc, "ops-relay")
+        relay_grants = {(g["resource"], g.get("name", ""), op) for g in relay["grants"] for op in g["ops"]}
+        self.assertIn(("topic", "alerts.errors", "Read"), relay_grants)
+        self.assertNotIn(("topic", "alerts.errors", "Write"), relay_grants)
+        self.mutate_declarations(lambda d: topic(d, "alerts.errors").update(min_insync_replicas=1))
+        self.assert_check_fails("alerts.errors")
+
+    def test_tls_identities_in_ansible_only_not_strimzi(self):
+        ansible_res = run(self.root, "render", "--target", "ansible")
+        self.assertEqual(ansible_res.returncode, 0, ansible_res.stdout + ansible_res.stderr)
+        rendered = yaml.safe_load((self.root / RENDER_OUTPUTS["ansible"][0]).read_text(encoding="utf-8"))
+        a1_2_tls = rendered["kafka_nodes"]["a1-2"]["tls_identities"]
+        a1_1_tls = rendered["kafka_nodes"]["a1-1"]["tls_identities"]
+        self.assertEqual([i["name"] for i in a1_2_tls], ["loki-a1-2"])
+        self.assertTrue(a1_2_tls[0]["server_auth"])
+        self.assertEqual(a1_2_tls[0]["owner_uid"], 10001)
+        self.assertEqual([i["name"] for i in a1_1_tls], ["grafana-a1-1"])
+        self.assertFalse(a1_1_tls[0]["server_auth"])
+        self.assertEqual(a1_1_tls[0]["owner_uid"], 472)
+
+        strimzi_res = run(self.root, "render", "--target", "strimzi")
+        self.assertEqual(strimzi_res.returncode, 0, strimzi_res.stdout + strimzi_res.stderr)
+        strimzi_files = {p.name for p in (self.root / "build/strimzi").glob("*.yaml")}
+        self.assertNotIn("user-loki-a1-2.yaml", strimzi_files)
+        self.assertNotIn("user-grafana-a1-1.yaml", strimzi_files)
+        self.assertIn("user-error-detector-a1-2.yaml", strimzi_files)
+        self.assertIn("user-vector-a1-2.yaml", strimzi_files)
+        self.assertIn("topic-alerts.errors.yaml", strimzi_files)
+
     def test_renders_are_byte_identical(self):
         for target, outputs in RENDER_OUTPUTS.items():
             with self.subTest(target=target):

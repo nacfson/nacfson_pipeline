@@ -60,6 +60,15 @@ resource "oci_core_security_list" "kafka" {
       max = 22
     }
   }
+
+  ingress_security_rules {
+    source   = "10.200.0.11/32"
+    protocol = "6"
+    tcp_options {
+      min = 3100
+      max = 3100
+    }
+  }
 }
 
 resource "oci_core_subnet" "kafka" {
