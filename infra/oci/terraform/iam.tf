@@ -8,6 +8,7 @@ resource "oci_identity_user" "kafka_runner" {
   compartment_id = var.tenancy_ocid
   name           = "kafka-runner"
   description    = "Control-center runner for Kafka Ansible runs"
+  email          = var.kafka_runner_email
 }
 
 resource "oci_identity_user_group_membership" "kafka_runner" {

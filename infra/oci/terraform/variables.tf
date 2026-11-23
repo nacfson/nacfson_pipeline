@@ -30,3 +30,9 @@ variable "kafka_runner_api_public_key" {
   default     = null
   description = "The control center runner's public API key. Leave unset until the control center exists; no runner API key is created while it is null."
 }
+
+variable "kafka_runner_email" {
+  type        = string
+  default     = "kafka-runner@nacfson.cloud"
+  description = "Primary email for the kafka-runner service user (required on OCI Identity Domains tenancies)."
+}

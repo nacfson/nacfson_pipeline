@@ -144,6 +144,12 @@ class OciTerraformTests(unittest.TestCase):
         body = self.oci[("oci_identity_api_key", "kafka_runner")]
         self.assertRegex(body, r"count\s*=\s*var\.kafka_runner_api_public_key == null \? 0 : 1")
 
+    def test_runner_user_sets_primary_email(self):
+        variables = (REPO_ROOT / "infra" / "oci" / "terraform" / "variables.tf").read_text(encoding="utf-8")
+        self.assertRegex(variables, r'variable "kafka_runner_email" \{[^}]*default\s*=\s*"[^"]+"')
+        body = self.oci[("oci_identity_user", "kafka_runner")]
+        self.assertRegex(body, r"\bemail\s*=\s*var\.kafka_runner_email\b")
+
     def test_instances_follow_declared_nodes(self):
         locals_text = (REPO_ROOT / "infra" / "oci" / "terraform" / "locals.tf").read_text(encoding="utf-8")
         self.assertIn('file("${path.module}/../../kafka/cluster.yaml")', locals_text)
