@@ -22,7 +22,7 @@ spec:
       labels:
         app.kubernetes.io/name: pn-backend
         app.kubernetes.io/part-of: project-pn
-        app.kubernetes.io/version: "v0.0.0-7b5da00"
+        app.kubernetes.io/version: "v0.0.0-b67b2bd"
       annotations:
         logs.nacfson.cloud/backend: "v3/json"
         logs.nacfson.cloud/backend.data-paths: "/var/log/project-pn"
@@ -39,7 +39,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: backend
-          image: ghcr.io/nacfson/project-pn-backend@sha256:b4b32a5200d5e37d114cc6cb626d010c70666efc1b53abdf96d4a4920cc6cf0a
+          image: ghcr.io/nacfson/project-pn-backend@sha256:e9e5139ce3ebe27df9d046f858f5b2d5418a38990117983348764b762a06ff12
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
