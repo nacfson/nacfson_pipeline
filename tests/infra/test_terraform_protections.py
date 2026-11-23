@@ -144,6 +144,7 @@ class OciTerraformTests(unittest.TestCase):
         self.assertRegex(variables, r'variable "ssh_authorized_keys" \{')
         body = self.oci[("oci_core_instance", "node")]
         self.assertIn(r'ssh_authorized_keys = join("\n", var.ssh_authorized_keys)', body)
+        self.assertRegex(body, r'lifecycle\s*\{[^}]*ignore_changes\s*=\s*\[\s*metadata\["ssh_authorized_keys"\]\s*\]')
         self.assertNotIn("agent_config", body)
 
     def test_runner_api_key_is_created_only_when_set(self):

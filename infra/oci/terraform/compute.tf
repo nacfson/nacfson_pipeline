@@ -38,4 +38,8 @@ resource "oci_core_instance" "node" {
   }
 
   preserve_boot_volume = false
+
+  lifecycle {
+    ignore_changes = [metadata["ssh_authorized_keys"]]
+  }
 }

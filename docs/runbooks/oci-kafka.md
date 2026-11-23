@@ -59,6 +59,8 @@ kafka_runner_api_public_key = "-----BEGIN PUBLIC KEY-----..."
 
 `kafka_runner_api_public_key` is optional. Leave the line out until the control center exists: Terraform then creates the runner's user, group, and Bastion policy without an API key, and the runner cannot sign in. Adding the key later is the first step of [Runner keys](#runner-keys).
 
+`oci_core_instance.node` uses `lifecycle { ignore_changes = [metadata["ssh_authorized_keys"]] }` so `var.ssh_authorized_keys` is applied at launch or rebuild without destroying running Kafka VMs on later edits or 90-day key rotation. Day-2 key changes on live VMs are managed in `~ubuntu/.ssh/authorized_keys` via Ansible; pre-existing empty VMs without keys can be replaced explicitly with `-replace` (for example, `terraform plan -replace='oci_core_instance.node["<vm>"]' -out tfplan`).
+
 The budget recipient is passed as `TF_VAR_budget_alert_email`, never written to a file. List the image names with `oci compute image list --compartment-id <c> --operating-system "Canonical Ubuntu" --operating-system-version "24.04 Minimal" --shape VM.Standard.A1.Flex` (and `VM.Standard.E2.1.Micro`), and pick the newest of each.
 
 ```bash
