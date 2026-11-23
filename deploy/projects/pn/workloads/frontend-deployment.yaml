@@ -22,7 +22,7 @@ spec:
       labels:
         app.kubernetes.io/name: pn-frontend
         app.kubernetes.io/part-of: project-pn
-        app.kubernetes.io/version: "v0.0.0-7b5da00"
+        app.kubernetes.io/version: "v0.0.0-b67b2bd"
       annotations:
         logs.nacfson.cloud/frontend: "v3/nginx"
     spec:
@@ -37,7 +37,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: frontend
-          image: ghcr.io/nacfson/project-pn-frontend@sha256:d7e9b6517d9bb406b461e69edfff1c0b6fd06e5617a3a2afb32371ed178f9117
+          image: ghcr.io/nacfson/project-pn-frontend@sha256:4e7e6693924e5efb7483bf344511ee123d4c054b86e3fab3cae709ba957a75aa
           imagePullPolicy: IfNotPresent
           env:
             - name: PN_BACKEND_HOST
