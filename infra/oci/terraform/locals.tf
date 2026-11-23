@@ -15,7 +15,6 @@ locals {
   subnet_cidr       = "10.200.0.0/24"
   wireguard_port    = 51820
   boot_volume_gbs   = 50
-  bastion_ssh_user  = "ubuntu"
   availability_zone = data.oci_identity_availability_domains.this.availability_domains[0].name
 }
 

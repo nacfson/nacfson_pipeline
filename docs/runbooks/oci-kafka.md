@@ -53,6 +53,7 @@ tenancy_ocid                = "ocid1.tenancy..."
 compartment_ocid            = "ocid1.compartment..."
 image_display_names         = { arm64 = "<exact aarch64 Minimal name>", amd64 = "<exact amd64 Minimal name>" }
 bastion_client_cidrs        = ["<operator public IP>/32", "<control center public IP>/32"]
+ssh_authorized_keys         = ["ssh-rsa ..."]
 kafka_runner_api_public_key = "-----BEGIN PUBLIC KEY-----..."
 ```
 
@@ -71,7 +72,7 @@ If A1 capacity is refused (`Out of host capacity`), retry later. Changing an A1 
 
 ### Bastion sessions for Ansible
 
-Managed SSH sessions last up to 3 hours. Create one per VM with `oci bastion session create-managed-ssh` (target user `ubuntu`), then write `infra/oci/ansible/inventory/bastion.local.yml` (gitignored):
+OCI Bastion Managed SSH is unsupported on Ampere A1 (`VM.Standard.A1.Flex`) with Ubuntu, so Ansible connects over SSH Port Forwarding sessions (which last up to 3 hours). `infra/oci/ansible/inventory/oci.yml` already uses `ProxyCommand="ssh ... -W %h:%p"`, which works directly with Port Forwarding sessions. Create one session per VM with `oci bastion session create-port-forwarding --target-private-ip <ip> --target-port 22`, then write `infra/oci/ansible/inventory/bastion.local.yml` (gitignored):
 
 ```yaml
 all:

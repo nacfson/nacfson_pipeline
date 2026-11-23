@@ -136,7 +136,15 @@ class OciTerraformTests(unittest.TestCase):
         self.assertEqual(sorted({v for v, _ in verbs}), ["manage", "read", "use"])
         self.assertEqual([r for v, r in verbs if v == "manage"], ["bastion-session"])
         self.assertEqual([r for v, r in verbs if v == "use"], ["bastion"])
-        self.assertIn("target.bastion-session.username", body)
+        self.assertIn("target.bastion.ocid = '${oci_bastion_bastion.kafka.id}'", body)
+        self.assertNotIn("target.bastion-session.username", body)
+
+    def test_instances_set_ssh_authorized_keys(self):
+        variables = (REPO_ROOT / "infra" / "oci" / "terraform" / "variables.tf").read_text(encoding="utf-8")
+        self.assertRegex(variables, r'variable "ssh_authorized_keys" \{')
+        body = self.oci[("oci_core_instance", "node")]
+        self.assertIn(r'ssh_authorized_keys = join("\n", var.ssh_authorized_keys)', body)
+        self.assertNotIn("agent_config", body)
 
     def test_runner_api_key_is_created_only_when_set(self):
         variables = (REPO_ROOT / "infra" / "oci" / "terraform" / "variables.tf").read_text(encoding="utf-8")

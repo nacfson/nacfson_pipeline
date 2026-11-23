@@ -33,11 +33,8 @@ resource "oci_core_instance" "node" {
     boot_volume_size_in_gbs = local.boot_volume_gbs
   }
 
-  agent_config {
-    plugins_config {
-      name          = "Bastion"
-      desired_state = "ENABLED"
-    }
+  metadata = {
+    ssh_authorized_keys = join("\n", var.ssh_authorized_keys)
   }
 
   preserve_boot_volume = false

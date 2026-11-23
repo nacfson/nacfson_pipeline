@@ -36,3 +36,13 @@ variable "kafka_runner_email" {
   default     = "kafka-runner@nacfson.cloud"
   description = "Primary email for the kafka-runner service user (required on OCI Identity Domains tenancies)."
 }
+
+variable "ssh_authorized_keys" {
+  type        = list(string)
+  description = "OpenSSH public keys installed for the ubuntu user on every Kafka VM for OCI Bastion SSH port forwarding sessions."
+
+  validation {
+    condition     = length(var.ssh_authorized_keys) > 0 && alltrue([for k in var.ssh_authorized_keys : length(trimspace(k)) > 0])
+    error_message = "ssh_authorized_keys must contain at least one non-empty OpenSSH public key."
+  }
+}
