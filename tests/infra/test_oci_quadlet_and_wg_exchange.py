@@ -15,7 +15,6 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 OPS_AGENT_TEMPLATE = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "ops_agent" / "templates" / "ops-agent.container.j2"
 KAFKA_TEMPLATE = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "kafka" / "templates" / "kafka.container.j2"
 KAFKA_GENERATED = REPO_ROOT / "infra" / "oci" / "ansible" / "group_vars" / "all" / "kafka.generated.yml"
-KAFKA_VARS = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "kafka" / "vars" / "main.yml"
 OCI_INVENTORY = REPO_ROOT / "infra" / "oci" / "ansible" / "inventory" / "oci.yml"
 WIREGUARD_SLOTS = REPO_ROOT / "infra" / "oci" / "ansible" / "group_vars" / "brokers" / "wireguard_slots.yml"
 SSH_AUTHORIZED_KEYS = REPO_ROOT / "infra" / "oci" / "ansible" / "group_vars" / "all" / "ssh_authorized_keys.yml"
@@ -274,8 +273,10 @@ class OciQuadletTests(unittest.TestCase):
                 check=False,
             )
         self.assertEqual(res.returncode, 0, res.stderr)
-        self.assertIn("--group-add=101", res.stdout)
-        self.assertIn('--env "KAFKA_HEAP_OPTS=-Xms1g -Xmx1g"', res.stdout)
+        exec_starts = [line for line in res.stdout.splitlines() if line.startswith("ExecStart=")]
+        normalized = "\n".join(exec_starts).replace("\\x20", " ")
+        self.assertIn("--group-add=101", normalized)
+        self.assertIn('--env "KAFKA_HEAP_OPTS=-Xms1g -Xmx1g"', normalized)
 
 
 class OciWireGuardAndSshExchangeTests(unittest.TestCase):
