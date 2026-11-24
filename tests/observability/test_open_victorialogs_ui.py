@@ -7,7 +7,7 @@ import tempfile
 import unittest
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-SCRIPT = os.path.join(BASE_DIR, "scripts", "open-victorialogs-ui.sh")
+SCRIPT = os.path.join(BASE_DIR, "scripts", "ops", "open-victorialogs-ui.sh")
 
 
 def _path_without_kubectl(tmp: str) -> str:

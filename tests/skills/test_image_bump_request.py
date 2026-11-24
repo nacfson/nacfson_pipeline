@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest import mock
 
 BASE_DIR = Path(__file__).resolve().parents[2]
-SCRIPT_PATH = BASE_DIR / "scripts" / "image-bump-request.py"
+SCRIPT_PATH = BASE_DIR / "scripts" / "images" / "image-bump-request.py"
 
 
 def load_module():

@@ -24,7 +24,7 @@ Skeptically audit every candidate finding produced by the parallel review hunter
 
 ## 3. Required JSON Output Schema (`record-receipt` Input)
 
-Produce the verified JSON payload ready to pipe into `python3 scripts/review-cycle.py record-receipt --scope <staged|worktree|branch>`:
+Produce the verified JSON payload ready to pipe into `python3 scripts/hooks/review-cycle.py record-receipt --scope <staged|worktree|branch>`:
 
 ```json
 {

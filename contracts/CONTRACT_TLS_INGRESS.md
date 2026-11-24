@@ -22,7 +22,7 @@ All public edge TLS certificates, Let's Encrypt `ClusterIssuer`s, and the defaul
 
 ## 2. Project `IngressRoute` Rules (`TLS-1` through `TLS-6`)
 
-Every project `IngressRoute` (`deploy/projects/<slug>/workloads/ingress-route.yaml`) is checked by `check_edge_tls` in [`scripts/platform-preflight.py`](../scripts/platform-preflight.py):
+Every project `IngressRoute` (`deploy/projects/<slug>/workloads/ingress-route.yaml`) is checked by `check_edge_tls` in [`scripts/ci/platform-preflight.py`](../scripts/ci/platform-preflight.py):
 
 | Rule ID | Requirement | Rejection Condition |
 | :--- | :--- | :--- |
@@ -37,5 +37,5 @@ Every project `IngressRoute` (`deploy/projects/<slug>/workloads/ingress-route.ya
 ## 3. Single-Copy Public Auth Ingress Allowlist
 
 - Public sign-in routes live exclusively in [`deploy/platform/ingress/ingress-allowlist.yaml`](../deploy/platform/ingress/ingress-allowlist.yaml).
-- Flux `postBuild.substitute` is permitted **only** on the `ingress` Kustomization for `AUTH_HOST` (enforced by Invariant 1 in [`scripts/render-invariants.py`](../scripts/render-invariants.py)).
+- Flux `postBuild.substitute` is permitted **only** on the `ingress` Kustomization for `AUTH_HOST` (enforced by Invariant 1 in [`scripts/ci/render-invariants.py`](../scripts/ci/render-invariants.py)).
 - Keycloak `/admin/*`, master realm, internal JWKS, and management port `9000` MUST NEVER be exposed on public ingress routes.

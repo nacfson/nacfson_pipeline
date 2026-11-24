@@ -5,7 +5,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "review-cycle.py"
+SCRIPT = ROOT / "scripts" / "hooks" / "review-cycle.py"
 
 
 def _load_engine():
@@ -284,7 +284,7 @@ class TestReviewEngine(unittest.TestCase):
                     r_path,
                     s_path,
                     f"clean-sha-{idx}",
-                    ["scripts/review-cycle.py"],
+                    ["scripts/hooks/review-cycle.py"],
                     self.policy,
                     self.breaker,
                 )

@@ -13,7 +13,7 @@ STATUS_KEYS = tuple(re.compile(KEY_PATTERN % key) for key in ("sealed", "initial
 
 FIX = (
     "Load a fixture from tests/fixtures/openbao/2.0.0/status/ instead of writing status JSON by hand, "
-    "and refresh the fixtures with scripts/rehearse-openbao-seal-migration.sh --write-fixtures. "
+    "and refresh the fixtures with scripts/vault/rehearse-openbao-seal-migration.sh --write-fixtures. "
     "Hand-written status output is what let the #163 and #165 cutover bugs reach production."
 )
 

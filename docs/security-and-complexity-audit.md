@@ -66,7 +66,7 @@ This audit was conducted under a **strict read-only constraint**: zero tracked f
 
 The investigation spanned all seven platform trust boundaries and three architectural complexity dimensions:
 - **Codebases Audited**: `gateway/` (~2,500 LOC Go), `services/vault-proxies/` (~1,300 LOC Go), `scripts/` (>3,300 LOC Python/Bash), `deploy/platform/` (52 K8s manifests), `deploy/projects/` (14 K8s manifests), `clusters/` (Flux DAG & overlays), `bootstrap/` (Ansible playbook & systemd templates), `contracts/`, and `specs/` (110 markdown specifications).
-- **Verification Harness**: Validated against live unit test suites (`go test`, `python -m unittest discover tests/preflight`), Kustomize rendering engines (`./scripts/render-validate.sh`), and the architecture synchronization gate (`python3 scripts/check-arch-doc-sync.py --worktree`).
+- **Verification Harness**: Validated against live unit test suites (`go test`, `python -m unittest discover tests/preflight`), Kustomize rendering engines (`./scripts/ci/render-validate.sh`), and the architecture synchronization gate (`python3 scripts/hooks/check-arch-doc-sync.py --worktree`).
 
 ### 1.3 Summary Findings Scorecard
 
@@ -194,7 +194,7 @@ The platform demonstrates exceptional ambition, conceptual elegance, and an admi
 - **CWE**: CWE-1164 (Irrelevant Code) / CWE-290 (Authentication Bypass by Spoofing)
 - **File / Lines**: `deploy/platform/ingress/traefik-middleware.yaml:1-15`
 - **Vulnerability Mechanics**:
-  The `forward-auth` middleware points to `http://gateway.identity.svc:8080/auth` with `trustForwardHeader: true`. Spec 006, `CONTRACT_AUTH_DOOR.md:11`, and `scripts/platform-preflight.py:201-205` strictly forbid ForwardAuth on project doors. The resource is obsolete dead code, but retains dangerous header-trust semantics.
+  The `forward-auth` middleware points to `http://gateway.identity.svc:8080/auth` with `trustForwardHeader: true`. Spec 006, `CONTRACT_AUTH_DOOR.md:11`, and `scripts/ci/platform-preflight.py:201-205` strictly forbid ForwardAuth on project doors. The resource is obsolete dead code, but retains dangerous header-trust semantics.
 - **Attack Scenario**:
   A platform developer accidentally attaches `platform-forward-auth` to a new project IngressRoute. Because `trustForwardHeader: true` is configured, Traefik trusts client-supplied upstream headers, allowing header spoofing.
 - **Existing Mitigations**:
@@ -508,7 +508,7 @@ The platform demonstrates exceptional ambition, conceptual elegance, and an admi
 #### SEC-TB3-05: Excessive `operator-admin` Privileges Bound to Daily Raft Backup ServiceAccount
 - **Severity**: Medium
 - **CWE**: CWE-250 (Execution with Unnecessary Privileges)
-- **File / Lines**: `scripts/vault-configure-k8s-auth.sh:167`, `deploy/platform/vault/policies/operator-admin.hcl:1-31`
+- **File / Lines**: `scripts/vault/vault-configure-k8s-auth.sh:167`, `deploy/platform/vault/policies/operator-admin.hcl:1-31`
 - **Vulnerability Mechanics**:
   Line 167 executes:
   `create_k8s_role "openbao-backup" "openbao-backup" "vault" "operator-admin"`
@@ -525,7 +525,7 @@ The platform demonstrates exceptional ambition, conceptual elegance, and an admi
 #### SEC-TB3-06: 10-Year Token Reviewer JWT and Cleartext HTTP on OpenBao
 - **Severity**: Medium
 - **CWE**: CWE-319 (Cleartext Transmission) / CWE-1004 (Sensitive Cookie Without 'HttpOnly' Flag)
-- **File / Lines**: `scripts/vault-configure-k8s-auth.sh:113-127`, `deploy/platform/vault/openbao-config.yaml:18-22`
+- **File / Lines**: `scripts/vault/vault-configure-k8s-auth.sh:113-127`, `deploy/platform/vault/openbao-config.yaml:18-22`
 - **Vulnerability Mechanics**:
   - Line 113 generates a 10-year ServiceAccount token: `duration=87600h` and saves it to `/tmp/token_reviewer.jwt` inside the pod filesystem.
   - Line 126 configures `disable_iss_validation=true`.
@@ -711,7 +711,7 @@ The platform demonstrates exceptional ambition, conceptual elegance, and an admi
 #### SEC-TB5-05: Platform Namespaces Exempt from Pod Security Standards and Strict QoS
 - **Severity**: Low
 - **CWE**: CWE-284 (Improper Access Control)
-- **File / Lines**: `deploy/platform/governance/namespaces.yaml:1-30`, `scripts/platform-preflight.py:682-750`
+- **File / Lines**: `deploy/platform/governance/namespaces.yaml:1-30`, `scripts/ci/platform-preflight.py:682-750`
 - **Vulnerability Mechanics**:
   Namespaces `identity`, `platform`, and `governance` declare no `pod-security.kubernetes.io/enforce: restricted` labels. Preflight explicitly exempts platform containers from strict QoS (`requests == limits`).
 - **Attack Scenario**:
@@ -829,7 +829,7 @@ The platform demonstrates exceptional ambition, conceptual elegance, and an admi
 #### SEC-TB7-01: Database Proxy Routing & Readiness Probe Enforcement Bypass via `envFrom` and `valueFrom`
 - **Severity**: High
 - **CWE**: CWE-693 (Protection Mechanism Failure) / CWE-20 (Improper Input Validation)
-- **File / Lines**: `scripts/platform-preflight.py:278-325`
+- **File / Lines**: `scripts/ci/platform-preflight.py:278-325`
 - **Vulnerability Mechanics**:
   `check_database_and_readiness_contract` enforces database proxy routing and `/readyz` probes by iterating over `c.get("env")`:
   ```python
@@ -854,10 +854,10 @@ The platform demonstrates exceptional ambition, conceptual elegance, and an admi
 #### SEC-TB7-02: Project Isolation & Restricted PSS Enforcement Blind Spot in Preflight
 - **Severity**: High
 - **CWE**: CWE-284 (Improper Access Control) / CWE-693 (Protection Mechanism Failure)
-- **File / Lines**: `scripts/platform-preflight.py:688-723`, `contracts/CONTRACT_ISOLATION_BUDGET.md:14-17`
+- **File / Lines**: `scripts/ci/platform-preflight.py:688-723`, `contracts/CONTRACT_ISOLATION_BUDGET.md:14-17`
 - **Vulnerability Mechanics**:
   `CONTRACT_ISOLATION_BUDGET.md:14-17` mandates `runAsNonRoot: true`, `runAsUser: 10001`, `seccompProfile.type: RuntimeDefault`, `readOnlyRootFilesystem: true`, and `capabilities.drop: ["ALL"]`.
-  However, `scripts/platform-preflight.py:712-723` only checks:
+  However, `scripts/ci/platform-preflight.py:712-723` only checks:
   - `sc.get("privileged") is True`
   - `sc.get("allowPrivilegeEscalation") is True`
   - `cap != "NET_BIND_SERVICE"` in `capabilities.add`
@@ -874,7 +874,7 @@ The platform demonstrates exceptional ambition, conceptual elegance, and an admi
 #### SEC-TB7-03: Denial of Service / 1/n Budget Distortion via Multi-Namespace or Dummy Namespace Injection
 - **Severity**: Medium
 - **CWE**: CWE-400 (Uncontrolled Resource Consumption)
-- **File / Lines**: `scripts/platform-preflight.py:841-877`
+- **File / Lines**: `scripts/ci/platform-preflight.py:841-877`
 - **Vulnerability Mechanics**:
   Preflight derives $n$ (`project_count`) dynamically by counting distinct non-platform namespaces in candidate YAML documents:
   `project_count = len(projects_dict)`
@@ -891,7 +891,7 @@ The platform demonstrates exceptional ambition, conceptual elegance, and an admi
 #### SEC-TB7-04: Workload Controller Blind Spot for `ReplicaSet` and Custom Workload Kinds
 - **Severity**: Medium
 - **CWE**: CWE-693 (Protection Mechanism Failure)
-- **File / Lines**: `scripts/platform-preflight.py:612-624, 754-772, 815-831`
+- **File / Lines**: `scripts/ci/platform-preflight.py:612-624, 754-772, 815-831`
 - **Vulnerability Mechanics**:
   `get_pod_spec_and_meta` handles `Deployment`, `StatefulSet`, `DaemonSet`, `Job`, `CronJob`, and `Pod`. It returns `(None, None)` for `ReplicaSet`. Platform reservations skip ReplicaSets, leading to resource miscalculation.
 - **Attack Scenario**:
@@ -906,7 +906,7 @@ The platform demonstrates exceptional ambition, conceptual elegance, and an admi
 #### SEC-TB7-05: Service `type: ExternalName` Blind Spot in Preflight Isolation Checks
 - **Severity**: Medium
 - **CWE**: CWE-693 (Protection Mechanism Failure) / CWE-20 (Improper Input Validation)
-- **File / Lines**: `scripts/platform-preflight.py:691-694`
+- **File / Lines**: `scripts/ci/platform-preflight.py:691-694`
 - **Vulnerability Mechanics**:
   Rule 2 checks:
   ```python
@@ -928,7 +928,7 @@ The platform demonstrates exceptional ambition, conceptual elegance, and an admi
 #### SEC-TB7-06: IngressRoute Middleware Provider & Namespace Ambiguity
 - **Severity**: Low
 - **CWE**: CWE-345 (Insufficient Verification of Data Authenticity)
-- **File / Lines**: `scripts/platform-preflight.py:207-212`
+- **File / Lines**: `scripts/ci/platform-preflight.py:207-212`
 - **Vulnerability Mechanics**:
   Preflight checks `if "strip-forged-headers" not in names: violations.append(...)` without verifying that the middleware reference is fully qualified (`platform-strip-forged-headers@kubernetescrd`).
 - **Attack Scenario**:
@@ -943,9 +943,9 @@ The platform demonstrates exceptional ambition, conceptual elegance, and an admi
 #### SEC-TB7-07: Static Preflight vs In-Cluster Admission Controller Enforcement Gap
 - **Severity**: Low
 - **CWE**: CWE-693 (Protection Mechanism Failure)
-- **File / Lines**: `scripts/platform-preflight.py`, `deploy/platform/governance/`
+- **File / Lines**: `scripts/ci/platform-preflight.py`, `deploy/platform/governance/`
 - **Vulnerability Mechanics**:
-  The platform relies primarily on offline preflight validation (`scripts/platform-preflight.py`) rather than in-cluster Kubernetes admission controllers (`ValidatingAdmissionPolicy` or Kyverno). Manifests applied out-of-band via `kubectl` or Helm bypass preflight entirely.
+  The platform relies primarily on offline preflight validation (`scripts/ci/platform-preflight.py`) rather than in-cluster Kubernetes admission controllers (`ValidatingAdmissionPolicy` or Kyverno). Manifests applied out-of-band via `kubectl` or Helm bypass preflight entirely.
 - **Attack Scenario**:
   An administrator or emergency break-glass operator applies a manifest directly to the cluster using `kubectl apply`. Because preflight only runs in CI and git hooks, non-compliant, unisolated, or over-budget workloads are admitted to the cluster.
 - **Existing Mitigations**:
@@ -957,7 +957,7 @@ The platform demonstrates exceptional ambition, conceptual elegance, and an admi
 
 ## 3. Deep Preflight & Invariant Validator Bypass Analysis
 
-This section synthesizes the structural bypass vectors identified in `scripts/platform-preflight.py` and `scripts/render-invariants.py`, detailing the root causes and architectural implications of relying on bespoke AST parsers for security policy enforcement.
+This section synthesizes the structural bypass vectors identified in `scripts/ci/platform-preflight.py` and `scripts/ci/render-invariants.py`, detailing the root causes and architectural implications of relying on bespoke AST parsers for security policy enforcement.
 
 ```
        [Developer Manifest]
@@ -970,34 +970,34 @@ This section synthesizes the structural bypass vectors identified in `scripts/pl
 ```
 
 ### 3.1 Database Proxy Routing & Probe Separation Bypass via `envFrom` and `valueFrom`
-In `scripts/platform-preflight.py:278-325`, database contract validation relies on a brittle dictionary match:
+In `scripts/ci/platform-preflight.py:278-325`, database contract validation relies on a brittle dictionary match:
 1. `c.get("env")` is searched exclusively. If configuration is loaded via `envFrom`, `c.get("env")` is empty, and the function executes `continue`, skipping both database proxy URL verification and probe separation (`/readyz` vs `/healthz`) verification.
 2. For `valueFrom`, `str(env_entry.get("value") or "").strip()` evaluates to `""`. The validation check `if db_url:` evaluates to false, allowing arbitrary database connection strings to pass silently.
 
 ### 3.2 Missing Pod Security Standards (PSS) & Capabilities Enforcement
-In `scripts/platform-preflight.py:712-723`:
+In `scripts/ci/platform-preflight.py:712-723`:
 1. Rule 2 checks only for active declarations of `privileged: true`, `allowPrivilegeEscalation: true`, and added capabilities.
 2. If a container manifest completely omits `securityContext`, `sc` is empty. Preflight flags zero violations.
 3. Preflight never asserts `runAsNonRoot: true`, `readOnlyRootFilesystem: true`, or `capabilities.drop: ["ALL"]`, despite `contracts/CONTRACT_ISOLATION_BUDGET.md` declaring them non-negotiable.
 
 ### 3.3 Dynamic Project Count $n$ Distortion & Resource Starvation (DoS)
-In `scripts/platform-preflight.py:841-877`:
+In `scripts/ci/platform-preflight.py:841-877`:
 1. $n$ is calculated dynamically by counting non-platform namespaces in candidate documents.
 2. Committing a dummy namespace halves the resource slice for all other projects.
 3. Conversely, packing multiple large microservices into a single namespace allows that namespace to monopolize 100% of the tenant resource allocation.
 
 ### 3.4 Workload Controller Omission (`ReplicaSet` & Custom Kinds)
-In `scripts/platform-preflight.py:612-624`:
+In `scripts/ci/platform-preflight.py:612-624`:
 1. `get_pod_spec_and_meta` only recognizes `Deployment`, `StatefulSet`, `DaemonSet`, `Job`, `CronJob`, and `Pod`.
 2. A `ReplicaSet` returns `(None, None)`. Platform reservations skip it entirely, leading to resource miscalculations and host node over-subscription.
 
 ### 3.5 Service `type: ExternalName` Blind Spot (SSRF / DNS Hijack)
-In `scripts/platform-preflight.py:691-694`:
+In `scripts/ci/platform-preflight.py:691-694`:
 1. The check `if svc_type in ("NodePort", "LoadBalancer")` allows `ExternalName`.
 2. An `ExternalName` service maps internal DNS queries to arbitrary external hostnames or cloud metadata endpoints (`169.254.169.254`), bypassing internal cluster DNS boundaries.
 
 ### 3.6 Unqualified Middleware Name Matching & Traefik Resolution Ambiguity
-In `scripts/platform-preflight.py:207-212`:
+In `scripts/ci/platform-preflight.py:207-212`:
 1. Preflight asserts `if "strip-forged-headers" not in names`.
 2. Traefik allows local namespace middleware overrides. If a project defines a local middleware named `strip-forged-headers`, it satisfies preflight while circumventing platform header sanitization.
 
@@ -1016,7 +1016,7 @@ The custom Python preflight script represents an attempt to enforce Kubernetes i
 ### 4.1 Dimension 1: Runtime Infrastructure & Indirection Overhead
 
 #### Resource Footprint Breakdown: Platform vs Hosted Tenant
-Executing `./scripts/render-validate.sh vps-k3s` and `scripts/platform-preflight.py` yields the following exact platform reservations:
+Executing `./scripts/ci/render-validate.sh vps-k3s` and `scripts/ci/platform-preflight.py` yields the following exact platform reservations:
 - **Node Allocatable Capacity**: 4,000m CPU, 24,576 MiB RAM
 - **Platform Reservation**: **1,595m CPU requests, 5,312 MiB RAM limits** across 27 containers.
 - **Hosted Tenant (`proj-pn`) Peak Footprint**: **400m CPU, 640 MiB RAM** (overlay peak) or **75m CPU, 96 MiB RAM** (steady-state: `pn-backend` 64Mi/50m, `pn-frontend` 32Mi/25m).
@@ -1047,7 +1047,7 @@ Platform Infrastructure Memory Reservation (5,312 MiB Total)
 #### Detailed Complexity Findings:
 
 ##### OE-RUNTIME-01: Massive Platform Resource Consumption Unschedulable on Modest VPS
-- **Affected Files**: `clusters/vps-k3s/capacity.yaml`, `clusters/local-k3s/capacity.yaml`, `scripts/platform-preflight.py`
+- **Affected Files**: `clusters/vps-k3s/capacity.yaml`, `clusters/local-k3s/capacity.yaml`, `scripts/ci/platform-preflight.py`
 - **Quantified Cost**:
   - Reserving 5.3 GB RAM and 1.6 CPU cores leaves only 2.8 GB RAM on an 8 GB development node (64.8% consumed by platform).
   - Any modest VPS instance (e.g. 1–2 OCPU, 1–4 GB RAM) fails preflight Rule 1 immediately.
@@ -1062,7 +1062,7 @@ Platform Infrastructure Memory Reservation (5,312 MiB Total)
 - **Quantified Cost**:
   - 10 serially chained layers with `wait: true` and 5-minute timeouts: `cni` -> `governance` -> `vault` -> `cert-manager` -> `project-boundaries` -> `vault-proxies` -> `database` -> `projects` -> `identity` -> `ingress` -> `tls`.
   - **Cold Boot Deadlock**: OpenBao boots sealed. Its readiness probe returns HTTP 503. Flux layer `vault` waits for `openbao` to be Ready and times out after 5 minutes.
-  - Because downstream layers depend on `vault`, all secret-fetching init containers in Postgres, Keycloak, Gateway, and tenant workloads crash-loop. The platform cannot recover from a reboot without interactive manual operator intervention (`scripts/vault-init.sh`).
+  - Because downstream layers depend on `vault`, all secret-fetching init containers in Postgres, Keycloak, Gateway, and tenant workloads crash-loop. The platform cannot recover from a reboot without interactive manual operator intervention (`scripts/vault/vault-init.sh`).
 - **Original Intent**: Enforce strict GitOps dependency ordering.
 - **Simpler Alternative**: Consolidate into 3 logical layers (`platform-infra`, `platform-services`, `projects`). Enable OpenBao auto-unseal or decouple tenant boot using native Kubernetes Secret resources.
 
@@ -1114,12 +1114,12 @@ Platform Infrastructure Memory Reservation (5,312 MiB Total)
 #### Custom Tooling Line Count Inventory:
 - `gateway/` (Go): 2,500 LOC across 25 files
 - `services/vault-proxies/` (Go): 1,300 LOC across 8 files
-- `scripts/platform-preflight.py` (Python): 995 LOC
-- `scripts/render-invariants.py` (Python): 275 LOC
-- `scripts/review-cycle.py` (Python): 1,073 LOC
-- `scripts/universal-agent-hook.py` (Python): 185 LOC
-- `scripts/check-arch-doc-sync.py` (Python): 250 LOC
-- `scripts/render-validate.sh` (Bash): 118 LOC
+- `scripts/ci/platform-preflight.py` (Python): 995 LOC
+- `scripts/ci/render-invariants.py` (Python): 275 LOC
+- `scripts/hooks/review-cycle.py` (Python): 1,073 LOC
+- `scripts/hooks/universal-agent-hook.py` (Python): 185 LOC
+- `scripts/hooks/check-arch-doc-sync.py` (Python): 250 LOC
+- `scripts/ci/render-validate.sh` (Bash): 118 LOC
 - `tests/preflight/` (Python): 420 LOC
 - **Total Custom Code**: **>3,800 LOC Go** and **>3,300 LOC Python/Bash**
 
@@ -1136,7 +1136,7 @@ Platform Infrastructure Memory Reservation (5,312 MiB Total)
 ---
 
 ##### OE-CODE-02: Over 3,300 Lines of Custom Python/Shell Preflight Tooling
-- **Affected Files**: `scripts/platform-preflight.py`, `scripts/render-invariants.py`, `tests/preflight/`
+- **Affected Files**: `scripts/ci/platform-preflight.py`, `scripts/ci/render-invariants.py`, `tests/preflight/`
 - **Quantified Cost**:
   - 1,690 lines of custom Python AST and YAML walking logic duplicating standard Kubernetes admission controllers.
   - Prone to parsing omissions (`envFrom`, `valueFrom`, missing PSS checks, `ReplicaSet` omissions).
@@ -1147,7 +1147,7 @@ Platform Infrastructure Memory Reservation (5,312 MiB Total)
 ---
 
 ##### OE-CODE-03: Bespoke Multi-Agent Review-Cycle State Machine (`review-cycle.py`)
-- **Affected Files**: `scripts/review-cycle.py` (1,073 LOC), `tests/review_cycle/`, `config/review-policy.json`
+- **Affected Files**: `scripts/hooks/review-cycle.py` (1,073 LOC), `tests/review_cycle/`, `config/review-policy.json`
 - **Quantified Cost**:
   - Emulates an enterprise multi-agent review convergence system with receipt SHA-256 signing, state JSON persistence in `.git/review-cycle/`, noise stats, and circuit breakers for a repository with a single human maintainer.
   - Frequently forces operators to use `SKIP_REVIEW_GATE=1` during development.
@@ -1159,7 +1159,7 @@ Platform Infrastructure Memory Reservation (5,312 MiB Total)
 ### 4.3 Dimension 3: Governance, Documentation & Hook Ceremony
 
 ##### OE-GOV-01: Blocking Commit Gate Enforcing Monolithic 2,687-Line HTML Architecture Handbook
-- **Affected Files**: `docs/platform-architecture.html` (2,687 LOC), `scripts/check-arch-doc-sync.py` (250 LOC), `.githooks/pre-commit:77-86`
+- **Affected Files**: `docs/platform-architecture.html` (2,687 LOC), `scripts/hooks/check-arch-doc-sync.py` (250 LOC), `.githooks/pre-commit:77-86`
 - **Quantified Cost**:
   - `ARCH_WATCH_PREFIXES` watches almost all repository paths. Modifying any manifest, contract, or script requires simultaneously modifying a 2,687-line monolithic HTML handbook.
   - Brittle hardcoded string checks (`check-arch-doc-sync.py:143`: `if "1595" not in html or "5312" not in html:`). Changing capacity numbers breaks CI unless the HTML file is searched and manually edited.
@@ -1170,7 +1170,7 @@ Platform Infrastructure Memory Reservation (5,312 MiB Total)
 ---
 
 ##### OE-GOV-02: Proliferation of 7 Vendor-Specific AI Agent Hook Configurations
-- **Affected Files**: `.agents/hooks.json`, `.claude/settings.json`, `.codex/hooks.json`, `.omp/extensions/arch-doc-sync.ts`, `.opencode/plugins/arch-doc-sync.js`, `.grok/hooks.json`, `.cursor/hooks.json`, `scripts/universal-agent-hook.py` (185 LOC)
+- **Affected Files**: `.agents/hooks.json`, `.claude/settings.json`, `.codex/hooks.json`, `.omp/extensions/arch-doc-sync.ts`, `.opencode/plugins/arch-doc-sync.js`, `.grok/hooks.json`, `.cursor/hooks.json`, `scripts/hooks/universal-agent-hook.py` (185 LOC)
 - **Quantified Cost**:
   - 7 redundant tool configs calling `universal-agent-hook.py`.
   - Fragile coupling to proprietary AI tool lifecycle hooks (`PreToolUse`, `Stop`, `toolInput`).
@@ -1303,16 +1303,16 @@ All tests and verification pipelines were executed from `/home/nacfson/Projects/
    - Result: **PASS** (37 tests passed confirming baseline isolation and budgeting logic).
    - Execution Time: 1.59s
 4. **Local K3s Kustomize Render & Preflight Validation**:
-   - Command: `./scripts/render-validate.sh local-k3s`
+   - Command: `./scripts/ci/render-validate.sh local-k3s`
    - Result: **PASS** (Exit code 0; all render invariants and schemas validated).
 5. **Production VPS K3s Kustomize Render & Preflight Validation**:
-   - Command: `./scripts/render-validate.sh vps-k3s`
+   - Command: `./scripts/ci/render-validate.sh vps-k3s`
    - Result: **PASS** (Exit code 0; all render invariants and schemas validated).
 6. **Production VPS Capacity Summation via Preflight Engine**:
-   - Command: `python3 ./scripts/platform-preflight.py --environment vps-k3s --candidate /tmp/render-vps-k3s-Cqze7H.yaml --capacity clusters/vps-k3s/capacity.yaml --json`
+   - Command: `python3 ./scripts/ci/platform-preflight.py --environment vps-k3s --candidate /tmp/render-vps-k3s-Cqze7H.yaml --capacity clusters/vps-k3s/capacity.yaml --json`
    - Result: Confirmed Measured Allocatable (`4000m` CPU, `24576MiB` RAM), Platform Reservations (`1595m` CPU, `5312MiB` RAM), Candidate Peak Footprint (`400m` CPU, `640MiB` RAM).
 7. **Architecture Handbook Synchronization Gate**:
-   - Command: `python3 scripts/check-arch-doc-sync.py --worktree`
+   - Command: `python3 scripts/hooks/check-arch-doc-sync.py --worktree`
    - Result: **PASS** (`[ARCH-DOC-SYNC PASS] docs/platform-architecture.html is synchronized.`).
 
 ### 6.2 Repository Integrity & Immutability Attestation

@@ -3,7 +3,7 @@ import * as path from "node:path";
 
 export default function gitFetchSessionStart(pi: any): void {
   const repoRoot = process.cwd();
-  const hookPath = path.join(repoRoot, "scripts", "universal-agent-hook.py");
+  const hookPath = path.join(repoRoot, "scripts", "hooks", "universal-agent-hook.py");
 
   pi.on("session_start", async (_event: any, ctx: any) => {
     try {

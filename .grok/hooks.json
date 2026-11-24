@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/universal-agent-hook.py --agent grok --event SessionStart",
+            "command": "python3 scripts/hooks/universal-agent-hook.py --agent grok --event SessionStart",
             "timeout": 20
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/universal-agent-hook.py --agent grok --event PreToolUse",
+            "command": "python3 scripts/hooks/universal-agent-hook.py --agent grok --event PreToolUse",
             "timeout": 15
           }
         ]
@@ -30,7 +30,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/universal-agent-hook.py --agent grok --event Stop",
+            "command": "python3 scripts/hooks/universal-agent-hook.py --agent grok --event Stop",
             "timeout": 15
           }
         ]

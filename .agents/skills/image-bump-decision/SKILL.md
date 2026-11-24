@@ -83,8 +83,8 @@ nothing and open no PR.
 3. Validate, and report anything that could not run as skipped, not passed:
    ```bash
    python3 -m unittest discover tests/preflight
-   ./scripts/render-validate.sh local-k3s && ./scripts/render-validate.sh vps-k3s
-   python3 scripts/check-arch-doc-sync.py --worktree
+   ./scripts/ci/render-validate.sh local-k3s && ./scripts/ci/render-validate.sh vps-k3s
+   python3 scripts/hooks/check-arch-doc-sync.py --worktree
    ```
 4. Stage exactly the `path` values from the summary JSON plus
    `docs/platform-architecture.html`. Run the `code-review` skill

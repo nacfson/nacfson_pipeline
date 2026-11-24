@@ -50,10 +50,10 @@ Per [Constitution Principle I](.specify/memory/constitution.md), third-party ima
 | :--- | :--- | :--- | :--- |
 | **VM Bootstrap (`local-k3s`)** | `ansible-core` | `==2.21.4` | [`bootstrap/requirements.txt`](bootstrap/requirements.txt) |
 | **Multi-Arch Image Build & GAR Cleanup** | Google Cloud Build + `docker buildx` | `gcr.io/cloud-builders/docker` (`linux/amd64,linux/arm64`, keep `2` / `7d` `< 0.5 GB`) | [`deploy/gcp/cloudbuild.yaml`](deploy/gcp/cloudbuild.yaml), [`deploy/gcp/gar-cleanup-policy.json`](deploy/gcp/gar-cleanup-policy.json) |
-| **Preflight, Kustomize Fallback & Invariants** | `Python` + `PyYAML` | Python `3.11+` / `3.12` + `PyYAML==6.0.3` | [`scripts/platform-preflight.py`](scripts/platform-preflight.py), [`scripts/kustomize_render.py`](scripts/kustomize_render.py), [`.github/workflows/gitops.yaml`](.github/workflows/gitops.yaml) |
-| **Full-State Cutover & DB Migration** | Bash + `kubectl` + `sha256sum` | POSIX / GNU coreutils | [`scripts/cutover-bundle.sh`](scripts/cutover-bundle.sh), [`scripts/db-migrate-dump.sh`](scripts/db-migrate-dump.sh), [`scripts/vault-configure-k8s-auth.sh`](scripts/vault-configure-k8s-auth.sh) |
-| **K8s Schema Validation** | `kubeconform` | `v0.6.7` | [`.github/workflows/gitops.yaml`](.github/workflows/gitops.yaml), [`scripts/render-validate.sh`](scripts/render-validate.sh) |
-| **CRD Schema Catalog** | Datree CRDs Catalog | `6ec4c804fcb9b0a90fec9dd468aa57b984be150a` | [`scripts/render-validate.sh`](scripts/render-validate.sh) |
+| **Preflight, Kustomize Fallback & Invariants** | `Python` + `PyYAML` | Python `3.11+` / `3.12` + `PyYAML==6.0.3` | [`scripts/ci/platform-preflight.py`](scripts/ci/platform-preflight.py), [`scripts/ci/kustomize_render.py`](scripts/ci/kustomize_render.py), [`.github/workflows/gitops.yaml`](.github/workflows/gitops.yaml) |
+| **Full-State Cutover & DB Migration** | Bash + `kubectl` + `sha256sum` | POSIX / GNU coreutils | [`scripts/ops/cutover-bundle.sh`](scripts/ops/cutover-bundle.sh), [`scripts/ops/db-migrate-dump.sh`](scripts/ops/db-migrate-dump.sh), [`scripts/vault/vault-configure-k8s-auth.sh`](scripts/vault/vault-configure-k8s-auth.sh) |
+| **K8s Schema Validation** | `kubeconform` | `v0.6.7` | [`.github/workflows/gitops.yaml`](.github/workflows/gitops.yaml), [`scripts/ci/render-validate.sh`](scripts/ci/render-validate.sh) |
+| **CRD Schema Catalog** | Datree CRDs Catalog | `6ec4c804fcb9b0a90fec9dd468aa57b984be150a` | [`scripts/ci/render-validate.sh`](scripts/ci/render-validate.sh) |
 | **Shell Linting** | `shellcheck` | `v0.11.0` | [`.github/workflows/lint.yaml`](.github/workflows/lint.yaml) (`./scripts`) |
 | **YAML Linting** | `yamllint` | `ibiqlik/action-yamllint@v3` | [`.github/workflows/lint.yaml`](.github/workflows/lint.yaml) (`deploy/`, `clusters/`) |
 | **Secret Scanning** | `gitleaks` | `gitleaks/gitleaks-action@v2` | [`.github/workflows/secret-scan.yaml`](.github/workflows/secret-scan.yaml), [`.gitleaksignore`](.gitleaksignore) |
@@ -62,7 +62,7 @@ Per [Constitution Principle I](.specify/memory/constitution.md), third-party ima
 
 ## 4. Node Capacity & $1/n$ Resource Budget Dependencies
 
-[`scripts/platform-preflight.py`](scripts/platform-preflight.py) computes each project's $1/n$ resource budget and multi-node per-pool schedulability from the environment's `capacity.yaml`:
+[`scripts/ci/platform-preflight.py`](scripts/ci/platform-preflight.py) computes each project's $1/n$ resource budget and multi-node per-pool schedulability from the environment's `capacity.yaml`:
 
 | Environment | Node Allocatable | System Reserved | Platform Reservation (Exact Preflight Output) | Per-Project $1/n$ Slice ($n = 3$) | Capacity File |
 | :--- | :--- | :--- | :--- | :--- | :--- |

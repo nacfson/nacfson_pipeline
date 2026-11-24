@@ -67,7 +67,7 @@ fi
 echo -e "${GREEN}✓ Secret scan passed: No leaked credentials found.${NC}"
 
 echo "==> Running architecture handbook sync check (docs/platform-architecture.html)..."
-if ! python3 scripts/check-arch-doc-sync.py --staged; then
+if ! python3 scripts/hooks/check-arch-doc-sync.py --staged; then
   echo "" >&2
   echo -e "${RED}================================================================================${NC}" >&2
   echo -e "${RED}COMMIT REJECTED: docs/platform-architecture.html is out of sync!${NC}" >&2
@@ -79,7 +79,7 @@ echo -e "${GREEN}✓ Architecture handbook sync check passed.${NC}"
 
 if [ "${SKIP_REVIEW_GATE:-0}" != "1" ]; then
   echo "==> Running automated review-cycle gate check..."
-  if ! python3 scripts/review-cycle.py check-gate --scope staged --require-pipeline code-review; then
+  if ! python3 scripts/hooks/review-cycle.py check-gate --scope staged --require-pipeline code-review; then
     echo "" >&2
     echo -e "${RED}================================================================================${NC}" >&2
     echo -e "${RED}COMMIT REJECTED: Staged changes do not have a code-review receipt!${NC}" >&2

@@ -9,11 +9,11 @@ Trace the runtime execution path of the changed code or manifests end-to-end acr
 ## 2. Checklist (Aligned with `REVIEW.md`)
 
 1. **Consult [`REVIEW.md`](../../REVIEW.md)**: Enforce all domain failure modes, severity definitions (`Important`, `Security`, `Nit`, `Pre-existing`), and `file:line` evidence requirements.
-2. **Execute or Inspect Domain Verification (`scripts/review-cycle.py verify`)**:
+2. **Execute or Inspect Domain Verification (`scripts/hooks/review-cycle.py verify`)**:
    - Confirm `gateway/` changes pass `(cd gateway && go test -v ./... && go vet ./...)`.
    - Confirm `services/vault-proxies/` changes pass `(cd services/vault-proxies && go test -v ./... && go vet ./...)`.
-   - Confirm `deploy/`, `clusters/`, and `scripts/platform-preflight.py` changes pass `python3 -m unittest discover tests/preflight`.
-   - Confirm architecture-sensitive changes pass `python3 scripts/check-arch-doc-sync.py`.
+   - Confirm `deploy/`, `clusters/`, and `scripts/ci/platform-preflight.py` changes pass `python3 -m unittest discover tests/preflight`.
+   - Confirm architecture-sensitive changes pass `python3 scripts/hooks/check-arch-doc-sync.py`.
 3. **Cross-Boundary Behavioral Checks**:
    - Verify probe separation (`startupProbe` and `readinessProbe` check upstream hops; `livenessProbe` remains strictly process-local).
    - Verify browser API CORS (`PUBLIC_APP_URL` included in backend `ALLOWED_ORIGINS`).

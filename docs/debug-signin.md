@@ -1,6 +1,6 @@
 # Debugging `{"error":"unsigned_in","message":"Sign-in service unreachable"}`
 
-[`scripts/debug-signin.py`](../scripts/debug-signin.py) tests each candidate cause of a failed `/oauth/callback` code exchange. Every check prints `PASS`, `FAIL`, `WARN` or `INFO`, and the run ends with a per-cause summary (`CLEAR`, `CHECK`, `SUSPECT`).
+[`scripts/ops/debug-signin.py`](../scripts/ops/debug-signin.py) tests each candidate cause of a failed `/oauth/callback` code exchange. Every check prints `PASS`, `FAIL`, `WARN` or `INFO`, and the run ends with a per-cause summary (`CLEAR`, `CHECK`, `SUSPECT`).
 
 ## What the error means
 
@@ -23,7 +23,7 @@ The gateway returns this 503 for **any** failed code-for-token exchange with Key
 ## Step 1: read-only checks
 
 ```bash
-python3 scripts/debug-signin.py all --since 24h
+python3 scripts/ops/debug-signin.py all --since 24h
 ```
 
 `all` runs the five subcommands below. They only read (`get`, `logs`) and `exec`. They create, change, or delete nothing, so the [manual-change policy](../specs/004-flux-gitops-reconciliation/contracts/manual-change-policy.md) (which never matches `exec`) does not apply.
@@ -47,9 +47,9 @@ The `race` subcommand drives the real public flow, skipping Google by reusing yo
 3. Save them to a private file as one line: `KEYCLOAK_IDENTITY=…; KEYCLOAK_SESSION=…` (`chmod 600`).
 
 ```bash
-python3 scripts/debug-signin.py race --sso-cookie-file ~/kc-cookie.txt --mode sequential --workers 2 --rounds 5
-python3 scripts/debug-signin.py race --sso-cookie-file ~/kc-cookie.txt --mode parallel   --workers 2 --rounds 10
-python3 scripts/debug-signin.py race --sso-cookie-file ~/kc-cookie.txt --mode parallel   --workers 4 --rounds 10 --shared-auth-session
+python3 scripts/ops/debug-signin.py race --sso-cookie-file ~/kc-cookie.txt --mode sequential --workers 2 --rounds 5
+python3 scripts/ops/debug-signin.py race --sso-cookie-file ~/kc-cookie.txt --mode parallel   --workers 2 --rounds 10
+python3 scripts/ops/debug-signin.py race --sso-cookie-file ~/kc-cookie.txt --mode parallel   --workers 4 --rounds 10 --shared-auth-session
 shred -u ~/kc-cookie.txt
 ```
 
@@ -65,10 +65,10 @@ Each worker calls `/oauth/start`, then the Keycloak authorize URL with the SSO c
 Successful Keycloak events are hidden at the default log level. Turning on the trace changes `flux-system` and `identity`, which the manual-change policy guards. The write commands therefore require `--break-glass <operator>`. The script then adds `--as=break-glass:<operator> --as-group=platform:break-glass` to those writes only ([operations §12](../specs/004-flux-gitops-reconciliation/contracts/operations.md)). Reads and `exec` keep your normal identity.
 
 ```bash
-python3 scripts/debug-signin.py --break-glass "$USER" trace-on
-python3 scripts/debug-signin.py capture
-python3 scripts/debug-signin.py analyze /tmp/signin-trace-XXXX/keycloak.log
-python3 scripts/debug-signin.py --break-glass "$USER" trace-off
+python3 scripts/ops/debug-signin.py --break-glass "$USER" trace-on
+python3 scripts/ops/debug-signin.py capture
+python3 scripts/ops/debug-signin.py analyze /tmp/signin-trace-XXXX/keycloak.log
+python3 scripts/ops/debug-signin.py --break-glass "$USER" trace-off
 ```
 
 - `trace-on` suspends the Flux `identity` Kustomization, sets `KC_LOG_LEVEL` (events, OIDC, managers, authentication, Infinispan sessions at `DEBUG`) and restarts Keycloak. All users sign in again. If setting the variable or the rollout fails, it rolls back automatically (removes the variable, resumes Flux).

@@ -14,4 +14,10 @@ regexes = [
   '''eyJhbGciOiJIUzI1NiJ9\.eyJzdWIiOiIxIn0\.invalidsig''',
   '''sk-proj-abcdefghijklmnopqrstuvwxyz''',
   '''sk-abcdefghijklmnopqrst''',
+  '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.eyJzdWIiOiIxMjM0NTY3ODkwIn0\.signaturepart''',
+  '''AIzaSyDummyKeyValue[0-9]+''',
+  '''AIzaSySecretKey[0-9]+''',
+  '''standalonebearer789''',
+  '''supersecrettoken123''',
+  '''sk-secret1234567890abcdef''',
 ]

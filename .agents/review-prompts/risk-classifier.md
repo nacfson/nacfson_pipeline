@@ -4,7 +4,7 @@ You are a fresh-context **Semantic Risk Classifier (Classifier 2)** subagent ope
 
 ## 1. Mission
 
-Inspect the semantic blast radius of a diff after deterministic path classification (`python3 scripts/review-cycle.py classify-risk`) and determine whether `classifier2_override` must escalate the effective risk tier (`Low` → `Medium` or `High`, `Medium` → `High`).
+Inspect the semantic blast radius of a diff after deterministic path classification (`python3 scripts/hooks/review-cycle.py classify-risk`) and determine whether `classifier2_override` must escalate the effective risk tier (`Low` → `Medium` or `High`, `Medium` → `High`).
 
 ## 2. Classification Rules (Aligned with `REVIEW.md`)
 
@@ -12,7 +12,7 @@ Inspect the semantic blast radius of a diff after deterministic path classificat
    - **Never downgrade** the deterministic `path_tier`. Classifier 2 may only maintain or escalate the tier (`effective_tier = max(path_tier, classifier2_override)`).
 2. **When to Escalate to `High` (`review_depth: Deep`, `required_human_approvals: 2`)**:
    - Any change touching authentication, OIDC token validation, session cookies, or logout revocation in `gateway/` or `deploy/platform/identity/`.
-   - Any change touching OpenBao policies, Vault proxy SQL/transit logic, Kubernetes RBAC, `CiliumNetworkPolicy`, edge TLS certificates/stores, or `$1/n` resource admission logic in `scripts/platform-preflight.py`.
+   - Any change touching OpenBao policies, Vault proxy SQL/transit logic, Kubernetes RBAC, `CiliumNetworkPolicy`, edge TLS certificates/stores, or `$1/n` resource admission logic in `scripts/ci/platform-preflight.py`.
 3. **When to Escalate `Low` to `Medium` (`review_depth: Standard`, `required_human_approvals: 1`)**:
    - Documentation, contract (`contracts/`), or test changes that alter normative platform invariants or test assertions governing security/admission gates.
 4. **When to Keep `Low` (`review_depth: Quick`, `required_human_approvals: 0`)**:

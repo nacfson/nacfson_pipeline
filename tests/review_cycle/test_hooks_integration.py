@@ -6,7 +6,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-HOOK_SCRIPT = ROOT / "scripts" / "universal-agent-hook.py"
+HOOK_SCRIPT = ROOT / "scripts" / "hooks" / "universal-agent-hook.py"
 
 
 class TestHooksIntegration(unittest.TestCase):
@@ -38,7 +38,7 @@ class TestHooksIntegration(unittest.TestCase):
 
     def test_hook_blocks_git_commit_when_staged_receipt_missing(self):
         with tempfile.TemporaryDirectory() as tmp:
-            env = dict(os.environ, REVIEW_RECEIPT_PATH=str(Path(tmp) / "missing.json"), REVIEW_FORCE_CHANGED="scripts/review-cycle.py", REVIEW_FORCE_DIFF="+x\n")
+            env = dict(os.environ, REVIEW_RECEIPT_PATH=str(Path(tmp) / "missing.json"), REVIEW_FORCE_CHANGED="scripts/hooks/review-cycle.py", REVIEW_FORCE_DIFF="+x\n")
             proc = subprocess.run(
                 ["python3", str(HOOK_SCRIPT), "--agent", "antigravity", "--event", "PreToolUse"],
                 input=json.dumps({"toolInput": {"CommandLine": "git commit -m 'test'"}}),

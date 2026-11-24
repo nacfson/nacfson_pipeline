@@ -41,10 +41,10 @@ ssh oracleCloud "sudo k3s kubectl describe node | grep -A 35 'Non-terminated Pod
 
 ---
 
-## 2. `scripts/open-observe.sh` Tunnel Exits, Missing AI Gateway UI, or Empty Logs
+## 2. `scripts/ops/open-observe.sh` Tunnel Exits, Missing AI Gateway UI, or Empty Logs
 
 ### Symptoms
-- Running `./scripts/open-observe.sh` either:
+- Running `./scripts/ops/open-observe.sh` either:
   1. Exits unexpectedly (`Error: a tunnel exited.`) when `kubectl port-forward` drops an idle stream,
   2. Fails on startup with `Error: API tunnel port 16443 is already in use.` when a previous tunnel is still bound,
   3. Shows only `pn-frontend` `502` probe errors in VictoriaLogs (`http://127.0.0.1:9428/select/vmui/`) because `pn-backend` is `Pending`, or
@@ -55,7 +55,7 @@ ssh oracleCloud "sudo k3s kubectl describe node | grep -A 35 'Non-terminated Pod
 2. `open-observe.sh` only forwarded Hubble UI (`:12000`) and VictoriaLogs (`:9428`), omitting `vault/deploy/vault-ai-proxy` (`:18081`).
 
 ### Permanent Fix & Usage
-[`scripts/open-observe.sh`](scripts/open-observe.sh) now forwards all **3 platform UIs** over the single `127.0.0.1:16443` SSH API tunnel and automatically restarts any dropped `kubectl port-forward` child process:
+[`scripts/ops/open-observe.sh`](scripts/ops/open-observe.sh) now forwards all **3 platform UIs** over the single `127.0.0.1:16443` SSH API tunnel and automatically restarts any dropped `kubectl port-forward` child process:
 - **Hubble UI**: `http://127.0.0.1:12000`
 - **VictoriaLogs**: `http://127.0.0.1:9428/select/vmui/`
 - **AI Gateway UI**: `http://127.0.0.1:18081/`
@@ -63,7 +63,7 @@ ssh oracleCloud "sudo k3s kubectl describe node | grep -A 35 'Non-terminated Pod
 If a previous session left ports bound, free them before starting:
 ```bash
 fuser -k 16443/tcp 12000/tcp 9428/tcp 18081/tcp 2>/dev/null || true
-./scripts/open-observe.sh
+./scripts/ops/open-observe.sh
 ```
 
 ---
@@ -84,9 +84,9 @@ fuser -k 16443/tcp 12000/tcp 9428/tcp 18081/tcp 2>/dev/null || true
 - If that secret has not been seeded into OpenBao yet (or if `postgres-0`'s `postgres` password is out of sync with `kv/database/postgres-admin`), `postgres-init-job` fails after `backoffLimit: 5` and remains in `Failed` state until re-seeded and recreated.
 
 ### Permanent Fix
-Run [`scripts/vault-seed-inventory.sh`](scripts/vault-seed-inventory.sh) (or [`scripts/vault-reset-unseal-key.sh`](scripts/vault-reset-unseal-key.sh) if the Unseal Key was lost), then recreate the job:
+Run [`scripts/vault/vault-seed-inventory.sh`](scripts/vault/vault-seed-inventory.sh) (or [`scripts/vault/vault-reset-unseal-key.sh`](scripts/vault/vault-reset-unseal-key.sh) if the Unseal Key was lost), then recreate the job:
 ```bash
-./scripts/vault-seed-inventory.sh
+./scripts/vault/vault-seed-inventory.sh
 ssh oracleCloud "sudo k3s kubectl --as=system:admin --as-group=platform:break-glass delete job -n identity postgres-init-job --ignore-not-found"
 kubectl kustomize deploy/platform/database | ssh oracleCloud "sudo k3s kubectl --as=system:admin --as-group=platform:break-glass apply -f -"
 ```
@@ -105,11 +105,11 @@ kubectl kustomize deploy/platform/database | ssh oracleCloud "sudo k3s kubectl -
 ### Permanent Fix
 Run the automated zero-data-loss recovery script:
 ```bash
-./scripts/vault-reset-unseal-key.sh
+./scripts/vault/vault-reset-unseal-key.sh
 ```
 1. Wipes only `/var/lib/openbao/data/vault.db` and `/var/lib/openbao/data/raft` inside `vault/openbao-0`.
 2. Initializes OpenBao (`bao operator init`), prints the **New Unseal Key** (at both `[2/6]` and the final banner), and unseals `openbao-0`.
-3. Re-applies least-privilege K8s Auth roles ([`scripts/vault-configure-k8s-auth.sh`](scripts/vault-configure-k8s-auth.sh)) and seeds fresh internal passwords ([`scripts/vault-seed-inventory.sh`](scripts/vault-seed-inventory.sh) `--force`).
+3. Re-applies least-privilege K8s Auth roles ([`scripts/vault/vault-configure-k8s-auth.sh`](scripts/vault/vault-configure-k8s-auth.sh)) and seeds fresh internal passwords ([`scripts/vault/vault-seed-inventory.sh`](scripts/vault/vault-seed-inventory.sh) `--force`).
 4. Syncs the new `postgres` admin password over `postgres-0`'s local Unix socket (`ALTER ROLE postgres WITH PASSWORD ...`), runs `postgres-init-job` to update `keycloak_user`, `user_pn`, `user_health`, and `backup_role`, syncs rotated OIDC client secrets (`gateway-client`, `session-revocation-client`, `project-pn`, `project-health`) into the `keycloak` PostgreSQL `client` table, and preserves existing Google OAuth credentials (`identity_provider_config`) with **zero database data loss**.
 5. Revokes the initial Root Token via an `EXIT` trap.
 
@@ -117,7 +117,7 @@ Run the automated zero-data-loss recovery script:
 
 ## 5. `{"error":"unsigned_in","message":"Sign-in service unreachable"}` After OpenBao Reset or Secret Rotation
 
-The gateway returns this message for any failed code exchange, not only secret drift. To test every cause, run [`scripts/debug-signin.py`](scripts/debug-signin.py) ([`docs/debug-signin.md`](docs/debug-signin.md)).
+The gateway returns this message for any failed code exchange, not only secret drift. To test every cause, run [`scripts/ops/debug-signin.py`](scripts/ops/debug-signin.py) ([`docs/debug-signin.md`](docs/debug-signin.md)).
 
 ### Symptoms
 - During Google OIDC sign-in on `https://pn.nacfson.cloud`, redirecting back to `https://auth.nacfson.cloud/oauth/callback?code=...&state=...` returns HTTP `503 Service Unavailable`:
@@ -138,23 +138,23 @@ The gateway returns this message for any failed code exchange, not only secret d
   3. When `gateway` calls Keycloak's `/protocol/openid-connect/token` endpoint (`ExchangeCode` in [`gateway/internal/auth/handler.go`](gateway/internal/auth/handler.go)), Keycloak rejects `gateway-client` with `invalid_client_credentials`, and `gateway` fails closed with `{"error":"unsigned_in","message":"Sign-in service unreachable"}`.
 
 ### Permanent Fix
-- [`scripts/vault-reset-unseal-key.sh`](scripts/vault-reset-unseal-key.sh) (Step `[5/6]`) now automatically syncs the newly generated OpenBao client secrets (`gateway-client`, `session-revocation-client`, `project-pn`, `project-health`) directly into PostgreSQL's `keycloak.client` table (`identity/postgres-0`), preserves existing Google OAuth credentials from `keycloak.identity_provider_config` into OpenBao `kv/identity/google-oauth`, and restarts `deployment/keycloak` so Infinispan reloads the updated secrets.
-- [`scripts/vault-set-google-oauth.sh`](scripts/vault-set-google-oauth.sh) also syncs updated Google OAuth `clientId` and `clientSecret` into `keycloak.identity_provider_config` and restarts `deployment/keycloak`.
+- [`scripts/vault/vault-reset-unseal-key.sh`](scripts/vault/vault-reset-unseal-key.sh) (Step `[5/6]`) now automatically syncs the newly generated OpenBao client secrets (`gateway-client`, `session-revocation-client`, `project-pn`, `project-health`) directly into PostgreSQL's `keycloak.client` table (`identity/postgres-0`), preserves existing Google OAuth credentials from `keycloak.identity_provider_config` into OpenBao `kv/identity/google-oauth`, and restarts `deployment/keycloak` so Infinispan reloads the updated secrets.
+- [`scripts/vault/vault-set-google-oauth.sh`](scripts/vault/vault-set-google-oauth.sh) also syncs updated Google OAuth `clientId` and `clientSecret` into `keycloak.identity_provider_config` and restarts `deployment/keycloak`.
 
 ---
 
-## 6. `scripts/ai-gateway-ctl.sh set-key` Returning `400` or `/bin/sh: -c requires an argument` Over SSH
+## 6. `scripts/ops/ai-gateway-ctl.sh set-key` Returning `400` or `/bin/sh: -c requires an argument` Over SSH
 
 ### Symptoms
-- Running `./scripts/ai-gateway-ctl.sh set-key` against a remote VPS (`KUBE_EXEC="ssh oracleCloud sudo k3s kubectl"`) returned `curl: (22) The requested URL returned error: 400` on the primary path and `/bin/sh: -c requires an argument` on the fallback path.
+- Running `./scripts/ops/ai-gateway-ctl.sh set-key` against a remote VPS (`KUBE_EXEC="ssh oracleCloud sudo k3s kubectl"`) returned `curl: (22) The requested URL returned error: 400` on the primary path and `/bin/sh: -c requires an argument` on the fallback path.
 
 ### Root Cause
 1. **Background `ssh` consuming `stdin`**: Inside `with_loopback_tunnel`, launching `ssh -L ... &` without `-n </dev/null` caused `ssh` to drain the piped `{"api_key":"..."}` JSON from `stdin` before `curl --data-binary @-` could read it, sending an empty body (`400 Bad Request`).
 2. **Remote quote stripping**: Passing `/bin/sh -c '...'` through `KUBE_EXEC="ssh oracleCloud ..."` caused `ssh` to strip outer quotes on the remote shell.
 
 ### Permanent Fix
-- [`scripts/ai-gateway-ctl.sh`](scripts/ai-gateway-ctl.sh) now passes `-n </dev/null` to background `ssh` / `kubectl port-forward` processes so `stdin` is preserved exclusively for `curl --data-binary @-`.
-- [`scripts/ai-gateway-ctl.sh`](scripts/ai-gateway-ctl.sh), [`scripts/vault-reset-unseal-key.sh`](scripts/vault-reset-unseal-key.sh), and [`scripts/vault-configure-k8s-auth.sh`](scripts/vault-configure-k8s-auth.sh) stream inputs directly via `exec -i` (`stdin`) without nested `/bin/sh -c` strings.
+- [`scripts/ops/ai-gateway-ctl.sh`](scripts/ops/ai-gateway-ctl.sh) now passes `-n </dev/null` to background `ssh` / `kubectl port-forward` processes so `stdin` is preserved exclusively for `curl --data-binary @-`.
+- [`scripts/ops/ai-gateway-ctl.sh`](scripts/ops/ai-gateway-ctl.sh), [`scripts/vault/vault-reset-unseal-key.sh`](scripts/vault/vault-reset-unseal-key.sh), and [`scripts/vault/vault-configure-k8s-auth.sh`](scripts/vault/vault-configure-k8s-auth.sh) stream inputs directly via `exec -i` (`stdin`) without nested `/bin/sh -c` strings.
 
 ---
 
@@ -408,18 +408,18 @@ To guarantee this issue cannot recur when adding new projects or updating servic
 
 ### Symptoms
 - Clicking Sign In on every `signIn: shared` project (`https://pn.nacfson.cloud` and `https://health.nacfson.cloud`) redirects to `https://accounts.google.com/signin/oauth/error` with `Error 401: deleted_client` ("The OAuth client was deleted"). Meanwhile, `https://blog.nacfson.cloud` (`signIn: "none"`) continues serving normally.
-- Both [`scripts/smoke-auth-chain.sh`](scripts/smoke-auth-chain.sh) and [`scripts/debug-signin.py`](scripts/debug-signin.py) report passing checks, and `kubectl logs -n identity deploy/keycloak` records zero `LOGIN_ERROR` or `CODE_TO_TOKEN_ERROR` events.
-- Restarting `deployment/keycloak` on `gke` more than 48 hours after [`scripts/vault-configure-k8s-auth.sh`](scripts/vault-configure-k8s-auth.sh) last ran leaves the replacement pod stuck in `Init:Error` with `curl: (22) The requested URL returned error: 403` inside `secret-fetcher`. Because [`deploy/platform/identity/keycloak-deployment.yaml`](deploy/platform/identity/keycloak-deployment.yaml) sets `maxSurge: 0` and `maxUnavailable: 1`, `endpoints/keycloak-service` drops to zero ready pods during that stall and Traefik returns `404 page not found` on `https://auth.nacfson.cloud/realms/platform/...`.
+- Both [`scripts/verify/smoke-auth-chain.sh`](scripts/verify/smoke-auth-chain.sh) and [`scripts/ops/debug-signin.py`](scripts/ops/debug-signin.py) report passing checks, and `kubectl logs -n identity deploy/keycloak` records zero `LOGIN_ERROR` or `CODE_TO_TOKEN_ERROR` events.
+- Restarting `deployment/keycloak` on `gke` more than 48 hours after [`scripts/vault/vault-configure-k8s-auth.sh`](scripts/vault/vault-configure-k8s-auth.sh) last ran leaves the replacement pod stuck in `Init:Error` with `curl: (22) The requested URL returned error: 403` inside `secret-fetcher`. Because [`deploy/platform/identity/keycloak-deployment.yaml`](deploy/platform/identity/keycloak-deployment.yaml) sets `maxSurge: 0` and `maxUnavailable: 1`, `endpoints/keycloak-service` drops to zero ready pods during that stall and Traefik returns `404 page not found` on `https://auth.nacfson.cloud/realms/platform/...`.
 
 ### Root Cause
 1. **Shared Google Identity Provider funnel**
    Hosted projects carry zero OAuth credentials. Every `signIn: shared` project redirects `/api/auth/login` through `identity/gateway` (`client_id=gateway-client` and `kc_idp_hint=google`) into the single `google` Identity Provider inside Keycloak. One deleted Google OAuth client therefore stops sign-in across all `signIn: shared` projects. Because Google blocks the visitor on `accounts.google.com` before returning to `/realms/platform/broker/google/endpoint`, Keycloak writes zero error events.
 2. **OpenBao and PostgreSQL split-brain after `keycloak.dump.gz` restore**
-   OpenBao (`kv/identity/google-oauth`) already held the active `nacfson-pipeline` Google OAuth credential (`<active-project-number>-<hash>.apps.googleusercontent.com`), which `secret-fetcher` mounted into `/opt/keycloak/conf/secrets/google_client_*`. Restoring an older `keycloak.dump.gz` backup into `identity/postgres-0` during [`scripts/cutover-bundle.sh`](scripts/cutover-bundle.sh) step `[6/7]` overwrote `identity_provider_config` with a client ID (`<deleted-project-number>-<hash>.apps.googleusercontent.com`) from an older GCP project in `DELETE_REQUESTED` state. Because `kc.sh start --import-realm` hardcodes `Strategy: IGNORE_EXISTING` and skips `platform-realm.json` whenever the `platform` realm already exists, Keycloak ignored `/opt/keycloak/conf/secrets/google_client_*` and continued serving the deleted `clientId` from PostgreSQL and its Infinispan cache.
+   OpenBao (`kv/identity/google-oauth`) already held the active `nacfson-pipeline` Google OAuth credential (`<active-project-number>-<hash>.apps.googleusercontent.com`), which `secret-fetcher` mounted into `/opt/keycloak/conf/secrets/google_client_*`. Restoring an older `keycloak.dump.gz` backup into `identity/postgres-0` during [`scripts/ops/cutover-bundle.sh`](scripts/ops/cutover-bundle.sh) step `[6/7]` overwrote `identity_provider_config` with a client ID (`<deleted-project-number>-<hash>.apps.googleusercontent.com`) from an older GCP project in `DELETE_REQUESTED` state. Because `kc.sh start --import-realm` hardcodes `Strategy: IGNORE_EXISTING` and skips `platform-realm.json` whenever the `platform` realm already exists, Keycloak ignored `/opt/keycloak/conf/secrets/google_client_*` and continued serving the deleted `clientId` from PostgreSQL and its Infinispan cache.
 3. **Diagnostic gap in existing scripts**
-   [`scripts/smoke-auth-chain.sh`](scripts/smoke-auth-chain.sh) and [`scripts/debug-signin.py`](scripts/debug-signin.py) stop after the first `302` redirect from `/oauth/start` to Keycloak and never follow the second hop to `accounts.google.com`. Also, `SECRET_MAP` in [`scripts/debug-signin.py`](scripts/debug-signin.py) hashes only internal `client` secrets and skips `identity_provider_config`.
+   [`scripts/verify/smoke-auth-chain.sh`](scripts/verify/smoke-auth-chain.sh) and [`scripts/ops/debug-signin.py`](scripts/ops/debug-signin.py) stop after the first `302` redirect from `/oauth/start` to Keycloak and never follow the second hop to `accounts.google.com`. Also, `SECRET_MAP` in [`scripts/ops/debug-signin.py`](scripts/ops/debug-signin.py) hashes only internal `client` secrets and skips `identity_provider_config`.
 4. **GKE 48-hour cap on static `token_reviewer_jwt`**
-   [`scripts/vault-configure-k8s-auth.sh`](scripts/vault-configure-k8s-auth.sh) requests `--duration=87600h` for `openbao-token-reviewer` in `vault`, and GKE caps `kubectl create token` lifetimes at 48 hours. Once 48 hours pass, OpenBao's `TokenReview` call to the GKE API server fails and `/v1/auth/kubernetes/login` returns `403 permission denied` for `openbao-daily-snapshot` and any restarting pod.
+   [`scripts/vault/vault-configure-k8s-auth.sh`](scripts/vault/vault-configure-k8s-auth.sh) requests `--duration=87600h` for `openbao-token-reviewer` in `vault`, and GKE caps `kubectl create token` lifetimes at 48 hours. Once 48 hours pass, OpenBao's `TokenReview` call to the GKE API server fails and `/v1/auth/kubernetes/login` returns `403 permission denied` for `openbao-daily-snapshot` and any restarting pod.
 
 ### Diagnostic Commands
 Run these read-only checks to catch both the Google OAuth drift and an expired OpenBao reviewer token:
@@ -458,7 +458,7 @@ kubectl logs -n identity -l app.kubernetes.io/name=keycloak -c secret-fetcher --
 
 ### Fix (applied 2026-11-17)
 1. **Sync PostgreSQL `identity_provider_config` from OpenBao in place**
-   Copy `/opt/keycloak/conf/secrets/google_client_id` and `/opt/keycloak/conf/secrets/google_client_secret` into PostgreSQL so existing `user_entity` and `federated_identity` rows remain intact. If rotating to brand-new credentials from Google Cloud Console instead, run [`scripts/vault-set-google-oauth.sh`](scripts/vault-set-google-oauth.sh) and never run [`scripts/vault-rotate.sh`](scripts/vault-rotate.sh) on `google-oauth-broker-secret`:
+   Copy `/opt/keycloak/conf/secrets/google_client_id` and `/opt/keycloak/conf/secrets/google_client_secret` into PostgreSQL so existing `user_entity` and `federated_identity` rows remain intact. If rotating to brand-new credentials from Google Cloud Console instead, run [`scripts/vault/vault-set-google-oauth.sh`](scripts/vault/vault-set-google-oauth.sh) and never run [`scripts/vault/vault-rotate.sh`](scripts/vault/vault-rotate.sh) on `google-oauth-broker-secret`:
 
 ```bash
 GID=$(kubectl exec -n identity deploy/keycloak -c keycloak -- cat /opt/keycloak/conf/secrets/google_client_id)
@@ -479,7 +479,7 @@ unset GID GSEC
 2. **Refresh the OpenBao Kubernetes reviewer token if `secret-fetcher` hits `403` on GKE**
 
 ```bash
-./scripts/vault-configure-k8s-auth.sh
+./scripts/vault/vault-configure-k8s-auth.sh
 ```
 
 3. **Restart Keycloak under break-glass and verify readiness and public redirects**
@@ -489,9 +489,9 @@ unset GID GSEC
 kubectl --as="break-glass:$USER" --as-group=platform:break-glass \
   rollout restart deployment/keycloak -n identity
 kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=keycloak -n identity --timeout=180s
-./scripts/smoke-auth-chain.sh https://pn.nacfson.cloud https://auth.nacfson.cloud
+./scripts/verify/smoke-auth-chain.sh https://pn.nacfson.cloud https://auth.nacfson.cloud
 ```
 
 ### Open Follow-up
-- Bind `openbao-auth-delegator` ([`deploy/platform/governance/openbao-rbac.yaml`](deploy/platform/governance/openbao-rbac.yaml)) to `ServiceAccount/openbao` and omit static `token_reviewer_jwt` in [`scripts/vault-configure-k8s-auth.sh`](scripts/vault-configure-k8s-auth.sh) when `/var/run/secrets/kubernetes.io/serviceaccount/token` is mounted so OpenBao uses Kubelet's auto-rotated pod token on GKE instead of expiring after 48 hours.
-- Extend [`scripts/debug-signin.py`](scripts/debug-signin.py) and [`scripts/smoke-auth-chain.sh`](scripts/smoke-auth-chain.sh) to check `identity_provider_config` parity and follow the Keycloak-to-Google redirect hop.
+- Bind `openbao-auth-delegator` ([`deploy/platform/governance/openbao-rbac.yaml`](deploy/platform/governance/openbao-rbac.yaml)) to `ServiceAccount/openbao` and omit static `token_reviewer_jwt` in [`scripts/vault/vault-configure-k8s-auth.sh`](scripts/vault/vault-configure-k8s-auth.sh) when `/var/run/secrets/kubernetes.io/serviceaccount/token` is mounted so OpenBao uses Kubelet's auto-rotated pod token on GKE instead of expiring after 48 hours.
+- Extend [`scripts/ops/debug-signin.py`](scripts/ops/debug-signin.py) and [`scripts/verify/smoke-auth-chain.sh`](scripts/verify/smoke-auth-chain.sh) to check `identity_provider_config` parity and follow the Keycloak-to-Google redirect hop.

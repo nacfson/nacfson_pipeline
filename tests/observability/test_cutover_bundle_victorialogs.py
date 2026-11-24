@@ -8,7 +8,7 @@ import tempfile
 import unittest
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-SCRIPT = os.path.join(BASE_DIR, "scripts", "cutover-bundle.sh")
+SCRIPT = os.path.join(BASE_DIR, "scripts", "ops", "cutover-bundle.sh")
 
 
 def _extract_functions(script_path: str, names: list[str]) -> str:

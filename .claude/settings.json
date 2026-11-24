@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/universal-agent-hook.py --agent claude --event SessionStart",
+            "command": "python3 scripts/hooks/universal-agent-hook.py --agent claude --event SessionStart",
             "timeout": 20
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/universal-agent-hook.py --agent claude --event PreToolUse",
+            "command": "python3 scripts/hooks/universal-agent-hook.py --agent claude --event PreToolUse",
             "timeout": 15
           }
         ]
@@ -28,7 +28,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/image-bump-gate.py\"; [ -f \"$f\" ] || exit 0; exec python3 \"$f\"",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/scripts/hooks/image-bump-gate.py\"; [ -f \"$f\" ] || exit 0; exec python3 \"$f\"",
             "timeout": 10
           }
         ]
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/universal-agent-hook.py --agent claude --event Stop",
+            "command": "python3 scripts/hooks/universal-agent-hook.py --agent claude --event Stop",
             "timeout": 15
           }
         ]

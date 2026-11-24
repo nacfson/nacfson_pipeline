@@ -159,7 +159,7 @@
             bootstrap_result: "{{ bootstrap_result | combine({
               'status': 'ready',
               'failed_stage': none,
-              'next_action': 'Cluster and reconciler ready. Run scripts/vault-init.sh to initialize or unseal the vault; Flux applies all other layers.'
+              'next_action': 'Cluster and reconciler ready. Run scripts/vault/vault-init.sh to initialize or unseal the vault; Flux applies all other layers.'
             }) }}"
 
         - name: Display final bootstrap summary

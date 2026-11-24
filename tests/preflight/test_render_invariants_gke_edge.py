@@ -6,7 +6,7 @@ import unittest
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 _spec = importlib.util.spec_from_file_location(
-    "render_invariants", os.path.join(BASE_DIR, "scripts", "render-invariants.py"))
+    "render_invariants", os.path.join(BASE_DIR, "scripts", "ci", "render-invariants.py"))
 render_invariants = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(render_invariants)
 

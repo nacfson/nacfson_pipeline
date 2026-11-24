@@ -18,7 +18,7 @@ Every project namespace (`deploy/projects/<slug>/boundary/`) and workload (`depl
 3. **Zero K8s API Access**:
    - `automountServiceAccountToken: false` is mandatory on all project pods.
 4. **Allowed Project Manifest Kinds & Services**:
-   - Project layers may render only `Deployment`, `Service`, `ConfigMap`, and `IngressRoute` (enforced by Invariant 6 in [`scripts/render-invariants.py`](../scripts/render-invariants.py)).
+   - Project layers may render only `Deployment`, `Service`, `ConfigMap`, and `IngressRoute` (enforced by Invariant 6 in [`scripts/ci/render-invariants.py`](../scripts/ci/render-invariants.py)).
    - All project `Service` objects MUST be `type: ClusterIP` (and on `gke`, the only `LoadBalancer` allowed cluster-wide is the platform edge `platform/traefik` with `loadBalancerClass: networking.gke.io/l4-regional-external`, `externalTrafficPolicy: Local` and the reserved-address annotation; Spec 015, `specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md`). `NodePort`, `LoadBalancer`, `hostNetwork`, `hostPID`, `hostIPC`, and `hostPath` volumes are strictly rejected in project namespaces. Under Constitution Amendment `2.3.0`, only `DaemonSet/fluent-bit` in platform namespace `observability` may mount `/var/log/pods` (`readOnly: true`) and `/var/lib/fluent-bit-state` (`readOnly: false`, `DirectoryOrCreate`, capped at `256 MiB`/node). Under Constitution Amendment `2.5.0`, `DaemonSet/wg-slot-agent` in platform namespace `oci-link` may use `hostNetwork: true`, the single added capability `NET_ADMIN`, and `/var/lib/fluent-bit-state` read-only; no other `oci-link` workload gets host rights. If Spec 013 spike S1 fails, `DaemonSet/fluent-bit` and `Deployment/ops-relay` in `observability` may also use `hostNetwork: true`.
 
 ---
@@ -30,7 +30,7 @@ Zero CNI-specific `cilium.io/v2` `CiliumNetworkPolicy` manifests exist in `deplo
   - From `platform` namespace (`Deployment/traefik` on GKE) and `kube-system` (`app.kubernetes.io/name: traefik` on K3s) on declared door ports (`80`, `8080`).
   - Intra-namespace from `<slug>-frontend` to `<slug>-backend` on port `8080`.
 - **Egress**:
-  - To `kube-system` pods matching `k8s-app In [kube-dns, node-local-dns]` on UDP/TCP port `53` (covering K3s CoreDNS and GKE Dataplane V2 NodeLocal DNSCache), enforced across all non-`flux-system` `NetworkPolicy` manifests by [`scripts/platform-preflight.py`](../scripts/platform-preflight.py).
+  - To `kube-system` pods matching `k8s-app In [kube-dns, node-local-dns]` on UDP/TCP port `53` (covering K3s CoreDNS and GKE Dataplane V2 NodeLocal DNSCache), enforced across all non-`flux-system` `NetworkPolicy` manifests by [`scripts/ci/platform-preflight.py`](../scripts/ci/platform-preflight.py).
   - To `vault/vault-db-proxy` on TCP port `5432` (**never** directly to `identity/postgres`).
   - To `vault/vault-ai-proxy` (`Service/ai-gateway.vault.svc`) on TCP port `8080` (**never** directly to `generativelanguage.googleapis.com` or admin port `8081`).
   - To `identity/gateway` on TCP port `8080` **only** when `signIn: shared` is declared in `sign-in.yaml`.
@@ -42,7 +42,7 @@ Zero CNI-specific `cilium.io/v2` `CiliumNetworkPolicy` manifests exist in `deplo
 
 ## 3. Deterministic Multi-Node $1/n$ Compute Budget & Guaranteed QoS
 
-[`scripts/platform-preflight.py`](../scripts/platform-preflight.py) computes each project's resource slice from the environment's observed `capacity.yaml` ([`local-k3s`](../clusters/local-k3s/capacity.yaml), [`gke`](../clusters/gke/capacity.yaml), [`vps-k3s`](../clusters/vps-k3s/capacity.yaml)):
+[`scripts/ci/platform-preflight.py`](../scripts/ci/platform-preflight.py) computes each project's resource slice from the environment's observed `capacity.yaml` ([`local-k3s`](../clusters/local-k3s/capacity.yaml), [`gke`](../clusters/gke/capacity.yaml), [`vps-k3s`](../clusters/vps-k3s/capacity.yaml)):
 
 $$\text{Project Slice} = \frac{\text{Cluster Allocatable} - \text{Platform Reservations}}{n_{\text{projects}}}$$
 

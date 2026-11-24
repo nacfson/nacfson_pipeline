@@ -1,0 +1,76 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+echo "=== Verifying Keycloak Declarative Identity & Realm Ingestion ==="
+
+echo "[Check 1/4] Verifying Keycloak deployment startup flags and volume mounts..."
+if grep -q -- "--import-realm" "$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml" && \
+   grep -q -- "--vault=file" "$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml" && \
+   grep -q -- "--vault-dir=/opt/keycloak/conf/secrets" "$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml" && \
+   grep -q "mountPath: /opt/keycloak/data/import/platform-realm.json" "$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml" && \
+   grep -q "name: keycloak-realm-config" "$REPO_ROOT/deploy/platform/identity/keycloak-deployment.yaml"; then
+  echo "  ✓ PASS: Keycloak deployment configured with realm auto-import and file vault SPI."
+else
+  echo "  ✗ FAIL: Missing required Keycloak deployment flags or realm ConfigMap mount!" >&2
+  exit 1
+fi
+
+echo "[Check 2/4] Verifying declarative realm definition and Vault secret placeholders..."
+if grep -q '"realm": "platform"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q 'GOOGLE_CLIENT_ID' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q 'GOOGLE_CLIENT_SECRET' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q '"clientId": "gateway-client"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q '"clientId": "project-pn"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q '"clientId": "session-revocation-client"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml"; then
+  echo "  ✓ PASS: Declarative realm configuration defines platform realm and client identities."
+else
+  echo "  ✗ FAIL: Realm configuration missing platform definitions or Vault placeholders!" >&2
+  exit 1
+fi
+
+echo "[Check 3/4] Verifying Google first-broker-login JIT provisioning (AUTH-01)..."
+if grep -q '"firstBrokerLoginFlowAlias": "google jit first broker login"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q '"alias": "google jit first broker login"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q '"authenticator": "idp-create-user-if-unique"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q '"update.profile.on.first.login": "off"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q '"syncMode": "IMPORT"' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q '"trustEmail": true' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml" && \
+   grep -q '"linkOnly": false' "$REPO_ROOT/deploy/platform/identity/keycloak-realm-config.yaml"; then
+  echo "  ✓ PASS: Google IdP uses non-interactive JIT first-broker-login (create-user-if-unique, trustEmail, no email auto-link)."
+else
+  echo "  ✗ FAIL: Realm is missing Google JIT first-broker-login (AUTH-01 automatic registration)!" >&2
+  exit 1
+fi
+
+echo "[Check 4/4] Dynamic Platform Realm Health & Discovery Endpoint Check..."
+if ssh -o BatchMode=yes -o ConnectTimeout=3 oracleCloud "sudo k3s kubectl get nodes" >/dev/null 2>&1; then
+  echo "Live cluster detected. Querying Keycloak platform realm endpoint..."
+  KC_IP=$(ssh oracleCloud "sudo k3s kubectl get svc -n identity keycloak-service -o jsonpath='{.spec.clusterIP}'" 2>/dev/null || true)
+  if [ -n "$KC_IP" ]; then
+    # shellcheck disable=SC2029
+    REALM_RESP=$(ssh oracleCloud "curl -sS --max-time 5 http://${KC_IP}:8080/realms/platform" 2>/dev/null || true)
+    if echo "$REALM_RESP" | grep -q '"realm":"platform"'; then
+      echo "  ✓ PASS: Live Keycloak endpoint returned healthy platform realm metadata."
+    else
+      echo "  ℹ NOTICE: Realm endpoint returned non-200 or not yet ready: $REALM_RESP"
+      echo "           (Expected before initial GitOps reconciliation and pod restart)"
+    fi
+  fi
+elif command -v kubectl >/dev/null 2>&1 && kubectl get nodes >/dev/null 2>&1; then
+  echo "Local cluster detected. Querying Keycloak platform realm endpoint..."
+  KC_IP=$(kubectl get svc -n identity keycloak-service -o jsonpath='{.spec.clusterIP}' 2>/dev/null || true)
+  if [ -n "$KC_IP" ]; then
+    REALM_RESP=$(curl -sS --max-time 5 "http://${KC_IP}:8080/realms/platform" 2>/dev/null || true)
+    if echo "$REALM_RESP" | grep -q '"realm":"platform"'; then
+      echo "  ✓ PASS: Live Keycloak endpoint returned healthy platform realm metadata."
+    fi
+  fi
+else
+  echo "  ✓ SKIP: No live cluster detected in current environment; static verification passed."
+fi
+
+echo "=== All Keycloak Identity Verification Checks Completed ==="

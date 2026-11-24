@@ -70,8 +70,8 @@ flowchart LR
 | [deploy/platform/governance/manual-change-policy.yaml](../deploy/platform/governance/manual-change-policy.yaml) | Scoped cert-manager exceptions to platform namespaces (`['platform', 'cert-manager']`). |
 | [clusters/vps-k3s/layers.yaml](../clusters/vps-k3s/layers.yaml) | Flux layers `cert-manager` and `tls`. Patches the real hostnames and `letsencrypt-prod`. |
 | [clusters/local-k3s/layers.yaml](../clusters/local-k3s/layers.yaml) | Flux layers `cert-manager` and `tls`, with base values (self-signed). |
-| [scripts/platform-preflight.py](../scripts/platform-preflight.py) | Edge TLS rules TLS-1 through TLS-6 enforcing platform-owned certificates and `tls: {}`. |
-| [scripts/verify-tls.sh](../scripts/verify-tls.sh) | **New.** Automated operator tool verifying certificate readiness, expiry, and external HTTPS. |
+| [scripts/ci/platform-preflight.py](../scripts/ci/platform-preflight.py) | Edge TLS rules TLS-1 through TLS-6 enforcing platform-owned certificates and `tls: {}`. |
+| [scripts/verify/verify-tls.sh](../scripts/verify/verify-tls.sh) | **New.** Automated operator tool verifying certificate readiness, expiry, and external HTTPS. |
 
 ### Flux layer order
 
@@ -199,14 +199,14 @@ Then open `https://pn.nacfson.cloud` in a browser and in the iOS app. There shou
 
 ## 9. Operator checks
 
-Automated verification is provided by `scripts/verify-tls.sh` (read-only):
+Automated verification is provided by `scripts/verify/verify-tls.sh` (read-only):
 
 ```bash
 # Cluster check: verifies Ready condition, renewal overdue, and >= 14 days to expiry
-./scripts/verify-tls.sh
+./scripts/verify/verify-tls.sh
 
 # External check: tests actual TLS handshakes against public endpoints via openssl
-./scripts/verify-tls.sh --external
+./scripts/verify/verify-tls.sh --external
 ```
 
 - When run on a cluster, it prints name, `spec.dnsNames`, `Ready` condition, `status.notAfter`, `status.renewalTime` and `status.lastFailureTime` for every Certificate in `platform`.
@@ -226,9 +226,9 @@ To add a new hostname, follow the contract in [specs/008-platform-tls-terminatio
 
 ## 11. Operations
 
-- **Expiry check:** `./scripts/verify-tls.sh` or `kubectl get certificate -n platform`
+- **Expiry check:** `./scripts/verify/verify-tls.sh` or `kubectl get certificate -n platform`
 - **Force renewal (break-glass):** `cmctl renew pn-tls -n platform`, or delete the Secret `pn-tls` in namespace `platform` so cert-manager re-issues it.
-- **Upgrade cert-manager:** replace `upstream/cert-manager.yaml` with the new release file, update the URL and sha256 in `deploy/platform/cert-manager/kustomization.yaml`, then run `./scripts/render-validate.sh vps-k3s` and `local-k3s`.
+- **Upgrade cert-manager:** replace `upstream/cert-manager.yaml` with the new release file, update the URL and sha256 in `deploy/platform/cert-manager/kustomization.yaml`, then run `./scripts/ci/render-validate.sh vps-k3s` and `local-k3s`.
 
 ## 12. Rollback
 

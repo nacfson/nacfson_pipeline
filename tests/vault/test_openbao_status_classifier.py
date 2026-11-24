@@ -70,7 +70,7 @@ class RehearsalVersionTest(unittest.TestCase):
     def test_rehearsal_binary_and_fixtures_match_the_deployed_image(self):
         with open(os.path.join(REPO, "deploy", "platform", "vault", "openbao-statefulset.yaml"), encoding="utf-8") as fh:
             deployed = re.search(r"image: openbao/openbao:(\S+)", fh.read()).group(1)
-        with open(os.path.join(REPO, "scripts", "rehearse-openbao-seal-migration.sh"), encoding="utf-8") as fh:
+        with open(os.path.join(REPO, "scripts", "vault", "rehearse-openbao-seal-migration.sh"), encoding="utf-8") as fh:
             rehearsed = re.search(r'^BAO_VERSION="([^"]+)"', fh.read(), re.M).group(1)
         self.assertEqual(rehearsed, deployed)
         self.assertEqual(os.path.basename(os.path.dirname(STATUS_FIXTURES)), deployed)

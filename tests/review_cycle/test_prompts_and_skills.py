@@ -38,7 +38,7 @@ class TestPromptsAndSkills(unittest.TestCase):
             self.assertTrue(text.startswith("---\n"))
             self.assertIn(f"name: {skill}", text)
             if skill != "explain-slice":
-                self.assertIn("scripts/review-cycle.py", text)
+                self.assertIn("scripts/hooks/review-cycle.py", text)
                 self.assertIn("invoke_subagent", text)
 
     def test_omp_and_opencode_command_wrappers_exist(self):

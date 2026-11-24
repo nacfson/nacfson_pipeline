@@ -255,7 +255,7 @@ curl -sk --resolve auth.nacfson.cloud:443:$IP https://auth.nacfson.cloud/ -o /de
 - `curl` prints an HTTP status code (any code). That proves internet → load balancer → Traefik before
   DNS moves. Traefik answers with its default certificate until the restore brings up the tls layer.
 
-The restore (`scripts/cutover-bundle.sh restore --target gke`, run from the control center) restores and
+The restore (`scripts/ops/cutover-bundle.sh restore --target gke`, run from the control center) restores and
 migrates OpenBao first, then lets Flux start Postgres, loads the databases, and only then starts Keycloak
 ([Spec 012 contract §2.3](../../specs/012-gke-platform-migration/contracts/fluentbit-recovery-and-cutover-bundle.md)).
 
@@ -396,7 +396,7 @@ traffic about $8). The budget alerts at $55, $99 and $110.
 ## Offline check (no credentials, any machine)
 
 ```bash
-python3 scripts/check-gcp-shared-values.py
+python3 scripts/ci/check-gcp-shared-values.py
 for d in infra/gcp/bootstrap infra/gcp/project infra/gcp/gke; do
   terraform -chdir=$d fmt -check -recursive &&
   terraform -chdir=$d init -backend=false -lockfile=readonly &&

@@ -4,11 +4,11 @@ on:
   pull_request:
     branches: [main]
     paths:
-      - "scripts/cutover-bundle.sh"
-      - "scripts/vault-*.sh"
+      - "scripts/ops/cutover-bundle.sh"
+      - "scripts/vault/*.sh"
       - "scripts/lib/openbao_status.py"
       - "scripts/lib/openbao_fixture_compare.py"
-      - "scripts/rehearse-openbao-seal-migration.sh"
+      - "scripts/vault/rehearse-openbao-seal-migration.sh"
       - "tests/fixtures/openbao/**"
       - "deploy/platform/vault/**"
       - ".github/workflows/openbao-rehearsal.yaml"
@@ -35,4 +35,4 @@ jobs:
 
       - name: Rehearse the Shamir to auto-unseal migration and check the fixtures
         run: |
-          ./scripts/rehearse-openbao-seal-migration.sh --check-fixtures tests/fixtures/openbao/2.0.0/status
+          ./scripts/vault/rehearse-openbao-seal-migration.sh --check-fixtures tests/fixtures/openbao/2.0.0/status

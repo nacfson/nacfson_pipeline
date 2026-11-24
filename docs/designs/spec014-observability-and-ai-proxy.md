@@ -68,7 +68,7 @@ This specification defines a self-hosted, vendor-neutral OSS observability and e
 3. GKE `ops-relay` posts an independent `[obs]` alert to Discord `#kafka` **without** marking the Kafka VM `DOWN` or suppressing real `partition.isr_shrink` alerts.
 
 ### CUJ 4: Reproducible Local Verification Before Rollout
-1. Before deploying to OCI or GKE, the operator runs Go unit tests, offline `ops_events.lua` tests, preflight/declaration tests, and `./scripts/kafka-rehearsal.sh up --with-observability` + `test observability_pipeline`.
+1. Before deploying to OCI or GKE, the operator runs Go unit tests, offline `ops_events.lua` tests, preflight/declaration tests, and `./scripts/ops/kafka-rehearsal.sh up --with-observability` + `test observability_pipeline`.
 2. The rehearsal harness proves end-to-end Kafka mTLS ACL isolation, delayed/out-of-order log alerting, raw non-JSON crash alerting, 10-minute TTL deduplication (with shortened test TTL), and Grafana LogQL/metric queries locally.
 
 ---
@@ -147,7 +147,7 @@ flowchart LR
 
 - **Pin `__consumer_offsets`:** Set `offsets.topic.num.partitions: 3` and `offsets.topic.segment.bytes: 16777216` (`16 MiB`) in `infra/kafka/cluster.yaml` (must be set before the first consumer commit; worst-case active + rolled segment footprint = `3 × 16 MiB × 2 = 96 MiB`).
 - **Add `alerts.errors` Outbox Topic:** `partitions: 1`, `replication_factor: 3`, `min_insync_replicas: 2`, `retention_bytes: 67108864` (`64 MiB`), `segment_bytes: 16777216` (`16 MiB`), `retention_ms: 604800000` (`7d`), `max_message_bytes: 1048576`, `timestamp_type: LogAppendTime` (worst-case footprint `64 MiB + 16 MiB = 80 MiB`).
-- **Total Broker Budget Proof:** Extend `scripts/kafka-declarations.py` (`check_budget()`) to include `offsets.topic.num.partitions * offsets.topic.segment.bytes * 2` alongside `decl.topics`. Existing 4 topics (`19.500 GiB`) + `__consumer_offsets` (`0.094 GiB`) + `alerts.errors` (`0.078 GiB`) = **`19.672 GiB <= 20.0 GiB`** hard gate.
+- **Total Broker Budget Proof:** Extend `scripts/ci/kafka-declarations.py` (`check_budget()`) to include `offsets.topic.num.partitions * offsets.topic.segment.bytes * 2` alongside `decl.topics`. Existing 4 topics (`19.500 GiB`) + `__consumer_offsets` (`0.094 GiB`) + `alerts.errors` (`0.078 GiB`) = **`19.672 GiB <= 20.0 GiB`** hard gate.
 - **Kafka Identities & Strict ACLs:**
   - `vector-a1-2` (`vm:a1-2`): `[Read, Describe]` on `logs.proj.valid`, `logs.proj.quarantine`, `ops.platform.events`, `ops.platform.metrics`; `[Read]` on group `vector-loki`.
   - `error-detector-a1-2` (`vm:a1-2`): `[Read, Describe]` on `logs.proj.valid` and `logs.proj.quarantine`; `[Read]` on group `error-detector`; `[Write, Describe]` on `alerts.errors`; `[IdempotentWrite]` on `cluster` (required by `franz-go` default idempotent producer).
@@ -272,7 +272,7 @@ flowchart LR
 - **OCI `A1-1` (`6,144 MiB` total):** `grafana.service` capped at `512 MiB`, `OOMScoreAdjust=600`, `CPUWeight=100`.
 - **OCI `Micro-1` / `Micro-2`:** Unchanged (`ops-agent` remains capped at `48 MiB`).
 - **GKE Cluster:** Net **`-64 MiB`** (deleting unused `error-detector` Deployment + PVC reclaims `25m / 64 MiB`; `ops-relay` stays within its existing `10m / 64 MiB` Spec 013 allocation on `ondemand-core`).
-- **Kafka Broker Disk:** `19.500 GiB` (existing 4 topics) + `0.094 GiB` (`__consumer_offsets`, 3 partitions × `16 MiB` × 2) + `0.078 GiB` (`alerts.errors`, 1 partition `64 MiB + 16 MiB`) = **`19.672 GiB <= 20.0 GiB`** (enforced by extended `check_budget()` in `scripts/kafka-declarations.py`).
+- **Kafka Broker Disk:** `19.500 GiB` (existing 4 topics) + `0.094 GiB` (`__consumer_offsets`, 3 partitions × `16 MiB` × 2) + `0.078 GiB` (`alerts.errors`, 1 partition `64 MiB + 16 MiB`) = **`19.672 GiB <= 20.0 GiB`** (enforced by extended `check_budget()` in `scripts/ci/kafka-declarations.py`).
 
 ---
 
@@ -301,7 +301,7 @@ flowchart LR
 
 ## Future Improvements
 
-- **Standalone `vault-ai-proxy` Hygiene PR (Immediate, Outside Spec 014):** Pin `deploy/platform/vault-proxies/ai-proxy.yaml` by `@sha256` digest, pin `Dockerfile.ai-proxy` base images, reconcile `clusters/gke/layers.yaml` Guaranteed QoS, and add `@sha256` enforcement to `scripts/platform-preflight.py`.
+- **Standalone `vault-ai-proxy` Hygiene PR (Immediate, Outside Spec 014):** Pin `deploy/platform/vault-proxies/ai-proxy.yaml` by `@sha256` digest, pin `Dockerfile.ai-proxy` base images, reconcile `clusters/gke/layers.yaml` Guaranteed QoS, and add `@sha256` enforcement to `scripts/ci/platform-preflight.py`.
 - **Future Multi-Provider `vault-ai-proxy` Spec:** Build multi-provider routing and spend enforcement once a second AI caller exists (keeping wire-protocol translation outside `vault`).
 - **Future `error-investigator` (`#ai-debug`):** Consume high-signal deduplicated alerts from `alerts.errors` only after Phase A alert rates are measured.
 - **Future Tier 2A K8s Workload State Alerts:** Watch structured `Pod` (`proj-*` per-namespace `RoleBinding`s) and `Node` status fields (not ephemeral K8s `Events`).
@@ -325,7 +325,7 @@ flowchart LR
   - Update `contracts/CONTRACT_OPS_EVENTS.md` to add watched units (`grafana.service`, `vector.service`, `loki.service`, `error-detector.service`), metric `loki.disk.free_ratio`, and paired events `loki.disk.low` (`< 15%` free, subject `loki/disk`, `state: open`) and `loki.disk.ok` (`>= 15%` free, subject `loki/disk`, `state: ok`), marking observability unit/disk events as non-Kafka (`[obs]`) so they never trigger `vm/<host>` DOWN incident suppression.
 
 #### 2. Kafka Topic, ACL & Non-Kafka TLS Declarations
-- **Modify:** `infra/kafka/cluster.yaml`, `scripts/kafka-declarations.py`, `tests/infra/test_kafka_declarations.py`
+- **Modify:** `infra/kafka/cluster.yaml`, `scripts/ci/kafka-declarations.py`, `tests/infra/test_kafka_declarations.py`
 - **Generated (re-rendered):** `infra/oci/ansible/group_vars/all/kafka.generated.yml`, `tests/kafka/rehearsal/compose.generated.yaml`, `tests/kafka/rehearsal/nodes/node-1.properties`, `tests/kafka/rehearsal/nodes/node-2.properties`, `tests/kafka/rehearsal/nodes/node-3.properties`, `tests/kafka/rehearsal/nodes/node-4.properties`, `tests/kafka/rehearsal/nodes/node-1.format`, `tests/kafka/rehearsal/nodes/node-2.format`, `tests/kafka/rehearsal/nodes/node-3.format`, `tests/kafka/rehearsal/nodes/node-4.format`, `tests/kafka/rehearsal/nodes/node-1.join.format`, `tests/kafka/rehearsal/nodes/node-2.join.format`, `tests/kafka/rehearsal/nodes/node-3.join.format`, `tests/kafka/rehearsal/nodes/node-4.join.format`
 - **Action:**
   - In `infra/kafka/cluster.yaml`:
@@ -333,10 +333,10 @@ flowchart LR
     - Add topic `alerts.errors` using exact `cluster.yaml` snake_case fields: `partitions: 1`, `replication_factor: 3`, `min_insync_replicas: 2`, `retention_bytes: 67108864`, `segment_bytes: 16777216`, `retention_ms: 604800000`, `max_message_bytes: 1048576`, `timestamp_type: LogAppendTime`.
     - Add Kafka identities: `vector-a1-2` (`[Read, Describe]` on 4 topics + `[Read]` on group `vector-loki`) and `error-detector-a1-2` (`[Read, Describe]` on `logs.proj.valid`, `logs.proj.quarantine` + `[Read]` on group `error-detector` + `[Write, Describe]` on `alerts.errors` + `{ resource: cluster, ops: [IdempotentWrite] }`); add `[Read, Describe]` on `alerts.errors` to `ops-relay` (reusing its existing `[Read]` on group `ops-relay`).
     - Add sibling top-level `tls_identities` list (never rendered as Strimzi `KafkaUser` or Kafka ACLs): `loki-a1-2` (`vm: a1-2`, `server_auth: true`, `server_sans: ["IP:10.200.0.12", "IP:127.0.0.1", "DNS:a1-2"]`, `dest_dir: /etc/loki/tls`, `owner_uid: 10001`, `reload_unit: loki.service`) and `grafana-a1-1` (`vm: a1-1`, `server_auth: false`, `dest_dir: /etc/grafana/tls`, `owner_uid: 472`, `reload_unit: grafana.service`).
-  - In `scripts/kafka-declarations.py`:
+  - In `scripts/ci/kafka-declarations.py`:
     - Update `load()`, `node_identities()`, and `ansible_files()` to render `tls_identities` into Ansible vars only (skipping `strimzi_files()`).
     - Update `check_budget()` to require `offsets.topic.num.partitions` and `offsets.topic.segment.bytes` (failing closed if absent, or treating missing keys as Kafka's unpinned defaults `50 × 100 MiB × 2` which immediately fails the `20 GiB` gate) and assert total `<= 20 GiB` (`19.672 GiB <= 20.0 GiB`).
-  - Run `python3 scripts/kafka-declarations.py render --target ansible` and `python3 scripts/kafka-declarations.py render --target compose`, and add unit tests in `tests/infra/test_kafka_declarations.py` covering `alerts.errors`, `tls_identities` exclusion from Strimzi, `error-detector-a1-2` `IdempotentWrite` ACL, and rejection of unpinned `__consumer_offsets`.
+  - Run `python3 scripts/ci/kafka-declarations.py render --target ansible` and `python3 scripts/ci/kafka-declarations.py render --target compose`, and add unit tests in `tests/infra/test_kafka_declarations.py` covering `alerts.errors`, `tls_identities` exclusion from Strimzi, `error-detector-a1-2` `IdempotentWrite` ACL, and rejection of unpinned `__consumer_offsets`.
 
 #### 3. OCI VCN Security List (`A1-1` → `A1-2` Loki Native mTLS `:3100`)
 - **Modify:** `infra/oci/terraform/network.tf`, `tests/infra/test_terraform_protections.py`
@@ -346,7 +346,7 @@ flowchart LR
 
 - **Phase 1 Checkpoint:**
   ```bash
-  python3 scripts/kafka-declarations.py check
+  python3 scripts/ci/kafka-declarations.py check
   python3 -m unittest discover tests/infra
   ```
 
@@ -484,11 +484,11 @@ flowchart LR
   - `deploy/platform/vault-proxies/notify-proxy.yaml` (append `errors:observability:ops-relay` alongside `errors:observability:error-detector` in `NOTIFY_GRANTS`)
 - **Phase 4 Checkpoint:**
   ```bash
-  ./scripts/render-validate.sh gke
-  ./scripts/render-validate.sh local-k3s
-  ./scripts/render-validate.sh vps-k3s
-  RENDERED_GKE=$(./scripts/render-validate.sh gke | awk '/Rendered:/ {print $2}')
-  python3 scripts/platform-preflight.py --environment gke --candidate "$RENDERED_GKE" --capacity clusters/gke/capacity.yaml
+  ./scripts/ci/render-validate.sh gke
+  ./scripts/ci/render-validate.sh local-k3s
+  ./scripts/ci/render-validate.sh vps-k3s
+  RENDERED_GKE=$(./scripts/ci/render-validate.sh gke | awk '/Rendered:/ {print $2}')
+  python3 scripts/ci/platform-preflight.py --environment gke --candidate "$RENDERED_GKE" --capacity clusters/gke/capacity.yaml
   python3 -m unittest discover tests/preflight
   ```
 
@@ -504,7 +504,7 @@ flowchart LR
   - `tests/kafka/rehearsal/observability/grafana-datasources.yaml`
   - `tests/kafka/test_observability_pipeline.py`
 - **Modify:**
-  - `scripts/kafka-rehearsal.sh` (support `--with-observability` flag on `up`, `down`, and `test observability_pipeline`; also generate `tls_identities` certs including `DNS:loki` SAN with container-readable ownership for Loki UID `10001` and Grafana UID `472`)
+  - `scripts/ops/kafka-rehearsal.sh` (support `--with-observability` flag on `up`, `down`, and `test observability_pipeline`; also generate `tls_identities` certs including `DNS:loki` SAN with container-readable ownership for Loki UID `10001` and Grafana UID `472`)
   - `tests/kafka/fakenotify/main.go` (preserve existing top-level `"title"` JSON lines on stdout so `tests/kafka/test_alerts.py:104` never breaks, and add a `GET /requests` inspection endpoint recording channel `/v1/notify/kafka` vs `/v1/notify/errors` and full `notify.Notification` payloads)
 - **Strict Verification Assertions in `test_observability_pipeline.py`:**
   1. **ACL Enforcement:** Prove `error-detector-a1-2` cert is rejected when attempting to write to `logs.proj.valid` or read `ops.platform.events`; prove `ops-relay` cert is rejected when attempting to write to `alerts.errors`.
@@ -522,10 +522,10 @@ flowchart LR
 
 - **Phase 5 & Live Smoke Checkpoint:**
   ```bash
-  ./scripts/kafka-rehearsal.sh up --with-observability
-  ./scripts/kafka-rehearsal.sh test observability_pipeline
-  ./scripts/kafka-rehearsal.sh down --with-observability
-  python3 scripts/check-arch-doc-sync.py --worktree
+  ./scripts/ops/kafka-rehearsal.sh up --with-observability
+  ./scripts/ops/kafka-rehearsal.sh test observability_pipeline
+  ./scripts/ops/kafka-rehearsal.sh down --with-observability
+  python3 scripts/hooks/check-arch-doc-sync.py --worktree
   ```
 - **Live OCI + GKE Smoke Checklist (Post-Rollout):**
   1. **Kafka `__consumer_offsets` partition count:** Run `kafka-topics.sh --describe --topic __consumer_offsets` on `A1-1` → assert `PartitionCount: 3`.

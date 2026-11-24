@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-RECONCILE_SCRIPT="scripts/vault-reconcile.sh"
+RECONCILE_SCRIPT="scripts/vault/vault-reconcile.sh"
 START_TIME=$(date +%s)
 
 echo "=== [1/5] Step 1: Taking Snapshot and Offsite Staging ==="
@@ -32,7 +32,7 @@ fi
 echo "PASS: Safety gate successfully lifted following reconciliation."
 
 echo "=== [5/5] Step 5: Validating Post-Restore Credential & Grant Survival ==="
-./scripts/vault-rotate.sh status
+./scripts/vault/vault-rotate.sh status
 echo "PASS: All 11 managed credentials verified post-restore."
 
 END_TIME=$(date +%s)

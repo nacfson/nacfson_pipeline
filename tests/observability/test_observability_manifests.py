@@ -13,8 +13,8 @@ import yaml
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 OBSERVABILITY_DIR = os.path.join(BASE_DIR, "deploy", "platform", "observability")
 GKE_OBSERVABILITY_DIR = os.path.join(BASE_DIR, "clusters", "gke", "observability")
-if os.path.join(BASE_DIR, "scripts") not in sys.path:
-    sys.path.insert(0, os.path.join(BASE_DIR, "scripts"))
+if os.path.join(BASE_DIR, "scripts", "ci") not in sys.path:
+    sys.path.insert(0, os.path.join(BASE_DIR, "scripts", "ci"))
 from kustomize_render import kustomize_build
 
 
@@ -176,7 +176,7 @@ class TestVictoriaLogsStore(unittest.TestCase):
         self.assertRegex(tag, r"\d")
 
 CONTRACT_LOG_SCHEMA = os.path.join(BASE_DIR, "contracts", "CONTRACT_LOG_SCHEMA.md")
-PREFLIGHT = os.path.join(BASE_DIR, "scripts", "platform-preflight.py")
+PREFLIGHT = os.path.join(BASE_DIR, "scripts", "ci", "platform-preflight.py")
 CAPACITY = os.path.join(BASE_DIR, "tests", "preflight", "fixtures", "valid_capacity.yaml")
 
 

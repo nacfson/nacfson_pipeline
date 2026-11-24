@@ -6,7 +6,7 @@
 
 Core platform pillars:
 - **Continuous Pull-Based GitOps**: In-cluster FluxCD reconciles `deploy/` and `clusters/` in explicit dependency order (`cni` / `governance` → `vault` / `cert-manager` / `project-boundaries*` → `vault-proxies` / `database` / `projects` / `observability` → `identity` → `ingress` → `tls`).
-- **Workload Isolation & $1/n$ Budgeting**: Project namespaces enforce Kubernetes `Restricted` Pod Security, `ClusterIP`-only services, strict Guaranteed QoS (`requests == limits`), and deterministic $1/n$ compute slicing enforced by [`scripts/platform-preflight.py`](scripts/platform-preflight.py).
+- **Workload Isolation & $1/n$ Budgeting**: Project namespaces enforce Kubernetes `Restricted` Pod Security, `ClusterIP`-only services, strict Guaranteed QoS (`requests == limits`), and deterministic $1/n$ compute slicing enforced by [`scripts/ci/platform-preflight.py`](scripts/ci/platform-preflight.py).
 - **Decoupled Project Door & Stdlib Auth Gateway**: Visitors reach projects directly through their own routes (`mode: none` or `mode: shared` in `sign-in.yaml`). Shared authentication is handled by a zero-dependency Go standard-library gateway (`gateway/`) and Keycloak Google OIDC brokering.
 - **Zero-Plaintext Internal Cluster Vault**: Backend credentials (DB passwords, OAuth secrets, signing keys) live exclusively inside self-hosted OpenBao (`deploy/platform/vault/`) and execute via in-cluster Vault proxies (`services/vault-proxies/`).
 - **Platform-Owned Edge TLS**: Public TLS terminates at Traefik using a single platform `TLSStore` and cert-manager inventory in `deploy/platform/tls/`.
@@ -36,14 +36,14 @@ Always consult these top-level indexes before exploring or modifying the codebas
 
 Before modifying code, manifests, or scripts, read the corresponding domain documents listed below:
 
-- **Constitutional invariants, admission rules, or $1/n$ resource budgeting (`scripts/platform-preflight.py`, `clusters/*/capacity.yaml`, `deploy/platform/governance/`)**:
+- **Constitutional invariants, admission rules, or $1/n$ resource budgeting (`scripts/ci/platform-preflight.py`, `clusters/*/capacity.yaml`, `deploy/platform/governance/`)**:
   - [`.specify/memory/constitution.md`](.specify/memory/constitution.md)
   - [`contracts/CONTRACT_ISOLATION_BUDGET.md`](contracts/CONTRACT_ISOLATION_BUDGET.md)
   - [`ARCHITECTURE.md`](ARCHITECTURE.md) (§3.4)
   - [`specs/004-flux-gitops-reconciliation/contracts/platform-preflight.md`](specs/004-flux-gitops-reconciliation/contracts/platform-preflight.md)
   - [`specs/004-flux-gitops-reconciliation/contracts/manual-change-policy.md`](specs/004-flux-gitops-reconciliation/contracts/manual-change-policy.md)
 
-- **CNI Networking, Cilium eBPF Datapath, `CiliumNetworkPolicy`, or Hubble Observability (`deploy/platform/cni/`, `deploy/platform/vault/network-policy.yaml`, `scripts/open-hubble-ui.sh`)**:
+- **CNI Networking, Cilium eBPF Datapath, `CiliumNetworkPolicy`, or Hubble Observability (`deploy/platform/cni/`, `deploy/platform/vault/network-policy.yaml`, `scripts/ops/open-hubble-ui.sh`)**:
   - [`specs/010-cilium-hubble-observability/spec.md`](specs/010-cilium-hubble-observability/spec.md)
   - [`specs/010-cilium-hubble-observability/contracts/`](specs/010-cilium-hubble-observability/contracts/) (`cni-layer-and-bootstrap.md`, `openbao-apiserver-egress.md`, `hubble-observability-and-tunnel.md`)
 
@@ -61,7 +61,7 @@ Before modifying code, manifests, or scripts, read the corresponding domain docu
   - [`specs/008-platform-tls-termination/spec.md`](specs/008-platform-tls-termination/spec.md)
   - [`specs/008-platform-tls-termination/contracts/`](specs/008-platform-tls-termination/contracts/) (`certificate-inventory.md`, `project-route-tls.md`, `preflight-tls-rules.md`)
 
-- **OpenBao Cluster Vault (`deploy/platform/vault/`), Database (`deploy/platform/database/`), Vault Proxies (`services/vault-proxies/`), or credential rotation/backup (`scripts/vault-*.sh`)**:
+- **OpenBao Cluster Vault (`deploy/platform/vault/`), Database (`deploy/platform/database/`), Vault Proxies (`services/vault-proxies/`), or credential rotation/backup (`scripts/vault/vault-*.sh`)**:
   - [`contracts/CONTRACT_DATABASE.md`](contracts/CONTRACT_DATABASE.md)
   - [`docs/spec002-vault-guide.md`](docs/spec002-vault-guide.md)
   - [`specs/002-internal-cluster-vault/spec.md`](specs/002-internal-cluster-vault/spec.md) & [`contracts/`](specs/002-internal-cluster-vault/contracts/)
@@ -76,7 +76,11 @@ Before modifying code, manifests, or scripts, read the corresponding domain docu
   - [`docs/bootstrap-scope.md`](docs/bootstrap-scope.md)
   - [`specs/003-minimal-vm-bootstrap/contracts/bootstrap.md`](specs/003-minimal-vm-bootstrap/contracts/bootstrap.md)
 
-- **Platform Observability, Structured Log Contract, Fluent Bit & VictoriaLogs (`deploy/platform/observability/`, `scripts/open-victorialogs-ui.sh`, `scripts/open-observe.sh`)**:
+- **Cluster Debugging & Read-Only Live Inspection (`services/debug-mcp/`, `scripts/mcp/`, `.mcp.json`)**:
+  - [`.agents/rules/cluster-debug-mcp.md`](.agents/rules/cluster-debug-mcp.md) (MCP server first; no CLI fallback)
+  - [`.agents/skills/debug-mcp-session/SKILL.md`](.agents/skills/debug-mcp-session/SKILL.md)
+
+- **Platform Observability, Structured Log Contract, Fluent Bit & VictoriaLogs (`deploy/platform/observability/`, `scripts/ops/open-victorialogs-ui.sh`, `scripts/ops/open-observe.sh`)**:
   - [`contracts/CONTRACT_LOG_SCHEMA.md`](contracts/CONTRACT_LOG_SCHEMA.md)
   - [`specs/011-project-log-contract/spec.md`](specs/011-project-log-contract/spec.md)
 
@@ -85,7 +89,7 @@ Before modifying code, manifests, or scripts, read the corresponding domain docu
 
 - **Hosted Tenant Workloads (`deploy/projects/{pn,health,blog}/`, `clusters/*/projects/`), probes, or browser API CORS**:
   - To update project image pins from GHCR, Actions, commit, or digest links, use the [`update-project-images`](.agents/skills/update-project-images/SKILL.md) skill; it validates the images and opens one PR per project.
-  - New images arrive as `image-bump` issues opened via [`scripts/image-bump-request.py`](scripts/image-bump-request.py); see [`docs/image-bump-dispatch.md`](docs/image-bump-dispatch.md). A cloud session decides each issue with the [`image-bump-decision`](.agents/skills/image-bump-decision/SKILL.md) skill: Allow opens one pin PR with `Closes #<issue>`, Disallow closes the issue.
+  - New images arrive as `image-bump` issues opened via [`scripts/images/image-bump-request.py`](scripts/images/image-bump-request.py); see [`docs/image-bump-dispatch.md`](docs/image-bump-dispatch.md). A cloud session decides each issue with the [`image-bump-decision`](.agents/skills/image-bump-decision/SKILL.md) skill: Allow opens one pin PR with `Closes #<issue>`, Disallow closes the issue.
   - [`DEPENDENCIES.md`](DEPENDENCIES.md) (§5 Hosted Tenant Project Contracts)
   - [`docs/project-auth-verification.md`](docs/project-auth-verification.md)
   - [`specs/006-separate-project-auth/contracts/`](specs/006-separate-project-auth/contracts/) (`project-door.md`, `sign-in-choice.md`, `session-return.md`)
@@ -102,7 +106,8 @@ Before modifying code, manifests, or scripts, read the corresponding domain docu
 5. **Immutable Image References**: Third-party images MUST use pinned exact version tags (never `:latest` or floating tags); hosted project images (`deploy/projects/pn/`) MUST use immutable `@sha256:...` digests.
 6. **Probe Separation & Browser CORS**: Dependent frontend/backend workloads MUST separate `startupProbe` (initial cluster hop to backend), `readinessProbe` (continuous cluster hop / disconnect signal), and `livenessProbe` (process-local only), declare `restartPolicy: Always`, and include `PUBLIC_APP_URL` inside backend `ALLOWED_ORIGINS`.
 7. **Single-Copy Ingress Allowlist**: Public auth routes live only in [`deploy/platform/ingress/ingress-allowlist.yaml`](deploy/platform/ingress/ingress-allowlist.yaml). Flux `postBuild` substitution is permitted only on the `ingress` layer for `AUTH_HOST`.
-8. **Mandatory Architecture Handbook Synchronization & Multi-Agent Hook Gate**: Whenever any file under `deploy/`, `clusters/`, `gateway/`, `services/`, `bootstrap/`, `contracts/`, `specs/`, `.specify/memory/constitution.md`, `scripts/platform-preflight.py`, `scripts/render-invariants.py`, `ARCHITECTURE.md`, or `DEPENDENCIES.md` is modified, [`docs/platform-architecture.html`](docs/platform-architecture.html) MUST be updated in the same change to keep topology nodes, protocol flows, CNI/eBPF rules, Gateway allow/block scenarios, Flux DAG layers, OSS versions, and $1/n$ budget numbers synchronized. This rule is enforced automatically by [`scripts/check-arch-doc-sync.py`](scripts/check-arch-doc-sync.py), [`.githooks/pre-commit`](.githooks/pre-commit), and [`scripts/universal-agent-hook.py`](scripts/universal-agent-hook.py) across Antigravity ([`.agents/hooks.json`](.agents/hooks.json)), Claude Code ([`.claude/settings.json`](.claude/settings.json)), OpenAI Codex ([`.codex/hooks.json`](.codex/hooks.json)), Oh-my-pi ([`.omp/extensions/arch-doc-sync.ts`](.omp/extensions/arch-doc-sync.ts)), OpenCode ([`.opencode/plugins/arch-doc-sync.js`](.opencode/plugins/arch-doc-sync.js)), Grok Build ([`.grok/hooks.json`](.grok/hooks.json)), and Cursor ([`.cursor/hooks.json`](.cursor/hooks.json)).
+8. **Mandatory Architecture Handbook Synchronization & Multi-Agent Hook Gate**: Whenever any file under `deploy/`, `clusters/`, `gateway/`, `services/`, `bootstrap/`, `contracts/`, `specs/`, `.specify/memory/constitution.md`, `scripts/ci/platform-preflight.py`, `scripts/ci/render-invariants.py`, `ARCHITECTURE.md`, or `DEPENDENCIES.md` is modified, [`docs/platform-architecture.html`](docs/platform-architecture.html) MUST be updated in the same change to keep topology nodes, protocol flows, CNI/eBPF rules, Gateway allow/block scenarios, Flux DAG layers, OSS versions, and $1/n$ budget numbers synchronized. This rule is enforced automatically by [`scripts/hooks/check-arch-doc-sync.py`](scripts/hooks/check-arch-doc-sync.py), [`.githooks/pre-commit`](.githooks/pre-commit), and [`scripts/hooks/universal-agent-hook.py`](scripts/hooks/universal-agent-hook.py) across Antigravity ([`.agents/hooks.json`](.agents/hooks.json)), Claude Code ([`.claude/settings.json`](.claude/settings.json)), OpenAI Codex ([`.codex/hooks.json`](.codex/hooks.json)), Oh-my-pi ([`.omp/extensions/arch-doc-sync.ts`](.omp/extensions/arch-doc-sync.ts)), OpenCode ([`.opencode/plugins/arch-doc-sync.js`](.opencode/plugins/arch-doc-sync.js)), Grok Build ([`.grok/hooks.json`](.grok/hooks.json)), and Cursor ([`.cursor/hooks.json`](.cursor/hooks.json)).
+9. **MCP-First Cluster Debugging & No Agent CLI Fallback**: Agents MUST call the registered `nacfson-debug` MCP server tools first ([`.mcp.json`](.mcp.json), [`opencode.json`](opencode.json), [`.agents/rules/cluster-debug-mcp.md`](.agents/rules/cluster-debug-mcp.md)) for live cluster inspection, ask the operator to start an ephemeral session via `sudo ./scripts/mcp/mcp-session.sh start <target> --ttl 1h` if stopped, and never fall back to direct Kubernetes/cloud-console terminal CLIs or inline `ALLOW_CLUSTER_CLI=1` bypasses.
 
 ---
 
@@ -131,19 +136,19 @@ python3 -m unittest discover tests/skills
 python3 -m unittest discover tests/vault
 
 # 4. Full Kustomize render, kubeconform schema validation & preflight gate (gke, local-k3s & vps-k3s)
-./scripts/render-validate.sh gke
-./scripts/render-validate.sh local-k3s
-./scripts/render-validate.sh vps-k3s
+./scripts/ci/render-validate.sh gke
+./scripts/ci/render-validate.sh local-k3s
+./scripts/ci/render-validate.sh vps-k3s
 
 # 5. Canonical Architecture Handbook synchronization & invariant check
-python3 scripts/check-arch-doc-sync.py --worktree
+python3 scripts/hooks/check-arch-doc-sync.py --worktree
 
 # 6. Multi-Agent Review Cycle verification, risk classification, eval suite & fast rollback
 python3 -m unittest discover tests/review_cycle
-python3 scripts/review-cycle.py verify --scope staged
-python3 scripts/review-cycle.py classify-risk --scope branch
-python3 scripts/review-cycle.py eval
-./scripts/rollback-change.sh --dry-run HEAD
+python3 scripts/hooks/review-cycle.py verify --scope staged
+python3 scripts/hooks/review-cycle.py classify-risk --scope branch
+python3 scripts/hooks/review-cycle.py eval
+./scripts/ops/rollback-change.sh --dry-run HEAD
 ```
 
 Before `git commit`, ask the user whether to run the [`code-review`](.agents/skills/code-review/SKILL.md) skill on the staged diff or skip it. If they choose review, run the skill and let it set `"pipeline": "code-review"`. The agent hooks deny the commit until that field is present and name the skill. They check the field; they do not detect a forged field. If they choose to skip, commit with `SKIP_REVIEW_GATE=1` and add `Review: skipped at the user's request.` to the commit message. Never skip without that explicit answer. An answer covers one commit only; ask again for the next commit.

@@ -25,6 +25,12 @@ jobs:
           go test -v ./...
           go vet ./...
 
+      - name: Verify Go Debug MCP builds and tests pass
+        run: |
+          cd services/debug-mcp
+          go test -race -v ./...
+          go vet ./...
+
       - name: ShellCheck linting
         uses: ludeeus/action-shellcheck@master
         with:
@@ -122,8 +128,8 @@ jobs:
 
       - name: Cross-check shared values with clusters/gke
         run: |
-          pip install -r scripts/requirements-preflight.txt
-          python3 scripts/check-gcp-shared-values.py
+          pip install -r scripts/ci/requirements-preflight.txt
+          python3 scripts/ci/check-gcp-shared-values.py
 
   kafka-declarations:
     runs-on: ubuntu-latest
@@ -140,19 +146,19 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r scripts/requirements-preflight.txt
+          pip install -r scripts/ci/requirements-preflight.txt
           curl -sL https://github.com/yannh/kubeconform/releases/download/${{ env.KUBECONFORM_VERSION }}/kubeconform-linux-amd64.tar.gz | sudo tar -xz -C /usr/local/bin kubeconform
 
       - name: Check declarations
-        run: python3 scripts/kafka-declarations.py check
+        run: python3 scripts/ci/kafka-declarations.py check
 
       - name: Declaration tests
         run: python3 -m unittest discover tests/infra
 
       - name: Committed renders are current
         run: |
-          python3 scripts/kafka-declarations.py render --target ansible
-          python3 scripts/kafka-declarations.py render --target compose
+          python3 scripts/ci/kafka-declarations.py render --target ansible
+          python3 scripts/ci/kafka-declarations.py render --target compose
           changed=$(git status --porcelain -- infra/oci/ansible/group_vars/all/kafka.generated.yml tests/kafka/rehearsal/)
           if [ -n "$changed" ]; then echo "$changed"; git diff; exit 1; fi
 

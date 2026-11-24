@@ -65,7 +65,7 @@ All platform components and project workloads strictly adhere to the 7 principle
 * **[Principle I: Declarative Phased GitOps](.specify/memory/constitution.md)**: Git is the single source of truth. Continuous reconciliation via 14-layer Flux GitOps controllers with automated drift detection and correction. Images MUST use immutable `@sha256:...` digests (projects) or pinned exact version tags (infrastructure).
 * **[Principle II: Workload Isolation & Restricted Pod Security](.specify/memory/constitution.md)**: Project namespaces MUST enforce the Kubernetes `Restricted` Pod Security profile (audit/warn modes strictly prohibited). Containers run non-root, drop all capabilities (allowing at most `NET_BIND_SERVICE`), and use dedicated platform ServiceAccounts with auto-token-mount disabled. Project services are `ClusterIP` only.
 * **[Principle III: Defense-in-Depth Identity & Standard-Library Gateway](.specify/memory/constitution.md)**: Ingress exposes only public browser-facing login/callback routes and current-session revocation. Keycloak admin, metrics (port 9000), and internal JWKS are strictly private. The Authentication Gateway is written in pure standard-library Go with **zero runtime third-party dependencies** and fails closed (HTTP 503).
-* **[Principle IV: Bounded 1/n Resource Budgeting](.specify/memory/constitution.md)**: Containers MUST enforce strict `requests == limits`. Compute is sliced equally across projects ($1/n$). Candidate deployments exceeding budgets or lowering existing memory limits during the interim freeze are rejected by the platform-preflight CI gate ([`scripts/platform-preflight.py`](scripts/platform-preflight.py)).
+* **[Principle IV: Bounded 1/n Resource Budgeting](.specify/memory/constitution.md)**: Containers MUST enforce strict `requests == limits`. Compute is sliced equally across projects ($1/n$). Candidate deployments exceeding budgets or lowering existing memory limits during the interim freeze are rejected by the platform-preflight CI gate ([`scripts/ci/platform-preflight.py`](scripts/ci/platform-preflight.py)).
 * **[Principle V: Zero Plaintext Secrets & Centralized Cluster Vault](.specify/memory/constitution.md)**: Plaintext secrets are NEVER committed to Git, embedded in Helm/Kustomize, or delivered to application pods via Kubernetes Secrets or volume mounts (with the sole constitutional exception of platform-owned edge TLS Secrets in `platform` and ACME account keys in `cert-manager`). Applications invoke authorized operations via internal Vault Proxies (`ai-proxy`, `db-proxy`, `notify-proxy`), receiving sanitized results without ever holding backend credentials. Spec 012 retired `registry-proxy` in favor of anonymous `@sha256`-pinned pulls from public GAR and GHCR.
 * **[Principle VI: Environmental Portability](.specify/memory/constitution.md)**: Zero application code changes across single-VPS K3s, local Linux K3s, AWS EKS, and GCP GKE.
 * **[Principle VII: Distinct Lifecycle Signals for Dependent Project Workloads](.specify/memory/constitution.md)**: Dependent project workloads separate `startupProbe` (initial cluster dependency hop), `readinessProbe` (continuous cluster hop / disconnect signal), and `livenessProbe` (process-local only), declare `restartPolicy: Always`, and include `PUBLIC_APP_URL` in backend `ALLOWED_ORIGINS`.
@@ -158,7 +158,7 @@ flowchart LR
     Bucket[("GCS bucket<br/>nacfson-pipeline-tfstate<br/>(versioned)")]
     Op["Operator in Cloud Shell<br/>plan -out → read → apply"]
     CI["CI job terraform-validate<br/>fmt · validate · no credentials"]
-    Check["scripts/check-gcp-shared-values.py<br/>(11 offline checks)"]
+    Check["scripts/ci/check-gcp-shared-values.py<br/>(11 offline checks)"]
     Repo["clusters/gke/ · deploy/platform/<br/>deploy/gcp/"]
 
     SV --> B & P & G
@@ -269,14 +269,14 @@ The table below maps constitutional requirements to contracts, code modules, and
 | :--- | :--- | :--- | :--- | :--- |
 | **Host K3s Bootstrap** | [`contracts/bootstrap.md`](specs/003-minimal-vm-bootstrap/contracts/bootstrap.md) | [`bootstrap/`](bootstrap/) | [`bootstrap/tasks/verify.yml`](bootstrap/tasks/verify.yml) | [Principle VI](.specify/memory/constitution.md) |
 | **Authentication ForwardAuth** | [`contracts/gateway-forwardauth.md`](specs/001-project-platform/contracts/gateway-forwardauth.md) | [`gateway/`](gateway/) | [`gateway/tests/contract_test.go`](gateway/tests/contract_test.go) | [Principle III](.specify/memory/constitution.md) |
-| **Online Session Revocation** | [`contracts/session-revocation.md`](specs/001-project-platform/contracts/session-revocation.md) | [`gateway/internal/auth/`](gateway/internal/auth/) | [`scripts/verify-revocation.sh`](scripts/verify-revocation.sh) | [Principle III](.specify/memory/constitution.md) |
-| **Restricted Workload Sandboxing** | [`specs/001-project-platform/spec.md`](specs/001-project-platform/spec.md) | [`deploy/platform/governance/`](deploy/platform/governance/) | [`scripts/verify-isolation.sh`](scripts/verify-isolation.sh) | [Principle II](.specify/memory/constitution.md) |
-| **1/n Resource Budget Gating** | [`contracts/platform-preflight.md`](specs/004-flux-gitops-reconciliation/contracts/platform-preflight.md) | [`clusters/`](clusters/) | [`scripts/platform-preflight.py`](scripts/platform-preflight.py) | [Principle IV](.specify/memory/constitution.md) |
+| **Online Session Revocation** | [`contracts/session-revocation.md`](specs/001-project-platform/contracts/session-revocation.md) | [`gateway/internal/auth/`](gateway/internal/auth/) | [`scripts/verify/verify-revocation.sh`](scripts/verify/verify-revocation.sh) | [Principle III](.specify/memory/constitution.md) |
+| **Restricted Workload Sandboxing** | [`specs/001-project-platform/spec.md`](specs/001-project-platform/spec.md) | [`deploy/platform/governance/`](deploy/platform/governance/) | [`scripts/verify/verify-isolation.sh`](scripts/verify/verify-isolation.sh) | [Principle II](.specify/memory/constitution.md) |
+| **1/n Resource Budget Gating** | [`contracts/platform-preflight.md`](specs/004-flux-gitops-reconciliation/contracts/platform-preflight.md) | [`clusters/`](clusters/) | [`scripts/ci/platform-preflight.py`](scripts/ci/platform-preflight.py) | [Principle IV](.specify/memory/constitution.md) |
 | **Zero-Plaintext DB Proxy** | [`contracts/database-proxy.md`](specs/002-internal-cluster-vault/contracts/database-proxy.md) | [`services/vault-proxies/`](services/vault-proxies/) | [`tests/vault/test_db_proxy.sh`](tests/vault/test_db_proxy.sh) | [Principle V](.specify/memory/constitution.md) |
-| **GKE Infrastructure & L4 Edge** | [`contracts/traefik-l4-edge.md`](specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md) | [`infra/gcp/`](infra/gcp/), [`deploy/platform/traefik/`](deploy/platform/traefik/) | [`scripts/check-gcp-shared-values.py`](scripts/check-gcp-shared-values.py) | [Principle VI](.specify/memory/constitution.md) |
-| **Public GAR Multi-Arch Delivery** | [`contracts/portable-network-policy-and-gar.md`](specs/012-gke-platform-migration/contracts/portable-network-policy-and-gar.md) | [`deploy/gcp/cloudbuild.yaml`](deploy/gcp/cloudbuild.yaml) | [`scripts/platform-preflight.py`](scripts/platform-preflight.py) | [Principle I & V](.specify/memory/constitution.md) |
-| **Zero-Downtime Credential Rotation** | [`specs/002-internal-cluster-vault/spec.md`](specs/002-internal-cluster-vault/spec.md) | [`scripts/vault-rotate.sh`](scripts/vault-rotate.sh) | [`tests/vault/test_rotation_drill.sh`](tests/vault/test_rotation_drill.sh) | [Principle V](.specify/memory/constitution.md) |
-| **Disaster Recovery & Backup Restore** | [`contracts/database-provisioning-backup.md`](specs/002-internal-cluster-vault/contracts/database-provisioning-backup.md) | [`scripts/verify-backup.sh`](scripts/verify-backup.sh) | [`tests/vault/test_disaster_recovery.sh`](tests/vault/test_disaster_recovery.sh) | [Quality Gates](.specify/memory/constitution.md) |
+| **GKE Infrastructure & L4 Edge** | [`contracts/traefik-l4-edge.md`](specs/015-gke-terraform-infra/contracts/traefik-l4-edge.md) | [`infra/gcp/`](infra/gcp/), [`deploy/platform/traefik/`](deploy/platform/traefik/) | [`scripts/ci/check-gcp-shared-values.py`](scripts/ci/check-gcp-shared-values.py) | [Principle VI](.specify/memory/constitution.md) |
+| **Public GAR Multi-Arch Delivery** | [`contracts/portable-network-policy-and-gar.md`](specs/012-gke-platform-migration/contracts/portable-network-policy-and-gar.md) | [`deploy/gcp/cloudbuild.yaml`](deploy/gcp/cloudbuild.yaml) | [`scripts/ci/platform-preflight.py`](scripts/ci/platform-preflight.py) | [Principle I & V](.specify/memory/constitution.md) |
+| **Zero-Downtime Credential Rotation** | [`specs/002-internal-cluster-vault/spec.md`](specs/002-internal-cluster-vault/spec.md) | [`scripts/vault/vault-rotate.sh`](scripts/vault/vault-rotate.sh) | [`tests/vault/test_rotation_drill.sh`](tests/vault/test_rotation_drill.sh) | [Principle V](.specify/memory/constitution.md) |
+| **Disaster Recovery & Backup Restore** | [`contracts/database-provisioning-backup.md`](specs/002-internal-cluster-vault/contracts/database-provisioning-backup.md) | [`scripts/verify/verify-backup.sh`](scripts/verify/verify-backup.sh) | [`tests/vault/test_disaster_recovery.sh`](tests/vault/test_disaster_recovery.sh) | [Quality Gates](.specify/memory/constitution.md) |
 
 ---
 
@@ -335,19 +335,19 @@ Flux reconciles platform layers continuously. On GKE, `openbao-0` auto-unseals v
 flux get kustomizations -A
 
 # 2. On local-k3s, initialize/unseal OpenBao and reconcile policies
-./scripts/vault-init.sh
-./scripts/vault-seed-inventory.sh
-./scripts/vault-reconcile.sh
+./scripts/vault/vault-init.sh
+./scripts/vault/vault-seed-inventory.sh
+./scripts/vault/vault-reconcile.sh
 ```
 
 ### Step 3: Execute Verification Drills
 Run the end-to-end acceptance tests to ensure compliance with the Constitution:
 ```bash
 # Verify Restricted Pod Security & NetworkPolicy isolation
-./scripts/verify-isolation.sh
+./scripts/verify/verify-isolation.sh
 
 # Verify online session revocation
-./scripts/verify-revocation.sh
+./scripts/verify/verify-revocation.sh
 
 # Execute zero-downtime secret rotation drills
 ./tests/vault/test_rotation_drill.sh

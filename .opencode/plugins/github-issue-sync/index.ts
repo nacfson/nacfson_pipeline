@@ -6,7 +6,7 @@ export default Plugin.define({
   setup(ctx) {
     const cwd = ctx.location.project.canonical
     try {
-      const child = spawn("python3", ["scripts/sync-github-issues.py"], { cwd, stdio: "ignore" })
+      const child = spawn("python3", ["scripts/hooks/sync-github-issues.py"], { cwd, stdio: "ignore" })
       child.on("error", () => {})
       child.on("exit", () => {})
     } catch {

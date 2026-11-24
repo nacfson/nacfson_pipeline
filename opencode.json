@@ -7,6 +7,14 @@
         "headers": {
           "X-MCP-Toolsets": "context,issues"
         }
+      },
+      "nacfson-debug": {
+        "type": "local",
+        "command": [
+          "/usr/local/bin/nacfson-mcp",
+          "--connect",
+          "/run/nacfson-mcp/mcp.sock"
+        ]
       }
     }
   }
