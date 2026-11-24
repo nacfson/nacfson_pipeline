@@ -188,7 +188,7 @@ Paths follow the plan's Source Code tree: `infra/kafka/`, `infra/oci/{terraform,
   - fixed private IPs from locals and 50 GB boot volumes
   - Ubuntu 24.04 Minimal images selected by exact display name per architecture
   - Micro-2 with an ephemeral public IP
-  - the Oracle Cloud Agent Bastion plugin enabled on all four instances, which managed SSH sessions need
+  - launch-time `metadata.ssh_authorized_keys` injected from `var.ssh_authorized_keys` with `lifecycle { ignore_changes = [metadata["ssh_authorized_keys"]] }` (no Oracle Cloud Agent Bastion plugin; day-2 keys managed by Ansible `roles/base`)
 - [X] T041 [P] [US1] Create infra/oci/terraform/public_ips.tf, bastion.tf, budget.tf, and outputs.tf:
   - **public_ips.tf**: reserved public IPs attached to the three broker VNICs
   - **bastion.tf**: an OCI Bastion on the subnet, with the client CIDR allowlist as a variable
@@ -197,7 +197,7 @@ Paths follow the plan's Source Code tree: `infra/kafka/`, `infra/oci/{terraform,
 - [X] T042 [P] [US1] Create infra/oci/terraform/iam.tf (research.md R22):
   - user and group `kafka-runner`
   - an API key from `var.kafka_runner_api_public_key` (the public half only; the key is created on the control center)
-  - a policy with only the statements the current OCI Bastion documentation lists for creating managed SSH sessions on this Bastion and reading its target instances
+  - a policy with only the statements needed for SSH port forwarding sessions scoped by `target.bastion.ocid` on this Bastion and reading its target instances/network metadata (no `instance-agent-plugins` read grant, no `target.bastion-session.username` condition; Constitution Amendment `3.1.0`)
   - record the exact statements in research.md R22
 - [X] T043 [US1] Generate infra/oci/terraform/.terraform.lock.hcl with `terraform providers lock -platform=linux_amd64 -platform=linux_arm64`. Extend tests/infra/test_terraform_protections.py with OCI-root cases matching its GCP checks. Add `infra/oci/terraform` to the `terraform-validate` job in .github/workflows/lint.yaml (fmt, init `-backend=false`, validate).
 - [X] T044 [P] [US1] Create the Ansible scaffolding:
@@ -261,7 +261,7 @@ Paths follow the plan's Source Code tree: `infra/kafka/`, `infra/oci/{terraform,
 - [ ] T055 [US1] Add operator-started Kafka actions to ../nacfson-control-center/internal/ops/runner.go:
   - **Actions**: `kafka.site`, `kafka.renew-certs`, `kafka.rolling-change`, `kafka.rebuild-node`, `kafka.replace-controller`, with the arguments and host checks in contracts/ansible-runner.md
   - **Approval**: passkey step-up, as for the existing actions
-  - **Run**: `ansible-playbook` from the read-only clone at the exact `main` commit, through an OCI Bastion managed SSH session (internal/ops/bastion.go)
+  - **Run**: `ansible-playbook` from the read-only clone at the exact `main` commit, through an OCI Bastion SSH port forwarding session to each VM's private IP port `22` (internal/ops/bastion.go)
   - **Keys**: OCI API key and SSH key read from `/var/lib/nacfson-cc/credentials/kafka-runner/`
   - **GKE access**: a `cc-kafka-runner` kubeconfig minted by impersonation from the VM's service account
   - **Run lock**: one run at a time

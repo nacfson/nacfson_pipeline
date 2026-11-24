@@ -4,6 +4,8 @@ import re
 import unittest
 from pathlib import Path
 
+import yaml
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 INFRA = REPO_ROOT / "infra" / "gcp"
 RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "gke-terraform.md"
@@ -166,6 +168,31 @@ class OciTerraformTests(unittest.TestCase):
         self.assertIn("for_each            = local.nodes", body)
         self.assertIn("private_ip       = each.value.address", body)
         self.assertRegex(locals_text, r"boot_volume_gbs\s*=\s*50")
+
+    def test_base_role_manages_ubuntu_authorized_keys(self):
+        group_vars_path = (
+            REPO_ROOT / "infra" / "oci" / "ansible" / "group_vars" / "all" / "ssh_authorized_keys.yml"
+        )
+        group_vars = yaml.safe_load(group_vars_path.read_text(encoding="utf-8"))
+        self.assertIsInstance(group_vars, dict)
+        self.assertIn("ubuntu_ssh_authorized_keys", group_vars)
+        self.assertIsInstance(group_vars["ubuntu_ssh_authorized_keys"], list)
+
+        tasks_path = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "base" / "tasks" / "main.yml"
+        tasks = yaml.safe_load(tasks_path.read_text(encoding="utf-8"))
+        self.assertIsInstance(tasks, list)
+        matching = [t for t in tasks if isinstance(t, dict) and "ansible.posix.authorized_key" in t]
+        self.assertEqual(len(matching), 1)
+        task = matching[0]
+        params = task["ansible.posix.authorized_key"]
+        self.assertEqual(params.get("user"), "ubuntu")
+        self.assertEqual(params.get("state"), "present")
+        self.assertIs(params.get("exclusive"), True)
+        self.assertEqual(task.get("when"), "ubuntu_ssh_authorized_keys | length > 0")
+        key_expr = params.get("key")
+        self.assertIsInstance(key_expr, str)
+        self.assertNotIn("\n", key_expr)
+        self.assertIn(r"join('\n')", key_expr)
 
 class RunbookTargetTests(unittest.TestCase):
 
