@@ -11,7 +11,7 @@ When a GitHub issue is filed or analyzed:
 3. If the issue changes a platform rule, update the live contract in [`contracts/`](../../contracts/) in the same change. Historical `specs/*/contracts/` notes do not override that live contract.
 4. Say what was checked and what was not. A closed GitHub issue is not proof the cluster matches the note.
 
-Opening this repo in OpenCode runs scripts/sync-github-issues.py once. That refreshes this index and creates a missing FIX_ file. It does not rewrite an existing FIX_ body and it does not edit contracts/.
+Opening this repo in OpenCode runs `scripts/hooks/sync-github-issues.py` once. That refreshes this index and creates a missing FIX_ file. It does not rewrite an existing FIX_ body and it does not edit contracts/.
 
 ## Index
 

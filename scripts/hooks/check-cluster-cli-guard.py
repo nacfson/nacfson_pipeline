@@ -496,6 +496,115 @@ def _scan_ansi_c_end(text: str, start: int) -> int:
     return n
 
 
+def _is_comment_start(text: str, pos: int) -> bool:
+    return pos == 0 or text[pos - 1] in (" ", "\t", "\n", "\r", ";", "&", "|", "(", ")")
+
+
+def _parse_heredoc_spec(text: str, pos: int) -> tuple[str, bool, bool, int] | None:
+    strip_tabs = text.startswith("<<-", pos)
+    j = pos + (3 if strip_tabs else 2)
+    n = len(text)
+    while j < n and text[j] in (" ", "\t"):
+        j += 1
+    out: list[str] = []
+    quoted = False
+    in_single = False
+    in_double = False
+    escaped = False
+    stop_chars = (" ", "\t", "\n", "\r", ";", "&", "|", "(", ")", "<", ">")
+    while j < n:
+        ch = text[j]
+        if escaped:
+            out.append(ch)
+            escaped = False
+            j += 1
+            continue
+        if in_single:
+            if ch == "'":
+                in_single = False
+            else:
+                out.append(ch)
+            j += 1
+            continue
+        if ch == "\\":
+            quoted = True
+            if in_double and j + 1 < n and text[j + 1] not in ('"', "\\", "$", "`", "\n"):
+                out.append(ch)
+            escaped = True
+            j += 1
+            continue
+        if ch == "$" and not in_double and j + 1 < n and text[j + 1] == "'":
+            quoted = True
+            decoded, next_j = _decode_ansi_c_single(text, j + 2)
+            out.append(decoded)
+            j = next_j
+            continue
+        if ch == '"':
+            quoted = True
+            in_double = not in_double
+            j += 1
+            continue
+        if ch == "'" and not in_double:
+            quoted = True
+            in_single = True
+            j += 1
+            continue
+        if not in_double and ch in stop_chars:
+            break
+        out.append(ch)
+        j += 1
+    delimiter = "".join(out)
+    if not delimiter:
+        return None
+    return delimiter, strip_tabs, quoted, j
+
+
+def _consume_heredoc_body(text: str, pos: int, delimiter: str, strip_tabs: bool) -> tuple[str, int]:
+    cur = pos
+    n = len(text)
+    while cur < n:
+        nl = text.find("\n", cur)
+        line = text[cur : n if nl == -1 else nl]
+        cmp = line.rstrip("\r")
+        if strip_tabs:
+            cmp = cmp.lstrip("\t")
+        if cmp == delimiter:
+            next_pos = n if nl == -1 else nl + 1
+            return text[pos:cur], next_pos
+        if nl == -1:
+            break
+        cur = nl + 1
+    return text[pos:n], n
+
+
+def _extract_unquoted_heredoc_subshells(body: str) -> list[str]:
+    out: list[str] = []
+    i = 0
+    n = len(body)
+    while i < n:
+        ch = body[i]
+        if ch == "\\":
+            i += 2
+            continue
+        if ch == "$" and i + 1 < n and body[i + 1] == "(":
+            if i + 2 < n and body[i + 2] == "(":
+                i += 1
+                continue
+            start = i + 2
+            end = _find_matching_paren(body, start)
+            out.append(body[start:end])
+            i = end + 1 if end < n else n
+            continue
+        if ch == "`":
+            start = i + 1
+            end = _find_matching_backtick(body, start)
+            out.append(body[start:end])
+            i = end + 1 if end < n else n
+            continue
+        i += 1
+    return out
+
+
 def _extract_subshells(text: str) -> list[str]:
     out: list[str] = []
     i = 0
@@ -503,6 +612,7 @@ def _extract_subshells(text: str) -> list[str]:
     in_single = False
     in_double = False
     escaped = False
+    pending_heredocs: list[tuple[str, bool, bool]] = []
 
     while i < n:
         ch = text[i]
@@ -530,23 +640,39 @@ def _extract_subshells(text: str) -> list[str]:
         if ch == "$" and not in_double and i + 1 < n and text[i + 1] == "'":
             i = _scan_ansi_c_end(text, i + 2)
             continue
+        if not in_double:
+            if ch == "#" and _is_comment_start(text, i):
+                nl = text.find("\n", i)
+                i = n if nl == -1 else nl
+                continue
+            if ch == "<" and text.startswith("<<", i) and not text.startswith("<<<", i):
+                spec = _parse_heredoc_spec(text, i)
+                if spec is not None:
+                    delim, strip_tabs, quoted, next_i = spec
+                    pending_heredocs.append((delim, strip_tabs, quoted))
+                    i = next_i
+                    continue
+            if ch == "\n" and pending_heredocs:
+                i += 1
+                for delim, strip_tabs, quoted in pending_heredocs:
+                    body, i = _consume_heredoc_body(text, i, delim, strip_tabs)
+                    if not quoted:
+                        out.extend(_extract_unquoted_heredoc_subshells(body))
+                pending_heredocs.clear()
+                continue
         if (ch == "$" or (ch in ("<", ">") and not in_double)) and i + 1 < n and text[i + 1] == "(":
             if ch == "$" and i + 2 < n and text[i + 2] == "(":
                 i += 1
                 continue
             start = i + 2
             end = _find_matching_paren(text, start)
-            inner = text[start:end]
-            out.append(inner)
-            out.extend(_extract_subshells(inner))
+            out.append(text[start:end])
             i = end + 1 if end < n else n
             continue
         if ch == "`":
             start = i + 1
             end = _find_matching_backtick(text, start)
-            inner = text[start:end]
-            out.append(inner)
-            out.extend(_extract_subshells(inner))
+            out.append(text[start:end])
             i = end + 1 if end < n else n
             continue
         i += 1
@@ -560,6 +686,7 @@ def _find_matching_paren(text: str, start: int) -> int:
     in_single = False
     in_double = False
     escaped = False
+    pending_heredocs: list[tuple[str, bool]] = []
     while i < n:
         ch = text[i]
         if escaped:
@@ -579,12 +706,40 @@ def _find_matching_paren(text: str, start: int) -> int:
             in_double = not in_double
             i += 1
             continue
-        if ch == "'" and not in_double:
+        if in_double:
+            if ch == "$" and i + 1 < n and text[i + 1] == "(":
+                end = _find_matching_paren(text, i + 2)
+                i = end + 1 if end < n else n
+                continue
+            if ch == "`":
+                end = _find_matching_backtick(text, i + 1)
+                i = end + 1 if end < n else n
+                continue
+            i += 1
+            continue
+        if ch == "'":
             in_single = True
             i += 1
             continue
-        if ch == "$" and not in_double and i + 1 < n and text[i + 1] == "'":
+        if ch == "$" and i + 1 < n and text[i + 1] == "'":
             i = _scan_ansi_c_end(text, i + 2)
+            continue
+        if ch == "#" and _is_comment_start(text, i):
+            nl = text.find("\n", i)
+            i = n if nl == -1 else nl
+            continue
+        if ch == "<" and text.startswith("<<", i) and not text.startswith("<<<", i):
+            spec = _parse_heredoc_spec(text, i)
+            if spec is not None:
+                delim, strip_tabs, _, next_i = spec
+                pending_heredocs.append((delim, strip_tabs))
+                i = next_i
+                continue
+        if ch == "\n" and pending_heredocs:
+            i += 1
+            for delim, strip_tabs in pending_heredocs:
+                _, i = _consume_heredoc_body(text, i, delim, strip_tabs)
+            pending_heredocs.clear()
             continue
         if ch == "(":
             depth += 1
@@ -616,16 +771,25 @@ def _find_matching_backtick(text: str, start: int) -> int:
     return n
 
 
-def _split_segments(text: str) -> list[str]:
-    segments: list[str] = []
+def _split_segments(text: str) -> list[tuple[str, list[tuple[str, bool]], bool]]:
+    segments: list[tuple[str, list[tuple[str, bool]], bool]] = []
     buf: list[str] = []
+    cur_heredocs: list[tuple[str, bool]] = []
+    pending_heredocs: list[tuple[str, bool, bool, list[tuple[str, bool]]]] = []
     i = 0
     n = len(text)
     in_single = False
     in_double = False
     escaped = False
-    paren_depth = 0
     in_backtick = False
+
+    def flush_segment(is_pipe: bool) -> None:
+        nonlocal cur_heredocs
+        seg = "".join(buf).strip()
+        if seg or cur_heredocs:
+            segments.append((seg, cur_heredocs, is_pipe))
+            cur_heredocs = []
+        buf.clear()
 
     while i < n:
         ch = text[i]
@@ -665,29 +829,36 @@ def _split_segments(text: str) -> list[str]:
             in_backtick = not in_backtick
             i += 1
             continue
+        if (ch == "$" or (ch in ("<", ">") and not in_double)) and not in_backtick and i + 1 < n and text[i + 1] == "(":
+            end = _find_matching_paren(text, i + 2)
+            end_inc = end + 1 if end < n else n
+            buf.append(text[i:end_inc])
+            i = end_inc
+            continue
         if not in_double and not in_backtick:
-            if (ch in ("$", "<", ">")) and i + 1 < n and text[i + 1] == "(":
-                buf.append(ch)
-                buf.append("(")
-                paren_depth += 1
-                i += 2
+            if ch == "#" and _is_comment_start(text, i):
+                nl = text.find("\n", i)
+                i = n if nl == -1 else nl
                 continue
-            if ch == "(" and paren_depth > 0:
-                buf.append(ch)
-                paren_depth += 1
+            if ch == "<" and text.startswith("<<", i) and not text.startswith("<<<", i):
+                spec = _parse_heredoc_spec(text, i)
+                if spec is not None:
+                    delim, strip_tabs, quoted, next_i = spec
+                    buf.append(text[i:next_i])
+                    pending_heredocs.append((delim, strip_tabs, quoted, cur_heredocs))
+                    i = next_i
+                    continue
+            if ch == "\n":
+                flush_segment(False)
                 i += 1
+                if pending_heredocs:
+                    for delim, strip_tabs, quoted, target_list in pending_heredocs:
+                        body, i = _consume_heredoc_body(text, i, delim, strip_tabs)
+                        target_list.append((body, quoted))
+                    pending_heredocs.clear()
                 continue
-            if ch == ")" and paren_depth > 0:
-                buf.append(ch)
-                paren_depth -= 1
-                i += 1
-                continue
-        if not in_double and not in_backtick and paren_depth == 0:
-            if ch in (";", "\n", "(", ")"):
-                seg = "".join(buf).strip()
-                if seg:
-                    segments.append(seg)
-                buf.clear()
+            if ch in (";", "(", ")"):
+                flush_segment(False)
                 i += 1
                 continue
             if ch == "&":
@@ -704,21 +875,17 @@ def _split_segments(text: str) -> list[str]:
                 i += 1
                 continue
             if ch in ("&", "|"):
+                is_pipe = ch == "|" and not (i + 1 < n and text[i + 1] == "|")
                 if i + 1 < n and text[i + 1] in (ch, "&"):
                     i += 2
                 else:
                     i += 1
-                seg = "".join(buf).strip()
-                if seg:
-                    segments.append(seg)
-                buf.clear()
+                flush_segment(is_pipe)
                 continue
         buf.append(ch)
         i += 1
 
-    seg = "".join(buf).strip()
-    if seg:
-        segments.append(seg)
+    flush_segment(False)
     return segments
 
 
@@ -1567,21 +1734,64 @@ def _check_tokens(
     return True, ""
 
 
-def _check_segment(segment: str, env: Mapping[str, str], depth: int) -> tuple[bool, str]:
+def _segment_executes_stdin(segment: str) -> bool:
+    words, _, _ = _tokenize_segment(segment)
+    if not words:
+        return False
+    cmd_tokens, _, _, was_wrapped = _unwrap_command(words)
+    if not cmd_tokens:
+        return any(os.path.basename(w) in ("parallel", "sem") for w in words)
+    cmd = os.path.basename(cmd_tokens[0])
+    if cmd in SHELL_INTERPRETERS or cmd in ("source", ".", "script"):
+        return True
+    if was_wrapped and cmd not in SAFE_READONLY_PATH_TOOLS:
+        for tok in cmd_tokens[1:]:
+            sub_cmd = os.path.basename(tok)
+            if sub_cmd in SHELL_INTERPRETERS or sub_cmd in ("source", ".", "script"):
+                return True
+    return False
+
+
+def _check_segment(
+    segment: str,
+    env: Mapping[str, str],
+    depth: int,
+    heredoc_bodies: list[str] | None = None,
+) -> tuple[bool, str]:
     if depth > 6:
         return _deny("Excessive shell nesting depth is blocked.")
     words, redirs, herestrings = _tokenize_segment(segment)
     for target in redirs:
         if _has_mcp_path(target):
             return _deny("Redirection against /etc/nacfson-mcp is forbidden.")
-    return _check_tokens(words, herestrings, env, depth)
+    stdin_bodies = herestrings + (heredoc_bodies or [])
+    return _check_tokens(words, stdin_bodies, env, depth)
 
 
 def _check_text(command: str, env: Mapping[str, str], depth: int) -> tuple[bool, str]:
     if depth > 6:
         return _deny("Excessive shell nesting depth is blocked.")
-    for seg in _split_segments(command):
-        ok, reason = _check_segment(seg, env, depth)
+    segments = _split_segments(command)
+    for idx, (seg, heredocs, piped_to_next) in enumerate(segments):
+        for body, quoted in heredocs:
+            if not quoted:
+                for sub in _extract_unquoted_heredoc_subshells(body):
+                    sub_ok, sub_reason = _check_text(sub, env, depth + 1)
+                    if not sub_ok:
+                        return sub_ok, sub_reason
+        if heredocs and piped_to_next:
+            k = idx + 1
+            while k < len(segments):
+                next_seg, _, next_piped = segments[k]
+                if _segment_executes_stdin(next_seg):
+                    for body, _ in heredocs:
+                        ok, reason = _check_text(body, env, depth + 1)
+                        if not ok:
+                            return ok, reason
+                if not next_piped:
+                    break
+                k += 1
+        ok, reason = _check_segment(seg, env, depth, [body for body, _ in heredocs])
         if not ok:
             return ok, reason
         for sub in _extract_subshells(seg):

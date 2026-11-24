@@ -422,6 +422,51 @@ class ClusterCLIGuardTest(unittest.TestCase):
         self.assertEqual(allow_proc.returncode, 0)
         self.assertEqual(json.loads(allow_proc.stdout), {})
 
+    def test_heredoc_allow_and_deny_cases(self) -> None:
+        allowed_cases = (
+            "git commit -F - <<'EOF'\nfeat: docs\n\nsudo ./scripts/mcp/mcp-session.sh start gke\nssh host\nkubectl get pods\n/etc/nacfson-mcp/kubeconfig\nEOF",
+            'gh pr create --title "t" --body "$(cat <<\'EOF\'\nSummary:\n1) Run `sudo ./scripts/mcp/mcp-session.sh start gke --ttl 1h`\n2) Verify /etc/nacfson-mcp/kubeconfig is 0400\nIt\'s working!\nEOF\n)"',
+            "cat > notes.md <<'EOF'\nssh host\nsudo id\nkubectl get pods\n$(kubectl get pods)\nEOF",
+            "cat <<-'EOF'\n\tsudo ./scripts/mcp/mcp-session.sh start gke\n\tEOF",
+            "cat <<\\EOF\nssh host\n$(kubectl get po)\nEOF",
+            'cat <<"EOF"\nflux get all\n`ssh vm`\nEOF',
+            "cat <<EOF\nsudo ./scripts/mcp/mcp-session.sh start gke\nEOF",
+            "cat <<'EOF' | git commit -F -\nsudo ./scripts/mcp/mcp-session.sh start gke\nEOF",
+            "echo $(cat <<'EOF'\n1) sudo foo\nIt's fine\nEOF\n)",
+            "<<'EOF' cat\nsudo foo\nEOF",
+            "cat <<'EOF' # note\nssh host\nEOF",
+            'python3 - <<\'PY\'\ns = """\nsudo ./scripts/mcp/mcp-session.sh start gke\n"""\nprint(s)\nPY',
+        )
+        for cmd in allowed_cases:
+            self.assert_allowed(cmd)
+
+        blocked_cases = (
+            "bash <<EOF\nkubectl get pods\nEOF",
+            "bash <<'EOF'\nkubectl get pods\nEOF",
+            "sh <<-'END'\n\tssh host\n\tEND",
+            "bash <<'EOF'\ncat /etc/nacfson-mcp/kubeconfig\nEOF",
+            "timeout 5 bash <<'EOF'\nflux get all\nEOF",
+            "<<'EOF' bash\nkubectl get pods\nEOF",
+            "source /dev/stdin <<'EOF'\nkubectl get pods\nEOF",
+            ". /dev/stdin <<'EOF'\nssh host\nEOF",
+            "script -q /dev/null <<'EOF'\nkubectl get pods\nEOF",
+            "parallel <<'EOF'\nkubectl get pods\nEOF",
+            "cat <<'EOF' | bash\nkubectl get pods\nEOF",
+            "cat <<'EOF' | env FOO=1 sh\nssh host\nEOF",
+            "cat <<'EOF' | grep foo | bash\nkubectl get pods\nEOF",
+            "cat <<'EOF' | parallel\nkubectl get pods\nEOF",
+            "cat <<EOF\n$(kubectl get pods)\nEOF",
+            "cat <<EOF\n'$(kubectl get pods)'\nEOF",
+            "cat <<EOF\n`ssh host`\nEOF",
+            'gh pr create --body "$(cat <<EOF\n$(kubectl get pods)\nEOF\n)"',
+            "# <<'EOF'\nkubectl get pods\nEOF",
+            "cat > notes.md <<'EOF'\nsafe\nEOF\nkubectl get pods",
+            "cat > notes.md <<'EOF' && kubectl get pods\nsafe\nEOF",
+            "cat > /etc/nacfson-mcp/kubeconfig <<'EOF'\nhello\nEOF",
+        )
+        for cmd in blocked_cases:
+            self.assert_blocked(cmd)
+
 
 if __name__ == "__main__":
     unittest.main()
