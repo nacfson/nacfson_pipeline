@@ -168,3 +168,29 @@ func TestParsePeersRejectsUnsafeValues(t *testing.T) {
 		}
 	}
 }
+
+func TestCommittedWGPeersJSONParsesCleanly(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "clusters", "gke", "oci-link", "wg-peers.json"))
+	if err != nil {
+		t.Fatalf("read committed wg-peers.json: %v", err)
+	}
+	got, err := ParsePeers(data)
+	if err != nil {
+		t.Fatalf("ParsePeers(committed wg-peers.json): %v", err)
+	}
+	wantAddrs := map[string]string{
+		"broker-1": "10.200.0.11/32",
+		"broker-2": "10.200.0.12/32",
+		"broker-3": "10.200.0.13/32",
+	}
+	if len(got) != len(wantAddrs) {
+		t.Fatalf("got %d peers, want %d", len(got), len(wantAddrs))
+	}
+	seen := make(map[string]string, len(got))
+	for _, p := range got {
+		seen[p.Name] = p.Address
+	}
+	if !reflect.DeepEqual(seen, wantAddrs) {
+		t.Fatalf("peers = %v, want %v", seen, wantAddrs)
+	}
+}
