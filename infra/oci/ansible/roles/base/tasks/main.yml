@@ -117,3 +117,11 @@
     path: /etc/nacfson
     state: directory
     mode: "0755"
+
+- name: Manage ubuntu SSH authorized keys
+  ansible.posix.authorized_key:
+    user: ubuntu
+    state: present
+    key: "{{ ubuntu_ssh_authorized_keys | join('\\n') }}"
+    exclusive: true
+  when: ubuntu_ssh_authorized_keys | length > 0

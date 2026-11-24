@@ -53,10 +53,13 @@ tenancy_ocid                = "ocid1.tenancy..."
 compartment_ocid            = "ocid1.compartment..."
 image_display_names         = { arm64 = "<exact aarch64 Minimal name>", amd64 = "<exact amd64 Minimal name>" }
 bastion_client_cidrs        = ["<operator public IP>/32", "<control center public IP>/32"]
+ssh_authorized_keys         = ["ssh-rsa ..."]
 kafka_runner_api_public_key = "-----BEGIN PUBLIC KEY-----..."
 ```
 
 `kafka_runner_api_public_key` is optional. Leave the line out until the control center exists: Terraform then creates the runner's user, group, and Bastion policy without an API key, and the runner cannot sign in. Adding the key later is the first step of [Runner keys](#runner-keys).
+
+`oci_core_instance.node` uses `lifecycle { ignore_changes = [metadata["ssh_authorized_keys"]] }` so `var.ssh_authorized_keys` is applied at launch or rebuild without destroying running Kafka VMs on later edits or 90-day key rotation. Day-2 key changes on live VMs are managed in `infra/oci/ansible/group_vars/all/ssh_authorized_keys.yml` (`ubuntu_ssh_authorized_keys`, enforced in `~ubuntu/.ssh/authorized_keys` by `roles/base` via `ansible.posix.authorized_key` with `exclusive: true` when non-empty); pre-existing empty VMs without keys can be replaced explicitly with `-replace` (for example, `terraform plan -replace='oci_core_instance.node["<vm>"]' -out tfplan`).
 
 The budget recipient is passed as `TF_VAR_budget_alert_email`, never written to a file. List the image names with `oci compute image list --compartment-id <c> --operating-system "Canonical Ubuntu" --operating-system-version "24.04 Minimal" --shape VM.Standard.A1.Flex` (and `VM.Standard.E2.1.Micro`), and pick the newest of each.
 
@@ -71,7 +74,7 @@ If A1 capacity is refused (`Out of host capacity`), retry later. Changing an A1 
 
 ### Bastion sessions for Ansible
 
-Managed SSH sessions last up to 3 hours. Create one per VM with `oci bastion session create-managed-ssh` (target user `ubuntu`), then write `infra/oci/ansible/inventory/bastion.local.yml` (gitignored):
+OCI Bastion Managed SSH is unsupported on Ampere A1 (`VM.Standard.A1.Flex`) with Ubuntu, so Ansible connects over SSH Port Forwarding sessions (which last up to 3 hours). `infra/oci/ansible/inventory/oci.yml` already uses `ProxyCommand="ssh ... -W %h:%p"`, which works directly with Port Forwarding sessions. Create one session per VM with `oci bastion session create-port-forwarding --target-private-ip <ip> --target-port 22`, then write `infra/oci/ansible/inventory/bastion.local.yml` (gitignored):
 
 ```yaml
 all:
@@ -296,20 +299,27 @@ The relay message names the playbook, the commit, and for a failure the VM and t
 
 ### Runner keys
 
-The runner's OCI API key and SSH key live on the control center under `/var/lib/nacfson-cc/credentials/kafka-runner/` (mode `0600`). The first time, create the keys on the control center, put the public API key in `kafka_runner_api_public_key`, then `terraform plan -out tfplan` and `terraform apply tfplan`. The plan adds only the API key. Rotate them every 90 days:
+The runner's OCI API key and SSH key live on the control center under `/var/lib/nacfson-cc/credentials/kafka-runner/` (mode `0600`). The first time, create the keys on the control center, put the public API key in `kafka_runner_api_public_key` and the public SSH key in `ssh_authorized_keys` (in `terraform.tfvars`) plus `ubuntu_ssh_authorized_keys` (in `infra/oci/ansible/group_vars/all/ssh_authorized_keys.yml`), then `terraform plan -out tfplan` and `terraform apply tfplan`. The plan adds only the API key.
 
-1. Create new keys on the control center.
-2. Put the new public API key in `kafka_runner_api_public_key`, then `terraform plan -out tfplan` and `terraform apply tfplan`. The old key keeps working until removed.
-3. Switch the control center to the new keys and confirm one `renew-certs` run.
-4. Remove the old API key in the OCI Console and delete the old files.
+**90-day rotation (zero-downtime two-step)**:
 
-If a key leaks, treat it as a compromise of all four Kafka VMs. The runner's OCI policy allows only Bastion sessions, but a session gives SSH as `ubuntu`, and `ubuntu` has `sudo`, so whoever holds the API key and an SSH key can be root on every VM, with the broker and controller keys and the Kafka data. It cannot change OCI instances, networks, or volumes.
+1. Create new OCI API and SSH keys on the control center.
+2. Add the new SSH public key alongside the old key in `ubuntu_ssh_authorized_keys` (`infra/oci/ansible/group_vars/all/ssh_authorized_keys.yml`) and in `terraform.tfvars` (`ssh_authorized_keys`), then merge so `kafka.site` installs the new key across all four VMs while keeping the old key active.
+3. Update `kafka_runner_api_public_key` in `terraform.tfvars`, then run a reviewed `terraform plan -out tfplan` and `terraform apply tfplan`. The old API key keeps working until removed.
+4. Switch the control center to the new OCI API and SSH keys and confirm one `renew-certs` run succeeds.
+5. Remove the old SSH public key from `ubuntu_ssh_authorized_keys` and `terraform.tfvars` and merge so `roles/base` (`exclusive: true`) removes it from `~ubuntu/.ssh/authorized_keys` on every VM.
+6. Delete the old OCI API key in the OCI Console and remove the old local key files on the control center.
 
-1. Delete the API key in the OCI Console (Identity, user `kafka-runner`, API keys), and end any open sessions on the Kafka Bastion.
-2. Rotate the runner keys as above.
-3. Rebuild the VMs one at a time (Rebuild section), so every VM gets new host, WireGuard, and Kafka keys.
-4. Issue new certificates for every VM identity (`kafka.renew-certs` with `force_renew`), and review the ACLs with `kafka-acls.sh --list` against `infra/kafka/cluster.yaml`.
-5. If the leaked GKE credential could have requested certificates, rotate the Kafka CA: the admission policy limits requests to non-CA certificates of at most 90 days, but those certificates stay valid until they expire.
+**Leaked key revocation**:
+
+If a key leaks, treat it as a compromise of all four Kafka VMs. The runner's OCI policy allows only Bastion SSH port forwarding sessions scoped to the Kafka Bastion, and SSH gives `ubuntu` with `sudo`, so whoever holds the API key and an authorized SSH key can be root on every VM, with the broker and controller keys and the Kafka data. It cannot change OCI instances, networks, or volumes.
+
+1. Delete the runner OCI API key in the OCI Console (Identity, user `kafka-runner`, API keys), and end any open sessions on the Kafka Bastion.
+2. Remove the leaked SSH public key from `ubuntu_ssh_authorized_keys` (`infra/oci/ansible/group_vars/all/ssh_authorized_keys.yml`, keeping only clean operator/new-runner keys) and `terraform.tfvars` (`ssh_authorized_keys`), and run `site.yml` (break-glass from the operator workstation if the runner key leaked) so `exclusive: true` strips the leaked key across all four VMs immediately.
+3. Create replacement runner keys and install them per the rotation steps above.
+4. Rebuild the VMs one at a time (Rebuild section), so every VM gets new host, WireGuard, and Kafka keys.
+5. Issue new certificates for every VM identity (`kafka.renew-certs` with `force_renew`), and review the ACLs with `kafka-acls.sh --list` against `infra/kafka/cluster.yaml`.
+6. If the leaked GKE credential could have requested certificates, rotate the Kafka CA: the admission policy limits requests to non-CA certificates of at most 90 days, but those certificates stay valid until they expire.
 
 ## Spec 014 handoff
 

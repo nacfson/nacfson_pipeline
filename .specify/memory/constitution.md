@@ -204,7 +204,7 @@ The log collector in the platform namespace `observability` may mount `/var/log/
    - **Scope**: the allowlisted playbooks in `infra/oci/ansible/` against the four Kafka VMs only.
    - **Approval**: a merge to `main` whose required checks passed. Operator-started actions (rolling patch, rebuild, controller replacement) also require the control center's passkey step-up.
    - **Triggers**: merges that change `infra/kafka/` or `infra/oci/ansible/`, and a daily certificate renewal.
-   - **Limits**: the runner cannot create, change, or delete OCI resources; its OCI policy allows only managed SSH sessions on the one Kafka Bastion as user `ubuntu`. Terraform stays operator-run from a reviewed saved plan. Every run first refuses a degraded cluster and changes one VM at a time.
+   - **Limits**: the runner cannot create, change, or delete OCI resources; its OCI policy allows only managed SSH sessions on the one Kafka Bastion as user `ubuntu` (amended by Amendment 3.1.0 for SSH port forwarding). Terraform stays operator-run from a reviewed saved plan. Every run first refuses a degraded cluster and changes one VM at a time.
 6. The runner identity MAY create `CertificateRequest`s and Events in `oci-link`. Its private keys are created on the control center and kept there, never in Git. A `ValidatingAdmissionPolicy` limits every `CertificateRequest` in `oci-link` to issuer `ClusterIssuer/kafka-mtls-ca`, `isCA` unset, a duration of at most 2160h, and the usages digital signature, client authentication, and server authentication. The policy cannot read the subject or SANs inside the request, and the runner legitimately requests broker and controller certificates, so the runner can obtain a certificate for any Kafka principal, super users included. The runner also holds root on the Kafka VMs through the Bastion. A leak of either runner credential is therefore handled as a compromise of those VMs and of the Kafka CA's issued certificates.
 
 **Impact**:
@@ -236,4 +236,24 @@ The log collector in the platform namespace `observability` may mount `/var/log/
 
 **Maintainer approval**: Approved by the repository maintainer with the merge of Spec 014 design PR #183 (`2026-11-21`). Merging this amendment's pull request records formal approval of version 3.0.0.
 
-**Version**: 3.0.0 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-11-21
+## Amendment 3.1.0
+
+**Rationale**: OCI Bastion Managed SSH sessions are officially unsupported on Ampere A1 (`VM.Standard.A1.Flex`) running Ubuntu and timed out on all four Ubuntu 24.04 Minimal VMs. Switching Spec 013 Bastion access to SSH port forwarding sessions removes the `oracle-cloud-agent` Bastion plugin dependency and replaces the Managed-SSH-only `target.bastion-session.username = 'ubuntu'` IAM condition. OCI Bastion IAM policies support only four condition variables (`target.bastion.ocid`, `target.bastion.name`, `target.bastion-session.username`, `target.resource.ocid`) and expose no variable for target port or session type (`target.resource.ocid` cannot restrict target ports and can interfere with session read/delete calls), so `kafka-runner` scopes `use bastion` and `manage bastion-session` strictly by `target.bastion.ocid` on the single Kafka Bastion.
+
+**Amended Exception (updates Amendment 2.5.0 Exception 5 — Automated Ansible path, Limits)**:
+
+- `kafka-runner` OCI policy grants `use bastion` and `manage bastion-session` scoped to `target.bastion.ocid` on the single Kafka Bastion (no `username` condition) plus read-only lookup on `instances`, `vcn`, `subnets`, `vnic-attachments`, and `vnics` (removing `read instance-agent-plugins`; still zero `manage`/`use` on compute, network, or volume resources).
+- Port-forwarding sessions can reach TCP ports reachable from the Bastion within subnet `10.200.0.0/24` (including Kafka `9092–9093` and Loki `3100` where reachable). Compensating controls remain enforced: Kafka `9092–9093` still requires `kafka-mtls-ca` mutual TLS, Loki `3100` restricts ingress to `10.200.0.11/32` (`a1-1`) plus mTLS, SSH `:22` requires a public key in `~ubuntu/.ssh/authorized_keys`, and Amendment 2.5.0 Exception 6 already models a compromised runner credential as a compromise of all four Kafka VMs (`ubuntu` holds `sudo`).
+- Launch-time SSH public keys are injected via `metadata.ssh_authorized_keys` with `lifecycle { ignore_changes = [metadata["ssh_authorized_keys"]] }` so key edits never force-replace running VMs; day-2 key additions, 90-day rotations, and leak revocations are converged across all four VMs via `infra/oci/ansible/roles/base` (`ansible.posix.authorized_key` with `exclusive: true`, guarded by `when: ubuntu_ssh_authorized_keys | length > 0`).
+
+**Impact**:
+
+- Security: Narrowed to Bastion OCID + VM SSH key auth + mTLS. Project namespaces and GKE secrets are unchanged; `kafka-runner` still holds zero `manage`/`use` permissions on compute, network, or volume resources.
+- Resource quota: Unchanged.
+- Portability: Unchanged.
+
+**Migration**: Replace empty bootstrap VMs explicitly with `-replace` once `ssh_authorized_keys` is set in `terraform.tfvars`; populate `ubuntu_ssh_authorized_keys` in `infra/oci/ansible/group_vars/all/ssh_authorized_keys.yml` so Ansible converges `~ubuntu/.ssh/authorized_keys` on subsequent runs.
+
+**Maintainer approval**: Approved by the repository maintainer on 2026-11-24. Merging this amendment's pull request records formal approval of version 3.1.0.
+
+**Version**: 3.1.0 | **Ratified**: 2026-10-01 | **Last Amended**: 2026-11-24
