@@ -1,6 +1,6 @@
 ---
 name: code-review
-description: Run the multi-agent fresh-context code review pipeline aligned with REVIEW.md and record a verified review receipt via scripts/review-cycle.py.
+description: Run the multi-agent fresh-context code review pipeline aligned with REVIEW.md and record a verified review receipt via scripts/hooks/review-cycle.py.
 compatibility: Works in Antigravity (agy) and compatible multi-agent harnesses.
 ---
 
@@ -35,8 +35,8 @@ Instead of downgrading to smaller model families, keep the primary models and co
    - Default scope is `staged` (or `worktree` / `branch` if specified in `$ARGUMENTS`).
    - Run domain verification and path-based risk classification:
      ```bash
-     python3 scripts/review-cycle.py verify --scope staged --json
-     python3 scripts/review-cycle.py classify-risk --scope staged --json
+     python3 scripts/hooks/review-cycle.py verify --scope staged --json
+     python3 scripts/hooks/review-cycle.py classify-risk --scope staged --json
      ```
 
 2. **Stage 0 — Diff Simplification & End-to-End Behavior Check**:
@@ -58,7 +58,7 @@ Instead of downgrading to smaller model families, keep the primary models and co
 5. **Stage 3 — Persist Verified Receipt & Check Gate**:
    - Record the verified payload and verify the gate status:
      ```bash
-     python3 scripts/review-cycle.py record-receipt --scope staged --input - <<'EOF'
+     python3 scripts/hooks/review-cycle.py record-receipt --scope staged --input - <<'EOF'
      {
       "agent_harness": "agy",
       "scope": "staged",
@@ -66,12 +66,12 @@ Instead of downgrading to smaller model families, keep the primary models and co
        "classifier2_override": null,
        "verification": {
          "passed": true,
-         "commands_run": ["python3 scripts/review-cycle.py verify --scope staged"]
+         "commands_run": ["python3 scripts/hooks/review-cycle.py verify --scope staged"]
        },
        "findings": []
      }
      EOF
-    python3 scripts/review-cycle.py check-gate --scope staged --require-pipeline code-review
+    python3 scripts/hooks/review-cycle.py check-gate --scope staged --require-pipeline code-review
      ```
    - The commit hooks reject a receipt whose `pipeline` is not `code-review`. Set that field only after the stages above have run. The hook checks the field; it cannot prove these stages ran if you set the field yourself.
    - Begin the final response with the standard `REVIEW.md` summary header:

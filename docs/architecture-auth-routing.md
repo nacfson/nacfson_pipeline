@@ -115,11 +115,11 @@ Why this is allowed although spec 004 R3 bans `postBuild`:
 - `deploy/platform/ingress/` contains no other `${`, so none of those cases apply.
   R3 now has a narrow amendment: only layer `ingress`, only `AUTH_HOST`.
 
-Guard rails in `scripts/render-invariants.py`:
+Guard rails in `scripts/ci/render-invariants.py`:
 - Invariant 1: `postBuild` allowed only on `ingress`, only `substitute`, only `AUTH_HOST`, non-empty.
 - Invariant 9: no rendered IngressRoute `match` with an unresolved `${` or an empty `Host()`.
 
-Verified with `scripts/render-validate.sh` on both clusters, plus negative tests
+Verified with `scripts/ci/render-validate.sh` on both clusters, plus negative tests
 (postBuild on `identity`, extra variable, empty `AUTH_HOST`, removed `postBuild`) that all fail.
 
 Side effect: the old `local-k3s` patch allowed `/realms/platform/broker/google/endpoint`,
@@ -139,7 +139,7 @@ route hosts and the Keycloak realm JSON still use per-cluster patches.
 | D | `gateway/` `/auth` | Return `302` to `/oauth/start?return=<url>` for browser navigations. Keep `401` JSON for API calls. Add tests. |
 | E | Project_PN frontend | Sign-in button navigates to `<EXPO_PUBLIC_AUTH_HOST>/oauth/start?return=<origin>/` (Project_PN PR #67, pending merge). Chosen over a `/login` route for now. |
 | F | Project_PN `packages/api/src/client.ts` | Read the response body once. A non-refreshed 401 used to throw `body stream already read`, so the SPA showed "Could not connect to the backend server" (Project_PN PR #67, pending merge). |
-| G | FE `startupProbe` and `scripts/smoke-auth-chain.sh` | Startup probe uses `/api/auth/language-options`; the smoke script checks the public chain (spec 007 amendment). |
+| G | FE `startupProbe` and `scripts/verify/smoke-auth-chain.sh` | Startup probe uses `/api/auth/language-options`; the smoke script checks the public chain (spec 007 amendment). |
 
 Verification after A and B: open
 `https://auth.nacfson.cloud/oauth/start?return=https://pn.nacfson.cloud/` in a

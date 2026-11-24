@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-SCRIPT = os.path.join(REPO, "scripts", "vault-reconcile.sh")
+SCRIPT = os.path.join(REPO, "scripts", "vault", "vault-reconcile.sh")
 
 STATUS_FIXTURES = os.path.join(REPO, "tests", "fixtures", "openbao", "2.0.0", "status")
 

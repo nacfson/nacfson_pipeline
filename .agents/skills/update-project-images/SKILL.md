@@ -97,10 +97,10 @@ and in the summary, `validation_skipped: true` marks the image, with empty `plat
 
 ```bash
 python3 -m unittest discover tests/preflight
-./scripts/render-validate.sh local-k3s
-./scripts/render-validate.sh gke
-./scripts/render-validate.sh vps-k3s
-python3 scripts/check-arch-doc-sync.py --worktree
+./scripts/ci/render-validate.sh local-k3s
+./scripts/ci/render-validate.sh gke
+./scripts/ci/render-validate.sh vps-k3s
+python3 scripts/hooks/check-arch-doc-sync.py --worktree
 ```
 
 Run the skills tests only when the helper changed:

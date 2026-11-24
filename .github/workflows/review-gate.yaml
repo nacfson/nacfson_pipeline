@@ -28,13 +28,13 @@ jobs:
 
       - name: Run review-cycle eval suite
         run: |
-          python3 scripts/review-cycle.py eval
+          python3 scripts/hooks/review-cycle.py eval
 
       - name: Classify branch risk tier and inspect circuit breaker
         run: |
-          python3 scripts/review-cycle.py classify-risk --scope branch
-          python3 scripts/review-cycle.py circuit-breaker --json
+          python3 scripts/hooks/review-cycle.py classify-risk --scope branch
+          python3 scripts/hooks/review-cycle.py circuit-breaker --json
 
       - name: Verify architecture handbook synchronization
         run: |
-          python3 scripts/check-arch-doc-sync.py --worktree
+          python3 scripts/hooks/check-arch-doc-sync.py --worktree

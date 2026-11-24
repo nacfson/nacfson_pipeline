@@ -5,14 +5,24 @@ const plugin = {
   id: "nacfson-arch-doc-sync",
   server: async (input) => {
     const repoRoot = input?.directory || process.cwd();
-    const checkerPath = path.join(repoRoot, "scripts", "check-arch-doc-sync.py");
-    const reviewCyclePath = path.join(repoRoot, "scripts", "review-cycle.py");
+    const checkerPath = path.join(repoRoot, "scripts", "hooks", "check-arch-doc-sync.py");
+    const reviewCyclePath = path.join(repoRoot, "scripts", "hooks", "review-cycle.py");
+    const cliGuardPath = path.join(repoRoot, "scripts", "hooks", "check-cluster-cli-guard.py");
 
     return {
       "tool.execute.before": async (event, output) => {
         const toolName = String(event?.tool || "");
         if (toolName !== "bash" && toolName !== "shell") return;
         const cmd = String(output?.args?.command || "");
+        try {
+          execFileSync("python3", [cliGuardPath, "--command", cmd], {
+            cwd: repoRoot,
+            stdio: "pipe",
+          });
+        } catch (err) {
+          const stderr = err?.stderr ? String(err.stderr).trim() : String(err);
+          throw new Error(stderr || "[CLUSTER-CLI GUARD] Blocked direct cluster/infra CLI command.");
+        }
         if (!cmd.includes("git commit")) return;
 
         try {

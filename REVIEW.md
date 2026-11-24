@@ -17,7 +17,7 @@ Reviewers MUST focus on concrete failure mechanisms specific to each subsystem:
 - **`deploy/projects/` & `clusters/`**:
   - Breaking $1/n$ resource budgets, missing Guaranteed QoS (`requests == limits`), privileged or root containers (`runAsNonRoot: true` required), non-`ClusterIP` services, mutable image tags instead of immutable `@sha256:...` digests, or coupled liveness/readiness probes (`livenessProbe` must remain process-local while `startupProbe`/`readinessProbe` verify upstream hops).
 - **`docs/`, `contracts/`, & `specs/`**:
-  - Documentation or contract statements that contradict runtime manifests, `scripts/platform-preflight.py`, `scripts/render-invariants.py`, or `docs/platform-architecture.html`.
+  - Documentation or contract statements that contradict runtime manifests, `scripts/ci/platform-preflight.py`, `scripts/ci/render-invariants.py`, or `docs/platform-architecture.html`.
 - **All code (Constitution v2.4.0, "No Comments in Code")**:
   - A comment added to code: line, block, or trailing comments, commented-out code, Python docstrings, Go doc comments, or a comment inside code embedded in a manifest or workflow. Report it as `Important`; the explanation belongs in a Markdown document. Not findings: shebang lines, Go compiler directives (`//go:build`, `//go:embed`), container build parser directives (`# syntax=`), linter or analyzer directives (`# shellcheck`, `# noqa`, `//nolint`), text inside data such as printed help output, generated files (`.terraform.lock.hcl`, `go.sum`), and third-party files vendored unchanged from upstream (`deploy/platform/cni/upstream/`, `deploy/platform/cert-manager/upstream/`, `.specify/scripts/`).
 
@@ -59,7 +59,7 @@ Automated review hunters MUST skip vendored upstream manifests unless a security
 
 ## 5. Pre-Commit Gate
 
-A `git commit` is blocked until the staged diff has a receipt with `"pipeline": "code-review"`. The code-review skill sets that field after its review stages. The agent hooks (`scripts/universal-agent-hook.py`, `.omp/extensions/arch-doc-sync.ts`, `.opencode/plugins/arch-doc-sync.js`) deny the commit and tell the agent to run [`.agents/skills/code-review/SKILL.md`](.agents/skills/code-review/SKILL.md) instead of calling `record-receipt` alone. The field is that skill's completion marker. The hook cannot prove subagents ran if the same agent writes the receipt. `.githooks/pre-commit` checks `review-cycle.py check-gate --scope staged --require-pipeline code-review`.
+A `git commit` is blocked until the staged diff has a receipt with `"pipeline": "code-review"`. The code-review skill sets that field after its review stages. The agent hooks (`scripts/hooks/universal-agent-hook.py`, `.omp/extensions/arch-doc-sync.ts`, `.opencode/plugins/arch-doc-sync.js`) deny the commit and tell the agent to run [`.agents/skills/code-review/SKILL.md`](.agents/skills/code-review/SKILL.md) instead of calling `record-receipt` alone. The field is that skill's completion marker. The hook cannot prove subagents ran if the same agent writes the receipt. `.githooks/pre-commit` checks `review-cycle.py check-gate --scope staged --require-pipeline code-review`.
 
 The review is optional per commit, and the user decides. Before each `git commit`, an agent asks the user whether to run the code-review skill or skip it. To skip, the agent commits with `SKIP_REVIEW_GATE=1` and adds `Review: skipped at the user's request.` to the commit message. An agent never skips on its own, and one answer covers one commit only.
 

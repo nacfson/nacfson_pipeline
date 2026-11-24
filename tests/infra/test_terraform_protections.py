@@ -11,7 +11,7 @@ INFRA = REPO_ROOT / "infra" / "gcp"
 RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "gke-terraform.md"
 
 _spec = importlib.util.spec_from_file_location(
-    "check_gcp_shared_values", REPO_ROOT / "scripts" / "check-gcp-shared-values.py")
+    "check_gcp_shared_values", REPO_ROOT / "scripts" / "ci" / "check-gcp-shared-values.py")
 _checker = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_checker)
 strip_hcl_comments = _checker.strip_hcl_comments

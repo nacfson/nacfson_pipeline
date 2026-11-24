@@ -8,7 +8,7 @@ from unittest.mock import patch, MagicMock
 import yaml
 
 BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-SCRIPT_PATH = os.path.join(BASE, "scripts", "check-version-labels.py")
+SCRIPT_PATH = os.path.join(BASE, "scripts", "ci", "check-version-labels.py")
 
 spec = importlib.util.spec_from_file_location("check_version_labels", SCRIPT_PATH)
 cvl = importlib.util.module_from_spec(spec)

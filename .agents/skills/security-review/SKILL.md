@@ -1,6 +1,6 @@
 ---
 name: security-review
-description: Execute a deep security and trust-boundary audit using fresh subagents and record the security review receipt via scripts/review-cycle.py.
+description: Execute a deep security and trust-boundary audit using fresh subagents and record the security review receipt via scripts/hooks/review-cycle.py.
 compatibility: Works in Antigravity (agy) and compatible multi-agent harnesses.
 ---
 
@@ -16,8 +16,8 @@ Perform a focused security audit across authentication (`gateway/`, `deploy/plat
 
 1. **Run Deterministic Verification & Risk Classification**:
    ```bash
-   python3 scripts/review-cycle.py verify --scope staged --json
-   python3 scripts/review-cycle.py classify-risk --scope staged --json
+   python3 scripts/hooks/review-cycle.py verify --scope staged --json
+   python3 scripts/hooks/review-cycle.py classify-risk --scope staged --json
    ```
 
 2. **Dispatch Security & Risk Subagents (`invoke_subagent`)**:
@@ -32,8 +32,8 @@ Perform a focused security audit across authentication (`gateway/`, `deploy/plat
 4. **Record Receipt & Enforce Gate**:
    - Persist the verified receipt and check the security gate:
      ```bash
-     python3 scripts/review-cycle.py record-receipt --scope staged --input <verified-payload.json>
-     python3 scripts/review-cycle.py check-gate --scope staged
+     python3 scripts/hooks/review-cycle.py record-receipt --scope staged --input <verified-payload.json>
+     python3 scripts/hooks/review-cycle.py check-gate --scope staged
      ```
    - Do not set `"pipeline": "code-review"`. That field is reserved for `.agents/skills/code-review/SKILL.md`. This receipt does not satisfy the commit hook.
    - Report the standard `REVIEW.md` header (`X Important, Y Security, N Nit, M Pre-existing`).

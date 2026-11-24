@@ -11,7 +11,7 @@ PORTABLE = os.path.join(BASE, "deploy", "projects", "pn", "boundary", "network-p
 KUSTOMIZATION = os.path.join(BASE, "deploy", "projects", "pn", "boundary", "kustomization.yaml")
 BACKEND = os.path.join(BASE, "deploy", "projects", "pn", "workloads", "backend-deployment.yaml")
 HANDBOOK = os.path.join(BASE, "docs", "platform-architecture.html")
-PREFLIGHT = os.path.join(BASE, "scripts", "platform-preflight.py")
+PREFLIGHT = os.path.join(BASE, "scripts", "ci", "platform-preflight.py")
 REQUIRED_EXCEPT_CIDRS = {
     "10.0.0.0/8",
     "172.16.0.0/12",

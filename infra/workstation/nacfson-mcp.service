@@ -1,0 +1,43 @@
+[Unit]
+Description=NacFson Read-Only Kubernetes Debug MCP Daemon
+After=network-online.target
+Wants=network-online.target
+ConditionPathExists=/etc/nacfson-mcp/kubeconfig
+
+[Service]
+Type=simple
+User=_nacfson-mcp
+Group=nacfson-mcp
+SupplementaryGroups=_nacfson-mcp
+RuntimeDirectory=nacfson-mcp
+RuntimeDirectoryMode=0750
+ExecStart=/usr/local/bin/nacfson-mcp --serve-unix /run/nacfson-mcp/mcp.sock --kubeconfig /etc/nacfson-mcp/kubeconfig --socket-mode 0660
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=no
+RuntimeMaxSec=2h
+ExecStopPost=+/bin/rm -f /etc/nacfson-mcp/kubeconfig
+ProtectSystem=strict
+ReadWritePaths=/etc/nacfson-mcp
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+NoNewPrivileges=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=true
+LockPersonality=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+SystemCallFilter=@system-service
+SystemCallArchitectures=native
+MemoryMax=64M
+OOMScoreAdjust=500
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

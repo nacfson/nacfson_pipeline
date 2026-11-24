@@ -68,7 +68,7 @@ kubectl exec -n vault openbao-0 -- env \
 
 Success prints the path `kv/data/platform/ghcr-pull-token` and a metadata table with `version` 2 or higher and `destroyed false`. The previous token stays as the earlier version, so you can roll back.
 
-> Do not run `scripts/vault-seed-inventory.sh --force`. It overwrites all 11 seeded secrets and hardcodes a placeholder token.
+> Do not run `scripts/vault/vault-seed-inventory.sh --force`. It overwrites all 11 seeded secrets and hardcodes a placeholder token.
 
 ### Step 4: Verify
 
@@ -115,5 +115,5 @@ Root tokens made this way do not expire. Revoke yours, and generate a new one wh
 | `'key' must be a valid hex or base64 string` | Wrong or truncated value in `UNSEAL_KEY` (for example a 40-char GitHub token) | Check `${#UNSEAL_KEY}` (about 44), paste the real unseal key, retry with the same nonce |
 | Nonce rejected | Attempt was cancelled or replaced | Run `-cancel`, then repeat from `-generate-otp` (new OTP, new nonce) |
 | Vault is sealed | Not yet unsealed | `$BAO operator unseal`, then retry |
-| `kv put` refused after a restore | Post-restore safety gate (`RESTORATION_SAFETY_GATE`, see `scripts/vault-reconcile.sh`) | Resolve via the reconcile procedure |
+| `kv put` refused after a restore | Post-restore safety gate (`RESTORATION_SAFETY_GATE`, see `scripts/vault/vault-reconcile.sh`) | Resolve via the reconcile procedure |
 | `REJECTED` from adoption check | `ghcr.io` refused the token | Check scope `read:packages`, typos, expiry; the old token remains active |

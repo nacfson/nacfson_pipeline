@@ -27,7 +27,7 @@ For any project with canonical slug `<slug>` (lowercase alphanumeric/underscore,
 | **Kubernetes Namespace** | `proj-<slug>` (e.g. `proj-pn`) | `deploy/projects/<slug>/boundary/namespace.yaml` |
 | **PostgreSQL Database** | `proj_<slug>` (e.g. `proj_pn`) | [`postgres-init-job.yaml`](../deploy/platform/database/postgres-init-job.yaml) (`PROJECT_SLUGS`) |
 | **PostgreSQL Restricted Role** | `user_<slug>` (e.g. `user_pn`) | [`postgres-init-job.yaml`](../deploy/platform/database/postgres-init-job.yaml) (`PROJECT_SLUGS`) |
-| **OpenBao Secret Path** | `kv/database/<slug>-user` | [`scripts/vault-seed-inventory.sh`](../scripts/vault-seed-inventory.sh) |
+| **OpenBao Secret Path** | `kv/database/<slug>-user` | [`scripts/vault/vault-seed-inventory.sh`](../scripts/vault/vault-seed-inventory.sh) |
 | **Workload Caller Identity** | `project:<slug>:workload:<component>` (e.g. `project:pn:workload:backend`) | Project Deployment `DB_USER` / `DB_TOKEN` / `DATABASE_URL` |
 | **Proxy Registration** | `<slug>` in `ALLOWED_PROJECTS` | [`deploy/platform/vault-proxies/db-proxy.yaml`](../deploy/platform/vault-proxies/db-proxy.yaml) |
 
@@ -55,7 +55,7 @@ env:
     value: "file:///app/db/migrations"
 ```
 
-### Preflight Enforcement ([`scripts/platform-preflight.py`](../scripts/platform-preflight.py))
+### Preflight Enforcement ([`scripts/ci/platform-preflight.py`](../scripts/ci/platform-preflight.py))
 `check_database_and_readiness_contract` rejects any candidate revision where a project container:
 1. Sets `DB_HOST` to anything other than `vault-db-proxy.vault.svc` (direct connections to `postgres-service.identity.svc` are prohibited).
 2. Sets `DB_NAME` to anything other than `proj_<slug>` (e.g., `keycloak` or another project's database).
@@ -138,24 +138,24 @@ func RegisterHealthHandlers(mux *http.ServeMux, pool *sql.DB) {
 
 ---
 
-## 6. Standardized Pipeline Dump Import & Export (`scripts/db-migrate-dump.sh`)
+## 6. Standardized Pipeline Dump Import & Export (`scripts/ops/db-migrate-dump.sh`)
 
 In Kubernetes GitOps (`FluxCD`), **Schema Migrations (DDL)** and **Data Dump Restores (DML / State)** are strictly separated:
 1. **Schema Migrations (Continuous / Automated)**: Idempotent SQL migrations (`db/migrations/*.sql`) run automatically on backend startup from `MIGRATIONS_PATH`.
-2. **Data Dump Imports (On-Demand 5-Stage Pipeline Command)**: Full or data-only dumps (`.dump`, `.dump.gz`, `.sql`, `.sql.gz`, `.tar.gz`) are **never** reconciled continuously by Flux (which would overwrite live data on every sync) and **never** committed to Git. Instead, use the project-agnostic pipeline script [`scripts/db-migrate-dump.sh`](../scripts/db-migrate-dump.sh), which executes a 5-stage zero-plaintext workflow over `kubectl exec -i` without exposing `PGPASSWORD` on the workstation:
+2. **Data Dump Imports (On-Demand 5-Stage Pipeline Command)**: Full or data-only dumps (`.dump`, `.dump.gz`, `.sql`, `.sql.gz`, `.tar.gz`) are **never** reconciled continuously by Flux (which would overwrite live data on every sync) and **never** committed to Git. Instead, use the project-agnostic pipeline script [`scripts/ops/db-migrate-dump.sh`](../scripts/ops/db-migrate-dump.sh), which executes a 5-stage zero-plaintext workflow over `kubectl exec -i` without exposing `PGPASSWORD` on the workstation:
 
 ```bash
 # 1. Import a local dump (.dump, .dump.gz, .sql, .sql.gz, .tar.gz) into proj_<slug>:
-./scripts/db-migrate-dump.sh --project pn --file /path/to/dump.dump.gz --mode full --yes
+./scripts/ops/db-migrate-dump.sh --project pn --file /path/to/dump.dump.gz --mode full --yes
 
 # 2. Import data-only into an already-migrated schema:
-./scripts/db-migrate-dump.sh --project pn --file /path/to/dump.dump.gz --mode data --yes
+./scripts/ops/db-migrate-dump.sh --project pn --file /path/to/dump.dump.gz --mode data --yes
 
 # 3. Export proj_<slug> from the cluster to a local custom dump (.dump.gz + .sha256):
-./scripts/db-migrate-dump.sh --project pn --export /tmp/proj_pn_backup.dump.gz
+./scripts/ops/db-migrate-dump.sh --project pn --export /tmp/proj_pn_backup.dump.gz
 ```
 
-### What `scripts/db-migrate-dump.sh` Automates:
+### What `scripts/ops/db-migrate-dump.sh` Automates:
 1. **Stage 1 — Pre-Flight Archive & Checksum Validation**: Verifies any `.sha256` sidecar, extracts `.gz`/`.tar.gz` in an ephemeral workdir, and auto-detects PostgreSQL custom format (`PGDMP` magic header) vs. plain SQL.
 2. **Stage 2 — Automatic Pre-Migration Safety Snapshot**: Streams a pre-restore backup inside `postgres-0` (`/tmp/pre_migrate_proj_<slug>_<timestamp>.dump.gz`) before mutating the database.
 3. **Stage 3 — Connection Quiesce & Streamed Restore**: Terminates active `proj_<slug>` connections (in `full` mode) and streams `pg_restore` or `psql` directly over `stdin` (`kubectl exec -i`) as `-U user_<slug> -d proj_<slug>`.

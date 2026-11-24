@@ -1,6 +1,6 @@
 ---
 name: pre-pr-verify
-description: Run end-to-end pre-PR verification, risk classification, multi-agent review, and receipt gate validation via scripts/review-cycle.py.
+description: Run end-to-end pre-PR verification, risk classification, multi-agent review, and receipt gate validation via scripts/hooks/review-cycle.py.
 compatibility: Works in Antigravity (agy) and compatible multi-agent harnesses.
 ---
 
@@ -16,9 +16,9 @@ Validate a feature branch (`--scope branch` or `--scope staged`) before opening 
 
 1. **Run Domain Verification & Risk Classification**:
    ```bash
-   python3 scripts/review-cycle.py verify --scope branch --json
-   python3 scripts/review-cycle.py classify-risk --scope branch --json
-   python3 scripts/review-cycle.py eval --json
+   python3 scripts/hooks/review-cycle.py verify --scope branch --json
+   python3 scripts/hooks/review-cycle.py classify-risk --scope branch --json
+   python3 scripts/hooks/review-cycle.py eval --json
    ```
 
 2. **Dispatch Fresh-Context Review Subagents (`invoke_subagent`)**:
@@ -29,8 +29,8 @@ Validate a feature branch (`--scope branch` or `--scope staged`) before opening 
 
 3. **Record Receipt & Print Markdown PR Summary**:
    ```bash
-   python3 scripts/review-cycle.py record-receipt --scope staged --input <verified-payload.json>
-   python3 scripts/review-cycle.py check-gate --scope staged
-   python3 scripts/review-cycle.py summary --markdown
+   python3 scripts/hooks/review-cycle.py record-receipt --scope staged --input <verified-payload.json>
+   python3 scripts/hooks/review-cycle.py check-gate --scope staged
+   python3 scripts/hooks/review-cycle.py summary --markdown
    ```
    - Do not set `"pipeline": "code-review"`. Only the code-review skill is supposed to set that marker. The commit hook checks the field; it does not prove which skill wrote it.

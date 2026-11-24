@@ -115,8 +115,8 @@ class ControllerWipe(unittest.TestCase):
 class EmptyRecreate(unittest.TestCase):
     def test_recreated_cluster_has_every_declared_topic_and_refuses_implicit_ones(self):
         root = str(harness.REPO_ROOT)
-        subprocess.run(["./scripts/kafka-rehearsal.sh", "down"], cwd=root, capture_output=True, text=True, check=True)
-        subprocess.run(["./scripts/kafka-rehearsal.sh", "up"], cwd=root, capture_output=True, text=True, check=True, timeout=900)
+        subprocess.run(["./scripts/ops/kafka-rehearsal.sh", "down"], cwd=root, capture_output=True, text=True, check=True)
+        subprocess.run(["./scripts/ops/kafka-rehearsal.sh", "up"], cwd=root, capture_output=True, text=True, check=True, timeout=900)
         doc = harness.declarations()
 
         def run(cmd):

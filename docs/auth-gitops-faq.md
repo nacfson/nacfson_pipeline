@@ -130,7 +130,7 @@ Project_PN PR #67 (pending merge).
 **Q: Why were all Kubernetes probes green while sign-in was broken?**
 Probes run inside the pod. FE `/healthz` is a separate nginx block from `/api/`, and the
 broken parts (Traefik route, gateway, Keycloak) are outside the pod. FE `startupProbe` now
-uses `/api/auth/language-options`, and `scripts/smoke-auth-chain.sh` checks the public chain.
+uses `/api/auth/language-options`, and `scripts/verify/smoke-auth-chain.sh` checks the public chain.
 
 **Q: Can I pin the image digest from `docker images` in the manifests?**
 No. That is a local image ID, and the image is not in GHCR, so the pod would hit

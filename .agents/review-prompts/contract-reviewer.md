@@ -16,7 +16,7 @@ Verify that changes across manifests, code, contracts (`contracts/CONTRACT_*.md`
    - `contracts/CONTRACT_TLS_INGRESS.md`: Platform-owned edge TLS in `deploy/platform/tls/`; zero TLS secrets or `tls.secretName` in `proj-*`.
    - `contracts/CONTRACT_ISOLATION_BUDGET.md`: Restricted Pod Security, `ClusterIP`-only services, Guaranteed QoS, and deterministic $1/n$ resource slicing.
 3. **Mandatory Architecture Handbook Sync (`docs/platform-architecture.html`)**:
-   - Whenever any file under `deploy/`, `clusters/`, `gateway/`, `services/`, `bootstrap/`, `contracts/`, `specs/`, `.specify/memory/constitution.md`, `scripts/platform-preflight.py`, `scripts/render-invariants.py`, `ARCHITECTURE.md`, or `DEPENDENCIES.md` changes, verify `docs/platform-architecture.html` is updated in lockstep.
+   - Whenever any file under `deploy/`, `clusters/`, `gateway/`, `services/`, `bootstrap/`, `contracts/`, `specs/`, `.specify/memory/constitution.md`, `scripts/ci/platform-preflight.py`, `scripts/ci/render-invariants.py`, `ARCHITECTURE.md`, or `DEPENDENCIES.md` changes, verify `docs/platform-architecture.html` is updated in lockstep.
 
 ## 3. Required JSON Finding Schema
 

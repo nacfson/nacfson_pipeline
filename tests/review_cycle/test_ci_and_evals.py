@@ -41,12 +41,12 @@ class TestCiGovernanceAndEvals(unittest.TestCase):
         )
         self.assertIn("0 3 * * *", rg_text)
         self.assertIn("python3 -m unittest discover tests/review_cycle", rg_text)
-        self.assertIn("python3 scripts/review-cycle.py eval", rg_text)
-        self.assertIn("python3 scripts/review-cycle.py classify-risk --scope branch", rg_text)
+        self.assertIn("python3 scripts/hooks/review-cycle.py eval", rg_text)
+        self.assertIn("python3 scripts/hooks/review-cycle.py classify-risk --scope branch", rg_text)
 
     def test_eval_suite_runs_and_scores_100_percent(self):
         proc = subprocess.run(
-            ["python3", str(ROOT / "scripts/review-cycle.py"), "eval", "--json"],
+            ["python3", str(ROOT / "scripts/hooks/review-cycle.py"), "eval", "--json"],
             text=True,
             capture_output=True,
             cwd=ROOT,
@@ -59,7 +59,7 @@ class TestCiGovernanceAndEvals(unittest.TestCase):
         self.assertIn('"must_pass_total": 2', proc.stdout)
 
     def test_rollback_script_dry_run(self):
-        script = ROOT / "scripts/rollback-change.sh"
+        script = ROOT / "scripts/ops/rollback-change.sh"
         self.assertTrue(script.is_file())
         self.assertTrue(os.access(script, os.X_OK))
         proc = subprocess.run(

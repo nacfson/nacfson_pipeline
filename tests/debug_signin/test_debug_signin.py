@@ -7,7 +7,7 @@ import threading
 import unittest
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SPEC = importlib.util.spec_from_file_location("debug_signin", ROOT / "scripts" / "debug-signin.py")
+SPEC = importlib.util.spec_from_file_location("debug_signin", ROOT / "scripts" / "ops" / "debug-signin.py")
 ds = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(ds)
 

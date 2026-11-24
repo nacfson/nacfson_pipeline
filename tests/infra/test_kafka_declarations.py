@@ -9,7 +9,7 @@ from pathlib import Path
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = REPO_ROOT / "scripts" / "kafka-declarations.py"
+SCRIPT = REPO_ROOT / "scripts" / "ci" / "kafka-declarations.py"
 DECLARATIONS = Path("infra/kafka/cluster.yaml")
 FLUENT_BIT = Path("clusters/gke/observability/fluent-bit-kafka.conf")
 SCHEMAS = Path("tests/fixtures/strimzi-schemas")

@@ -7,10 +7,10 @@ import sys
 import unittest
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-SCRIPT = os.path.join(BASE_DIR, "scripts", "platform-preflight.py")
+SCRIPT = os.path.join(BASE_DIR, "scripts", "ci", "platform-preflight.py")
 FIXTURES = os.path.join(BASE_DIR, "tests", "preflight", "fixtures")
-if os.path.join(BASE_DIR, "scripts") not in sys.path:
-    sys.path.insert(0, os.path.join(BASE_DIR, "scripts"))
+if os.path.join(BASE_DIR, "scripts", "ci") not in sys.path:
+    sys.path.insert(0, os.path.join(BASE_DIR, "scripts", "ci"))
 from kustomize_render import kustomize_build
 
 
@@ -555,9 +555,9 @@ spec:
         self.assertIn("pn", slugs)
         self.assertIn("health", slugs)
 
-        with open(os.path.join(BASE_DIR, "scripts", "vault-seed-inventory.sh"), encoding="utf-8") as fh:
+        with open(os.path.join(BASE_DIR, "scripts", "vault", "vault-seed-inventory.sh"), encoding="utf-8") as fh:
             seed_script = fh.read()
-        with open(os.path.join(BASE_DIR, "scripts", "vault-rotate.sh"), encoding="utf-8") as fh:
+        with open(os.path.join(BASE_DIR, "scripts", "vault", "vault-rotate.sh"), encoding="utf-8") as fh:
             rotate_script = fh.read()
 
         for slug in slugs:

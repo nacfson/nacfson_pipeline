@@ -217,8 +217,8 @@ Clarification 2.4.1.
 2. Check, then open a PR:
 
    ```bash
-   python3 scripts/check-gcp-shared-values.py
-   ./scripts/render-validate.sh gke
+   python3 scripts/ci/check-gcp-shared-values.py
+   ./scripts/ci/render-validate.sh gke
    ```
 
 3. After merge: `terraform -chdir=infra/gcp/gke plan -out=change.tfplan`. The plan should show `~`
@@ -230,7 +230,7 @@ Clarification 2.4.1.
 **More copies or more memory for a service** (Flux, no Terraform)
 
 Edit `replicas` or `resources` in the service's YAML under `deploy/` (or its patch in
-`clusters/gke/layers.yaml`), run `./scripts/render-validate.sh gke`, and merge. Flux applies it
+`clusters/gke/layers.yaml`), run `./scripts/ci/render-validate.sh gke`, and merge. Flux applies it
 within about 5 minutes. If preflight fails, the service does not fit: add nodes first.
 
 ## Later: move images to Google's registry

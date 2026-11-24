@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "nacfson-debug": {
+      "command": "/usr/local/bin/nacfson-mcp",
+      "args": [
+        "--connect",
+        "/run/nacfson-mcp/mcp.sock"
+      ]
+    }
+  }
+}

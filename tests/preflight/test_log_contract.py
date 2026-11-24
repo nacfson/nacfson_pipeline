@@ -6,7 +6,7 @@ import unittest
 import yaml
 
 BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-PREFLIGHT = os.path.join(BASE, "scripts", "platform-preflight.py")
+PREFLIGHT = os.path.join(BASE, "scripts", "ci", "platform-preflight.py")
 FIXTURES = os.path.join(BASE, "tests", "preflight", "fixtures", "log_contract")
 
 

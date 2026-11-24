@@ -22,8 +22,8 @@
     "clusters/**",
     "bootstrap/**",
     ".github/workflows/**",
-    "scripts/platform-preflight.py",
-    "scripts/render-invariants.py",
+    "scripts/ci/platform-preflight.py",
+    "scripts/ci/render-invariants.py",
     ".specify/memory/constitution.md",
     "contracts/**",
     "docs/platform-architecture.html"

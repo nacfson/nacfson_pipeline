@@ -6,7 +6,7 @@ import unittest
 import yaml
 
 BASE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-PREFLIGHT = os.path.join(BASE, "scripts", "platform-preflight.py")
+PREFLIGHT = os.path.join(BASE, "scripts", "ci", "platform-preflight.py")
 AI_PROXY_YAML = os.path.join(BASE, "deploy", "platform", "vault-proxies", "ai-proxy.yaml")
 VAULT_NETPOL_YAML = os.path.join(BASE, "deploy", "platform", "vault", "network-policy.yaml")
 PN_BACKEND_YAML = os.path.join(BASE, "deploy", "projects", "pn", "workloads", "backend-deployment.yaml")

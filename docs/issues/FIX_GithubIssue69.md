@@ -1,7 +1,7 @@
 # FIX_GithubIssue69
 
 - Issue: https://github.com/nacfson/nacfson_pipeline/issues/69
-- State: OPEN. Created by scripts/sync-github-issues.py. Not analyzed.
+- State: OPEN. Created by scripts/hooks/sync-github-issues.py. Not analyzed.
 - Live contract: Not checked.
 
 ## What is wrong

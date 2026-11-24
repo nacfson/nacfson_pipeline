@@ -1117,7 +1117,7 @@
                 <span class="font-mono text-xs font-bold text-emerald-300">Spec 010 — Cilium + Hubble CNI &amp; Visual Network Observability</span>
                 <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/010-cilium-hubble-observability</span>
               </div>
-              <p class="text-xs text-slate-400 mt-1">Replaces K3s Flannel with Git-vendored Cilium <code class="text-emerald-300">v1.20.3</code> + Hubble UI <code class="text-emerald-300">v0.13.6</code>, tightens OpenBao egress via <code class="text-emerald-300">CiliumNetworkPolicy</code> (<code class="text-emerald-300">toEntities: ["kube-apiserver"]</code>), and adds <code class="text-emerald-300">scripts/open-hubble-ui.sh</code>.</p>
+              <p class="text-xs text-slate-400 mt-1">Replaces K3s Flannel with Git-vendored Cilium <code class="text-emerald-300">v1.20.3</code> + Hubble UI <code class="text-emerald-300">v0.13.6</code>, tightens OpenBao egress via <code class="text-emerald-300">CiliumNetworkPolicy</code> (<code class="text-emerald-300">toEntities: ["kube-apiserver"]</code>), and adds <code class="text-emerald-300">scripts/ops/open-hubble-ui.sh</code>.</p>
             </div>
             <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
               <div class="flex justify-between items-center">
@@ -1131,7 +1131,7 @@
                 <span class="font-mono text-xs font-bold text-cyan-300">Spec 012 — GKE Platform Portability &amp; Full-State Cutover</span>
                 <span class="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">specs/012-gke-platform-migration</span>
               </div>
-              <p class="text-xs text-slate-400 mt-1">Adds declarative <code class="text-cyan-300">clusters/gke/</code> Design 1 overlay in GCP project <code class="text-cyan-300">nacfson-pipeline</code> (<code class="text-cyan-300">asia-northeast3-a</code> Seoul, <code class="text-cyan-300">1 × e2-standard-2</code> On-Demand <code class="text-cyan-300">ondemand-core</code> + <code class="text-cyan-300">1 × e2-small</code> Spot <code class="text-cyan-300">spot-controllers</code> with <code class="text-cyan-300">--logging=NONE --monitoring=NONE</code>, <code class="text-cyan-300">303m / 418Mi</code> per-project <code class="text-cyan-300">1/n</code> slice, Traefik <code class="text-cyan-300">v3.3.4</code> (edge later moved to a single L4 LoadBalancer by Spec 015), keeping <code class="text-cyan-300">keycloak</code> <code class="text-cyan-300">832Mi</code> + all live projects/PVCs 24/7 on On-Demand and offloading only <code class="text-cyan-300">cert-manager</code> + <code class="text-cyan-300">flux-system</code> to Spot) alongside cloud-agnostic <code class="text-cyan-300">clusters/local-k3s/</code>, Cloud Build + public <code class="text-cyan-300">GAR</code> (<code class="text-cyan-300">asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public</code>) <code class="text-cyan-300">@sha256</code> pulls retiring <code class="text-cyan-300">vault-registry-proxy</code>, portable <code class="text-cyan-300">networking.k8s.io/v1</code> <code class="text-cyan-300">NetworkPolicy</code> rules, Fluent Bit <code class="text-cyan-300">/var/lib/fluent-bit-state</code> (<code class="text-cyan-300">256M</code> cap) + <code class="text-cyan-300">[OUTPUT] kafka</code>, Constitution Amendment <code class="text-cyan-300">2.3.0</code>, and <code class="text-cyan-300">scripts/cutover-bundle.sh</code> full-state restore + <code class="text-cyan-300">gcpckms</code> auto-unseal (<code class="text-cyan-300">T001</code>–<code class="text-cyan-300">T035</code> in <code class="text-cyan-300">tasks.md</code>).</p>
+              <p class="text-xs text-slate-400 mt-1">Adds declarative <code class="text-cyan-300">clusters/gke/</code> Design 1 overlay in GCP project <code class="text-cyan-300">nacfson-pipeline</code> (<code class="text-cyan-300">asia-northeast3-a</code> Seoul, <code class="text-cyan-300">1 × e2-standard-2</code> On-Demand <code class="text-cyan-300">ondemand-core</code> + <code class="text-cyan-300">1 × e2-small</code> Spot <code class="text-cyan-300">spot-controllers</code> with <code class="text-cyan-300">--logging=NONE --monitoring=NONE</code>, <code class="text-cyan-300">303m / 418Mi</code> per-project <code class="text-cyan-300">1/n</code> slice, Traefik <code class="text-cyan-300">v3.3.4</code> (edge later moved to a single L4 LoadBalancer by Spec 015), keeping <code class="text-cyan-300">keycloak</code> <code class="text-cyan-300">832Mi</code> + all live projects/PVCs 24/7 on On-Demand and offloading only <code class="text-cyan-300">cert-manager</code> + <code class="text-cyan-300">flux-system</code> to Spot) alongside cloud-agnostic <code class="text-cyan-300">clusters/local-k3s/</code>, Cloud Build + public <code class="text-cyan-300">GAR</code> (<code class="text-cyan-300">asia-northeast3-docker.pkg.dev/nacfson-pipeline/nacfson-public</code>) <code class="text-cyan-300">@sha256</code> pulls retiring <code class="text-cyan-300">vault-registry-proxy</code>, portable <code class="text-cyan-300">networking.k8s.io/v1</code> <code class="text-cyan-300">NetworkPolicy</code> rules, Fluent Bit <code class="text-cyan-300">/var/lib/fluent-bit-state</code> (<code class="text-cyan-300">256M</code> cap) + <code class="text-cyan-300">[OUTPUT] kafka</code>, Constitution Amendment <code class="text-cyan-300">2.3.0</code>, and <code class="text-cyan-300">scripts/ops/cutover-bundle.sh</code> full-state restore + <code class="text-cyan-300">gcpckms</code> auto-unseal (<code class="text-cyan-300">T001</code>–<code class="text-cyan-300">T035</code> in <code class="text-cyan-300">tasks.md</code>).</p>
             </div>
             <div class="bg-slate-950/90 border border-slate-800 rounded-xl p-3">
               <div class="flex justify-between items-center">
@@ -1340,7 +1340,7 @@
         desc: 'GKE runs 1 × e2-standard-2 On-Demand + 1 × e2-small Spot in asia-northeast3-a with managed Dataplane V2 eBPF; local-k3s runs K3s v1.35.9+k3s1 with Git-vendored Cilium v1.20.3 (policy-cidr-match-mode: "nodes") and Hubble UI.',
         bullets: [
           '➔ Enforces identical standard networking.k8s.io/v1 NetworkPolicies via kernel eBPF across both environments.',
-          '➔ Hubble UI & Relay on K3s are ClusterIP-only; accessed privately via ./scripts/open-hubble-ui.sh (:12000).',
+          '➔ Hubble UI & Relay on K3s are ClusterIP-only; accessed privately via ./scripts/ops/open-hubble-ui.sh (:12000).',
           '➔ Worker nodes hold ZERO registry pull secrets; images pull by @sha256 from public GAR / GHCR.'
         ],
         path: 'clusters/gke/capacity.yaml'
@@ -1415,7 +1415,7 @@
           '➔ postgres-init-job provisions per-project databases and roles using credentials from OpenBao.',
           '➔ postStart waits for TCP :5432 pg_isready + scram-sha-256 pg_hba.conf before inserting PROJECT_SLUGS rules and reloading.',
           '➔ Tenant pods CANNOT reach Postgres directly; NetworkPolicy forces traffic through vault-db-proxy.',
-          '➔ scripts/db-migrate-dump.sh (--keycloak | --project) streams SHA-256 verified logical dumps.'
+          '➔ scripts/ops/db-migrate-dump.sh (--keycloak | --project) streams SHA-256 verified logical dumps.'
         ],
         path: 'deploy/platform/database/postgres-statefulset.yaml'
       },
@@ -1796,12 +1796,12 @@
         },
         {
           title: '4. Full-State Cutover Bundle Restore & Cloud KMS Auto-Unseal',
-          spec: 'Spec 002, 005 & 012 · scripts/cutover-bundle.sh',
+          spec: 'Spec 002, 005 & 012 · scripts/ops/cutover-bundle.sh',
           from: 'Operator Break-Glass CLI',
           to: 'OpenBao (ns: vault) & PostgreSQL (ns: identity)',
           proto: 'cutover-bundle.sh export | verify | restore -> gcpckms migrate',
-          desc: 'On local-k3s, vault-init.sh/vault-unseal.sh unseals OpenBao with Shamir keys. For GKE Gate 4 cutover, cutover-bundle.sh verifies SHA-256 checksums, pre-seeds TLS secrets, suspends Flux vault and identity, restores the Raft snapshot under the live config minus its seal stanza, migrates OpenBao to Cloud KMS (gcpckms) auto-unseal (checked by recovery_seal=true, since OpenBao 2.0 reports type=shamir after migration) and records the bundle digest in vault/cutover-restore-state, re-binds K8s SA auth, resumes vault and waits for the database layer, loads the keycloak/proj_pn/proj_health DBs, then resumes identity so Keycloak starts on restored data. A rerun after the migration skips the snapshot and migration steps, and refuses when cutover-restore-state names a different bundle. Before any change, --target gke classifies bao status with scripts/lib/openbao_status.py and aborts before any change on unreachable or sealed-auto; scripts/rehearse-openbao-seal-migration.sh replays the migration on a real OpenBao 2.0.0 binary and the tests replay its captured fixtures.',
-          code: `./scripts/cutover-bundle.sh verify --bundle-dir "$BUNDLE_DIR"\n./scripts/cutover-bundle.sh restore --target gke --migrate-kms --bundle-dir "$BUNDLE_DIR"`,
+          desc: 'On local-k3s, vault-init.sh/vault-unseal.sh unseals OpenBao with Shamir keys. For GKE Gate 4 cutover, cutover-bundle.sh verifies SHA-256 checksums, pre-seeds TLS secrets, suspends Flux vault and identity, restores the Raft snapshot under the live config minus its seal stanza, migrates OpenBao to Cloud KMS (gcpckms) auto-unseal (checked by recovery_seal=true, since OpenBao 2.0 reports type=shamir after migration) and records the bundle digest in vault/cutover-restore-state, re-binds K8s SA auth, resumes vault and waits for the database layer, loads the keycloak/proj_pn/proj_health DBs, then resumes identity so Keycloak starts on restored data. A rerun after the migration skips the snapshot and migration steps, and refuses when cutover-restore-state names a different bundle. Before any change, --target gke classifies bao status with scripts/lib/openbao_status.py and aborts before any change on unreachable or sealed-auto; scripts/vault/rehearse-openbao-seal-migration.sh replays the migration on a real OpenBao 2.0.0 binary and the tests replay its captured fixtures.',
+          code: `./scripts/ops/cutover-bundle.sh verify --bundle-dir "$BUNDLE_DIR"\n./scripts/ops/cutover-bundle.sh restore --target gke --migrate-kms --bundle-dir "$BUNDLE_DIR"`,
           guard: 'Bundle lives strictly outside Git (chmod 0700); GKE Workload Identity uses zero static GCP key files.'
         }
       ],
@@ -1811,16 +1811,16 @@
           spec: 'Spec 004 & 012 · DEPLOY-04',
           from: 'Developer / PR',
           to: 'GitHub Actions (gitops.yaml)',
-          proto: 'scripts/render-validate.sh {local-k3s,gke,vps-k3s} & render-invariants.py',
+          proto: 'scripts/ci/render-validate.sh {local-k3s,gke,vps-k3s} & scripts/ci/render-invariants.py',
           desc: 'Every pull request renders the Kustomize layers across local-k3s, gke, and vps-k3s, validates schemas with kubeconform, and enforces structural invariants (postBuild restricted to ingress AUTH_HOST, no NodePort, exactly one LoadBalancer = platform/traefik L4 pass-through, no Traefik hostPort).',
-          code: `./scripts/render-validate.sh local-k3s\n./scripts/render-validate.sh gke\n./scripts/render-validate.sh vps-k3s`,
+          code: `./scripts/ci/render-validate.sh local-k3s\n./scripts/ci/render-validate.sh gke\n./scripts/ci/render-validate.sh vps-k3s`,
           guard: 'Prevents Flux variable substitution leaks and blocks paid cloud LoadBalancers offline before merge.'
         },
         {
           title: '2. Multi-Node 1/n Resource Budget & Per-Pool Fit Gate',
           spec: 'Spec 001, 004 & 012 · RESOURCE-02',
           from: 'GitHub Actions',
-          to: 'scripts/platform-preflight.py',
+          to: 'scripts/ci/platform-preflight.py',
           proto: 'Python Preflight Check against clusters/*/capacity.yaml',
           desc: 'platform-preflight.py multiplies DaemonSets across nodeCount, checks On-Demand vs. Spot node-pool CPU/RAM fit (forbidding RWO PVCs, keycloak, and proj-* on Spot), reserves >= 50m / 192 MiB backup headroom on ondemand-core, and verifies every project fits its 1/n slice.',
           code: `Application Capacity = Node Allocatable - Shared Platform Allocation\nPer-Project Budget   = Application Capacity / Deployed Project Count (n)`,
@@ -1996,11 +1996,11 @@
         },
         {
           title: '4. Operator reads the store through a private tunnel',
-          spec: 'scripts/open-observe.sh',
+          spec: 'scripts/ops/open-observe.sh',
           from: 'Operator workstation',
           to: 'victorialogs.observability.svc:9428',
           proto: 'ssh API forward, then kubectl port-forward',
-          desc: 'The store stays ClusterIP. On this workstation, scripts/open-observe.sh SSHes only the VPS API to 127.0.0.1:16443, then port-forwards Hubble and VictoriaLogs. local-k3s uses scripts/open-victorialogs-ui.sh. Verify fails if a returned line is not a proj- record or if Fluent Bit repeats an [error] line.',
+          desc: 'The store stays ClusterIP. On this workstation, scripts/ops/open-observe.sh SSHes only the VPS API to 127.0.0.1:16443, then port-forwards Hubble and VictoriaLogs. local-k3s uses scripts/ops/open-victorialogs-ui.sh. Verify fails if a returned line is not a proj- record or if Fluent Bit repeats an [error] line.',
           code: `POST /select/logsql/query\nquery=*\nlimit=50`,
           guard: 'An empty query body passes. Any returned line must contain "project":"proj-".'
         }
@@ -2422,8 +2422,8 @@
         ver: '2.21.4 + cutover-bundle.sh',
         license: 'GPL-3.0 / Bash',
         role: 'K3s Bootstrap & Full-State GKE Cutover Orchestrator',
-        where: 'bootstrap/bootstrap.yml & scripts/cutover-bundle.sh',
-        details: 'Ansible bootstraps K3s hosts; scripts/cutover-bundle.sh exports, SHA-256 verifies, and restores OpenBao Raft snapshots, PostgreSQL dumps (keycloak, proj_pn, proj_health), TLS certs, and VictoriaLogs archives.'
+        where: 'bootstrap/bootstrap.yml & scripts/ops/cutover-bundle.sh',
+        details: 'Ansible bootstraps K3s hosts; scripts/ops/cutover-bundle.sh exports, SHA-256 verifies, and restores OpenBao Raft snapshots, PostgreSQL dumps (keycloak, proj_pn, proj_health), TLS certs, and VictoriaLogs archives.'
       },
       {
         cat: 'ci',
@@ -2431,7 +2431,7 @@
         ver: 'PyYAML 6.0.3',
         license: 'MIT License',
         role: 'CI Multi-Pool Preflight & Render Invariant Engine',
-        where: 'scripts/platform-preflight.py & render-invariants.py',
+        where: 'scripts/ci/platform-preflight.py & scripts/ci/render-invariants.py',
         details: 'Computes 1/n resource slices and per-pool (ondemand-core vs spot-controllers) fit from capacity.yaml, multiplies DaemonSets across nodeCount, validates PortableEgressPolicy, and enforces GAR/GHCR @sha256 pins.'
       },
       {
@@ -2440,7 +2440,7 @@
         ver: 'v0.6.7 + catalog 6ec4c804',
         license: 'Apache-2.0 / MIT',
         role: 'Rendered Manifest Schema Validation',
-        where: 'scripts/render-validate.sh',
+        where: 'scripts/ci/render-validate.sh',
         details: 'Validates rendered manifests in strict mode across local-k3s, gke, and vps-k3s against upstream Kubernetes and CRD schemas.'
       },
       {
@@ -2469,6 +2469,15 @@
         role: 'Expo Web SPA (Nginx :80) + Go API (:8080)',
         where: 'deploy/projects/pn/workloads/*',
         details: 'First tenant workload running under Restricted Pod Security, verifying platform JWTs and querying PostgreSQL through vault-db-proxy.'
+      },
+      {
+        cat: 'custom',
+        name: 'Workstation Read-Only Debug MCP (1B)',
+        ver: 'Go 1.22 Stdlib (Zero os/exec)',
+        license: 'First-Party Workstation Guardrail',
+        role: 'OS-Isolated K8s MCP Broker (_nacfson-mcp) + PreToolUse CLI Guard',
+        where: 'services/debug-mcp/, .mcp.json, opencode.json, .agents/rules/cluster-debug-mcp.md, infra/workstation/nacfson-mcp.service, scripts/mcp/, scripts/hooks/check-cluster-cli-guard.py, .agents/skills/debug-mcp-session/SKILL.md',
+        details: 'Registered as nacfson-debug in .mcp.json and opencode.json with lazy-dial --connect stdio bridging so agents discover and invoke the 6 bounded read-only tools first (even while the daemon is stopped) without falling back to CLIs. Runs as dedicated UID _nacfson-mcp holding 0400 /etc/nacfson-mcp/kubeconfig (inaccessible to agent shells) behind /run/nacfson-mcp/mcp.sock (0660). Disabled at boot by default and started ephemerally via scripts/mcp/mcp-session.sh start|stop|status (RuntimeMaxSec=2h auto-expiry + ExecStopPost kubeconfig wipe; debug-mcp-session skill). PreToolUse hooks block direct Kubernetes and cloud-console CLIs (kubectl, k3s, oc, flux, helm, k9s, kubectx/kubens, stern, crictl, cilium/hubble, argocd, velero, ssh/scp/sftp, gcloud/gsutil/bq/gke-gcloud-auth-plugin/cloud-sql-proxy, oci, aws/eksctl, az, doctl, linode-cli, ansible*, kcat/kafkacat, wg*, tailscale, sudo/su/doas/pkexec, mutating terraform/tofu) and inline ALLOW_CLUSTER_CLI=1 self-bypasses, permitting ALLOW_CLUSTER_CLI=1 only from a host operator environment. Currently uses governance/operator-readonly via scripts/mcp/refresh-kubeconfig.sh; dedicated governance/ai-readonly RBAC is tracked in GitHub issue #190. All operator scripts under scripts/ are organized by domain into ci/, hooks/, images/, lib/, mcp/, ops/, vault/, verify/, and comprehension/.'
       }
     ];
 
@@ -2918,19 +2927,19 @@
         title: 'Scenario 1: A Node Reboots — Shamir Unseal (K3s) vs. Cloud KMS Auto-Unseal (GKE)',
         symptom: 'On K3s after a VM reboot, OpenBao starts Sealed (0/1 Ready) and initContainers wait; on GKE post-Gate-4, OpenBao unseals itself automatically via Cloud KMS.',
         why: 'By Constitution Principle V (Amendment 2.3.0), K3s keeps Shamir unseal keys offline, whereas GKE binds ServiceAccount/openbao via Workload Identity to Cloud KMS (seal "gcpckms") with zero static GCP key files.',
-        fix: `# On local-k3s / vps-k3s (Shamir seal): unseal in memory:\n./scripts/vault-unseal.sh\n\n# On GKE (post-Gate-4 gcpckms seal): verify Workload Identity auto-unseal:\nkubectl get pods -n vault && kubectl exec -n vault openbao-0 -- bao status`
+        fix: `# On local-k3s / vps-k3s (Shamir seal): unseal / reconcile in memory:\n./scripts/vault/vault-reconcile.sh\n\n# On GKE (post-Gate-4 gcpckms seal): inspect via nacfson-debug MCP first (cluster_overview / list_workloads)\n# If the ephemeral daemon is stopped, start a temporary session:\nsudo ./scripts/mcp/mcp-session.sh start gke --ttl 1h`
       },
       'cors-mismatch': {
         title: 'Scenario 2: Frontend Loads Fine, But Browser API Calls Fail with CORS Error',
         symptom: 'https://pn.nacfson.cloud renders the UI, but browser DevTools shows: Access to fetch at https://pn.nacfson.cloud/api/... has been blocked by CORS policy.',
         why: 'pn-backend checks the browser Origin header against its ALLOWED_ORIGINS env var. If PUBLIC_APP_URL is missing from ALLOWED_ORIGINS, the backend rejects browser preflight requests.',
-        fix: `# Ensure clusters/<env>/projects/proj-pn.yaml sets matching URLs:\n- name: PUBLIC_APP_URL\n  value: "https://pn.nacfson.cloud"\n- name: ALLOWED_ORIGINS\n  value: "https://pn.nacfson.cloud"\n# Run ./scripts/render-validate.sh vps-k3s — preflight enforces this automatically!`
+        fix: `# Ensure clusters/<env>/projects/proj-pn.yaml sets matching URLs:\n- name: PUBLIC_APP_URL\n  value: "https://pn.nacfson.cloud"\n- name: ALLOWED_ORIGINS\n  value: "https://pn.nacfson.cloud"\n# Run ./scripts/ci/render-validate.sh vps-k3s — preflight enforces this automatically!`
       },
       'backend-down': {
         title: 'Scenario 3: pn-backend Crashes — Why Doesn\'t Kubernetes Restart pn-frontend?',
         symptom: 'pn-backend is down. pn-frontend goes to 0/1 Ready and shows a disconnect banner, but RESTARTS stays 0.',
         why: 'Spec 007 separates probe roles! readinessProbe checks the cluster hop to pn-backend (marking frontend NotReady when backend is down), while livenessProbe ONLY checks local Nginx health so Kubernetes never restart-loops a healthy frontend.',
-        fix: `# Inspect why pn-backend or vault-db-proxy is failing:\nkubectl logs -n proj-pn deploy/pn-backend\nkubectl logs -n vault deploy/vault-db-proxy\n# Once pn-backend recovers, pn-frontend readinessProbe turns 1/1 Ready automatically.`
+        fix: `# Inspect why pn-backend or vault-db-proxy is failing via nacfson-debug MCP first (get_pod_logs / describe_pod).\n# If nacfson-mcp.service is stopped, ask the operator to run:\nsudo ./scripts/mcp/mcp-session.sh start gke --ttl 1h\n# Once pn-backend recovers, pn-frontend readinessProbe turns 1/1 Ready automatically.`
       },
       'kubectl-rejected': {
         title: 'Scenario 4: You Run "kubectl edit deployment" and Get Forbidden by Admission Policy',
@@ -2942,7 +2951,7 @@
         title: 'Scenario 5: Your AI Agent or git commit Is Blocked by arch-doc-sync',
         symptom: '[ARCH-DOC-SYNC BLOCKED] Architecture-affecting files were modified without updating docs/platform-architecture.html.',
         why: 'AGENTS.md + universal multi-agent hooks (.agents, .claude, .codex, .omp, .opencode, .grok, .githooks/pre-commit) require docs/platform-architecture.html to stay 100% synchronized with code/manifest changes.',
-        fix: `# 1. Update docs/platform-architecture.html to reflect your change\n# 2. Run the sync verifier:\npython3 scripts/check-arch-doc-sync.py\n# 3. Stage docs/platform-architecture.html alongside your code changes`
+        fix: `# 1. Update docs/platform-architecture.html to reflect your change\n# 2. Run the sync verifier:\npython3 scripts/hooks/check-arch-doc-sync.py\n# 3. Stage docs/platform-architecture.html alongside your code changes`
       }
     };
 

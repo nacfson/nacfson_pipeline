@@ -10,7 +10,7 @@ import tempfile
 import unittest
 
 REPO = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-SCRIPT = os.path.join(REPO, "scripts", "cutover-bundle.sh")
+SCRIPT = os.path.join(REPO, "scripts", "ops", "cutover-bundle.sh")
 SCRIPT_LIB = os.path.join(REPO, "scripts", "lib")
 STATUS_FIXTURES = os.path.join(REPO, "tests", "fixtures", "openbao", "2.0.0", "status")
 
@@ -191,8 +191,11 @@ class CutoverRestoreOrderTest(unittest.TestCase):
         self.addCleanup(shutil.rmtree, tmp)
         repo = os.path.join(tmp, "repo")
         scripts = os.path.join(repo, "scripts")
-        os.makedirs(scripts)
-        shutil.copy(SCRIPT, os.path.join(scripts, "cutover-bundle.sh"))
+        scripts_ops = os.path.join(scripts, "ops")
+        scripts_vault = os.path.join(scripts, "vault")
+        os.makedirs(scripts_ops)
+        os.makedirs(scripts_vault)
+        shutil.copy(SCRIPT, os.path.join(scripts_ops, "cutover-bundle.sh"))
         shutil.copytree(SCRIPT_LIB, os.path.join(scripts, "lib"))
         state = os.path.join(tmp, "state")
         os.makedirs(state)
@@ -213,8 +216,9 @@ class CutoverRestoreOrderTest(unittest.TestCase):
             if val is not None:
                 with open(os.path.join(state, fname), "w", encoding="utf-8") as fh:
                     fh.write(val)
-        for helper in ("db-migrate-dump.sh", "vault-configure-k8s-auth.sh", "vault-reconcile.sh"):
-            _write_executable(os.path.join(scripts, helper), HELPER_STUB.replace("__STATE__", state))
+        _write_executable(os.path.join(scripts_ops, "db-migrate-dump.sh"), HELPER_STUB.replace("__STATE__", state))
+        for helper in ("vault-configure-k8s-auth.sh", "vault-reconcile.sh"):
+            _write_executable(os.path.join(scripts_vault, helper), HELPER_STUB.replace("__STATE__", state))
         bin_dir = os.path.join(tmp, "bin")
         os.makedirs(bin_dir)
         _write_executable(os.path.join(bin_dir, "kubectl"), KUBECTL_STUB.replace("__STATE__", state).replace("__FIXTURES__", STATUS_FIXTURES))
@@ -228,7 +232,7 @@ class CutoverRestoreOrderTest(unittest.TestCase):
             "CUTOVER_POLL_SECONDS": "0",
         }
         result = subprocess.run(
-            ["bash", os.path.join(scripts, "cutover-bundle.sh"), "restore", "--bundle-dir", bundle,
+            ["bash", os.path.join(scripts_ops, "cutover-bundle.sh"), "restore", "--bundle-dir", bundle,
              "--target", target, "--yes", *extra_args],
             capture_output=True, text=True, env=env, timeout=60,
         )

@@ -3,8 +3,9 @@ import * as path from "node:path";
 
 export default function archDocSyncExtension(pi: any): void {
   const repoRoot = process.cwd();
-  const checkerPath = path.join(repoRoot, "scripts", "check-arch-doc-sync.py");
-  const reviewCyclePath = path.join(repoRoot, "scripts", "review-cycle.py");
+  const checkerPath = path.join(repoRoot, "scripts", "hooks", "check-arch-doc-sync.py");
+  const reviewCyclePath = path.join(repoRoot, "scripts", "hooks", "review-cycle.py");
+  const cliGuardPath = path.join(repoRoot, "scripts", "hooks", "check-cluster-cli-guard.py");
 
   pi.on("tool_call", async (event: any) => {
     const toolName = String(event?.toolName || "");
@@ -12,6 +13,18 @@ export default function archDocSyncExtension(pi: any): void {
       return undefined;
     }
     const cmd = String(event?.input?.command || event?.input?.CommandLine || "");
+    try {
+      execFileSync("python3", [cliGuardPath, "--command", cmd], {
+        cwd: repoRoot,
+        stdio: "pipe",
+      });
+    } catch (err: any) {
+      const stderr = err?.stderr ? String(err.stderr).trim() : String(err);
+      return {
+        block: true,
+        reason: stderr || "[CLUSTER-CLI GUARD] Blocked direct cluster/infra CLI command.",
+      };
+    }
     if (!cmd.includes("git commit")) {
       return undefined;
     }

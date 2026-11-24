@@ -53,11 +53,11 @@ flowchart LR
 
 1. **Database-Backed Backend Readiness (`/readyz`)**:
    - Any project container declaring `DATABASE_URL`, `DB_HOST`, `DB_NAME`, or `DB_USER` MUST declare `readinessProbe.httpGet.path: /readyz` and `livenessProbe.httpGet.path: /healthz`.
-   - Enforced statically by `check_database_and_readiness_contract` in [`scripts/platform-preflight.py`](../scripts/platform-preflight.py).
+   - Enforced statically by `check_database_and_readiness_contract` in [`scripts/ci/platform-preflight.py`](../scripts/ci/platform-preflight.py).
    - Inside the backend application, `GET /readyz` MUST verify live connectivity through `vault-db-proxy.vault.svc:5432` (`SELECT 1` / `db.PingContext` with a `≤2s` timeout).
 2. **`vault-db-proxy` Readiness (`/readyz`)**:
    - [`deploy/platform/vault-proxies/db-proxy.yaml`](../deploy/platform/vault-proxies/db-proxy.yaml) MUST set `readinessProbe.httpGet.path: /readyz` and `livenessProbe.httpGet.path: /healthz`.
-   - Enforced statically by `check_database_and_readiness_contract` in [`scripts/platform-preflight.py`](../scripts/platform-preflight.py) and tested in [`services/vault-proxies/cmd/db-proxy/main_test.go`](../services/vault-proxies/cmd/db-proxy/main_test.go).
+   - Enforced statically by `check_database_and_readiness_contract` in [`scripts/ci/platform-preflight.py`](../scripts/ci/platform-preflight.py) and tested in [`services/vault-proxies/cmd/db-proxy/main_test.go`](../services/vault-proxies/cmd/db-proxy/main_test.go).
 3. **Liveness Isolation Rule**:
    - `GET /healthz` on any frontend, backend, or proxy container MUST NEVER query PostgreSQL, OpenBao, Keycloak, or a peer service.
 4. **Explicit Always-Restart Policy**:

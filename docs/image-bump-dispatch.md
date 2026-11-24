@@ -9,7 +9,7 @@ source repo build (blog / Project_PN / health)
   └─ job "Request pipeline pin": repository_dispatch  event_type=image-built
         payload: project, source_repo, sha, roles, run_url   (a hint only)
               ▼
-.github/workflows/image-bump-request.yaml  →  scripts/image-bump-request.py
+.github/workflows/image-bump-request.yaml  →  scripts/images/image-bump-request.py
   1. project + source_repo must match config/image-pin-sources.json
   2. dry-run update-project-images with a commit link per role:
      tag lookup by sha, amd64+arm64, ports, source + revision labels
@@ -27,7 +27,7 @@ issue labelled `image-bump`   →   Allow: one PR "Closes #N"  /  Disallow: clos
 | Path | Role |
 | :--- | :--- |
 | `.github/workflows/image-bump-request.yaml` | Receives `image-built` (and manual `workflow_dispatch`) |
-| `scripts/image-bump-request.py` | Validates the request and opens or supersedes issues |
+| `scripts/images/image-bump-request.py` | Validates the request and opens or supersedes issues |
 | `config/image-pin-sources.json` | Allowlist: project → source repository and roles |
 | `tests/skills/test_image_bump_request.py` | Unit tests (run by `gitops.yaml`) |
 
@@ -84,7 +84,7 @@ Environment (Edit cloud environment):
   `pkg-containers.githubusercontent.com`. GHCR serves image configs from the
   second host; without it every tag lookup fails with `Forbidden`.
 - **Environment variable**: `IMAGE_BUMP_GATE=1`. This turns on
-  `scripts/image-bump-gate.py` in that environment only. Anyone can open an
+  `scripts/hooks/image-bump-gate.py` in that environment only. Anyone can open an
   issue on this public repository, so in gate mode the hook allows only the
   skill's own steps. It asks for approval before:
   - any Bash command outside an allowlist of the skill's command shapes

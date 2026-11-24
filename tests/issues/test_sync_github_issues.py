@@ -8,7 +8,7 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-SCRIPT = ROOT / "scripts" / "sync-github-issues.py"
+SCRIPT = ROOT / "scripts" / "hooks" / "sync-github-issues.py"
 REAL_ISSUES = ROOT / "docs" / "issues"
 GH_ARGV = (
     "issue list --repo nacfson/nacfson_pipeline --state all "
@@ -158,7 +158,7 @@ class TestSyncGithubIssues(unittest.TestCase):
             "# FIX_GithubIssue99\n"
             "\n"
             "- Issue: https://github.com/nacfson/nacfson_pipeline/issues/99\n"
-            "- State: OPEN. Created by scripts/sync-github-issues.py. Not analyzed.\n"
+            "- State: OPEN. Created by scripts/hooks/sync-github-issues.py. Not analyzed.\n"
             "- Live contract: Not checked.\n"
             "\n"
             "## What is wrong\n"

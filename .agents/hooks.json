@@ -3,7 +3,7 @@
     "SessionStart": [
       {
         "type": "command",
-        "command": "python3 scripts/universal-agent-hook.py --agent antigravity --event SessionStart",
+        "command": "python3 scripts/hooks/universal-agent-hook.py --agent antigravity --event SessionStart",
         "timeout": 20
       }
     ],
@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/universal-agent-hook.py --agent antigravity --event PreToolUse",
+            "command": "python3 scripts/hooks/universal-agent-hook.py --agent antigravity --event PreToolUse",
             "timeout": 15
           }
         ]
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python3 scripts/universal-agent-hook.py --agent antigravity --event Stop",
+            "command": "python3 scripts/hooks/universal-agent-hook.py --agent antigravity --event Stop",
             "timeout": 15
           }
         ]

@@ -5,7 +5,7 @@ const plugin = {
   id: "nacfson-git-fetch-session-start",
   server: async (input) => {
     const repoRoot = input?.directory || process.cwd();
-    const hookPath = path.join(repoRoot, "scripts", "universal-agent-hook.py");
+    const hookPath = path.join(repoRoot, "scripts", "hooks", "universal-agent-hook.py");
 
     const runFetch = () => {
       try {

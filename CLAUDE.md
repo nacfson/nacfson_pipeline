@@ -22,9 +22,9 @@ Run the relevant validation commands from [`AGENTS.md` §5](AGENTS.md) before cl
 python3 -m unittest discover tests/preflight
 
 # 4. Full Kustomize render, kubeconform schema validation & preflight gate (local-k3s & vps-k3s)
-./scripts/render-validate.sh local-k3s
-./scripts/render-validate.sh vps-k3s
+./scripts/ci/render-validate.sh local-k3s
+./scripts/ci/render-validate.sh vps-k3s
 
 # 5. Canonical Architecture Handbook synchronization & invariant check
-python3 scripts/check-arch-doc-sync.py --worktree
+python3 scripts/hooks/check-arch-doc-sync.py --worktree
 ```

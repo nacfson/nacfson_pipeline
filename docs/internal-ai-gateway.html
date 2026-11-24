@@ -310,7 +310,7 @@
               <span class="text-xs font-semibold text-cyan-300 mono">Test 5 · Seed / Rotate Gemini API Key</span>
               <span class="text-[11px] mono px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-200">1-TIME VAULT SEED</span>
             </div>
-            <p class="text-xs font-medium text-white mt-1"><code class="text-cyan-300">./scripts/ai-gateway-ctl.sh set-key</code></p>
+            <p class="text-xs font-medium text-white mt-1"><code class="text-cyan-300">./scripts/ops/ai-gateway-ctl.sh set-key</code></p>
             <p class="text-[11px] text-slate-400 mt-0.5">Prompts silently for <code class="text-slate-200">AIza...</code> key (never in Git), stores in <code class="text-slate-200">OpenBao</code> PVC, and hot-reloads <code class="text-slate-200">vault-ai-proxy</code> RAM via <code class="text-slate-200">127.0.0.1:8081</code>.</p>
           </button>
 
@@ -595,7 +595,7 @@
             </div>
 
             <div class="rounded-xl bg-slate-950 border border-emerald-500/40 p-3">
-              <div class="font-semibold text-emerald-400 mono">Stage 2 · Static Preflight Gate (scripts/platform-preflight.py)</div>
+              <div class="font-semibold text-emerald-400 mono">Stage 2 · Static Preflight Gate (scripts/ci/platform-preflight.py)</div>
               <ul class="mt-1 space-y-0.5 text-slate-300">
                 <li>• Verifies <code class="text-slate-100">proj-*</code> has zero <code class="text-slate-100">generativelanguage.googleapis.com</code> egress &amp; zero <code class="text-slate-100">*API_KEY*</code> env vars.</li>
                 <li>• Verifies <code class="text-slate-100">Service/ai-gateway</code> exposes <strong>only</strong> <code class="text-slate-100">:8080</code> (never <code class="text-slate-100">:8081</code>) and enforces all 3 probes (<code class="text-slate-100">/startupz, /readyz, /healthz</code>).</li>
@@ -722,7 +722,7 @@
     const recoveryDetails = {
       k8s_bypass: {
         title: 'Option A · Get an Admin OpenBao Token Right Now Using Only kubectl (Zero Vault Token Needed!)',
-        desc: 'Because scripts/vault-configure-k8s-auth.sh bound the openbao-backup ServiceAccount to the operator-admin policy (full kv/* access), you can mint a fresh admin token anytime OpenBao is running:',
+        desc: 'Because scripts/vault/vault-configure-k8s-auth.sh bound the openbao-backup ServiceAccount to the operator-admin policy (full kv/* access), you can mint a fresh admin token anytime OpenBao is running:',
         cmd: `# Mint a K8s JWT for openbao-backup and log straight into OpenBao (works on local-k3s or via ssh oracleCloud):
 JWT=$(kubectl create token openbao-backup -n vault)
 VAULT_TOKEN=$(kubectl exec -n vault openbao-0 -- bao write -field=token auth/kubernetes/login role=openbao-backup jwt="$JWT")
@@ -734,7 +734,7 @@ kubectl exec -n vault openbao-0 -- env VAULT_TOKEN="$VAULT_TOKEN" bao kv put kv/
         title: 'Option B · Generate a Brand-New Root Token Using Your Unseal Key',
         desc: 'If you still have your Unseal Key (from vault-init.sh) and want a fresh Root Token, run vault-seed-inventory.sh and press [Enter] when asked for the Root Token:',
         cmd: `# Run the existing helper and press [Enter] at the Root Token prompt:
-./scripts/vault-seed-inventory.sh
+./scripts/vault/vault-seed-inventory.sh
 # Prompt 1: "Enter OpenBao Root Token (or press Enter to generate temporary token): " -> Press [Enter]!
 # Prompt 2: "Enter OpenBao Unseal Key to authorize Root Token generation: " -> Paste your Unseal Key!`
       },
@@ -749,7 +749,7 @@ VAULT_TOKEN=$(kubectl exec -n vault openbao-0 -- bao write -field=token auth/kub
 kubectl exec -n vault openbao-0 -- env VAULT_TOKEN="$VAULT_TOKEN" bao kv get kv/identity/google-oauth
 
 # Step 3: When ready for a fresh Unseal Key + Root Token, wipe openbao-0 PVC and run:
-./scripts/vault-init.sh && ./scripts/vault-seed-inventory.sh && ./scripts/vault-configure-k8s-auth.sh`
+./scripts/vault/vault-init.sh && ./scripts/vault/vault-seed-inventory.sh && ./scripts/vault/vault-configure-k8s-auth.sh`
       }
     };
 
@@ -779,7 +779,7 @@ kubectl exec -n vault openbao-0 -- env VAULT_TOKEN="$VAULT_TOKEN" bao kv get kv/
           'lb-edge-lo-openbao': ['edge-active-info', 'url(#lb-arrow-amber)']
         },
         trace: [
-          '<span class="text-amber-400">[1/4]</span> You run <code>./scripts/ai-gateway-ctl.sh stop pn</code>; host <code>kubelet</code> connects directly into <code>127.0.0.1:8081 (lo)</code> inside the pod.',
+          '<span class="text-amber-400">[1/4]</span> You run <code>./scripts/ops/ai-gateway-ctl.sh stop pn</code>; host <code>kubelet</code> connects directly into <code>127.0.0.1:8081 (lo)</code> inside the pod.',
           '<span class="text-emerald-400">[2/4]</span> <strong>Direct RAM Pointer Write (&lt;1µs)</strong>: Because <code>adminMux (:8081)</code> and <code>dataMux (:8080)</code> live in the <strong>same Go process</strong>, <code>adminMux</code> calls <code>p.mu.Lock()</code> and sets <code>p.projects["pn"].Enabled = false</code> directly in RAM.',
           '<span class="text-emerald-400">[3/4]</span> Any request arriving on <code>0.0.0.0:8080</code> one microsecond later reads that exact same <code>p.projects["pn"].Enabled</code> field in RAM and immediately sees <code>false</code>.',
           '<span class="text-cyan-400">[4/4]</span> <code>adminMux</code> also writes <code>enabled=false</code> to OpenBao (<code>kv/ai/projects/pn</code>) so if the pod ever restarts, it reloads <code>Enabled: false</code> on boot.'
@@ -834,7 +834,7 @@ kubectl exec -n vault openbao-0 -- env VAULT_TOKEN="$VAULT_TOKEN" bao kv get kv/
           'lb-edge-lo-ram': ['edge-active-allow', 'url(#lb-arrow-allow)']
         },
         trace: [
-          '<span class="text-cyan-400">[1/3]</span> Because Constitution Principle V &amp; <code>.githooks/pre-commit</code> forbid putting <code>AIza...</code> keys in Git, you run <code>./scripts/ai-gateway-ctl.sh set-key</code> once on your laptop (same pattern as <code>vault-set-google-oauth.sh</code>).',
+          '<span class="text-cyan-400">[1/3]</span> Because Constitution Principle V &amp; <code>.githooks/pre-commit</code> forbid putting <code>AIza...</code> keys in Git, you run <code>./scripts/ops/ai-gateway-ctl.sh set-key</code> once on your laptop (same pattern as <code>vault-set-google-oauth.sh</code>).',
           '<span class="text-emerald-400">[2/3]</span> The script prompts silently for your Gemini API key and writes it to <code>OpenBao</code> at <code>kv/ai/gemini-api-key</code> (persisted on OpenBao\'s encrypted disk PVC across reboots).',
           '<span class="text-amber-400">[3/3]</span> The script then signals <code>127.0.0.1:8081/admin/reload-key</code> so <code>vault-ai-proxy</code> refreshes the key in RAM immediately with <strong>zero pod restarts</strong>.'
         ]

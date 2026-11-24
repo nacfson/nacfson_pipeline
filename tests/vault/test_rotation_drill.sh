@@ -3,7 +3,7 @@
 set -euo pipefail
 
 PROXY_DIR="services/vault-proxies"
-ROTATE_SCRIPT="scripts/vault-rotate.sh"
+ROTATE_SCRIPT="scripts/vault/vault-rotate.sh"
 export VAULT_MOCK_MODE=true
 
 echo "=== [0/3] Pre-compiling Active Proxy Binaries ==="

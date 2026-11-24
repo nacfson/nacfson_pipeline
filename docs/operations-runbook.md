@@ -15,14 +15,14 @@ All cluster interactions follow two distinct tiers:
 
 | Access | Location | Can Write? | Authorization |
 | :--- | :--- | :--- | :--- |
-| **Read-only** | Workstation. On this machine use [`scripts/open-observe.sh`](../scripts/open-observe.sh) (`127.0.0.1:16443`). Do not bind `6443`; local k3s owns it. A machine that does not run local k3s may use `ssh -L 6443:127.0.0.1:6443 <vm>`. | No | `ServiceAccount governance/operator-readonly` via short-lived (≤24h) token; ClusterRole `view` |
+| **Read-only** | Workstation. On this machine use [`scripts/ops/open-observe.sh`](../scripts/ops/open-observe.sh) (`127.0.0.1:16443`). Do not bind `6443`; local k3s owns it. A machine that does not run local k3s may use `ssh -L 6443:127.0.0.1:6443 <vm>`. | No | `ServiceAccount governance/operator-readonly` via short-lived (≤24h) token; ClusterRole `view` |
 | **Break-glass** | On K3s node over SSH, or GKE cluster-admin break-glass impersonation | Yes | Deliberate impersonation of group `platform:break-glass` via admin credentials |
 
 ### Key Invariants
 1. **Git as Single Source of Truth**: The `main` branch defines desired state. Changes are delivered via Pull Requests passing automated CI gates.
 2. **Cluster Rejection of Manual Changes**: Kubernetes `ValidatingAdmissionPolicy` intercepts and rejects manual mutations (`CREATE`, `UPDATE`, `DELETE`) across all managed namespaces (`default`, `flux-system`, `governance`, `identity`, `platform`, `vault`, `observability`, `proj-*`, `cert-manager`) and critical cluster kinds, while allowlisting K3s and GKE control-plane principals.
 3. **Residual Risk - `kube-system` (R16)**: To prevent disrupting core control plane components (CoreDNS, metrics-server, GKE/K3s node agents), `kube-system` is not gated by the manual-change policy. A root user on the host node could run workloads directly in `kube-system`. This residual risk is bounded by restricting SSH/root node access and eliminating cluster-admin credentials from workstations.
-4. **Verification Scripts Under Break-Glass**: Verification scripts that execute active probe pod creation (such as `scripts/verify-isolation.sh`) must run in break-glass mode (`BREAK_GLASS=1`) to bypass the admission policy and exercise Pod Security Admission directly.
+4. **Verification Scripts Under Break-Glass**: Verification scripts that execute active probe pod creation (such as `scripts/verify/verify-isolation.sh`) must run in break-glass mode (`BREAK_GLASS=1`) to bypass the admission policy and exercise Pod Security Admission directly.
 
 ---
 
@@ -106,7 +106,7 @@ For GKE (`clusters/gke/`), see **Section 16.3 (Gate 4 Single-Shot GKE Cutover)**
 
 ## 5. Vault Initialization & Unseal
 
-- **On `local-k3s` (and legacy `vps-k3s`)**: OpenBao uses Shamir unseal. After initial cluster bootstrap or any `openbao-0` container restart, run `./scripts/vault-init.sh` (uses `kubectl exec`, a `CONNECT` request permitted by `ValidatingAdmissionPolicy`).
+- **On `local-k3s` (and legacy `vps-k3s`)**: OpenBao uses Shamir unseal. After initial cluster bootstrap or any `openbao-0` container restart, run `./scripts/vault/vault-init.sh` (uses `kubectl exec`, a `CONNECT` request permitted by `ValidatingAdmissionPolicy`).
 - **On `gke` (post-Gate 4)**: `openbao-0` runs under `ServiceAccount/openbao` (`iam.gke.io/gcp-service-account: openbao-kms@nacfson-pipeline.iam.gserviceaccount.com`) with `seal "gcpckms"` (`project=nacfson-pipeline`, `region=asia-northeast3`, `key_ring=nacfson-vault`, `crypto_key=openbao-unseal`) per Constitution Amendment `2.3.0`. After the one-time Gate 4 `bao operator unseal -migrate` ceremony (Section 16.3), `openbao-0` auto-unseals unattended across GKE node maintenance and pod restarts, while Shamir recovery keys remain stored offline in the operator's password manager.
 - Downstream platform layers (`database`, `identity`, `ingress`, `vault-proxies`, `proj-*`) report `DependencyNotReady` while Vault is sealed and converge automatically once unsealed.
 
@@ -119,7 +119,7 @@ Operators inspect cluster state from their local workstation using read-only cre
 On this workstation, do not bind `6443`. Local k3s already owns it. One script opens the VPS API on `127.0.0.1:16443` and both private UIs:
 
 ```bash
-./scripts/open-observe.sh
+./scripts/ops/open-observe.sh
 ```
 
 A machine that does not run local k3s opens the API first:
@@ -132,7 +132,7 @@ Then, on either machine:
 
 1. Generate 24-hour read-only kubeconfig (Section 13). `open-observe.sh` already does this for the VPS.
    ```bash
-   ./scripts/operator-kubeconfig.sh <vm>
+   ./scripts/ops/operator-kubeconfig.sh <vm>
    export KUBECONFIG=~/.kube/nacfson-<env>.yaml
    ```
 2. Inspect cluster status and GitOps reconciliation:
@@ -158,7 +158,7 @@ Then, on either machine:
    flux events --for Kustomization/<layer-name>
    ```
 
-Desktop Headlamp loads the kubeconfig written by `./scripts/operator-kubeconfig.sh` and shows live container logs. `kubectl logs --previous` shows the previous container instance after a restart. Historical `proj-*` search is section 15, not Headlamp.
+Desktop Headlamp loads the kubeconfig written by `./scripts/ops/operator-kubeconfig.sh` and shows live container logs. `kubectl logs --previous` shows the previous container instance after a restart. Historical `proj-*` search is section 15, not Headlamp.
 
 ---
 
@@ -299,7 +299,7 @@ If a misconfigured `ValidatingAdmissionPolicy` locks out even break-glass operat
    ```
 2. Run the helper script to issue a 24-hour token:
    ```bash
-   ./scripts/operator-kubeconfig.sh <vm> [<env>]
+   ./scripts/ops/operator-kubeconfig.sh <vm> [<env>]
    ```
 3. Test read-only permissions:
    ```bash
@@ -333,7 +333,7 @@ Across both `local-k3s` and `gke`, `DaemonSet/fluent-bit` replaces the retired s
 
 ### Open the Local / Legacy VPS VictoriaLogs UI
 
-1. On `local-k3s` (when its API is on `127.0.0.1:6443`): `./scripts/open-hubble-ui.sh` and `./scripts/open-victorialogs-ui.sh`.
+1. On `local-k3s` (when its API is on `127.0.0.1:6443`): `./scripts/ops/open-hubble-ui.sh` and `./scripts/ops/open-victorialogs-ui.sh`.
 2. Example LogsQL (Contract v3):
    - `{k8s.namespace.name="proj-pn"}`
    - `{k8s.namespace.name="proj-pn"} level:=error`
@@ -376,17 +376,17 @@ Rehearse the complete production backup and identity-preserving restore locally 
 1. **Extract read-only production bundle from `vps-k3s`** into a `0700` directory outside Git:
    ```bash
    export BUNDLE_DIR="$HOME/.nacfson-cutover/$(date -u +%Y%m%dT%H%M%SZ)"
-   ./scripts/cutover-bundle.sh export --bundle-dir "$BUNDLE_DIR" --ssh oracleCloud
+   ./scripts/ops/cutover-bundle.sh export --bundle-dir "$BUNDLE_DIR" --ssh oracleCloud
    ```
    Produces 6 verified artifacts (`openbao.snap`, `keycloak.dump.gz`, `proj_pn.dump.gz`, `proj_health.dump.gz`, `edge-tls-secrets.yaml`, `victoria-logs-data.tar.gz`) plus `manifest.sha256`.
 2. **Verify offline checksums and archive headers**:
    ```bash
-   ./scripts/cutover-bundle.sh verify --bundle-dir "$BUNDLE_DIR"
+   ./scripts/ops/cutover-bundle.sh verify --bundle-dir "$BUNDLE_DIR"
    ```
 3. **Restore onto `local-k3s` and verify identity continuity**:
    ```bash
-   ./scripts/cutover-bundle.sh restore --bundle-dir "$BUNDLE_DIR" --target local-k3s --yes
-   ./scripts/smoke-auth-chain.sh --env local-k3s
+   ./scripts/ops/cutover-bundle.sh restore --bundle-dir "$BUNDLE_DIR" --target local-k3s --yes
+   ./scripts/verify/smoke-auth-chain.sh --env local-k3s
    ```
    Confirm `openbao-0` unseals, `vault-configure-k8s-auth.sh` + `vault-reconcile.sh --confirm` re-bind the local cluster's `kube-root-ca.crt` and token reviewer JWT, `keycloak` + `proj_pn` + `proj_health` databases restore cleanly, and existing user `(issuer, subject)` rows remain intact (`SC-003`).
 
@@ -405,20 +405,20 @@ Execute only after Gate 2 and Gate 3 pass:
 3. **Export fresh final cutover bundle & restore onto GKE with KMS migration**:
    ```bash
    export BUNDLE_DIR="$HOME/.nacfson-cutover/gate4-$(date -u +%Y%m%dT%H%M%SZ)"
-   ./scripts/cutover-bundle.sh export --bundle-dir "$BUNDLE_DIR" --ssh oracleCloud
-   ./scripts/cutover-bundle.sh restore --bundle-dir "$BUNDLE_DIR" --target gke --migrate-kms --yes
+   ./scripts/ops/cutover-bundle.sh export --bundle-dir "$BUNDLE_DIR" --ssh oracleCloud
+   ./scripts/ops/cutover-bundle.sh restore --bundle-dir "$BUNDLE_DIR" --target gke --migrate-kms --yes
    ```
    `restore --target gke --migrate-kms` automatically:
    - Verifies `manifest.sha256` across all 6 artifacts.
    - Pre-seeds `edge-tls-secrets.yaml` (`auth-tls`, `pn-tls`, `health-tls`, `blog-tls`, and Let's Encrypt ACME account key) so GKE serves valid TLS immediately without Let's Encrypt rate-limit risk.
    - Suspends `Kustomization/vault` and `Kustomization/identity`, boots `openbao-0` with the live Git config minus its `seal` stanza (Shamir), restores `openbao.snap` and unseals.
    - Re-applies the live `seal "gcpckms"` config and runs `bao operator unseal -migrate`, so GKE node upgrades auto-unseal `openbao-0` via Workload Identity.
-   - Runs `scripts/vault-configure-k8s-auth.sh` + `scripts/vault-reconcile.sh --confirm` to replace K3s's CA/JWT with GKE's `ConfigMap/kube-root-ca.crt`.
+   - Runs `scripts/vault/vault-configure-k8s-auth.sh` + `scripts/vault/vault-reconcile.sh --confirm` to replace K3s's CA/JWT with GKE's `ConfigMap/kube-root-ca.crt`.
    - Resumes `vault`, waits for the `database` layer and `postgres-0`, then restores `keycloak.dump.gz`, `proj_pn.dump.gz` and `proj_health.dump.gz`.
    - Resumes `identity`, so Keycloak starts on the restored database. Full order: [Spec 012 contract §2.3](../specs/012-gke-platform-migration/contracts/fluentbit-recovery-and-cutover-bundle.md).
 4. **Pre-DNS `--resolve` verification & Cloudflare/DNS cutover**:
-   - Run `./scripts/smoke-auth-chain.sh` using `curl --resolve <host>:443:<NODE1_STATIC_IP>` across `auth.nacfson.cloud`, `pn.nacfson.cloud`, `health.nacfson.cloud`, and `blog.nacfson.cloud`; verify zero TLS warnings and intact OIDC sessions (`SC-004`).
-   - Update DNS `A` records to `<NODE1_STATIC_IP>` and re-run `./scripts/smoke-auth-chain.sh` against live public DNS.
+   - Run `./scripts/verify/smoke-auth-chain.sh` using `curl --resolve <host>:443:<NODE1_STATIC_IP>` across `auth.nacfson.cloud`, `pn.nacfson.cloud`, `health.nacfson.cloud`, and `blog.nacfson.cloud`; verify zero TLS warnings and intact OIDC sessions (`SC-004`).
+   - Update DNS `A` records to `<NODE1_STATIC_IP>` and re-run `./scripts/verify/smoke-auth-chain.sh` against live public DNS.
 5. **Immediate Same-Window `vps-k3s` Repurposing (`FR-011`)**:
    - Once public DNS serves traffic cleanly on GKE, archive `victoria-logs-data.tar.gz` for Spec 014 import into OCI VM 4, shrink/recreate the `4 OCPU / 24 GiB` `vps-k3s` ARM64 instance into `1 OCPU / 6 GiB` OCI Kafka Broker VM 1 (`10.200.0.11`) for Spec 013, and remove `clusters/vps-k3s/` via PR.
 

@@ -57,8 +57,8 @@ else
   echo "PASS: Zero legacy secret references found across all deploy manifests."
 fi
 
-./scripts/render-validate.sh local-k3s > /dev/null
-./scripts/render-validate.sh vps-k3s > /dev/null
+./scripts/ci/render-validate.sh local-k3s > /dev/null
+./scripts/ci/render-validate.sh vps-k3s > /dev/null
 echo "PASS: Declarative GitOps manifests validated cleanly across all environments."
 
 echo ""

@@ -16,7 +16,7 @@ Not measured yet (task T001). Run the two commands in [research.md R12](../../sp
 | Raw bytes per day (`msg_bytes ÷ 30 × 2`) | |
 | Days that fit (`15 GB ÷ (raw bytes per day ÷ 5)`) | |
 
-If fewer than 7 days fit, lower `retention_ms` or raise `retention_bytes` within the 20 GB budget, and `scripts/kafka-declarations.py check` confirms the budget.
+If fewer than 7 days fit, lower `retention_ms` or raise `retention_bytes` within the 20 GB budget, and `scripts/ci/kafka-declarations.py check` confirms the budget.
 
 ## Home region
 
@@ -220,7 +220,7 @@ The relay image is built by CI only after its source reaches `main`, so `cluster
    - add `ops-relay.yaml` to `clusters/gke/observability/kustomization.yaml` with an `images:` entry for `ghcr.io/nacfson/ops-relay` at that digest
    - add `kafka:observability:ops-relay` to `NOTIFY_GRANTS` in `deploy/platform/vault-proxies/notify-proxy.yaml`
    - allow ingress from `observability/ops-relay` in `notify-proxy-policy` (`deploy/platform/vault/network-policy.yaml`)
-3. Store the Discord webhook for the `kafka` channel with `scripts/notify-ctl.sh`, as for the existing channels.
+3. Store the Discord webhook for the `kafka` channel with `scripts/ops/notify-ctl.sh`, as for the existing channels.
 
 ## Rebuild a lost VM (Story 3)
 
@@ -355,9 +355,9 @@ The rehearsal runs the production settings on a workstation: four `docker.io/apa
 Prerequisites: Podman 5 with `podman-compose`, Python 3.11+ with PyYAML, Go, and `ansible-core` (set `ANSIBLE_BIN` if it is not on `PATH`).
 
 ```bash
-./scripts/kafka-rehearsal.sh up
-./scripts/kafka-rehearsal.sh test all
-./scripts/kafka-rehearsal.sh down
+./scripts/ops/kafka-rehearsal.sh up
+./scripts/ops/kafka-rehearsal.sh test all
+./scripts/ops/kafka-rehearsal.sh down
 ```
 
 `test <suite>` runs one suite: `story1`, `story2`, `story3`, `security`, `alerts`, `declared`, `ops_events_lua`. `capture-logs` re-captures the Kafka log fixtures after an image change. `KAFKA_TEST_OUTAGE_SECONDS` shortens the Story 2 outages for a quick local pass (default 600).

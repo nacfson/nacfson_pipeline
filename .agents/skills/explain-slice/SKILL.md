@@ -15,7 +15,7 @@ Organize a multi-file diff into a logical reading order (Contracts & Policy → 
 ## Step-by-Step Workflow
 
 1. **Inspect Risk & Changed Files**:
-   - Run `python3 scripts/review-cycle.py classify-risk --scope worktree` (or `staged` / `branch`) to identify the effective risk tier (`Low`, `Medium`, `High`).
+   - Run `python3 scripts/hooks/review-cycle.py classify-risk --scope worktree` (or `staged` / `branch`) to identify the effective risk tier (`Low`, `Medium`, `High`).
 2. **Group Files into Dependency-Ordered Slices**:
    - **Slice 1 — Contracts, Specs & Policy**: `contracts/`, `specs/`, `.specify/memory/constitution.md`, `REVIEW.md`, `config/`.
    - **Slice 2 — Runtime & Automation Logic**: `gateway/`, `services/vault-proxies/`, `scripts/`.

@@ -8,8 +8,8 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-FETCH_SCRIPT = ROOT / "scripts" / "agent-start-git-fetch.py"
-HOOK_SCRIPT = ROOT / "scripts" / "universal-agent-hook.py"
+FETCH_SCRIPT = ROOT / "scripts" / "hooks" / "agent-start-git-fetch.py"
+HOOK_SCRIPT = ROOT / "scripts" / "hooks" / "universal-agent-hook.py"
 
 _spec = importlib.util.spec_from_file_location("agent_start_git_fetch", FETCH_SCRIPT)
 assert _spec and _spec.loader
