@@ -735,5 +735,44 @@ class TestErrorDetector(unittest.TestCase):
         )
 
 
+class OpsRelayWiringTests(unittest.TestCase):
+    def test_gke_observability_wires_ops_relay_with_pinned_digest(self):
+        kustomization_path = os.path.join(BASE_DIR, "clusters", "gke", "observability", "kustomization.yaml")
+        with open(kustomization_path, encoding="utf-8") as handle:
+            kust = yaml.safe_load(handle)
+        self.assertIn("ops-relay.yaml", kust.get("resources") or [])
+        images = {item["name"]: item for item in kust.get("images") or []}
+        self.assertIn("ghcr.io/nacfson/ops-relay", images)
+        digest = images["ghcr.io/nacfson/ops-relay"].get("digest", "")
+        self.assertTrue(digest.startswith("sha256:") and len(digest) == 71, digest)
+        self.assertNotEqual(digest, "sha256:" + "0" * 64)
+
+    def test_notify_proxy_grants_and_network_policy_allow_ops_relay(self):
+        proxy_path = os.path.join(BASE_DIR, "deploy", "platform", "vault-proxies", "notify-proxy.yaml")
+        with open(proxy_path, encoding="utf-8") as handle:
+            proxy_docs = [doc for doc in yaml.safe_load_all(handle) if doc]
+        deployment = _by_kind_name(proxy_docs, "Deployment", "vault-notify-proxy")
+        env = {
+            item["name"]: item.get("value", "")
+            for item in deployment["spec"]["template"]["spec"]["containers"][0]["env"]
+        }
+        grants = {g.strip() for g in env.get("NOTIFY_GRANTS", "").split(",") if g.strip()}
+        self.assertIn("kafka:observability:ops-relay", grants)
+
+        netpol_path = os.path.join(BASE_DIR, "deploy", "platform", "vault", "network-policy.yaml")
+        with open(netpol_path, encoding="utf-8") as handle:
+            vault_docs = [doc for doc in yaml.safe_load_all(handle) if doc]
+        policy = _by_kind_name(vault_docs, "NetworkPolicy", "notify-proxy-policy")
+        allowed = [
+            peer
+            for rule in policy["spec"].get("ingress") or []
+            if any(p.get("port") == 8080 and p.get("protocol", "TCP") == "TCP" for p in rule.get("ports") or [])
+            for peer in rule.get("from") or []
+            if peer.get("namespaceSelector", {}).get("matchLabels", {}).get("kubernetes.io/metadata.name") == "observability"
+            and peer.get("podSelector", {}).get("matchLabels", {}).get("app.kubernetes.io/name") == "ops-relay"
+        ]
+        self.assertTrue(allowed)
+
+
 if __name__ == "__main__":
     unittest.main()

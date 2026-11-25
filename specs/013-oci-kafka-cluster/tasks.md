@@ -428,7 +428,7 @@ Paths follow the plan's Source Code tree: `infra/kafka/`, `infra/oci/{terraform,
   - liveness is the process only
 - [X] T085 [P] [US4] Write services/error-pipeline/Dockerfile.ops-relay (static, non-root) and add an `ops-relay` entry to the matrix in .github/workflows/build-images.yaml for amd64 and arm64
 - [X] T086 [US4] Implement services/wg-slot-agent/internal/metrics and call it from the renew loop in cmd/wg-slot-agent/main.go, writing `oci-link.nacfson.io/fluent-bit-buffer-bytes` and `oci-link.nacfson.io/handshake-age-seconds` every 30 s, so T078 passes
-- [ ] T087 [US4] Create clusters/gke/observability/ops-relay.yaml:
+- [X] T087 [US4] Create clusters/gke/observability/ops-relay.yaml:
   - **Deployment**: 1 replica, image by digest, requests = limits 10m/64Mi, `emptyDir` at `/run/ops-relay`, exec readiness and liveness probes
   - **ServiceAccount, Role, RoleBinding**: a Role and RoleBinding in `oci-link` for events and leases get/list/watch
   - **Certificate**: `Certificate/ops-relay` (issuer `kafka-mtls-ca`, CN `ops-relay`, 2160h/720h)

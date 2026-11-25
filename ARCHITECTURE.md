@@ -149,14 +149,14 @@ flowchart LR
 - **In-Cluster Proxy Execution (`services/vault-proxies/`)**:
   - `vault-db-proxy` (`cmd/db-proxy`): Authenticates project workloads and proxies PostgreSQL connections (`proj_pn`, `proj_health`) using credentials held only inside the Vault boundary.
   - `vault-ai-proxy` (`cmd/ai-proxy`): Verifies calling project pod identity via `kube-apiserver`, enforces per-project daily quotas and loopback Kill Switch (`127.0.0.1:8081`), and injects the OpenBao Gemini API key in RAM (zeroing bytes with `0x00` when disabled) ([`docs/internal-ai-gateway.html`](docs/internal-ai-gateway.html)).
-  - `vault-notify-proxy` (`cmd/notify-proxy`): Pod-attributed notification gateway (`POST /v1/notify/{channel}`) holding Discord webhook URLs exclusively inside the Vault boundary; callers include `observability/error-detector`.
+  - `vault-notify-proxy` (`cmd/notify-proxy`): Pod-attributed notification gateway (`POST /v1/notify/{channel}`) holding Discord webhook URLs exclusively inside the Vault boundary; callers include `observability/error-detector` and `observability/ops-relay`.
   - **Transit Engine**: Signs tokens asymmetrically inside OpenBao without exporting private signing keys.
 
 ### 3.4 Multi-Node Workload Isolation & $1/n$ Resource Budgeting (Constitution Principles II & IV, Spec 012)
 - **Restricted Pod Security**: Every project namespace enforces `pod-security.kubernetes.io/enforce: restricted`, `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: ["ALL"]`, `automountServiceAccountToken: false`, and `ClusterIP`-only Services.
 - **Multi-Node Per-Pool Placement & $1/n$ Slicing**:
   $$\text{Project Slice} = \frac{\sum_{\text{pools}} \text{Allocatable} - \text{Platform Reservation (incl. } N_{\text{nodes}} \times \text{DaemonSets)}}{n_{\text{projects}}}$$
-  On GKE Design 1 (`2870m / 7158Mi` across `2` nodes, `platformReservations = 1930m / 4808Mi` including the `oci-link` slot agent), each of the $n = 3$ projects receives **`313m` CPU / `783Mi` RAM**. `scripts/ci/platform-preflight.py` validates per-pool CPU/memory fit, forbids `RWO` PVCs or `keycloak`/`proj-*` pods on `spot-controllers`, and enforces `>= 50m` CPU / `>= 192Mi` memory backup headroom on `ondemand-core`.
+  On GKE Design 1 (`2870m / 7158Mi` across `2` nodes, `platformReservations = 1940m / 4872Mi` including the `oci-link` slot agent and `ops-relay`), each of the $n = 3$ projects receives **`310m` CPU / `762Mi` RAM**. `scripts/ci/platform-preflight.py` validates per-pool CPU/memory fit, forbids `RWO` PVCs or `keycloak`/`proj-*` pods on `spot-controllers`, and enforces `>= 50m` CPU / `>= 192Mi` memory backup headroom on `ondemand-core`.
 
 ### 3.5 Dependent Workload Probes & Browser CORS Contract (Constitution Principle VII & Spec 007)
 - **Three Probe Roles**: `startupProbe` (initial cluster hop to backend), `readinessProbe` (continuous cluster hop / disconnect signal), and `livenessProbe` (process-local only), with `restartPolicy: Always` and `PUBLIC_APP_URL` inside backend `ALLOWED_ORIGINS`.

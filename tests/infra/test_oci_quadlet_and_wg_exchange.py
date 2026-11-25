@@ -13,6 +13,8 @@ import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OPS_AGENT_TEMPLATE = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "ops_agent" / "templates" / "ops-agent.container.j2"
+OPS_AGENT_TASKS = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "ops_agent" / "tasks" / "main.yml"
+OCI_KAFKA_RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "oci-kafka.md"
 KAFKA_TEMPLATE = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "kafka" / "templates" / "kafka.container.j2"
 KAFKA_GENERATED = REPO_ROOT / "infra" / "oci" / "ansible" / "group_vars" / "all" / "kafka.generated.yml"
 OCI_INVENTORY = REPO_ROOT / "infra" / "oci" / "ansible" / "inventory" / "oci.yml"
@@ -347,6 +349,53 @@ class OciWireGuardAndSshExchangeTests(unittest.TestCase):
         self.assertEqual(len(seen_keys), 3)
         self.assertEqual(len(seen_endpoints), 3)
         self.assertEqual(sorted(addresses), declared_brokers)
+
+    def test_ops_agent_prepulls_image_before_quadlet_and_start(self):
+        tasks = yaml.safe_load(OPS_AGENT_TASKS.read_text(encoding="utf-8"))
+        exists_idx = None
+        pull_idx = None
+        write_idx = None
+        start_idx = None
+        for idx, task in enumerate(tasks):
+            cmd = task.get("ansible.builtin.command")
+            if isinstance(cmd, dict):
+                argv = cmd.get("argv")
+                if argv == ["podman", "image", "exists", "{{ ops_agent_image }}"]:
+                    exists_idx = idx
+                    self.assertIs(task.get("changed_when"), False)
+                    self.assertIs(task.get("failed_when"), False)
+                elif argv == ["podman", "pull", "{{ ops_agent_image }}"]:
+                    pull_idx = idx
+                    self.assertIs(task.get("changed_when"), True)
+                    self.assertIn("rc != 0", str(task.get("when", "")))
+            tmpl = task.get("ansible.builtin.template")
+            if isinstance(tmpl, dict) and tmpl.get("src") == "ops-agent.container.j2":
+                write_idx = idx
+            svc = task.get("ansible.builtin.systemd_service")
+            if isinstance(svc, dict) and svc.get("name") == "ops-agent":
+                start_idx = idx
+        self.assertIsNotNone(exists_idx)
+        self.assertIsNotNone(pull_idx)
+        self.assertIsNotNone(write_idx)
+        self.assertIsNotNone(start_idx)
+        self.assertLess(exists_idx, pull_idx)
+        self.assertLess(pull_idx, write_idx)
+        self.assertLess(write_idx, start_idx)
+
+    def test_runbook_kafka_podman_exec_clears_kafka_opts(self):
+        text = OCI_KAFKA_RUNBOOK.read_text(encoding="utf-8")
+        in_fence = False
+        exec_lines = []
+        for raw_line in text.splitlines():
+            stripped = raw_line.strip()
+            if stripped.startswith("```"):
+                in_fence = not in_fence
+                continue
+            if in_fence and "podman exec " in stripped and " kafka" in stripped:
+                exec_lines.append(stripped)
+        self.assertEqual(len(exec_lines), 3)
+        for line in exec_lines:
+            self.assertIn("--env=KAFKA_OPTS=", line)
 
 
 if __name__ == "__main__":
