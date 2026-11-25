@@ -110,6 +110,7 @@ The body schema stays in the owning repository. This table is the platform index
 | `event.name` | Stream | Owner | Schema |
 |---|---|---|---|
 | `analytics` | stdout | Project PN | `Project_PN/docs/analytics-contract.md` |
+| `blog.analytics` | stdout | nacfson_blog | `nacfson_blog/docs/analytics-contract.md` |
 | `admin` | stderr | Project PN | `Project_PN/docs/superpowers/specs/2026-07-07-admin-logging-design.md` |
 | absent | any | the printing process | §2 and §3 only |
 

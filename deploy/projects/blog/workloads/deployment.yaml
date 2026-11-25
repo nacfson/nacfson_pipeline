@@ -22,7 +22,7 @@ spec:
       labels:
         app.kubernetes.io/name: blog-web
         app.kubernetes.io/part-of: project-blog
-        app.kubernetes.io/version: "v0.0.0-6815e54"
+        app.kubernetes.io/version: "v0.0.0-0c18615"
       annotations:
         logs.nacfson.cloud/blog-web: "v3/json"
     spec:
@@ -37,7 +37,7 @@ spec:
           type: RuntimeDefault
       containers:
         - name: blog-web
-          image: ghcr.io/nacfson/blog-web@sha256:eefa6261d35aaf2fab4fa0abb587f4a15de62458a02dbc8f9380273460e83be6
+          image: ghcr.io/nacfson/blog-web@sha256:55cfbc6958d55e602d7bb59f601840200a51b3b805abe96486bac1f60cb5c14c
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
