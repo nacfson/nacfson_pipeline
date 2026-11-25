@@ -1,10 +1,10 @@
 wireguard_port: 51820
 wireguard_slots:
   - slot: 0
-    public_key: ""
+    public_key: "h0ElE95H0JzbrWbtu8bvuOpX4nQ2INQAmougo3sOcFA="
   - slot: 1
-    public_key: ""
+    public_key: "z291NDaIFIGt10EvGUmStbnTzclPUoRc5xYg9AnW0Sk="
   - slot: 2
-    public_key: ""
+    public_key: "SFYGNc1A+z67a0WbOpCgHQcRHAv5S08vW2aKqbZqRnY="
   - slot: 3
-    public_key: ""
+    public_key: "/FcV0xJUsHIcPFbur1+55YyV2J2tSYbKB6FHTSDYFhA="

@@ -9,7 +9,7 @@ ContainerName=ops-agent
 Network=host
 User={{ kafka_uid }}
 Group={{ kafka_uid }}
-GroupAdd={{ ansible_facts.getent_group['systemd-journal'][1] }}
+PodmanArgs=--group-add={{ ansible_facts.getent_group['systemd-journal'][1] }}
 ReadOnly=true
 Volume=/etc/ops-agent:/fluent-bit/etc:ro
 Volume={{ ops_agent_tls_dir }}:{{ ops_agent_tls_dir }}:ro

@@ -1,1 +1,5 @@
-[]
+[
+  {"name": "broker-1", "publicKey": "KdR/Ssap7CvbX9DrZidLokiKRvZWRQB8n9RqgZclAnc=", "endpoint": "158.180.95.47:51820", "address": "10.200.0.11/32"},
+  {"name": "broker-2", "publicKey": "jNItNlYZty77YG3OIsCQJeUBZRGIZ5UkCsPtok1oHDA=", "endpoint": "152.69.229.7:51820", "address": "10.200.0.12/32"},
+  {"name": "broker-3", "publicKey": "5yAS0EK8QNqrW3Tv3aDQYeIfcfg5TW5YjlbJGA12DRY=", "endpoint": "134.185.111.246:51820", "address": "10.200.0.13/32"}
+]

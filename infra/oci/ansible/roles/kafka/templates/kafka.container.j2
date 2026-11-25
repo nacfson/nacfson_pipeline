@@ -18,9 +18,9 @@ Volume=/etc/kafka/clients:/etc/kafka-node/clients:ro
 Volume=/etc/kafka/log4j2.yaml:/etc/kafka-node/log4j2.yaml:ro
 Volume=/etc/kafka/jmx-exporter.yaml:/etc/kafka-node/jmx-exporter.yaml:ro
 Volume={{ jmx_exporter_dir }}/jmx_prometheus_javaagent.jar:/opt/jmx-exporter/jmx_prometheus_javaagent.jar:ro
-Environment=KAFKA_HEAP_OPTS=-Xms{{ kafka_heap }} -Xmx{{ kafka_heap }}
+Environment="KAFKA_HEAP_OPTS=-Xms{{ kafka_heap }} -Xmx{{ kafka_heap }}"
 Environment=LOG_DIR=/tmp
-Environment=KAFKA_LOG4J_OPTS={{ kafka_log4j_opts }}
+Environment="KAFKA_LOG4J_OPTS={{ kafka_log4j_opts }}"
 Environment=KAFKA_OPTS=-javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=127.0.0.1:7071:/etc/kafka-node/jmx-exporter.yaml
 PodmanArgs=--entrypoint=/opt/kafka/bin/kafka-server-start.sh
 Exec={{ kafka_container_config }}
