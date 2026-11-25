@@ -284,6 +284,12 @@ spec:
           podSelector:
             matchLabels:
               app.kubernetes.io/name: error-investigator
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ops-relay
       ports:
         - protocol: TCP
           port: 8080

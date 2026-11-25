@@ -193,34 +193,61 @@ Every message is one change of state. A repeat of the same state sends nothing.
 When GKE or the relay is down, read the cluster from a VM through the Bastion with the VM's own `ops-cli` identity, which can describe but never change anything:
 
 ```bash
-podman exec --env=KAFKA_LOG4J_OPTS=-Dlog4j2.configurationFile=/opt/kafka/config/tools-log4j2.yaml kafka \
+podman exec --env=KAFKA_OPTS= --env=KAFKA_LOG4J_OPTS=-Dlog4j2.configurationFile=/opt/kafka/config/tools-log4j2.yaml kafka \
   /opt/kafka/bin/kafka-topics.sh --bootstrap-server 10.200.0.11:9092 \
   --command-config /etc/kafka-node/clients/ops-cli.properties --describe --under-replicated-partitions
 ```
 
-Swap the tool for `kafka-metadata-quorum.sh ... describe --status` (quorum and leader) or `kafka-broker-api-versions.sh` (registered brokers). The `KAFKA_LOG4J_OPTS` override keeps the tool's own logging off stdout.
+Swap the tool for `kafka-metadata-quorum.sh ... describe --status` (quorum and leader) or `kafka-broker-api-versions.sh` (registered brokers). Resetting `KAFKA_OPTS=` prevents the CLI from inheriting the broker's Prometheus JMX `-javaagent` and failing with `java.net.BindException: Address in use` on `127.0.0.1:7071`; `KAFKA_LOG4J_OPTS` keeps the tool's own logging off stdout.
 
-### The last hour of metrics
+### Topic offsets and recent metrics
+
+Check end offsets across all five declared topics from `a1-1` (requires `admin.properties` because `ops-cli` holds Describe only):
 
 ```bash
-podman exec --env=KAFKA_LOG4J_OPTS=-Dlog4j2.configurationFile=/opt/kafka/config/tools-log4j2.yaml kafka \
+for t in logs.proj.valid logs.proj.quarantine ops.platform.events ops.platform.metrics alerts.errors; do
+  echo "=== $t ==="
+  podman exec --env=KAFKA_OPTS= --env=KAFKA_LOG4J_OPTS=-Dlog4j2.configurationFile=/opt/kafka/config/tools-log4j2.yaml kafka \
+    /opt/kafka/bin/kafka-get-offsets.sh --bootstrap-server 10.200.0.11:9092 \
+    --command-config /etc/kafka-node/clients/admin.properties --topic "$t"
+done
+```
+
+Read the last hour of metrics with `admin.properties`:
+
+```bash
+podman exec --env=KAFKA_OPTS= --env=KAFKA_LOG4J_OPTS=-Dlog4j2.configurationFile=/opt/kafka/config/tools-log4j2.yaml kafka \
   /opt/kafka/bin/kafka-console-consumer.sh --bootstrap-server 10.200.0.11:9092 \
-  --command-config /etc/kafka-node/clients/ops-cli.properties --topic ops.platform.metrics \
+  --command-config /etc/kafka-node/clients/admin.properties --topic ops.platform.metrics \
   --from-beginning --timeout-ms 10000 | tail -n 500
 ```
 
-`ops-cli` holds Describe only, so reading the topic needs the relay's group or a super-user identity; on a VM use the broker identity's `admin.properties` instead of `ops-cli.properties`.
+`ops-cli` holds Describe only, so reading topic offsets or records needs the relay's group or a super-user identity (`admin.properties` on a broker VM).
 
 ### Switch the relay on
 
-The relay image is built by CI only after its source reaches `main`, so `clusters/gke/observability/ops-relay.yaml` is merged unwired, like the slot agent.
+`clusters/gke/observability/ops-relay.yaml` is wired in `clusters/gke/observability/kustomization.yaml` with its pinned `ghcr.io/nacfson/ops-relay@sha256:...` digest, `kafka:observability:ops-relay` is included in `NOTIFY_GRANTS` (`deploy/platform/vault-proxies/notify-proxy.yaml`), and `notify-proxy-policy` (`deploy/platform/vault/network-policy.yaml`) allows ingress from `observability/ops-relay` on TCP `8080`.
 
-1. Take the `ops-relay` digest from the `build-images.yaml` run.
-2. In one pull request:
-   - add `ops-relay.yaml` to `clusters/gke/observability/kustomization.yaml` with an `images:` entry for `ghcr.io/nacfson/ops-relay` at that digest
-   - add `kafka:observability:ops-relay` to `NOTIFY_GRANTS` in `deploy/platform/vault-proxies/notify-proxy.yaml`
-   - allow ingress from `observability/ops-relay` in `notify-proxy-policy` (`deploy/platform/vault/network-policy.yaml`)
-3. Store the Discord webhook for the `kafka` channel with `scripts/ops/notify-ctl.sh`, as for the existing channels.
+To enable Discord delivery on the `kafka` channel, store the webhook secret in OpenBao with `scripts/ops/notify-ctl.sh` as for the existing channels.
+
+## Live bring-up and troubleshooting log (2026-11-25)
+
+### Verified live state
+
+- **Convergence**: All four OCI VMs (`a1-1`, `a1-2`, `micro-1`, `micro-2`) converged cleanly via `ansible-playbook site.yml` (`failed=0`, `kafka` and `ops-agent` active, `/etc/nacfson/cluster-built` present).
+- **Kafka KRaft quorum**: `ClusterId: IzXtKbazRM6ZRcObBw5qXA`, `LeaderId: 1`, `MaxFollowerLag: 0`, `MaxFollowerLagTimeMs: 0`, 3 controller voters (`id 1` `10.200.0.11:9093`, `id 2` `10.200.0.12:9093`, `id 4` `10.200.0.14:9093`), 1 broker observer (`id 3` `micro-1`), all 5 topics present, and `0` under-replicated partitions.
+- **GKE to OCI WireGuard link**: Both active GKE nodes completed live `wg0` handshakes with all three OCI brokers (`a1-1`, `a1-2`, `micro-1`); the 2 spare slots in the 4-slot pool remain idle (`0`).
+- **End-to-end log and ops throughput**: Verified via `kafka-get-offsets.sh` on `a1-1` (`logs.proj.valid`: `5,501` records balanced across partitions `0..2`; `logs.proj.quarantine`: `0`; `ops.platform.events`: `150`; `ops.platform.metrics`: `3,606`; `alerts.errors`: `0` pending Spec 014).
+
+### Migration issues encountered and fixes
+
+| Issue observed live | Root cause | Fix |
+|---|---|---|
+| OCI Bastion Managed SSH failed on Ampere A1 Ubuntu VMs | OCI Managed SSH plugin is unsupported on `VM.Standard.A1.Flex` Ubuntu images | Switched Bastion sessions to SSH port forwarding (`--target-port 22`), added `lifecycle.ignore_changes` on `metadata.ssh_authorized_keys`, and converged `~ubuntu/.ssh/authorized_keys` via Ansible `ubuntu_ssh_authorized_keys` (`exclusive: true`) (PR #194, Constitution v3.1.0) |
+| `ops-agent.service` missing after `daemon_reload` (`Could not find the requested service ops-agent: host`) and Kafka `-Xmx` dropped | Pinned Podman `4.9.3` Quadlet does not support `GroupAdd=` (added in Podman `5.0`) and splits unquoted multi-word `Environment=` values | Replaced `GroupAdd=` with `PodmanArgs=--group-add=` in `ops-agent.container.j2`, quoted `Environment="KAFKA_HEAP_OPTS=..."` and `Environment="KAFKA_LOG4J_OPTS=..."` in `kafka.container.j2`, and populated WireGuard slot/broker keys and SSH keys (PR #195) |
+| Re-running `site.yml` after PR #195 merge still reported `changed=0` on `Write the Quadlet unit` and failed to find `ops-agent` | Operator checkout remained on a pre-PR-#195 feature branch (`949f8fc`), so the rendered unit still contained `GroupAdd=` matching the broken file on the VMs | Fast-forwarded local `main` to `origin/main` (`5f8cd25`) before running `site.yml` |
+| `a1-1` failed on first `Restart ops-agent` with `a fatal signal was delivered to the control process` (`Memory: 63.9M, max: 64.0M, peak: 64.2M`), then recovered on `Restart=always` | `ops-agent.service` pulled and extracted `docker.io/fluent/fluent-bit:4.2.8` inside its `MemoryMax=64M` (`48M` on micros) cgroup | Added `podman image exists` and `podman pull` pre-pull tasks to `infra/oci/ansible/roles/ops_agent/tasks/main.yml` so the image is cached in the host cgroup before `ops-agent.service` starts |
+| VM-side `podman exec kafka /opt/kafka/bin/kafka-*.sh` failed with `java.net.BindException: Address in use` on `127.0.0.1:7071` | The exec shell inherited the broker container's `KAFKA_OPTS` Prometheus JMX `-javaagent` flag | Added `--env=KAFKA_OPTS=` to all VM-side `podman exec` fallback commands in this runbook |
 
 ## Rebuild a lost VM (Story 3)
 

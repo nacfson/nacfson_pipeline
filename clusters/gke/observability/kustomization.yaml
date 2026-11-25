@@ -6,6 +6,11 @@ namespace: observability
 resources:
   - ../../../deploy/platform/observability
   - fluent-bit-kafka-tls.yaml
+  - ops-relay.yaml
+
+images:
+  - name: ghcr.io/nacfson/ops-relay
+    digest: sha256:bc81e225e090af4afd7110007e23db423181f2fa0f590b2e3647286af5604955
 
 configMapGenerator:
   - name: fluent-bit-config
