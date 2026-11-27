@@ -307,7 +307,7 @@ class ObservabilityPipelineTests(unittest.TestCase):
         crash_tag = alpha_tag()
         quar_tag = alpha_tag()
         secret_bearer = "supersecrettoken12345"
-        secret_sk = "sk-1234567890abcdef1234567890"
+        secret_sk = "sk-test-0000000000000000"
         start = len(requests_log())
         now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
