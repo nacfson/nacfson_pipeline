@@ -21,13 +21,6 @@
       ansible.builtin.include_tasks: tasks/wait-healthy.yml
       when: not hostvars['localhost'].site_first_build and not cluster_healthy
 
-    - name: Record the applied commit
-      ansible.builtin.copy:
-        content: "{{ applied_commit }}\n"
-        dest: /etc/nacfson/applied-commit
-        mode: "0644"
-      when: applied_commit is defined
-
 - name: Converge topics and ACLs once, as broker-1
   hosts: a1-1
   become: true
@@ -45,7 +38,16 @@
     - role: samplers
     - role: ops_agent
 
-- name: Record that the cluster has been built
+- name: Deploy headless observability on A1-2
+  hosts: a1-2
+  any_errors_fatal: true
+  become: true
+  roles:
+    - role: loki
+    - role: vector
+    - role: error_detector
+
+- name: Record cluster build and applied commit
   hosts: controllers:brokers
   become: true
   gather_facts: false
@@ -55,3 +57,10 @@
         content: "built\n"
         dest: "{{ cluster_built_marker }}"
         mode: "0644"
+
+    - name: Record the applied commit
+      ansible.builtin.copy:
+        content: "{{ applied_commit }}\n"
+        dest: /etc/nacfson/applied-commit
+        mode: "0644"
+      when: applied_commit is defined

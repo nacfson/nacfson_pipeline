@@ -16,6 +16,6 @@ spec:
   usages:
     - digital signature
     - client auth
-{% if certs_identity is match('^(broker|controller)-') %}
+{% if certs_is_server | default(false) | bool %}
     - server auth
 {% endif %}

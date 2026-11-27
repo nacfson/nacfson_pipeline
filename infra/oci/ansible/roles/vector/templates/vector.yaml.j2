@@ -1,0 +1,341 @@
+data_dir: /var/lib/vector
+
+sources:
+  kafka_in:
+    type: kafka
+    bootstrap_servers: "{{ vector_brokers }}"
+    group_id: "{{ vector_group_id }}"
+    acknowledgements:
+      enabled: true
+    topics:
+      - logs.proj.valid
+      - logs.proj.quarantine
+      - ops.platform.events
+      - ops.platform.metrics
+    auto_offset_reset: earliest
+    decoding:
+      codec: bytes
+    tls:
+      enabled: true
+      ca_file: "{{ vector_tls_dir }}/ca.crt"
+      crt_file: "{{ vector_tls_dir }}/{{ vector_identity }}.crt"
+      key_file: "{{ vector_tls_dir }}/{{ vector_identity }}.key"
+
+transforms:
+  route_topics:
+    type: route
+    inputs:
+      - kafka_in
+    route:
+      proj_valid: .topic == "logs.proj.valid"
+      proj_quarantine: .topic == "logs.proj.quarantine"
+      ops_events: .topic == "ops.platform.events"
+      ops_metrics: .topic == "ops.platform.metrics"
+
+  prep_proj:
+    type: remap
+    inputs:
+      - route_topics.proj_valid
+      - route_topics.proj_quarantine
+    source: |
+      raw = string!(.message)
+      if length(raw) > 250000 {
+        .message = truncate(raw, limit: 64000, suffix: "...[truncated]")
+      } else {
+        .message = raw
+      }
+      parsed, err = parse_json(raw)
+      if err != null || !is_object(parsed) {
+        parsed = {}
+      }
+
+      now_ts = now()
+      ts = now_ts
+      if is_timestamp(.timestamp) {
+        ts = timestamp!(.timestamp)
+      }
+      obs_raw = to_string(parsed.observed_time) ?? ""
+      if obs_raw != "" {
+        parsed_ts, ts_err = parse_timestamp(obs_raw, "%+")
+        if ts_err == null {
+          ts = parsed_ts
+        }
+      } else {
+        alt_raw = to_string(parsed._time) ?? ""
+        if alt_raw != "" {
+          parsed_ts, ts_err = parse_timestamp(alt_raw, "%+")
+          if ts_err == null {
+            ts = parsed_ts
+          }
+        }
+      }
+
+      ts_unix = to_unix_timestamp(ts, unit: "seconds")
+      now_unix = to_unix_timestamp(now_ts, unit: "seconds")
+      if (now_unix - ts_unix) > 82800 || (ts_unix - now_unix) > 300 {
+        .timestamp = now_ts
+        .meta_clamped = "true"
+      } else {
+        .timestamp = ts
+        .meta_clamped = "false"
+      }
+
+      .lbl_topic = string!(.topic)
+
+      ns = to_string(parsed."k8s.namespace.name") ?? ""
+      if ns == "" {
+        ns = to_string(parsed.k8s.namespace.name) ?? ""
+      }
+      if ns == "" {
+        ns = "unknown"
+      }
+      .lbl_ns = ns
+
+      cont = to_string(parsed."k8s.container.name") ?? ""
+      if cont == "" {
+        cont = to_string(parsed.k8s.container.name) ?? ""
+      }
+      if cont == "" {
+        cont = "unknown"
+      }
+      .lbl_container = cont
+
+      raw_level = downcase(to_string(parsed.level) ?? "")
+      if raw_level == "warning" {
+        raw_level = "warn"
+      } else if raw_level == "critical" {
+        raw_level = "fatal"
+      }
+      norm_level = if includes(["debug", "info", "warn", "error", "fatal"], raw_level) { raw_level } else { "" }
+      msg_str = to_string(parsed.msg) ?? (to_string(parsed.message) ?? "")
+      if .lbl_topic == "logs.proj.quarantine" {
+        .lbl_stream_kind = "quarantine"
+        .lbl_level = if norm_level != "" { norm_level } else { "unknown" }
+      } else if raw_level == "" {
+        .lbl_stream_kind = "unstructured"
+        if match(msg_str, r'^(panic:|fatal error:|Exception in thread "|Traceback \(most recent call last\):|\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \[(crit|alert|emerg)\])') {
+          .lbl_level = "fatal"
+        } else if match(msg_str, r'^\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2} \[error\]') {
+          .lbl_level = "error"
+        } else {
+          .lbl_level = "unknown"
+        }
+      } else {
+        .lbl_stream_kind = "structured"
+        .lbl_level = if norm_level != "" { norm_level } else { "unknown" }
+      }
+
+      trace_id = to_string(parsed.trace_id) ?? ""
+      if trace_id != "" {
+        .meta_trace_id = trace_id
+      }
+      span_id = to_string(parsed.span_id) ?? ""
+      if span_id != "" {
+        .meta_span_id = span_id
+      }
+      pod_name = to_string(parsed."k8s.pod.name") ?? ""
+      if pod_name == "" {
+        pod_name = to_string(parsed.k8s.pod.name) ?? ""
+      }
+      if pod_name != "" {
+        .meta_pod = pod_name
+      }
+      fp = to_string(parsed."error.fingerprint") ?? ""
+      if fp == "" {
+        fp = to_string(parsed.error.fingerprint) ?? ""
+      }
+      if fp != "" {
+        .meta_fingerprint = fp
+      }
+
+  route_proj_tenant:
+    type: route
+    inputs:
+      - prep_proj
+    route:
+      proj: .lbl_topic == "logs.proj.valid"
+      quarantine: .lbl_topic == "logs.proj.quarantine"
+
+  prep_ops_events:
+    type: remap
+    inputs:
+      - route_topics.ops_events
+    source: |
+      raw = string!(.message)
+      if length(raw) > 250000 {
+        .message = truncate(raw, limit: 64000, suffix: "...[truncated]")
+      } else {
+        .message = raw
+      }
+      now_ts = now()
+      ts = now_ts
+      if is_timestamp(.timestamp) {
+        ts = timestamp!(.timestamp)
+      }
+      ts_unix = to_unix_timestamp(ts, unit: "seconds")
+      now_unix = to_unix_timestamp(now_ts, unit: "seconds")
+      if (now_unix - ts_unix) > 82800 || (ts_unix - now_unix) > 300 {
+        .timestamp = now_ts
+      } else {
+        .timestamp = ts
+      }
+      parsed, err = parse_json(raw)
+      if err != null || !is_object(parsed) {
+        parsed = {}
+      }
+      .lbl_topic = "ops.platform.events"
+      vm = to_string(parsed.vm) ?? ""
+      kind = to_string(parsed.kind) ?? ""
+      st = to_string(parsed.state) ?? ""
+      .lbl_vm = if vm != "" { vm } else { "unknown" }
+      .lbl_kind = if kind != "" { kind } else { "unknown" }
+      .lbl_state = if st != "" { st } else { "unknown" }
+
+  prep_ops_metrics:
+    type: remap
+    inputs:
+      - route_topics.ops_metrics
+    source: |
+      raw = string!(.message)
+      now_ts = now()
+      ts = now_ts
+      if is_timestamp(.timestamp) {
+        ts = timestamp!(.timestamp)
+      }
+      ts_unix = to_unix_timestamp(ts, unit: "seconds")
+      now_unix = to_unix_timestamp(now_ts, unit: "seconds")
+      if (now_unix - ts_unix) > 82800 || (ts_unix - now_unix) > 300 {
+        .timestamp = now_ts
+      } else {
+        .timestamp = ts
+      }
+      parsed, err = parse_json(raw)
+      .lbl_topic = "ops.platform.metrics"
+      if err == null && is_object(parsed) {
+        src = to_string(parsed.source) ?? ""
+        met = to_string(parsed.metric) ?? ""
+        val_str, val_err = to_string(parsed.value)
+        unit = to_string(parsed.unit) ?? ""
+        .lbl_source = if src != "" { src } else { "unknown" }
+        .lbl_metric = if met != "" { met } else { "unknown" }
+        if unit != "" {
+          .meta_unit = unit
+        }
+        .message = if val_err == null { "value=" + val_str } else { "value=NaN" }
+      } else {
+        .lbl_source = "unknown"
+        .lbl_metric = "unknown"
+        .message = "value=NaN"
+      }
+
+sinks:
+  loki_proj:
+    type: loki
+    inputs:
+      - route_proj_tenant.proj
+    endpoint: "{{ vector_loki_endpoint }}"
+    tenant_id: proj
+    compression: gzip
+    out_of_order_action: accept
+    buffer:
+      type: disk
+      max_size: 268435488
+      when_full: block
+    encoding:
+      codec: text
+    tls:
+      ca_file: "{{ vector_tls_dir }}/ca.crt"
+      crt_file: "{{ vector_tls_dir }}/{{ vector_identity }}.crt"
+      key_file: "{{ vector_tls_dir }}/{{ vector_identity }}.key"
+    labels:
+      topic: "{% raw %}{{ lbl_topic }}{% endraw %}"
+      k8s_namespace_name: "{% raw %}{{ lbl_ns }}{% endraw %}"
+      k8s_container_name: "{% raw %}{{ lbl_container }}{% endraw %}"
+      level: "{% raw %}{{ lbl_level }}{% endraw %}"
+      stream_kind: "{% raw %}{{ lbl_stream_kind }}{% endraw %}"
+    structured_metadata:
+      trace_id: "{% raw %}{{ meta_trace_id }}{% endraw %}"
+      span_id: "{% raw %}{{ meta_span_id }}{% endraw %}"
+      k8s_pod_name: "{% raw %}{{ meta_pod }}{% endraw %}"
+      error_fingerprint: "{% raw %}{{ meta_fingerprint }}{% endraw %}"
+      timestamp_clamped: "{% raw %}{{ meta_clamped }}{% endraw %}"
+
+  loki_quarantine:
+    type: loki
+    inputs:
+      - route_proj_tenant.quarantine
+    endpoint: "{{ vector_loki_endpoint }}"
+    tenant_id: quarantine
+    compression: gzip
+    out_of_order_action: accept
+    buffer:
+      type: disk
+      max_size: 268435488
+      when_full: block
+    encoding:
+      codec: text
+    tls:
+      ca_file: "{{ vector_tls_dir }}/ca.crt"
+      crt_file: "{{ vector_tls_dir }}/{{ vector_identity }}.crt"
+      key_file: "{{ vector_tls_dir }}/{{ vector_identity }}.key"
+    labels:
+      topic: "{% raw %}{{ lbl_topic }}{% endraw %}"
+      k8s_namespace_name: "{% raw %}{{ lbl_ns }}{% endraw %}"
+      k8s_container_name: "{% raw %}{{ lbl_container }}{% endraw %}"
+      level: "{% raw %}{{ lbl_level }}{% endraw %}"
+      stream_kind: "{% raw %}{{ lbl_stream_kind }}{% endraw %}"
+    structured_metadata:
+      trace_id: "{% raw %}{{ meta_trace_id }}{% endraw %}"
+      span_id: "{% raw %}{{ meta_span_id }}{% endraw %}"
+      k8s_pod_name: "{% raw %}{{ meta_pod }}{% endraw %}"
+      error_fingerprint: "{% raw %}{{ meta_fingerprint }}{% endraw %}"
+      timestamp_clamped: "{% raw %}{{ meta_clamped }}{% endraw %}"
+
+  loki_ops_events:
+    type: loki
+    inputs:
+      - prep_ops_events
+    endpoint: "{{ vector_loki_endpoint }}"
+    tenant_id: ops
+    compression: gzip
+    out_of_order_action: accept
+    buffer:
+      type: disk
+      max_size: 268435488
+      when_full: block
+    encoding:
+      codec: text
+    tls:
+      ca_file: "{{ vector_tls_dir }}/ca.crt"
+      crt_file: "{{ vector_tls_dir }}/{{ vector_identity }}.crt"
+      key_file: "{{ vector_tls_dir }}/{{ vector_identity }}.key"
+    labels:
+      topic: "{% raw %}{{ lbl_topic }}{% endraw %}"
+      vm: "{% raw %}{{ lbl_vm }}{% endraw %}"
+      kind: "{% raw %}{{ lbl_kind }}{% endraw %}"
+      state: "{% raw %}{{ lbl_state }}{% endraw %}"
+
+  loki_ops_metrics:
+    type: loki
+    inputs:
+      - prep_ops_metrics
+    endpoint: "{{ vector_loki_endpoint }}"
+    tenant_id: ops
+    compression: gzip
+    out_of_order_action: accept
+    buffer:
+      type: disk
+      max_size: 268435488
+      when_full: block
+    encoding:
+      codec: text
+    tls:
+      ca_file: "{{ vector_tls_dir }}/ca.crt"
+      crt_file: "{{ vector_tls_dir }}/{{ vector_identity }}.crt"
+      key_file: "{{ vector_tls_dir }}/{{ vector_identity }}.key"
+    labels:
+      topic: "{% raw %}{{ lbl_topic }}{% endraw %}"
+      source: "{% raw %}{{ lbl_source }}{% endraw %}"
+      metric: "{% raw %}{{ lbl_metric }}{% endraw %}"
+    structured_metadata:
+      unit: "{% raw %}{{ meta_unit }}{% endraw %}"

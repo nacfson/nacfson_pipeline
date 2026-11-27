@@ -507,16 +507,23 @@ class TestFluentBitCollector(unittest.TestCase):
 
 
 class TestGkeObservabilityOverlay(unittest.TestCase):
-    def test_gke_deletes_victorialogs_pauses_detector_and_ships_to_oci_kafka(self):
+    def test_gke_deletes_victorialogs_and_error_detector_and_ships_to_oci_kafka(self):
         docs = render(GKE_OBSERVABILITY_DIR)
         kind_names = {(d.get("kind"), d.get("metadata", {}).get("name")) for d in docs}
         self.assertNotIn(("StatefulSet", "victorialogs"), kind_names)
         self.assertNotIn(("Service", "victorialogs"), kind_names)
         self.assertNotIn(("NetworkPolicy", "victorialogs-ingress"), kind_names)
-        self.assertIn(("PersistentVolumeClaim", "error-detector-state"), kind_names)
+        self.assertNotIn(("Deployment", "error-detector"), kind_names)
+        self.assertNotIn(("PersistentVolumeClaim", "error-detector-state"), kind_names)
+        self.assertNotIn(("ServiceAccount", "error-detector"), kind_names)
+        self.assertNotIn(("NetworkPolicy", "error-detector-egress"), kind_names)
 
-        detector = _by_kind_name(docs, "Deployment", "error-detector")
-        self.assertEqual(detector["spec"].get("replicas"), 0)
+        relay = _by_kind_name(docs, "Deployment", "ops-relay")
+        relay_env = {
+            item["name"]: item.get("value", "")
+            for item in relay["spec"]["template"]["spec"]["containers"][0]["env"]
+        }
+        self.assertEqual(relay_env.get("ALERTS_ERRORS_TOPIC"), "alerts.errors")
 
         fb_netpol = _by_kind_name(docs, "NetworkPolicy", "fluent-bit-egress")
         egress = fb_netpol["spec"]["egress"]
@@ -758,6 +765,7 @@ class OpsRelayWiringTests(unittest.TestCase):
         }
         grants = {g.strip() for g in env.get("NOTIFY_GRANTS", "").split(",") if g.strip()}
         self.assertIn("kafka:observability:ops-relay", grants)
+        self.assertIn("errors:observability:ops-relay", grants)
 
         netpol_path = os.path.join(BASE_DIR, "deploy", "platform", "vault", "network-policy.yaml")
         with open(netpol_path, encoding="utf-8") as handle:

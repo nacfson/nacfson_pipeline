@@ -1,0 +1,26 @@
+[Unit]
+Description=Vector Kafka-to-Loki shipper
+Wants=network-online.target
+After=network-online.target loki.service
+
+[Container]
+Image={{ vector_image }}
+ContainerName=vector
+Network=host
+User={{ vector_uid }}
+Group={{ vector_uid }}
+ReadOnly=true
+Tmpfs=/tmp:rw,size=32m
+Volume=/etc/vector:/etc/vector:ro
+Volume={{ vector_tls_dir }}:{{ vector_tls_dir }}:ro
+Volume=/var/lib/vector:/var/lib/vector
+Exec=--config /etc/vector/vector.yaml
+
+[Service]
+Restart=always
+MemoryMax={{ vector_memory_max }}
+OOMScoreAdjust=600
+CPUWeight=100
+
+[Install]
+WantedBy=multi-user.target

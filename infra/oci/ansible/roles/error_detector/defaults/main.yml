@@ -1,0 +1,11 @@
+error_detector_image: ghcr.io/nacfson/error-detector@sha256:7ac0d136ebfe69c367059b48df17f7b83d9f47d1c15dcc4bd64e4adf3a6a514a
+error_detector_uid: 65532
+error_detector_tls_dir: /etc/error-detector/tls
+error_detector_identity: "error-detector-{{ inventory_hostname }}"
+error_detector_brokers: "{{ kafka_bootstrap_servers }}"
+error_detector_listen_addr: 127.0.0.1:8080
+error_detector_group: error-detector
+error_detector_outbox_topic: alerts.errors
+error_detector_dedup_ttl: 10m
+error_detector_quarantine_throttle: 1h
+error_detector_memory_max: 96M

@@ -1,0 +1,8 @@
+- name: Reload systemd for Loki
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart loki
+  ansible.builtin.systemd_service:
+    name: loki
+    state: restarted

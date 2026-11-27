@@ -2,7 +2,7 @@
 
 This document summarizes the runtime topology, GitOps reconciliation layers, security boundaries, and request flows of **`nacfson_pipeline`**.
 
-For supreme governance rules, read [`.specify/memory/constitution.md`](.specify/memory/constitution.md) (`v2.4.1`). For deep-dive subsystem docs, see [`INDEX.md`](INDEX.md).
+For supreme governance rules, read [`.specify/memory/constitution.md`](.specify/memory/constitution.md) (`v3.1.0`). For deep-dive subsystem docs, see [`INDEX.md`](INDEX.md).
 
 ---
 
@@ -33,8 +33,9 @@ flowchart TD
 
     subgraph ObservabilityNS["Observability Namespace (observability)"]
         FB["Fluent Bit DaemonSet (4.2.8) [Tails proj-* only]<br/>[/var/log/pods RO + /var/lib/fluent-bit-state RW (256Mi cap)]"]
-        VictoriaLogs["VictoriaLogs v1.53.0 (local-k3s)<br/>[10Gi PVC, 30d / 8GiB cap]"]
-        ErrorDetector["error-detector (local-k3s; paused on GKE)<br/>(services/error-pipeline)"]
+        VictoriaLogs["VictoriaLogs v1.53.0 (local-k3s only)<br/>[10Gi PVC, 30d / 8GiB cap]"]
+        ErrorDetector["error-detector (local-k3s)<br/>(deleted on GKE; runs on OCI A1-2)"]
+        OpsRelay["ops-relay (GKE only, 10m/64Mi)<br/>(consumes ops.platform.* + alerts.errors)"]
     end
 
     subgraph ProjectPN["Hosted Projects (proj-pn, proj-health, proj-blog) [Restricted PSS]"]
@@ -44,7 +45,7 @@ flowchart TD
 
     Google["Google OAuth 2.0"]
     GAR["Public GAR / GHCR (@sha256 Multi-Arch)"]
-    OCIKafka["OCI WireGuard Kafka Brokers<br/>(10.200.0.11..13:9092 on GKE)"]
+    OCIKafka["OCI WireGuard Kafka (10.200.0.11..13:9092)<br/>+ OCI A1-2 Headless Obs (Vector, Loki :3100, error-detector)"]
 
     Browser -->|"HTTPS (*.nacfson.cloud)"| Traefik
     Traefik -->|"Project Door (/ and /api/*)"| FE
@@ -67,8 +68,10 @@ flowchart TD
     Kubelet["Node Kubelet"] -->|"Anonymous @sha256 Pull"| GAR
     FB -->|"GKE: [OUTPUT] kafka (acks=-1)"| OCIKafka
     FB -->|"local-k3s: Structured Logs"| VictoriaLogs
-    ErrorDetector -->|"Tail & Alert"| VictoriaLogs
-    ErrorDetector -->|"Notify via Proxy"| NotifyProxy
+    ErrorDetector -->|"local-k3s: Tail & Alert"| VictoriaLogs
+    ErrorDetector -->|"local-k3s: Notify via Proxy"| NotifyProxy
+    OCIKafka -->|"GKE: ops.platform.* + alerts.errors"| OpsRelay
+    OpsRelay -->|"GKE: /v1/notify/{kafka,errors}"| NotifyProxy
     NotifyProxy <-->|"Fetch Webhook Creds"| OpenBao
 ```
 
@@ -156,7 +159,7 @@ flowchart LR
 - **Restricted Pod Security**: Every project namespace enforces `pod-security.kubernetes.io/enforce: restricted`, `runAsNonRoot: true`, `allowPrivilegeEscalation: false`, `capabilities.drop: ["ALL"]`, `automountServiceAccountToken: false`, and `ClusterIP`-only Services.
 - **Multi-Node Per-Pool Placement & $1/n$ Slicing**:
   $$\text{Project Slice} = \frac{\sum_{\text{pools}} \text{Allocatable} - \text{Platform Reservation (incl. } N_{\text{nodes}} \times \text{DaemonSets)}}{n_{\text{projects}}}$$
-  On GKE Design 1 (`2870m / 7158Mi` across `2` nodes, `platformReservations = 1940m / 4872Mi` including the `oci-link` slot agent and `ops-relay`), each of the $n = 3$ projects receives **`310m` CPU / `762Mi` RAM**. `scripts/ci/platform-preflight.py` validates per-pool CPU/memory fit, forbids `RWO` PVCs or `keycloak`/`proj-*` pods on `spot-controllers`, and enforces `>= 50m` CPU / `>= 192Mi` memory backup headroom on `ondemand-core`.
+  On GKE Design 1 (`2870m / 7158Mi` across `2` nodes, `platformReservations = 1915m / 4808Mi` including the `oci-link` slot agent and `ops-relay`, after deleting GKE `error-detector` to reclaim `25m / 64Mi`), each of the $n = 3$ projects receives **`318m` CPU / `783Mi` RAM**. `scripts/ci/platform-preflight.py` validates per-pool CPU/memory fit, forbids `RWO` PVCs or `keycloak`/`proj-*` pods on `spot-controllers`, and enforces `>= 50m` CPU / `>= 192Mi` memory backup headroom on `ondemand-core`.
 
 ### 3.5 Dependent Workload Probes & Browser CORS Contract (Constitution Principle VII & Spec 007)
 - **Three Probe Roles**: `startupProbe` (initial cluster hop to backend), `readinessProbe` (continuous cluster hop / disconnect signal), and `livenessProbe` (process-local only), with `restartPolicy: Always` and `PUBLIC_APP_URL` inside backend `ALLOWED_ORIGINS`.
@@ -179,17 +182,20 @@ flowchart LR
     PodsDir --> FB["Fluent Bit 4.2.8 DaemonSet<br/>[/state: /var/lib/fluent-bit-state RW (256Mi cap)]"]
     FB -->|"local-k3s HTTP"| VL["In-Cluster VictoriaLogs (:9428)"]
     FB -->|"gke [OUTPUT] kafka (acks=-1)"| Kafka["OCI WireGuard Kafka (10.200.0.11..13:9092)"]
+    Kafka -->|"OCI A1-2 VCN mTLS"| Vector["Vector 0.62.0 -> Loki 3.7.10 (10 GiB loopback :3100)"]
+    Kafka -->|"OCI A1-2 VCN mTLS"| Det["error-detector -> alerts.errors -> GKE ops-relay"]
 ```
 
 - **Node-Local Recovery State (Solution B — Constitution Amendment `2.3.0`)**: `DaemonSet/fluent-bit` tolerates `cloud.google.com/gke-spot=true:NoSchedule` so it runs on every node, mounting `/var/log/pods` (`readOnly: true`) and `/var/lib/fluent-bit-state` (`DirectoryOrCreate`, `readOnly: false` at `/state`). SQLite WAL `/state/tail.db` and `/state/chunks` filesystem buffering (`256 MiB` max per node) guarantee zero lost or duplicated records across pod crashes and downstream sink outages without multi-node `ReadWriteOnce` PVC scheduling deadlocks.
 - **Environment Sinks**:
   - **`local-k3s`**: Ships to in-cluster `StatefulSet/victorialogs` (`v1.53.0`, `10Gi` PVC, `30d` / `8 GiB` cap) and `Deployment/error-detector`.
-  - **`gke`** ([`clusters/gke/observability/`](clusters/gke/observability/)): Deletes in-cluster `StatefulSet/victorialogs` (moving onto the two shared A1 VMs in Spec 014; there is no separate OCI VM 4), pauses `Deployment/error-detector` at `replicas: 0` (retaining `PVC/error-detector-state` and its pre-reserved `25m/64Mi` budget slot until Spec 014 switches it to Kafka `logs.proj.errors`), and ships `proj.*` (`192M` cap -> `logs.proj.valid`) and `quarantine.*` (`64M` cap -> `logs.proj.quarantine`) via idempotent `[OUTPUT] kafka` (`acks=-1`, `Retry_Limit False`).
-- **OCI Kafka cluster (Spec 013)**: Kafka `4.3.2` in KRaft mode on the four Always Free VMs, declared once in [`infra/kafka/cluster.yaml`](infra/kafka/cluster.yaml) and built with [`infra/oci/terraform/`](infra/oci/terraform/) (operator) and [`infra/oci/ansible/`](infra/oci/ansible/) (control center).
-  - **Layout**: brokers on A1-1 (`10.200.0.11`), A1-2 (`.12`), and Micro-1 (`.13`); controller voters on A1-1, A1-2, and Micro-2 (`.14`). Each group spans three fault domains, so losing any one VM keeps writes going. `logs.*` topics keep 3 replicas and need 2 in sync.
-  - **Path from GKE**: each GKE node's `wg-slot-agent` ([`clusters/gke/oci-link/`](clusters/gke/oci-link/)) claims a WireGuard key slot through a Lease, peers with the three brokers' reserved public IPs on UDP `51820`, and source-NATs pod traffic to its slot address `10.201.0.<n+1>`. Every Kafka connection then uses mutual TLS from `ClusterIssuer/kafka-mtls-ca`, with deny-by-default ACLs.
+  - **`gke`** ([`clusters/gke/observability/`](clusters/gke/observability/)): Deletes in-cluster `StatefulSet/victorialogs`, `Deployment/error-detector`, `PVC/error-detector-state`, `ServiceAccount/error-detector`, and `NetworkPolicy/error-detector-egress` (reclaiming `25m / 64 MiB` on GKE), ships `proj.*` (`192M` cap -> `logs.proj.valid`) and `quarantine.*` (`64M` cap -> `logs.proj.quarantine`) via idempotent `[OUTPUT] kafka` (`acks=-1`, `Retry_Limit False`), and runs `ops-relay` (`10m / 64Mi`) to forward `ops.platform.*` (`#kafka`) and `alerts.errors` (`#errors`) through OpenBao `vault-notify-proxy` (`NOTIFY_GRANTS` includes `kafka:observability:ops-relay,errors:observability:ops-relay`).
+- **OCI Kafka cluster & Headless Observability (Specs 013 & 014)**: Kafka `4.3.2` in KRaft mode on the four Always Free VMs, declared once in [`infra/kafka/cluster.yaml`](infra/kafka/cluster.yaml) and built with [`infra/oci/terraform/`](infra/oci/terraform/) (operator) and [`infra/oci/ansible/`](infra/oci/ansible/) (control center).
+  - **Layout**: brokers on A1-1 (`10.200.0.11`), A1-2 (`.12`), and Micro-1 (`.13`); controller voters on A1-1, A1-2, and Micro-2 (`.14`). Each group spans three fault domains, so losing any one VM keeps writes going. `logs.*` topics keep 3 replicas and need 2 in sync, `__consumer_offsets` is pinned to `3` partitions (`16 MiB` segments), and `alerts.errors` is capped at `64 MiB` (`19.672 / 20.0 GiB` total per-broker budget).
+  - **Headless Observability on `A1-2` (Spec 014)**: No Grafana or web dashboard UI is deployed. `Vector` (`0.62.0-distroless-libc`, `256 MiB`) consumes all four log/ops topics into single-binary `Grafana Loki` (`3.7.10`, `1,800 MiB`, `10 GiB` loopback `/var/lib/loki`, `14d` retention, loopback-only mTLS on `127.0.0.1:3100`), while `error-detector` (`96 MiB`, `ReadOnly=true`, `STATE_ENABLED=false`, 10m bounded RAM LRU dedup, no `GRAFANA_BASE_URL`) consumes `logs.proj.*` and writes redacted alerts to `alerts.errors` for GKE `ops-relay`. `ops-agent` watches `vector.service`, `loki.service`, and `error-detector.service` on `a1-2` and monitors `/var/lib/loki` disk space (`loki.disk.free_ratio`, `loki.disk.low` `< 15%`), emitting `[obs]` alerts without suppressing Kafka incidents.
+  - **Path from GKE**: each GKE node's `wg-slot-agent` ([`clusters/gke/oci-link/`](clusters/gke/oci-link/)) claims a WireGuard key slot through a Lease, peers with the three brokers' reserved public IPs on UDP `51820` (`nftables` narrows `wg0` `:9092` to `10.201.0.0/28`), and source-NATs pod traffic to its slot address `10.201.0.<n+1>`. Every Kafka connection uses mutual TLS from `ClusterIssuer/kafka-mtls-ca`, with deny-by-default ACLs.
   - **Health**: an ops agent on each VM writes events and 30 s metrics to `ops.platform.events` / `ops.platform.metrics`; `ops-relay` in GKE sends one Discord message per state change and serves `ops-relay status` through `kubectl exec`. Runbook: [`docs/runbooks/oci-kafka.md`](docs/runbooks/oci-kafka.md).
-- **Error Detector**: [`deploy/platform/observability/error-detector.yaml`](deploy/platform/observability/error-detector.yaml) (`services/error-pipeline/cmd/error-detector`) tails VictoriaLogs, persists SQLite state on PVC `error-detector-state`, and dispatches alerts via `vault-notify-proxy`.
+- **Error Detector**: On `local-k3s` / `vps-k3s`, [`deploy/platform/observability/error-detector.yaml`](deploy/platform/observability/error-detector.yaml) (`services/error-pipeline/cmd/error-detector`) tails VictoriaLogs, persists SQLite state on PVC `error-detector-state`, and dispatches alerts via `vault-notify-proxy`; on `gke`, error detection runs on OCI `A1-2` via `infra/oci/ansible/roles/error_detector/`.
 - **Access**: [`scripts/ops/open-observe.sh`](scripts/ops/open-observe.sh) (transitional `vps-k3s`) and [`scripts/ops/open-victorialogs-ui.sh`](scripts/ops/open-victorialogs-ui.sh) (`local-k3s`) port-forward to loopback only. No public route.
 - **Reference**: [`specs/011-project-log-contract/spec.md`](specs/011-project-log-contract/spec.md) | [`docs/operations-runbook.md`](docs/operations-runbook.md) §15–16 | [`specs/012-gke-platform-migration/`](specs/012-gke-platform-migration/)
 

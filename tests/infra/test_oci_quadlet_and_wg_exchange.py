@@ -14,6 +14,19 @@ import yaml
 REPO_ROOT = Path(__file__).resolve().parents[2]
 OPS_AGENT_TEMPLATE = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "ops_agent" / "templates" / "ops-agent.container.j2"
 OPS_AGENT_TASKS = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "ops_agent" / "tasks" / "main.yml"
+LOKI_TEMPLATE = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "loki" / "templates" / "loki.container.j2"
+LOKI_TASKS = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "loki" / "tasks" / "main.yml"
+LOKI_DEFAULTS = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "loki" / "defaults" / "main.yml"
+VECTOR_TEMPLATE = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "vector" / "templates" / "vector.container.j2"
+VECTOR_TASKS = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "vector" / "tasks" / "main.yml"
+VECTOR_DEFAULTS = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "vector" / "defaults" / "main.yml"
+ERROR_DETECTOR_TEMPLATE = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "error_detector" / "templates" / "error-detector.container.j2"
+ERROR_DETECTOR_TASKS = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "error_detector" / "tasks" / "main.yml"
+ERROR_DETECTOR_DEFAULTS = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "error_detector" / "defaults" / "main.yml"
+NFTABLES_TEMPLATE = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "base" / "templates" / "nftables.conf.j2"
+CERTS_VARS = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "certs" / "vars" / "main.yml"
+SITE_PLAYBOOK = REPO_ROOT / "infra" / "oci" / "ansible" / "site.yml"
+RENEW_CERTS_PLAYBOOK = REPO_ROOT / "infra" / "oci" / "ansible" / "renew-certs.yml"
 OCI_KAFKA_RUNBOOK = REPO_ROOT / "docs" / "runbooks" / "oci-kafka.md"
 KAFKA_TEMPLATE = REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "kafka" / "templates" / "kafka.container.j2"
 KAFKA_GENERATED = REPO_ROOT / "infra" / "oci" / "ansible" / "group_vars" / "all" / "kafka.generated.yml"
@@ -100,20 +113,24 @@ PODMAN_4_9_3_CONTAINER_KEYS = frozenset({
 })
 
 
-def container_entries(text: str) -> list[tuple[str, str]]:
-    in_container = False
+def section_entries(text: str, section_name: str) -> list[tuple[str, str]]:
+    in_section = False
     entries = []
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
             continue
         if line.startswith("[") and line.endswith("]"):
-            in_container = line == "[Container]"
+            in_section = line == f"[{section_name}]"
             continue
-        if in_container and "=" in line:
+        if in_section and "=" in line:
             key, val = line.split("=", 1)
             entries.append((key.strip(), val.strip()))
     return entries
+
+
+def container_entries(text: str) -> list[tuple[str, str]]:
+    return section_entries(text, "Container")
 
 
 def parse_quadlet_env(entries: list[tuple[str, str]]) -> tuple[dict[str, str], list[str]]:
@@ -131,7 +148,10 @@ def parse_quadlet_env(entries: list[tuple[str, str]]) -> tuple[dict[str, str], l
     return env_map, stray
 
 
-def render_ops_agent_unit(gid: str = "101") -> str:
+def render_ops_agent_unit(
+    gid: str = "101",
+    watched_units: str = "kafka.service,wg-quick@wg0.service,ops-agent.service",
+) -> str:
     text = OPS_AGENT_TEMPLATE.read_text(encoding="utf-8")
     replacements = {
         "{{ ops_agent_image }}": "docker.io/fluent/fluent-bit:4.2.8@sha256:6806769c10acf11b41d14083b3101a24433b4ca113a1ab7a6b1a1b7cad86a7e8",
@@ -140,7 +160,57 @@ def render_ops_agent_unit(gid: str = "101") -> str:
         "{{ ops_agent_tls_dir }}": "/etc/ops-agent/tls",
         "{{ inventory_hostname }}": "a1-1",
         "{{ kafka_nodes | dict2items | map(attribute='value') | map(attribute='node_id') | zip(kafka_nodes.keys()) | map('join', '=') | join(',') }}": "1=a1-1,2=a1-2,3=micro-1,4=micro-2",
+        "{{ ops_agent_watched_units | join(',') }}": watched_units,
         "{{ ops_agent_memory_max }}": "64M",
+    }
+    for src, dst in replacements.items():
+        text = text.replace(src, dst)
+    return text
+
+
+def render_loki_unit() -> str:
+    defaults = yaml.safe_load(LOKI_DEFAULTS.read_text(encoding="utf-8"))
+    text = LOKI_TEMPLATE.read_text(encoding="utf-8")
+    replacements = {
+        "{{ loki_image }}": defaults["loki_image"],
+        "{{ loki_uid }}": str(defaults["loki_uid"]),
+        "{{ loki_tls_dir }}": defaults["loki_tls_dir"],
+        "{{ loki_data_dir }}": defaults["loki_data_dir"],
+        "{{ loki_memory_max }}": defaults["loki_memory_max"],
+    }
+    for src, dst in replacements.items():
+        text = text.replace(src, dst)
+    return text
+
+
+def render_vector_unit() -> str:
+    defaults = yaml.safe_load(VECTOR_DEFAULTS.read_text(encoding="utf-8"))
+    text = VECTOR_TEMPLATE.read_text(encoding="utf-8")
+    replacements = {
+        "{{ vector_image }}": defaults["vector_image"],
+        "{{ vector_uid }}": str(defaults["vector_uid"]),
+        "{{ vector_tls_dir }}": defaults["vector_tls_dir"],
+        "{{ vector_memory_max }}": defaults["vector_memory_max"],
+    }
+    for src, dst in replacements.items():
+        text = text.replace(src, dst)
+    return text
+
+
+def render_error_detector_unit() -> str:
+    defaults = yaml.safe_load(ERROR_DETECTOR_DEFAULTS.read_text(encoding="utf-8"))
+    text = ERROR_DETECTOR_TEMPLATE.read_text(encoding="utf-8")
+    replacements = {
+        "{{ error_detector_image }}": defaults["error_detector_image"],
+        "{{ error_detector_uid }}": str(defaults["error_detector_uid"]),
+        "{{ error_detector_tls_dir }}": defaults["error_detector_tls_dir"],
+        "{{ error_detector_listen_addr }}": defaults["error_detector_listen_addr"],
+        "{{ error_detector_brokers }}": "10.200.0.11:9092,10.200.0.12:9092,10.200.0.13:9092",
+        "{{ error_detector_group }}": defaults["error_detector_group"],
+        "{{ error_detector_outbox_topic }}": defaults["error_detector_outbox_topic"],
+        "{{ error_detector_dedup_ttl }}": defaults["error_detector_dedup_ttl"],
+        "{{ error_detector_quarantine_throttle }}": defaults["error_detector_quarantine_throttle"],
+        "{{ error_detector_memory_max }}": defaults["error_detector_memory_max"],
     }
     for src, dst in replacements.items():
         text = text.replace(src, dst)
@@ -206,6 +276,7 @@ class OciQuadletTests(unittest.TestCase):
                 "OPS_VM": "a1-1",
                 "OPS_NODES": "1=a1-1,2=a1-2,3=micro-1,4=micro-2",
                 "OPS_REPLICATION": "3",
+                "OPS_UNITS": "kafka.service,wg-quick@wg0.service,ops-agent.service",
             },
         )
 
@@ -246,6 +317,36 @@ class OciQuadletTests(unittest.TestCase):
                     "-javaagent:/opt/jmx-exporter/jmx_prometheus_javaagent.jar=127.0.0.1:7071:/etc/kafka-node/jmx-exporter.yaml",
                 )
 
+    def test_observability_quadlets_podman_4_9_3_keys_and_limits(self):
+        specs = [
+            (LOKI_TEMPLATE, render_loki_unit(), "1800M"),
+            (VECTOR_TEMPLATE, render_vector_unit(), "256M"),
+            (ERROR_DETECTOR_TEMPLATE, render_error_detector_unit(), "96M"),
+        ]
+        for tmpl_path, rendered, expected_mem in specs:
+            with self.subTest(template=tmpl_path.name):
+                raw_entries = container_entries(tmpl_path.read_text(encoding="utf-8"))
+                keys = [k for k, _ in raw_entries]
+                self.assertNotIn("GroupAdd", keys)
+                self.assertTrue(set(keys).issubset(PODMAN_4_9_3_CONTAINER_KEYS), set(keys) - PODMAN_4_9_3_CONTAINER_KEYS)
+                self.assertNotIn("{{", rendered)
+                entries = container_entries(rendered)
+                self.assertIn(("ReadOnly", "true"), entries)
+                env_map, stray = parse_quadlet_env(entries)
+                self.assertEqual(stray, [])
+                svc_entries = dict(section_entries(rendered, "Service"))
+                self.assertEqual(svc_entries.get("MemoryMax"), expected_mem)
+                self.assertEqual(svc_entries.get("OOMScoreAdjust"), "600")
+                self.assertEqual(svc_entries.get("CPUWeight"), "100")
+
+        det_env, _ = parse_quadlet_env(container_entries(render_error_detector_unit()))
+        self.assertEqual(det_env["SOURCE_MODE"], "kafka")
+        self.assertEqual(det_env["NOTIFY_MODE"], "kafka-outbox")
+        self.assertEqual(det_env["STATE_ENABLED"], "false")
+        self.assertEqual(det_env["DEDUP_TTL"], "10m")
+        self.assertEqual(det_env["QUARANTINE_THROTTLE"], "1h")
+        self.assertNotIn("GRAFANA_BASE_URL", det_env)
+
     def test_quadlet_generator_dryrun_when_available(self):
         quadlet = find_quadlet_binary()
         if quadlet is None:
@@ -260,6 +361,9 @@ class OciQuadletTests(unittest.TestCase):
             log4j_opts=generated["kafka_log4j_opts"],
             image=generated["kafka_image"],
         )
+        loki_rendered = render_loki_unit()
+        vector_rendered = render_vector_unit()
+        det_rendered = render_error_detector_unit()
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "src"
             out = Path(tmp) / "out"
@@ -267,6 +371,9 @@ class OciQuadletTests(unittest.TestCase):
             out.mkdir()
             (src / "ops-agent.container").write_text(ops_rendered, encoding="utf-8")
             (src / "kafka.container").write_text(kafka_rendered, encoding="utf-8")
+            (src / "loki.container").write_text(loki_rendered, encoding="utf-8")
+            (src / "vector.container").write_text(vector_rendered, encoding="utf-8")
+            (src / "error-detector.container").write_text(det_rendered, encoding="utf-8")
             res = subprocess.run(
                 [str(quadlet), "-dryrun", str(out)],
                 env={"QUADLET_UNIT_DIRS": str(src)},
@@ -351,36 +458,87 @@ class OciWireGuardAndSshExchangeTests(unittest.TestCase):
         self.assertEqual(sorted(addresses), declared_brokers)
 
     def test_ops_agent_prepulls_image_before_quadlet_and_start(self):
-        tasks = yaml.safe_load(OPS_AGENT_TASKS.read_text(encoding="utf-8"))
-        exists_idx = None
-        pull_idx = None
-        write_idx = None
-        start_idx = None
-        for idx, task in enumerate(tasks):
-            cmd = task.get("ansible.builtin.command")
-            if isinstance(cmd, dict):
-                argv = cmd.get("argv")
-                if argv == ["podman", "image", "exists", "{{ ops_agent_image }}"]:
-                    exists_idx = idx
-                    self.assertIs(task.get("changed_when"), False)
-                    self.assertIs(task.get("failed_when"), False)
-                elif argv == ["podman", "pull", "{{ ops_agent_image }}"]:
-                    pull_idx = idx
-                    self.assertIs(task.get("changed_when"), True)
-                    self.assertIn("rc != 0", str(task.get("when", "")))
-            tmpl = task.get("ansible.builtin.template")
-            if isinstance(tmpl, dict) and tmpl.get("src") == "ops-agent.container.j2":
-                write_idx = idx
-            svc = task.get("ansible.builtin.systemd_service")
-            if isinstance(svc, dict) and svc.get("name") == "ops-agent":
-                start_idx = idx
-        self.assertIsNotNone(exists_idx)
-        self.assertIsNotNone(pull_idx)
-        self.assertIsNotNone(write_idx)
-        self.assertIsNotNone(start_idx)
-        self.assertLess(exists_idx, pull_idx)
-        self.assertLess(pull_idx, write_idx)
-        self.assertLess(write_idx, start_idx)
+        for tasks_path, image_var, template_src, unit_name in (
+            (OPS_AGENT_TASKS, "{{ ops_agent_image }}", "ops-agent.container.j2", "ops-agent"),
+            (LOKI_TASKS, "{{ loki_image }}", "loki.container.j2", "loki"),
+            (VECTOR_TASKS, "{{ vector_image }}", "vector.container.j2", "vector"),
+            (ERROR_DETECTOR_TASKS, "{{ error_detector_image }}", "error-detector.container.j2", "error-detector"),
+        ):
+            with self.subTest(unit=unit_name):
+                tasks = yaml.safe_load(tasks_path.read_text(encoding="utf-8"))
+                exists_idx = None
+                pull_idx = None
+                write_idx = None
+                start_idx = None
+                for idx, task in enumerate(tasks):
+                    cmd = task.get("ansible.builtin.command")
+                    if isinstance(cmd, dict):
+                        argv = cmd.get("argv")
+                        if argv == ["podman", "image", "exists", image_var]:
+                            exists_idx = idx
+                            self.assertIs(task.get("changed_when"), False)
+                            self.assertIs(task.get("failed_when"), False)
+                        elif argv == ["podman", "pull", image_var]:
+                            pull_idx = idx
+                            self.assertIs(task.get("changed_when"), True)
+                            self.assertIn("rc != 0", str(task.get("when", "")))
+                    tmpl = task.get("ansible.builtin.template")
+                    if isinstance(tmpl, dict) and tmpl.get("src") == template_src:
+                        write_idx = idx
+                    svc = task.get("ansible.builtin.systemd_service")
+                    if isinstance(svc, dict) and svc.get("name") == unit_name:
+                        start_idx = idx
+                self.assertIsNotNone(exists_idx)
+                self.assertIsNotNone(pull_idx)
+                self.assertIsNotNone(write_idx)
+                self.assertIsNotNone(start_idx)
+                self.assertLess(exists_idx, pull_idx)
+                self.assertLess(pull_idx, write_idx)
+                self.assertLess(write_idx, start_idx)
+
+    def test_headless_oci_observability_boundaries(self):
+        nft = NFTABLES_TEMPLATE.read_text(encoding="utf-8")
+        self.assertIn('iifname "wg0" ip saddr 10.201.0.0/28 ip daddr {{ ansible_host }} tcp dport {{ kafka_client_port }} accept', nft)
+        self.assertNotIn("3000", nft)
+        self.assertNotIn("3100", nft)
+
+        certs_vars = yaml.safe_load(CERTS_VARS.read_text(encoding="utf-8"))
+        self.assertEqual(certs_vars["certs_enabled_tls_identities"], ["loki-a1-2"])
+        self.assertNotIn("grafana-a1-1", certs_vars["certs_enabled_tls_identities"])
+
+        site = yaml.safe_load(SITE_PLAYBOOK.read_text(encoding="utf-8"))
+        obs_play = next(p for p in site if p.get("hosts") == "a1-2")
+        obs_roles = [r["role"] if isinstance(r, dict) else r for r in obs_play["roles"]]
+        self.assertEqual(obs_roles, ["loki", "vector", "error_detector"])
+        self.assertNotIn("grafana", obs_roles)
+        obs_idx = site.index(obs_play)
+        commit_plays = [
+            idx for idx, p in enumerate(site)
+            if "/etc/nacfson/applied-commit" in yaml.safe_dump(p)
+        ]
+        self.assertEqual(len(commit_plays), 1)
+        self.assertGreater(commit_plays[0], obs_idx)
+
+        renew = yaml.safe_load(RENEW_CERTS_PLAYBOOK.read_text(encoding="utf-8"))
+        renew_dump = yaml.safe_dump(renew)
+        self.assertNotIn("grafana", renew_dump)
+        self.assertIn("renew_kafka", renew_dump)
+        self.assertNotIn("results[0]", renew_dump)
+        self.assertFalse((REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "grafana").exists())
+        self.assertFalse((REPO_ROOT / "infra" / "oci" / "ansible" / "host_vars" / "a1-1" / "wireguard_operators.yml").exists())
+
+        loki_uid = yaml.safe_load(LOKI_DEFAULTS.read_text(encoding="utf-8"))["loki_uid"]
+        vector_uid = yaml.safe_load(VECTOR_DEFAULTS.read_text(encoding="utf-8"))["vector_uid"]
+        det_uid = yaml.safe_load(ERROR_DETECTOR_DEFAULTS.read_text(encoding="utf-8"))["error_detector_uid"]
+        self.assertEqual(len({1500, loki_uid, vector_uid, det_uid}), 4)
+
+        loki_yaml_tmpl = (REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "loki" / "templates" / "loki.yaml.j2").read_text(encoding="utf-8")
+        self.assertIn("grpc_tls_config:", loki_yaml_tmpl)
+        self.assertIn("max_chunk_age: 48h", loki_yaml_tmpl)
+
+        for pb_name in ("replace-controller.yml", "rebuild-node.yml"):
+            pb_text = (REPO_ROOT / "infra" / "oci" / "ansible" / pb_name).read_text(encoding="utf-8")
+            self.assertNotIn("/etc/nacfson/applied-commit", pb_text)
 
     def test_runbook_kafka_podman_exec_clears_kafka_opts(self):
         text = OCI_KAFKA_RUNBOOK.read_text(encoding="utf-8")

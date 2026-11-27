@@ -81,7 +81,7 @@ def expected_path(fixture: Path) -> Path:
     return EXPECTED / f"{fixture.name}.json"
 
 
-def run_fluent_bit(fixture: Path) -> list[dict]:
+def run_fluent_bit(fixture: Path, env_override: dict[str, str] | None = None) -> list[dict]:
     is_units = fixture.suffix == ".jsonl"
     conf = f"""[SERVICE]
     Flush 1
@@ -116,7 +116,8 @@ def run_fluent_bit(fixture: Path) -> list[dict]:
     with tempfile.TemporaryDirectory() as tmp:
         (Path(tmp) / "fluent-bit.conf").write_text(conf, encoding="utf-8")
         (Path(tmp) / "parsers.conf").write_text("[PARSER]\n    Name json\n    Format json\n", encoding="utf-8")
-        env = [arg for k, v in ENV.items() for arg in ("-e", f"{k}={v}")]
+        run_env = {**ENV, **(env_override or {})}
+        env = [arg for k, v in run_env.items() for arg in ("-e", f"{k}={v}")]
         out = subprocess.run(
             ["podman", "run", "--rm", *env,
              "-v", f"{tmp}:/fluent-bit/etc:ro,Z", "-v", f"{LUA.parent}:/lua:ro,Z", "-v", f"{fixture.parent}:/fixture:ro,Z",
@@ -145,6 +146,60 @@ class LuaRulesOnCapturedLines(unittest.TestCase):
             with self.subTest(fixture=fixture.name):
                 expected = json.loads(expected_path(fixture).read_text(encoding="utf-8"))
                 self.assertEqual(run_fluent_bit(fixture), expected)
+
+    def test_lua_accepts_a12_observability_units_and_drops_grafana_and_unlisted(self):
+        records = [
+            {"UNIT": "vector.service", "MESSAGE_ID": UNIT_STARTED, "MESSAGE": "Started Vector."},
+            {"UNIT": "loki.service", "MESSAGE_ID": "d9b373ed55a64feb8242e02dbe79a49c", "MESSAGE": "loki.service: Failed."},
+            {"UNIT": "error-detector.service", "MESSAGE_ID": "9d1aaa27d60140bd96365438aad20286", "MESSAGE": "Stopped error-detector."},
+            {"UNIT": "grafana.service", "MESSAGE_ID": "d9b373ed55a64feb8242e02dbe79a49c", "MESSAGE": "grafana.service: Failed."},
+            {"UNIT": "ssh.service", "MESSAGE_ID": "d9b373ed55a64feb8242e02dbe79a49c", "MESSAGE": "ssh.service: Failed."},
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            fixture = Path(tmp) / "a12-units.jsonl"
+            fixture.write_text("".join(json.dumps(r) + "\n" for r in records), encoding="utf-8")
+            got = run_fluent_bit(
+                fixture,
+                {
+                    "OPS_VM": "a1-2",
+                    "OPS_UNITS": "kafka.service,wg-quick@wg0.service,ops-agent.service,vector.service,loki.service,error-detector.service",
+                },
+            )
+        self.assertEqual(
+            got,
+            [
+                {
+                    "schema": 1,
+                    "kind": "unit.active",
+                    "state": "up",
+                    "subject": "unit/a1-2/vector.service",
+                    "vm": "a1-2",
+                    "observed_by": "a1-2",
+                    "source": "systemd",
+                    "detail": "Started Vector.",
+                },
+                {
+                    "schema": 1,
+                    "kind": "unit.failed",
+                    "state": "down",
+                    "subject": "unit/a1-2/loki.service",
+                    "vm": "a1-2",
+                    "observed_by": "a1-2",
+                    "source": "systemd",
+                    "detail": "loki.service: Failed.",
+                },
+                {
+                    "schema": 1,
+                    "kind": "unit.failed",
+                    "state": "down",
+                    "subject": "unit/a1-2/error-detector.service",
+                    "vm": "a1-2",
+                    "observed_by": "a1-2",
+                    "source": "systemd",
+                    "detail": "Stopped error-detector.",
+                },
+            ],
+        )
 
 
 def write_expected() -> None:

@@ -9,25 +9,79 @@
   roles:
     - role: certs
   post_tasks:
+    - name: Set per-service certificate renewal flags
+      ansible.builtin.set_fact:
+        renew_kafka: "{{ (certs_renewed_identities | default([]) | select('match', '^(broker|controller)-') | list | length) > 0 }}"
+        renew_ops_agent: "{{ ('ops-agent-' ~ inventory_hostname) in (certs_renewed_identities | default([])) }}"
+        renew_vector: "{{ ('vector-' ~ inventory_hostname) in (certs_renewed_identities | default([])) }}"
+        renew_error_detector: "{{ ('error-detector-' ~ inventory_hostname) in (certs_renewed_identities | default([])) }}"
+        renew_loki: "{{ ('loki-' ~ inventory_hostname) in (certs_renewed_identities | default([])) }}"
+
+    - name: Check which Quadlet service units are installed
+      ansible.builtin.stat:
+        path: "/etc/containers/systemd/{{ item }}.container"
+      loop:
+        - ops-agent
+        - vector
+        - error-detector
+        - loki
+      register: renew_obs_units
+
+    - name: Map installed Quadlet units by name
+      ansible.builtin.set_fact:
+        renew_obs_installed: >-
+          {{ dict(renew_obs_units.results | map(attribute='item')
+             | zip(renew_obs_units.results | map(attribute='stat.exists'))) }}
+
     - name: Restart Kafka on renewal
       ansible.builtin.systemd_service:
         name: kafka
         state: restarted
-      when: certs_changed
+      when: renew_kafka | bool
 
     - name: Refresh the ops agent's copy of its certificate
       ansible.builtin.include_role:
         name: ops_agent
         tasks_from: tls
-      when: certs_changed
+      when: renew_ops_agent | bool and (renew_obs_installed['ops-agent'] | default(false))
 
-    - name: Restart the ops agent on renewal
+    - name: Refresh Vector's copy of its certificate
+      ansible.builtin.include_role:
+        name: vector
+        tasks_from: tls
+      when: renew_vector | bool and (renew_obs_installed['vector'] | default(false))
+
+    - name: Refresh error-detector's copy of its certificate
+      ansible.builtin.include_role:
+        name: error_detector
+        tasks_from: tls
+      when: renew_error_detector | bool and (renew_obs_installed['error-detector'] | default(false))
+
+    - name: Restart services whose TLS files changed
+      ansible.builtin.meta: flush_handlers
+
+    - name: Stat renewed Loki certificate for checksum tracking
+      ansible.builtin.stat:
+        path: "/etc/loki/tls/loki-{{ inventory_hostname }}.crt"
+        checksum_algorithm: sha256
+      register: renew_loki_cert_stat
+      when: renew_loki | bool and (renew_obs_installed['loki'] | default(false))
+
+    - name: Record renewed Loki certificate checksum
+      ansible.builtin.copy:
+        content: "{{ renew_loki_cert_stat.stat.checksum }}\n"
+        dest: /etc/loki/cert.sha256
+        owner: "10001"
+        group: "10001"
+        mode: "0640"
+      when: renew_loki | bool and (renew_obs_installed['loki'] | default(false)) and (renew_loki_cert_stat.stat.exists | default(false))
+
+    - name: Restart Loki on renewal
       ansible.builtin.systemd_service:
-        name: ops-agent
+        name: loki
         state: restarted
-      when: certs_changed
-      failed_when: false
+      when: renew_loki | bool and (renew_obs_installed['loki'] | default(false))
 
-    - name: Wait for full replication after a restart
+    - name: Wait for full replication after a Kafka restart
       ansible.builtin.include_tasks: tasks/wait-healthy.yml
-      when: certs_changed
+      when: renew_kafka | bool

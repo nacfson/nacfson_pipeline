@@ -1,0 +1,21 @@
+- name: Create Vector's own TLS directory
+  ansible.builtin.file:
+    path: "{{ vector_tls_dir }}"
+    state: directory
+    owner: "{{ vector_uid }}"
+    group: "{{ vector_uid }}"
+    mode: "0700"
+
+- name: Copy only Vector's certificate, key, and the CA
+  ansible.builtin.copy:
+    src: "{{ kafka_tls_dir }}/{{ item.name }}"
+    dest: "{{ vector_tls_dir }}/{{ item.name }}"
+    remote_src: true
+    owner: "{{ vector_uid }}"
+    group: "{{ vector_uid }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {name: ca.crt, mode: "0644"}
+    - {name: "{{ vector_identity }}.crt", mode: "0640"}
+    - {name: "{{ vector_identity }}.key", mode: "0600"}
+  notify: Restart vector

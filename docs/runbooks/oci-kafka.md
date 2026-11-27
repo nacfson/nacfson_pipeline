@@ -351,10 +351,10 @@ If a key leaks, treat it as a compromise of all four Kafka VMs. The runner's OCI
 ## Spec 014 handoff
 
 - **Disk**: each A1 VM has about 14 GB left for Spec 014 after the OS, Kafka's 20 GB budget, and 20% free space (research R12). The micro VMs have nothing to spare.
-- **Memory**: per research R16, A1-1 reserves 2.5 GB for Flink and A1-2 3 GB for Flink and VictoriaLogs. Kafka's own `MemoryMin` equals its `MemoryMax`, so it cannot be squeezed.
+- **Memory**: per research R16, A1-2 carries headless Loki (`MemoryMax=1800M`), Vector (`256M`) and error-detector (`96M`) inside the 3 GB reservation; A1-1 stays idle until the Grafana follow-up. Kafka's own `MemoryMin` equals its `MemoryMax`, so it cannot be squeezed.
 - **CPU and OOM**: Spec 014 units must set `OOMScoreAdjust` of 500 or more and `CPUWeight=100`; Kafka has `-900` and `1000`.
 - **Consumer identities**: add each consumer to `identities` in `infra/kafka/cluster.yaml` with read-only grants, `key_location` on its VM or in-cluster Secret. `kafka-declarations.py check` and the `kafka_declared` module do the rest.
-- **Kafka client**: `services/error-pipeline/internal/kafkaclient` (franz-go) is shared; `error-detector` moves to it when it reads Kafka instead of VictoriaLogs.
+- **Kafka client**: `services/error-pipeline/internal/kafkaclient` (franz-go) is shared; `error-detector` now reads `logs.proj.*` directly from Kafka through `internal/kafka` and no longer uses VictoriaLogs.
 
 ## Moving Kafka into GKE (FR-025 point 6)
 

@@ -5,9 +5,10 @@ ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/../.." && pwd)
 DIR="$ROOT/tests/kafka/rehearsal"
 RUN="$DIR/.run"
 COMPOSE_FILE="$DIR/compose.generated.yaml"
+OBS_COMPOSE_FILE="$DIR/compose.observability.yaml"
 
 usage() {
-	echo "usage: $0 up | down | capture-logs | test all | test <story1|story2|story3|alerts|security|declared|ops_events_lua>" >&2
+	echo "usage: $0 up [--with-observability] | down [--with-observability] | capture-logs | test all | test <story1|story2|story3|alerts|security|declared|ops_events_lua|observability_pipeline>" >&2
 	exit 2
 }
 
@@ -56,6 +57,8 @@ issue() {
 certificates() {
 	mkdir -p "$RUN/ca" "$RUN/clients"
 	openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:P-256 -nodes -days 2 \
+		-addext "basicConstraints=critical,CA:TRUE" \
+		-addext "keyUsage=critical,keyCertSign,cRLSign" \
 		-keyout "$RUN/ca/ca.key" -out "$RUN/ca/ca.crt" -subj "/CN=kafka-rehearsal-ca" 2>/dev/null
 	for id in $(node_ids); do
 		tls="$RUN/tls/node-$id"
@@ -80,7 +83,85 @@ certificates() {
 	podman unshare chown -R 1000:1000 "$RUN/tls" "$RUN/clients"
 }
 
+observability_setup() {
+	mkdir -p \
+		"$RUN/obs-tls/loki" \
+		"$RUN/obs-tls/vector" \
+		"$RUN/obs-tls/error-detector" \
+		"$RUN/obs-tls/ops-relay" \
+		"$RUN/obs-tls/test-client" \
+		"$RUN/data/loki/chunks" \
+		"$RUN/data/loki/rules" \
+		"$RUN/data/loki/compactor" \
+		"$RUN/data/loki/wal" \
+		"$RUN/data/vector" \
+		"$RUN/bin"
+
+	cp "$RUN/ca/ca.crt" "$RUN/obs-tls/loki/ca.crt"
+	issue "loki-a1-2" "DNS:loki,DNS:a1-2,IP:127.0.0.1" "$RUN/obs-tls/loki"
+	chmod 0755 "$RUN/obs-tls/loki"
+	chmod 0644 "$RUN/obs-tls/loki/ca.crt" "$RUN/obs-tls/loki/loki-a1-2.crt"
+	chmod 0600 "$RUN/obs-tls/loki/loki-a1-2.key" "$RUN/obs-tls/loki/loki-a1-2.pem"
+	podman unshare chown -R 10001:10001 "$RUN/obs-tls/loki" "$RUN/data/loki"
+
+	podman unshare sh -c '
+		set -eu
+		clients="$1"
+		obs="$2"
+		data="$3"
+
+		cp "$clients/ca.crt" "$obs/vector/ca.crt"
+		cp "$clients/vector-a1-2.crt" "$obs/vector/vector-a1-2.crt"
+		cp "$clients/vector-a1-2.key" "$obs/vector/vector-a1-2.key"
+		chmod 0700 "$obs/vector" "$data/vector"
+		chmod 0644 "$obs/vector/ca.crt"
+		chmod 0640 "$obs/vector/vector-a1-2.crt"
+		chmod 0600 "$obs/vector/vector-a1-2.key"
+		chown -R 10002:10002 "$obs/vector" "$data/vector"
+
+		cp "$clients/ca.crt" "$obs/error-detector/ca.crt"
+		cp "$clients/error-detector-a1-2.crt" "$obs/error-detector/tls.crt"
+		cp "$clients/error-detector-a1-2.key" "$obs/error-detector/tls.key"
+		chmod 0750 "$obs/error-detector"
+		chmod 0644 "$obs/error-detector/ca.crt"
+		chmod 0640 "$obs/error-detector/tls.crt"
+		chmod 0600 "$obs/error-detector/tls.key"
+		chown -R 65532:65532 "$obs/error-detector"
+
+		cp "$clients/ca.crt" "$obs/ops-relay/ca.crt"
+		cp "$clients/ops-relay.crt" "$obs/ops-relay/tls.crt"
+		cp "$clients/ops-relay.key" "$obs/ops-relay/tls.key"
+		chmod 0750 "$obs/ops-relay"
+		chmod 0644 "$obs/ops-relay/ca.crt"
+		chmod 0640 "$obs/ops-relay/tls.crt"
+		chmod 0600 "$obs/ops-relay/tls.key"
+		chown -R 65532:65532 "$obs/ops-relay"
+
+		cp "$clients/ca.crt" "$obs/test-client/ca.crt"
+		cp "$clients/vector-a1-2.crt" "$obs/test-client/client.crt"
+		cp "$clients/vector-a1-2.key" "$obs/test-client/client.key"
+		chown 0:0 "$obs/test-client" "$obs/test-client/ca.crt" "$obs/test-client/client.crt" "$obs/test-client/client.key"
+		chmod 0700 "$obs/test-client"
+		chmod 0644 "$obs/test-client/ca.crt" "$obs/test-client/client.crt"
+		chmod 0600 "$obs/test-client/client.key"
+	' sh "$RUN/clients" "$RUN/obs-tls" "$RUN/data"
+
+	(
+		cd "$ROOT/tests/kafka/fakenotify"
+		CGO_ENABLED=0 GO111MODULE=off go build -o "$RUN/bin/fakenotify" main.go
+	)
+	chmod 0755 "$RUN/bin/fakenotify"
+}
+
 up() {
+	with_obs=0
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--with-observability) with_obs=1 ;;
+		*) usage ;;
+		esac
+		shift
+	done
 	if [ -d "$RUN" ]; then
 		echo "rehearsal already up; run '$0 down' first" >&2
 		exit 1
@@ -92,10 +173,26 @@ up() {
 	podman-compose -f "$COMPOSE_FILE" up -d
 	python3 -m tests.kafka.harness wait
 	python3 -m tests.kafka.harness declare
+	if [ "$with_obs" = 1 ]; then
+		observability_setup
+		podman-compose -f "$COMPOSE_FILE" -f "$OBS_COMPOSE_FILE" up -d loki vector fakenotify error-detector ops-relay
+	fi
 }
 
 down() {
+	with_obs=0
+	while [ $# -gt 0 ]; do
+		case "$1" in
+		--with-observability) with_obs=1 ;;
+		*) usage ;;
+		esac
+		shift
+	done
 	cd "$ROOT"
+	if [ "$with_obs" = 1 ] || [ -d "$RUN/obs-tls" ]; then
+		podman-compose -f "$COMPOSE_FILE" -f "$OBS_COMPOSE_FILE" down --volumes >/dev/null 2>&1 || true
+		podman rm -f kafka-rehearsal-loki kafka-rehearsal-vector kafka-rehearsal-fakenotify kafka-rehearsal-error-detector kafka-rehearsal-ops-relay >/dev/null 2>&1 || true
+	fi
 	podman-compose -f "$COMPOSE_FILE" down --volumes >/dev/null 2>&1 || true
 	if [ -d "$RUN" ]; then
 		podman unshare rm -rf "$RUN"
@@ -104,17 +201,19 @@ down() {
 }
 
 [ $# -ge 1 ] || usage
-case "$1" in
-up) up ;;
-down) down ;;
+cmd=$1
+shift
+case "$cmd" in
+up) up "$@" ;;
+down) down "$@" ;;
 capture-logs)
 	cd "$ROOT"
 	exec python3 -m tests.kafka.harness capture-logs
 	;;
 test)
-	[ $# -ge 2 ] || usage
-	suite=$2
-	shift 2
+	[ $# -ge 1 ] || usage
+	suite=$1
+	shift
 	cd "$ROOT"
 	if [ "$suite" = all ]; then
 		set -- tests.kafka.test_story1 tests.kafka.test_declared tests.kafka.test_story2 tests.kafka.test_security tests.kafka.test_alerts tests.kafka.test_ops_events_lua tests.kafka.test_story3

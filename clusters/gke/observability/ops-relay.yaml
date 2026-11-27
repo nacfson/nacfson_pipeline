@@ -66,6 +66,8 @@ spec:
               value: 10.200.0.11:9092,10.200.0.12:9092,10.200.0.13:9092
             - name: NOTIFY_CHANNEL
               value: kafka
+            - name: ALERTS_ERRORS_TOPIC
+              value: alerts.errors
           securityContext:
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
