@@ -14,11 +14,6 @@ server:
     key_file: "{{ loki_tls_dir }}/{{ loki_identity }}.key"
     client_ca_file: "{{ loki_tls_dir }}/ca.crt"
     client_auth_type: RequireAndVerifyClientCert
-  grpc_tls_config:
-    cert_file: "{{ loki_tls_dir }}/{{ loki_identity }}.crt"
-    key_file: "{{ loki_tls_dir }}/{{ loki_identity }}.key"
-    client_ca_file: "{{ loki_tls_dir }}/ca.crt"
-    client_auth_type: RequireAndVerifyClientCert
 
 common:
   instance_addr: 127.0.0.1

@@ -153,6 +153,26 @@ observability_setup() {
 	chmod 0755 "$RUN/bin/fakenotify"
 }
 
+wait_loki_ready() {
+	deadline=$(($(date +%s) + 120))
+	code=none
+	while [ "$(date +%s)" -lt "$deadline" ]; do
+		code=$(curl -sS -o /dev/null -w '%{http_code}' \
+			--max-time 5 \
+			--cacert "$RUN/obs-tls/test-client/ca.crt" \
+			--cert "$RUN/obs-tls/test-client/client.crt" \
+			--key "$RUN/obs-tls/test-client/client.key" \
+			https://127.0.0.1:13100/ready 2>/dev/null || true)
+		if [ "$code" = 200 ]; then
+			echo "loki ready"
+			return 0
+		fi
+		sleep 2
+	done
+	echo "loki did not become ready at https://127.0.0.1:13100/ready within 120s (last http_code=$code)" >&2
+	return 1
+}
+
 up() {
 	with_obs=0
 	while [ $# -gt 0 ]; do
@@ -176,6 +196,7 @@ up() {
 	if [ "$with_obs" = 1 ]; then
 		observability_setup
 		podman-compose -f "$COMPOSE_FILE" -f "$OBS_COMPOSE_FILE" up -d loki vector fakenotify error-detector ops-relay
+		wait_loki_ready
 	fi
 }
 

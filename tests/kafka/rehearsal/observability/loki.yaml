@@ -14,11 +14,6 @@ server:
     key_file: /etc/loki/tls/loki-a1-2.key
     client_ca_file: /etc/loki/tls/ca.crt
     client_auth_type: RequireAndVerifyClientCert
-  grpc_tls_config:
-    cert_file: /etc/loki/tls/loki-a1-2.crt
-    key_file: /etc/loki/tls/loki-a1-2.key
-    client_ca_file: /etc/loki/tls/ca.crt
-    client_auth_type: RequireAndVerifyClientCert
 
 common:
   instance_addr: 127.0.0.1

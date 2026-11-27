@@ -501,6 +501,8 @@ class OciWireGuardAndSshExchangeTests(unittest.TestCase):
         self.assertIn('iifname "wg0" ip saddr 10.201.0.0/28 ip daddr {{ ansible_host }} tcp dport {{ kafka_client_port }} accept', nft)
         self.assertNotIn("3000", nft)
         self.assertNotIn("3100", nft)
+        self.assertNotIn("9096", nft)
+        self.assertNotIn("loki_grpc_port", nft)
 
         certs_vars = yaml.safe_load(CERTS_VARS.read_text(encoding="utf-8"))
         self.assertEqual(certs_vars["certs_enabled_tls_identities"], ["loki-a1-2"])
@@ -533,7 +535,10 @@ class OciWireGuardAndSshExchangeTests(unittest.TestCase):
         self.assertEqual(len({1500, loki_uid, vector_uid, det_uid}), 4)
 
         loki_yaml_tmpl = (REPO_ROOT / "infra" / "oci" / "ansible" / "roles" / "loki" / "templates" / "loki.yaml.j2").read_text(encoding="utf-8")
-        self.assertIn("grpc_tls_config:", loki_yaml_tmpl)
+        self.assertIn("http_tls_config:", loki_yaml_tmpl)
+        self.assertIn("client_auth_type: RequireAndVerifyClientCert", loki_yaml_tmpl)
+        self.assertIn("grpc_listen_address: 127.0.0.1", loki_yaml_tmpl)
+        self.assertNotIn("grpc_tls_config:", loki_yaml_tmpl)
         self.assertIn("max_chunk_age: 48h", loki_yaml_tmpl)
 
         for pb_name in ("replace-controller.yml", "rebuild-node.yml"):

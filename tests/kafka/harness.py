@@ -1,8 +1,10 @@
 import argparse
 import os
+import ssl
 import subprocess
 import sys
 import time
+import urllib.error
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -94,14 +96,37 @@ def under_replicated(t: Target) -> str:
     return t.admin("kafka-topics.sh", "--describe", "--under-replicated-partitions").stdout.strip()
 
 
+TRANSIENT_ERRORS = (TimeoutError, ConnectionError, ssl.SSLError)
+
+
+def _is_transient(exc: BaseException) -> bool:
+    if isinstance(exc, ssl.SSLCertVerificationError):
+        return False
+    return isinstance(exc, TRANSIENT_ERRORS)
+
+
 def wait_for(predicate, timeout: float, interval: float = 3, what: str = "condition"):
     deadline = time.monotonic() + timeout
     last = None
+    last_exc = None
     while time.monotonic() < deadline:
-        last = predicate()
-        if last:
-            return last
+        try:
+            last = predicate()
+            last_exc = None
+        except urllib.error.URLError as exc:
+            if isinstance(exc, urllib.error.HTTPError) or not isinstance(exc.reason, BaseException) or not _is_transient(exc.reason):
+                raise
+            last_exc = exc
+        except TRANSIENT_ERRORS as exc:
+            if not _is_transient(exc):
+                raise
+            last_exc = exc
+        else:
+            if last:
+                return last
         time.sleep(interval)
+    if last_exc is not None:
+        raise TimeoutError(f"{what} not met within {timeout:.0f}s (last error: {last_exc!r})") from last_exc
     raise TimeoutError(f"{what} not met within {timeout:.0f}s (last: {last!r})")
 
 
