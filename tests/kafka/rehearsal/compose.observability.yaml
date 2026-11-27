@@ -1,0 +1,94 @@
+services:
+  loki:
+    image: docker.io/grafana/loki:3.7.10@sha256:b43c257ccfc925d4a50b8717cac61a3b51df8c48d01847936057e5c4075a24a7
+    container_name: kafka-rehearsal-loki
+    hostname: loki
+    user: "10001:10001"
+    command:
+      - -config.file=/etc/loki/loki.yaml
+    ports:
+      - "127.0.0.1:13100:3100"
+    networks:
+      kafka:
+        aliases:
+          - loki
+    volumes:
+      - ./observability/loki.yaml:/etc/loki/loki.yaml:ro,Z
+      - ./observability/overrides.yaml:/etc/loki/overrides.yaml:ro,Z
+      - ./.run/obs-tls/loki:/etc/loki/tls:ro,Z
+      - ./.run/data/loki:/var/lib/loki:Z
+  vector:
+    image: docker.io/timberio/vector:0.62.0-distroless-libc@sha256:22100806cedabab3768edd6ac919be1a3a026b1020c5b280174a54573572db9d
+    container_name: kafka-rehearsal-vector
+    hostname: vector
+    user: "10002:10002"
+    command:
+      - --config
+      - /etc/vector/vector.yaml
+    networks:
+      kafka: {}
+    depends_on:
+      - loki
+    volumes:
+      - ./observability/vector.yaml:/etc/vector/vector.yaml:ro,Z
+      - ./.run/obs-tls/vector:/etc/vector/tls:ro,Z
+      - ./.run/data/vector:/var/lib/vector:Z
+  fakenotify:
+    image: docker.io/library/alpine:3.24.3@sha256:be2656061b536c1883c4034790e21d0a09c5aaaf51968b89368a3c0371ea2c9a
+    container_name: kafka-rehearsal-fakenotify
+    hostname: fakenotify
+    command:
+      - /fakenotify
+    ports:
+      - "127.0.0.1:18080:8080"
+    networks:
+      kafka:
+        aliases:
+          - fakenotify
+    volumes:
+      - ./.run/bin/fakenotify:/fakenotify:ro,Z
+  error-detector:
+    image: ghcr.io/nacfson/error-detector@sha256:7ac0d136ebfe69c367059b48df17f7b83d9f47d1c15dcc4bd64e4adf3a6a514a
+    container_name: kafka-rehearsal-error-detector
+    hostname: error-detector
+    user: "65532:65532"
+    read_only: true
+    ports:
+      - "127.0.0.1:18081:8080"
+    networks:
+      kafka: {}
+    environment:
+      LISTEN_ADDR: ":8080"
+      SOURCE_MODE: kafka
+      NOTIFY_MODE: kafka-outbox
+      STATE_ENABLED: "false"
+      KAFKA_BROKERS: broker-1:9092,broker-2:9092,broker-3:9092
+      KAFKA_TLS_DIR: /etc/error-detector/tls
+      KAFKA_GROUP: error-detector
+      KAFKA_OUTBOX_TOPIC: alerts.errors
+      DEDUP_TTL: 5s
+      QUARANTINE_THROTTLE: 5s
+    volumes:
+      - ./.run/obs-tls/error-detector:/etc/error-detector/tls:ro,Z
+  ops-relay:
+    image: ghcr.io/nacfson/ops-relay@sha256:bc81e225e090af4afd7110007e23db423181f2fa0f590b2e3647286af5604955
+    container_name: kafka-rehearsal-ops-relay
+    hostname: ops-relay
+    user: "65532:65532"
+    read_only: true
+    tmpfs:
+      - /run/ops-relay:rw,size=1m
+    networks:
+      kafka: {}
+    depends_on:
+      - fakenotify
+    environment:
+      KAFKA_BROKERS: broker-1:9092,broker-2:9092,broker-3:9092
+      KAFKA_TLS_DIR: /etc/kafka-tls
+      NOTIFY_URL: http://fakenotify:8080
+      NOTIFY_CHANNEL: kafka
+      ALERTS_ERRORS_TOPIC: alerts.errors
+      ALERTS_ERRORS_GROUP: ops-relay
+      ALERTS_ERRORS_CHANNEL: errors
+    volumes:
+      - ./.run/obs-tls/ops-relay:/etc/kafka-tls:ro,Z

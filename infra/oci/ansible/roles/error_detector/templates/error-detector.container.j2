@@ -1,0 +1,32 @@
+[Unit]
+Description=Direct Kafka error detector
+Wants=network-online.target
+After=network-online.target
+
+[Container]
+Image={{ error_detector_image }}
+ContainerName=error-detector
+Network=host
+User={{ error_detector_uid }}
+Group={{ error_detector_uid }}
+ReadOnly=true
+Volume={{ error_detector_tls_dir }}:{{ error_detector_tls_dir }}:ro
+Environment=LISTEN_ADDR={{ error_detector_listen_addr }}
+Environment=SOURCE_MODE=kafka
+Environment=NOTIFY_MODE=kafka-outbox
+Environment=STATE_ENABLED=false
+Environment=KAFKA_BROKERS={{ error_detector_brokers }}
+Environment=KAFKA_TLS_DIR={{ error_detector_tls_dir }}
+Environment=KAFKA_GROUP={{ error_detector_group }}
+Environment=KAFKA_OUTBOX_TOPIC={{ error_detector_outbox_topic }}
+Environment=DEDUP_TTL={{ error_detector_dedup_ttl }}
+Environment=QUARANTINE_THROTTLE={{ error_detector_quarantine_throttle }}
+
+[Service]
+Restart=always
+MemoryMax={{ error_detector_memory_max }}
+OOMScoreAdjust=600
+CPUWeight=100
+
+[Install]
+WantedBy=multi-user.target

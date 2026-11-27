@@ -1,0 +1,52 @@
+- name: Create Vector directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ vector_uid }}"
+    group: "{{ vector_uid }}"
+    mode: "0700"
+  loop:
+    - /etc/vector
+    - /var/lib/vector
+
+- name: Give Vector its own TLS files
+  ansible.builtin.import_tasks: tls.yml
+
+- name: Write Vector config
+  ansible.builtin.template:
+    src: vector.yaml.j2
+    dest: /etc/vector/vector.yaml
+    owner: "{{ vector_uid }}"
+    group: "{{ vector_uid }}"
+    mode: "0640"
+  notify: Restart vector
+
+- name: Check whether the Vector image is cached
+  ansible.builtin.command:
+    argv: [podman, image, exists, "{{ vector_image }}"]
+  register: vector_image_present
+  changed_when: false
+  failed_when: false
+
+- name: Pre-pull the Vector image outside its MemoryMax cgroup
+  ansible.builtin.command:
+    argv: [podman, pull, "{{ vector_image }}"]
+  when: vector_image_present.rc != 0
+  changed_when: true
+
+- name: Write the Vector Quadlet unit
+  ansible.builtin.template:
+    src: vector.container.j2
+    dest: /etc/containers/systemd/vector.container
+    mode: "0644"
+  notify:
+    - Reload systemd for Vector
+    - Restart vector
+
+- name: Apply unit changes before starting Vector
+  ansible.builtin.meta: flush_handlers
+
+- name: Start Vector
+  ansible.builtin.systemd_service:
+    name: vector
+    state: started

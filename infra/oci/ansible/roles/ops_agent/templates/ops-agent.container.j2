@@ -20,6 +20,7 @@ Volume=/etc/machine-id:/etc/machine-id:ro
 Environment=OPS_VM={{ inventory_hostname }}
 Environment=OPS_NODES={{ kafka_nodes | dict2items | map(attribute='value') | map(attribute='node_id') | zip(kafka_nodes.keys()) | map('join', '=') | join(',') }}
 Environment=OPS_REPLICATION=3
+Environment=OPS_UNITS={{ ops_agent_watched_units | join(',') }}
 Exec=/fluent-bit/bin/fluent-bit -c /fluent-bit/etc/fluent-bit.conf
 
 [Service]

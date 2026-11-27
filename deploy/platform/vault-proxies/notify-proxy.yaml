@@ -44,7 +44,7 @@ spec:
             - name: OPENBAO_ROLE
               value: "vault-notify-proxy"
             - name: NOTIFY_GRANTS
-              value: "errors:observability:error-detector,ai-debug:observability:error-investigator,kafka:observability:ops-relay"
+              value: "errors:observability:error-detector,ai-debug:observability:error-investigator,kafka:observability:ops-relay,errors:observability:ops-relay"
           resources:
             requests:
               cpu: 25m

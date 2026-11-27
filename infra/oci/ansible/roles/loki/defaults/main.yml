@@ -1,0 +1,13 @@
+loki_image: docker.io/grafana/loki:3.7.10@sha256:b43c257ccfc925d4a50b8717cac61a3b51df8c48d01847936057e5c4075a24a7
+loki_uid: 10001
+loki_listen_address: 127.0.0.1
+loki_http_port: 3100
+loki_grpc_port: 9096
+loki_tls_dir: /etc/loki/tls
+loki_identity: "loki-{{ inventory_hostname }}"
+loki_data_dir: /var/lib/loki
+loki_loopback_image: /var/lib/loki.img
+loki_loopback_size_gib: 10
+loki_retention_period: 14d
+loki_ooo_window: 24h
+loki_memory_max: 1800M

@@ -1,0 +1,24 @@
+- name: Create error-detector TLS directory
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ error_detector_uid }}"
+    group: "{{ error_detector_uid }}"
+    mode: "0700"
+  loop:
+    - /etc/error-detector
+    - "{{ error_detector_tls_dir }}"
+
+- name: Copy only error-detector's certificate, key, and the CA
+  ansible.builtin.copy:
+    src: "{{ kafka_tls_dir }}/{{ item.src }}"
+    dest: "{{ error_detector_tls_dir }}/{{ item.dest }}"
+    remote_src: true
+    owner: "{{ error_detector_uid }}"
+    group: "{{ error_detector_uid }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {src: ca.crt, dest: ca.crt, mode: "0644"}
+    - {src: "{{ error_detector_identity }}.crt", dest: tls.crt, mode: "0640"}
+    - {src: "{{ error_detector_identity }}.key", dest: tls.key, mode: "0600"}
+  notify: Restart error-detector

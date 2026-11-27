@@ -1,16 +1,25 @@
+- name: "Create destination TLS directory for {{ certs_identity }}"
+  ansible.builtin.file:
+    path: "{{ certs_dest_dir }}"
+    state: directory
+    owner: "{{ certs_owner }}"
+    group: "{{ certs_group }}"
+    mode: "0755"
+  when: certs_dest_dir != kafka_tls_dir
+
 - name: "Key for {{ certs_identity }}"
   community.crypto.openssl_privatekey:
-    path: "{{ kafka_tls_dir }}/{{ certs_identity }}.key"
+    path: "{{ certs_dest_dir }}/{{ certs_identity }}.key"
     type: ECC
     curve: secp256r1
     format: pkcs8
-    owner: kafka
-    group: kafka
+    owner: "{{ certs_owner }}"
+    group: "{{ certs_group }}"
     mode: "0600"
 
 - name: "Current certificate of {{ certs_identity }}"
   community.crypto.x509_certificate_info:
-    path: "{{ kafka_tls_dir }}/{{ certs_identity }}.crt"
+    path: "{{ certs_dest_dir }}/{{ certs_identity }}.crt"
     valid_at:
       renew: "+{{ kafka_cert_renew_days }}d"
   register: certs_current
@@ -21,9 +30,9 @@
   block:
     - name: "CSR for {{ certs_identity }}"
       community.crypto.openssl_csr_pipe:
-        privatekey_path: "{{ kafka_tls_dir }}/{{ certs_identity }}.key"
+        privatekey_path: "{{ certs_dest_dir }}/{{ certs_identity }}.key"
         common_name: "{{ certs_identity }}"
-        subject_alt_name: "{{ certs_server_sans if certs_identity is match('^(broker|controller)-') else omit }}"
+        subject_alt_name: "{{ certs_sans if (certs_sans | length > 0) else omit }}"
       register: certs_csr
 
     - name: "CertificateRequest for {{ certs_identity }}"
@@ -49,17 +58,17 @@
     - name: "Install the certificate of {{ certs_identity }}"
       ansible.builtin.copy:
         content: "{{ (certs_signed.stdout | from_json).status.certificate | b64decode }}"
-        dest: "{{ kafka_tls_dir }}/{{ certs_identity }}.crt"
-        owner: kafka
-        group: kafka
-        mode: "0640"
+        dest: "{{ certs_dest_dir }}/{{ certs_identity }}.crt"
+        owner: "{{ certs_owner }}"
+        group: "{{ certs_group }}"
+        mode: "{{ certs_cert_mode }}"
 
     - name: Install the CA certificate
       ansible.builtin.copy:
         content: "{{ (certs_signed.stdout | from_json).status.ca | b64decode }}"
-        dest: "{{ kafka_tls_dir }}/ca.crt"
-        owner: kafka
-        group: kafka
+        dest: "{{ certs_dest_dir }}/ca.crt"
+        owner: "{{ certs_owner }}"
+        group: "{{ certs_group }}"
         mode: "0644"
 
     - name: "Record the renewal of {{ certs_identity }}"
@@ -69,11 +78,11 @@
 - name: "Build the PEM keystore of {{ certs_identity }}"
   ansible.builtin.shell: >-
     set -o pipefail &&
-    cat {{ kafka_tls_dir }}/{{ certs_identity }}.key {{ kafka_tls_dir }}/{{ certs_identity }}.crt
-    | install -o kafka -g kafka -m 0600 /dev/stdin {{ kafka_tls_dir }}/{{ certs_identity }}.pem.new
-    && if cmp -s {{ kafka_tls_dir }}/{{ certs_identity }}.pem.new {{ kafka_tls_dir }}/{{ certs_identity }}.pem;
-    then rm {{ kafka_tls_dir }}/{{ certs_identity }}.pem.new; echo same;
-    else mv {{ kafka_tls_dir }}/{{ certs_identity }}.pem.new {{ kafka_tls_dir }}/{{ certs_identity }}.pem; fi
+    cat {{ certs_dest_dir }}/{{ certs_identity }}.key {{ certs_dest_dir }}/{{ certs_identity }}.crt
+    | install -o {{ certs_owner }} -g {{ certs_group }} -m 0600 /dev/stdin {{ certs_dest_dir }}/{{ certs_identity }}.pem.new
+    && if cmp -s {{ certs_dest_dir }}/{{ certs_identity }}.pem.new {{ certs_dest_dir }}/{{ certs_identity }}.pem;
+    then rm {{ certs_dest_dir }}/{{ certs_identity }}.pem.new; echo same;
+    else mv {{ certs_dest_dir }}/{{ certs_identity }}.pem.new {{ certs_dest_dir }}/{{ certs_identity }}.pem; fi
   args:
     executable: /bin/bash
   register: certs_pem

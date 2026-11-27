@@ -18,9 +18,9 @@
 [INPUT]
     Name systemd
     Tag unit
-    Systemd_Filter UNIT=kafka.service
-    Systemd_Filter UNIT=wg-quick@wg0.service
-    Systemd_Filter UNIT=ops-agent.service
+{% for unit in ops_agent_watched_units | default(['kafka.service', 'wg-quick@wg0.service', 'ops-agent.service']) %}
+    Systemd_Filter UNIT={{ unit }}
+{% endfor %}
     Systemd_Filter_Type Or
     Read_From_Tail On
     DB /var/lib/ops-agent/journal-unit.db

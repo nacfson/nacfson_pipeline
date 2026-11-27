@@ -1,0 +1,8 @@
+vector_image: docker.io/timberio/vector:0.62.0-distroless-libc@sha256:22100806cedabab3768edd6ac919be1a3a026b1020c5b280174a54573572db9d
+vector_uid: 10002
+vector_tls_dir: /etc/vector/tls
+vector_identity: "vector-{{ inventory_hostname }}"
+vector_brokers: "{{ kafka_bootstrap_servers }}"
+vector_loki_endpoint: https://127.0.0.1:3100
+vector_group_id: vector-loki
+vector_memory_max: 256M

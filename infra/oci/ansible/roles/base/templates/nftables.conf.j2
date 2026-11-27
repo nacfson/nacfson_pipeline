@@ -8,7 +8,7 @@ table inet nacfson {
 		iif "lo" accept
 		ip protocol icmp accept
 		udp dport 68 accept
-		iifname "wg0" ip daddr {{ ansible_host }} tcp dport {{ kafka_client_port }} accept
+		iifname "wg0" ip saddr 10.201.0.0/28 ip daddr {{ ansible_host }} tcp dport {{ kafka_client_port }} accept
 		iifname "wg0" drop
 		ip saddr {{ kafka_vcn_cidr }} tcp dport { 22, {{ kafka_client_port }}, {{ kafka_controller_port }} } accept
 {% if inventory_hostname in groups['brokers'] %}

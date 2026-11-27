@@ -5,3 +5,13 @@ ops_agent_identity: "ops-agent-{{ inventory_hostname }}"
 ops_agent_brokers: "{{ kafka_bootstrap_servers }}"
 ops_agent_image: docker.io/fluent/fluent-bit:4.2.8@sha256:6806769c10acf11b41d14083b3101a24433b4ca113a1ab7a6b1a1b7cad86a7e8
 ops_agent_memory_max: "{{ '64M' if inventory_hostname in groups['a1'] else '48M' }}"
+ops_agent_base_units:
+  - kafka.service
+  - wg-quick@wg0.service
+  - ops-agent.service
+ops_agent_extra_units:
+  a1-2:
+    - vector.service
+    - loki.service
+    - error-detector.service
+ops_agent_watched_units: "{{ ops_agent_base_units + (ops_agent_extra_units[inventory_hostname] | default([])) }}"

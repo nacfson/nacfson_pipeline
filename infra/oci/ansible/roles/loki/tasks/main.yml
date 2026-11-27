@@ -1,0 +1,128 @@
+- name: Create Loki config and mount directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ loki_uid }}"
+    group: "{{ loki_uid }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - {path: /etc/loki, mode: "0755"}
+    - {path: "{{ loki_data_dir }}", mode: "0755"}
+
+- name: Allocate fixed loopback image for Loki storage
+  ansible.builtin.command:
+    argv: [fallocate, -l, "{{ loki_loopback_size_gib }}G", "{{ loki_loopback_image }}"]
+    creates: "{{ loki_loopback_image }}"
+
+- name: Restrict loopback image file permissions
+  ansible.builtin.file:
+    path: "{{ loki_loopback_image }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: Check Loki loopback image filesystem
+  ansible.builtin.command:
+    argv: [blkid, -o, value, -s, TYPE, "{{ loki_loopback_image }}"]
+  register: loki_fs_type
+  changed_when: false
+  failed_when: false
+
+- name: Format Loki loopback image as ext4
+  ansible.builtin.command:
+    argv: [mkfs.ext4, -F, -L, loki-data, "{{ loki_loopback_image }}"]
+  when: (loki_fs_type.stdout | default('') | trim) != 'ext4'
+  changed_when: true
+
+- name: Mount Loki loopback filesystem persistently
+  ansible.posix.mount:
+    path: "{{ loki_data_dir }}"
+    src: "{{ loki_loopback_image }}"
+    fstype: ext4
+    opts: loop,noatime,nodiratime
+    state: mounted
+
+- name: Ensure Loki mountpoint exists with target ownership
+  ansible.builtin.file:
+    path: "{{ loki_data_dir }}"
+    state: directory
+    owner: "{{ loki_uid }}"
+    group: "{{ loki_uid }}"
+    mode: "0755"
+
+- name: Restrict Loki TSDB data subdirectories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ loki_uid }}"
+    group: "{{ loki_uid }}"
+    mode: "0700"
+  loop:
+    - "{{ loki_data_dir }}/chunks"
+    - "{{ loki_data_dir }}/rules"
+    - "{{ loki_data_dir }}/compactor"
+    - "{{ loki_data_dir }}/wal"
+
+- name: Write Loki configuration
+  ansible.builtin.template:
+    src: loki.yaml.j2
+    dest: /etc/loki/loki.yaml
+    owner: "{{ loki_uid }}"
+    group: "{{ loki_uid }}"
+    mode: "0640"
+  notify: Restart loki
+
+- name: Write Loki runtime overrides
+  ansible.builtin.template:
+    src: overrides.yaml.j2
+    dest: /etc/loki/overrides.yaml
+    owner: "{{ loki_uid }}"
+    group: "{{ loki_uid }}"
+    mode: "0644"
+  notify: Restart loki
+
+- name: Check whether the Loki image is cached
+  ansible.builtin.command:
+    argv: [podman, image, exists, "{{ loki_image }}"]
+  register: loki_image_present
+  changed_when: false
+  failed_when: false
+
+- name: Pre-pull the Loki image outside its MemoryMax cgroup
+  ansible.builtin.command:
+    argv: [podman, pull, "{{ loki_image }}"]
+  when: loki_image_present.rc != 0
+  changed_when: true
+
+- name: Write the Loki Quadlet unit
+  ansible.builtin.template:
+    src: loki.container.j2
+    dest: /etc/containers/systemd/loki.container
+    mode: "0644"
+  notify:
+    - Reload systemd for Loki
+    - Restart loki
+
+- name: Stat current Loki certificate for change tracking
+  ansible.builtin.stat:
+    path: "{{ loki_tls_dir }}/{{ loki_identity }}.crt"
+    checksum_algorithm: sha256
+  register: loki_cert_stat
+
+- name: Record current Loki certificate checksum to trigger restart on rotation
+  ansible.builtin.copy:
+    content: "{{ loki_cert_stat.stat.checksum }}\n"
+    dest: /etc/loki/cert.sha256
+    owner: "{{ loki_uid }}"
+    group: "{{ loki_uid }}"
+    mode: "0640"
+  when: loki_cert_stat.stat.exists | default(false)
+  notify: Restart loki
+
+- name: Apply unit changes before starting Loki
+  ansible.builtin.meta: flush_handlers
+
+- name: Start Loki
+  ansible.builtin.systemd_service:
+    name: loki
+    state: started

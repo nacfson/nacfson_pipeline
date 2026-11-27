@@ -780,25 +780,3 @@ spec:
                     limits:
                       cpu: 50m
                       memory: 64Mi
-    - target:
-        kind: Deployment
-        name: error-detector
-        namespace: observability
-      patch: |
-        apiVersion: apps/v1
-        kind: Deployment
-        metadata:
-          name: error-detector
-          namespace: observability
-        spec:
-          template:
-            spec:
-              containers:
-                - name: error-detector
-                  resources:
-                    requests:
-                      cpu: 25m
-                      memory: 64Mi
-                    limits:
-                      cpu: 25m
-                      memory: 64Mi

@@ -1,3 +1,5 @@
 certs_server_sans:
   - "IP:{{ ansible_host }}"
   - "DNS:{{ inventory_hostname }}"
+certs_enabled_tls_identities:
+  - loki-a1-2

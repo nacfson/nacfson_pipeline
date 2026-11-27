@@ -75,12 +75,38 @@ patches:
       kind: Deployment
       name: error-detector
     patch: |-
+      $patch: delete
       apiVersion: apps/v1
       kind: Deployment
       metadata:
         name: error-detector
-      spec:
-        replicas: 0
+  - target:
+      kind: PersistentVolumeClaim
+      name: error-detector-state
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: PersistentVolumeClaim
+      metadata:
+        name: error-detector-state
+  - target:
+      kind: ServiceAccount
+      name: error-detector
+    patch: |-
+      $patch: delete
+      apiVersion: v1
+      kind: ServiceAccount
+      metadata:
+        name: error-detector
+  - target:
+      kind: NetworkPolicy
+      name: error-detector-egress
+    patch: |-
+      $patch: delete
+      apiVersion: networking.k8s.io/v1
+      kind: NetworkPolicy
+      metadata:
+        name: error-detector-egress
   - target:
       kind: NetworkPolicy
       name: fluent-bit-egress

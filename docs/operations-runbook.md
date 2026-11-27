@@ -320,7 +320,7 @@ Any manual deployment outside the authorized break-glass workflow is strictly bl
 
 ---
 
-## 15. Project Log History (`local-k3s` VictoriaLogs & `gke` Kafka Sink)
+## 15. Project Log History & Headless OCI Observability (`local-k3s` VictoriaLogs, `gke` Kafka Sink, OCI `A1-2` Loki & `#errors`)
 
 Stored history covers `proj-*` stdout and stderr only; platform namespaces remain live-only (`kubectl logs` or Headlamp).
 
@@ -329,7 +329,27 @@ Stored history covers `proj-*` stdout and stderr only; platform namespaces remai
 Across both `local-k3s` and `gke`, `DaemonSet/fluent-bit` replaces the retired single-node `fluent-bit-state` RWO PVC with per-node `hostPath` `/var/lib/fluent-bit-state` (`type: DirectoryOrCreate`, mounted `readOnly: false` at `/state` per Constitution Amendment `2.3.0`):
 - `/state/tail.db` (SQLite WAL) checkpoints byte offsets per `/var/log/pods` file on the same node disk.
 - `/state/chunks` persists in-flight multiline, `rewrite_tag`, and output chunks to disk, strictly capped at `256 MiB` per node (`256M` single HTTP sink on `local-k3s`; `192M` `logs.proj.valid` + `64M` `logs.proj.quarantine` on `gke` `[OUTPUT] kafka` to OCI WireGuard brokers `10.200.0.11..13:9092`).
-- On `gke`, in-cluster `StatefulSet/victorialogs` is deleted (VictoriaLogs moves to OCI VM 4 in Spec 014) and `Deployment/error-detector` is paused at `replicas: 0` (retaining its pre-reserved `25m/64Mi` capacity slot until Spec 014 switches it to consume `logs.proj.errors`).
+- On `gke`, in-cluster `StatefulSet/victorialogs`, `Deployment/error-detector`, `PVC/error-detector-state`, `ServiceAccount/error-detector`, and `NetworkPolicy/error-detector-egress` are deleted (reclaiming `25m / 64 MiB` on GKE and freeing a `318m / 783 MiB` per-project budget). Headless OCI `A1-2` (`10.200.0.12`) runs `loki.service` (`127.0.0.1:3100` mTLS, `10 GiB` loopback ext4 `/var/lib/loki.img` at `/var/lib/loki`, 14d retention, no Grafana web UI), `vector.service` (consuming `logs.proj.*` and `ops.platform.*` into Loki), and `error-detector.service` (consuming `logs.proj.*` and emitting `#errors` alerts to `alerts.errors` with `GRAFANA_BASE_URL` unset). GKE `ops-relay` consumes `alerts.errors` (`ALERTS_ERRORS_TOPIC=alerts.errors`) and posts to Discord `#errors` via `vault-notify-proxy` (`NOTIFY_GRANTS` includes `errors:observability:ops-relay` alongside `kafka:observability:ops-relay`).
+
+### Headless OCI `A1-2` Observability Verification & Recovery
+
+1. **Pre-rollout `__consumer_offsets` check**: before deploying `vector` or `error-detector` on `a1-2`, confirm `__consumer_offsets` reports exactly `PartitionCount: 3` (not Kafka's unpinned default of 50) with RF=3, so consumer-group commits spread across brokers and the 20 GiB disk budget holds.
+2. **Loopback disk & mTLS query on `A1-2`**: verify `/var/lib/loki` is mounted from `/var/lib/loki.img` (`findmnt /var/lib/loki` and `ops-sample.sh` `loki.disk.free_ratio` / `loki.disk.ok`), then query Loki directly over loopback mTLS (`127.0.0.1:3100`, no Grafana UI):
+   ```bash
+   sudo curl -fsS --cacert /etc/loki/tls/ca.crt \
+     --cert /etc/loki/tls/loki-a1-2.crt --key /etc/loki/tls/loki-a1-2.key \
+     -H 'X-Scope-OrgID: proj' \
+     --get --data-urlencode 'query={topic="logs.proj.valid"}' \
+     'https://127.0.0.1:3100/loki/api/v1/query_range'
+   ```
+   Use `-H 'X-Scope-OrgID: ops'` for `ops.platform.*` metrics/events or `quarantine` for quarantined records.
+3. **Scoped cert renewal & post-`replace-controller.yml` recovery**: `ops-certs.sh` scans both `/etc/kafka/tls/*.crt` and `/etc/loki/tls/*.crt`, and `renew-certs.yml` restarts only units whose identity certificates rotated (`vector`, `loki`, `error-detector` do not restart `kafka.service`). After running `infra/oci/ansible/replace-controller.yml`, re-run `infra/oci/ansible/site.yml` to re-converge `a1-2` observability units, TLS copies, and `/etc/nacfson/applied-commit`.
+4. **Offline headless end-to-end rehearsal**:
+   ```bash
+   ./scripts/ops/kafka-rehearsal.sh up --with-observability
+   ./scripts/ops/kafka-rehearsal.sh test observability_pipeline
+   ./scripts/ops/kafka-rehearsal.sh down --with-observability
+   ```
 
 ### Open the Local / Legacy VPS VictoriaLogs UI
 

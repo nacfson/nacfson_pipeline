@@ -1,9 +1,36 @@
-- name: Issue certificates for this VM's identities
+- name: Reset renewed certificate list
+  ansible.builtin.set_fact:
+    certs_renewed: []
+
+- name: Issue certificates for this VM's Kafka identities
   ansible.builtin.include_tasks: identity.yml
   loop: "{{ kafka_nodes[inventory_hostname].identities }}"
   loop_control:
-    loop_var: certs_identity
+    loop_var: certs_item
+  vars:
+    certs_identity: "{{ certs_item }}"
+    certs_dest_dir: "{{ kafka_tls_dir }}"
+    certs_owner: "{{ kafka_uid }}"
+    certs_group: "{{ kafka_uid }}"
+    certs_cert_mode: "0640"
+    certs_is_server: "{{ certs_item is match('^(broker|controller)-') }}"
+    certs_sans: "{{ certs_server_sans if (certs_item is match('^(broker|controller)-')) else [] }}"
+
+- name: Issue certificates for enabled non-Kafka TLS identities
+  ansible.builtin.include_tasks: identity.yml
+  loop: "{{ kafka_nodes[inventory_hostname].tls_identities | default([]) | selectattr('name', 'in', certs_enabled_tls_identities) | list }}"
+  loop_control:
+    loop_var: certs_tls_item
+  vars:
+    certs_identity: "{{ certs_tls_item.name }}"
+    certs_dest_dir: "{{ certs_tls_item.dest_dir }}"
+    certs_owner: "{{ certs_tls_item.owner_uid }}"
+    certs_group: "{{ certs_tls_item.owner_uid }}"
+    certs_cert_mode: "0644"
+    certs_is_server: "{{ certs_tls_item.server_auth | bool }}"
+    certs_sans: "{{ certs_tls_item.server_sans | default([]) }}"
 
 - name: Collect identities whose certificate changed
   ansible.builtin.set_fact:
+    certs_renewed_identities: "{{ certs_renewed | default([]) }}"
     certs_changed: "{{ certs_renewed | default([]) | length > 0 }}"

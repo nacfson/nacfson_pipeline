@@ -1,0 +1,27 @@
+[Unit]
+Description=Grafana Loki log store
+Wants=network-online.target
+After=network-online.target var-lib-loki.mount
+RequiresMountsFor=/var/lib/loki
+
+[Container]
+Image={{ loki_image }}
+ContainerName=loki
+Network=host
+User={{ loki_uid }}
+Group={{ loki_uid }}
+ReadOnly=true
+Tmpfs=/tmp:rw,size=64m
+Volume=/etc/loki:/etc/loki:ro
+Volume={{ loki_tls_dir }}:{{ loki_tls_dir }}:ro
+Volume={{ loki_data_dir }}:{{ loki_data_dir }}
+Exec=-config.file=/etc/loki/loki.yaml
+
+[Service]
+Restart=always
+MemoryMax={{ loki_memory_max }}
+OOMScoreAdjust=600
+CPUWeight=100
+
+[Install]
+WantedBy=multi-user.target

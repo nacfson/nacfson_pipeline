@@ -1,0 +1,32 @@
+- name: Give error-detector its own TLS files
+  ansible.builtin.import_tasks: tls.yml
+
+- name: Check whether the error-detector image is cached
+  ansible.builtin.command:
+    argv: [podman, image, exists, "{{ error_detector_image }}"]
+  register: error_detector_image_present
+  changed_when: false
+  failed_when: false
+
+- name: Pre-pull the error-detector image outside its MemoryMax cgroup
+  ansible.builtin.command:
+    argv: [podman, pull, "{{ error_detector_image }}"]
+  when: error_detector_image_present.rc != 0
+  changed_when: true
+
+- name: Write the error-detector Quadlet unit
+  ansible.builtin.template:
+    src: error-detector.container.j2
+    dest: /etc/containers/systemd/error-detector.container
+    mode: "0644"
+  notify:
+    - Reload systemd for error-detector
+    - Restart error-detector
+
+- name: Apply unit changes before starting error-detector
+  ansible.builtin.meta: flush_handlers
+
+- name: Start error-detector
+  ansible.builtin.systemd_service:
+    name: error-detector
+    state: started

@@ -6,6 +6,8 @@ OUT=${OPS_SAMPLES:-/var/lib/ops-agent/samples}
 STATE=${OPS_STATE:-/var/lib/ops-agent/state}
 EXPORTER=${OPS_EXPORTER:-http://127.0.0.1:7071/metrics}
 DATA=${OPS_DATA_DIR:-/var/lib/kafka}
+LOKI_DATA=${OPS_LOKI_DATA_DIR:-/var/lib/loki}
+LOKI_CHECK_MOUNT=${OPS_LOKI_CHECK_MOUNT:-1}
 CAP_BYTES=${OPS_SAMPLES_CAP_BYTES:-8388608}
 
 mkdir -p "$OUT" "$STATE"
@@ -33,6 +35,22 @@ pick() {
 }
 sum_gc() {
 	printf '%s\n' "$scrape" | awk '$1 ~ /^jvm_gc_collection_time_ms_total[{]/ { s += $2; n++ } END { if (n) printf "%.0f", s }'
+}
+
+df_free_ratio() {
+	df -P "$1" | awk '
+		NR == 2 {
+			for (i = 1; i <= NF; i++) {
+				if ($i ~ /^[0-9]+%$/ && i >= 4) {
+					total = $(i - 3) + 0
+					used = $(i - 2) + 0
+					printf "%.4f", (total > 0 ? (total - used) / total : 0)
+					exit
+				}
+			}
+			printf "0.0000"
+		}
+	'
 }
 
 for pair in \
@@ -65,7 +83,7 @@ fi
 
 emit os.mem.available "$(awk '/^MemAvailable:/ { printf "%.0f", $2 * 1024 }' /proc/meminfo)" bytes
 
-ratio=$(df -P "$DATA" | awk 'NR == 2 { printf "%.4f", ($2 - $3) / $2 }')
+ratio=$(df_free_ratio "$DATA")
 emit os.disk.free_ratio "$ratio" ratio
 
 read -r _ u n s i w q sq st _ </proc/stat
@@ -82,5 +100,20 @@ if [ "$low" != "$was" ]; then
 		event disk.low warn "disk/$VM" "free space on $DATA is below 20%"
 	else
 		event disk.ok ok "disk/$VM" "free space on $DATA is back above 20%"
+	fi
+fi
+
+if [ -d "$LOKI_DATA" ] && { [ "$LOKI_CHECK_MOUNT" = "0" ] || mountpoint -q "$LOKI_DATA"; }; then
+	loki_ratio=$(df_free_ratio "$LOKI_DATA")
+	emit loki.disk.free_ratio "$loki_ratio" ratio
+	loki_low=$(awk -v r="$loki_ratio" 'BEGIN { print (r < 0.15) ? 1 : 0 }')
+	loki_was=$(cat "$STATE/loki-disk-low" 2>/dev/null || echo 0)
+	if [ "$loki_low" != "$loki_was" ]; then
+		echo "$loki_low" >"$STATE/loki-disk-low"
+		if [ "$loki_low" = 1 ]; then
+			event loki.disk.low warn "loki/disk" "free space on $LOKI_DATA is below 15%"
+		else
+			event loki.disk.ok ok "loki/disk" "free space on $LOKI_DATA is back above 15%"
+		fi
 	fi
 fi
